@@ -45,12 +45,12 @@ function hiResBadgeCandidates(src) {
   if (!src) return []
   if (src.includes('7tv'))
     return ['4x', '3x', '2x'].map((s) =>
-      src.replace(/\/[1-4]x(\.\w+)?(\?.*)?$/i, (m, ext, q) => '/' + s + (ext || '') + (q || '')),
+      src.replace(/\/[1-4]x(\.\w+)?(\?.*)?$/i, (m, ext, q) => `/${s}${ext || ''}${q || ''}`),
     )
   if (src.includes('frankerfacez'))
-    return ['4', '2'].map((s) => src.replace(/\/[1-4](\?.*)?$/, (m, q) => '/' + s + (q || '')))
+    return ['4', '2'].map((s) => src.replace(/\/[1-4](\?.*)?$/, (m, q) => `/${s}${q || ''}`))
   // Twitch native badges (sub/bits/mod/vip) — URLs end in /1, /2, /3 (max 3, no 4x)
-  if (src.includes('jtvnw')) return ['3', '2'].map((s) => src.replace(/\/[1-3](\?.*)?$/, (m, q) => '/' + s + (q || '')))
+  if (src.includes('jtvnw')) return ['3', '2'].map((s) => src.replace(/\/[1-3](\?.*)?$/, (m, q) => `/${s}${q || ''}`))
   return []
 }
 
@@ -177,8 +177,8 @@ function buildStackPreview(box, stackEmotes) {
       const lw = liveImgs[i]?.offsetWidth,
         lh = liveImgs[i]?.offsetHeight
       if (lw && lh) {
-        im.style.setProperty('width', lw + 'px', 'important')
-        im.style.setProperty('height', lh + 'px', 'important')
+        im.style.setProperty('width', `${lw}px`, 'important')
+        im.style.setProperty('height', `${lh}px`, 'important')
         im.style.setProperty('object-fit', 'contain', 'important')
       }
     }
@@ -207,8 +207,8 @@ function buildStackPreview(box, stackEmotes) {
       baseH = clone.offsetHeight
     const scale = fitPreviewScale(baseW, baseH)
     clone.style.transform = `scale(${scale})`
-    box.style.width = baseW * scale + 'px'
-    box.style.height = baseH * scale + 'px'
+    box.style.width = `${baseW * scale}px`
+    box.style.height = `${baseH * scale}px`
   }
   requestAnimationFrame(sizeBox)
   imgs.forEach((im) => {
@@ -236,7 +236,7 @@ function hsTtModProvider(tok) {
 /** One coloured chip. `dim` renders the connector glyphs, not a value. */
 function hsTtChip(text, color, cls) {
   const el = document.createElement('span')
-  el.className = 'tooltip-piece' + (cls ? ' ' + cls : '')
+  el.className = `tooltip-piece${cls ? ` ${cls}` : ''}`
   if (color) el.style.color = color
   el.textContent = text
   return el
@@ -255,7 +255,7 @@ function hsTtRenderComposition(nameEl, pieces, mods) {
     nameEl.appendChild(hsTtChip(p.name, HS_TT_PROVIDER_COLOR[p.source] || null, i ? 'tooltip-overlay' : 'tooltip-base'))
   })
   if (pieces.length > MAX) nameEl.appendChild(hsTtChip(` +${pieces.length - MAX} more`, null, 'tooltip-join'))
-  if (mods && mods.length) {
+  if (mods?.length) {
     // Effects are ordered — "w! c!" reads left-to-right as applied.
     nameEl.appendChild(hsTtChip('  ·  ', null, 'tooltip-join'))
     mods.forEach((m, i) => {
@@ -264,7 +264,7 @@ function hsTtRenderComposition(nameEl, pieces, mods) {
       const chip = hsTtChip(m, HS_TT_PROVIDER_COLOR[prov] || '#c8c8c8', 'tooltip-mod')
       // c!#rrggbb tints — show the actual colour as the chip's own colour.
       const hex = m.match(/^c!#?([0-9a-fA-F]{6}|[0-9a-fA-F]{3})$/)
-      if (hex) chip.style.color = '#' + hex[1]
+      if (hex) chip.style.color = `#${hex[1]}`
       nameEl.appendChild(chip)
     })
   }
@@ -322,11 +322,11 @@ function showEmoteTooltip(e, emoteName, emoteUrl, state, source, hoveredImg, own
     // emote's hover preview would otherwise shrink back to the un-modified base
     // square while the in-chat copies stay wide (reported "shows the base image").
     const _vRect = hoveredImg?.getBoundingClientRect()
-    const baseW = (_vRect && _vRect.width) || hoveredImg?.offsetWidth || 28
-    const baseH = (_vRect && _vRect.height) || hoveredImg?.offsetHeight || 28
+    const baseW = _vRect?.width || hoveredImg?.offsetWidth || 28
+    const baseH = _vRect?.height || hoveredImg?.offsetHeight || 28
     const scale = fitPreviewScale(baseW, baseH)
-    img.style.width = baseW * scale + 'px'
-    img.style.height = baseH * scale + 'px'
+    img.style.width = `${baseW * scale}px`
+    img.style.height = `${baseH * scale}px`
     // A w!/ffzW/h! emote is stretched by its transform, and we sized the box to
     // that stretched footprint above — so FILL it. The CSS default is
     // object-fit:contain, which would letterbox the base-aspect image inside the
@@ -413,10 +413,9 @@ function showEmoteTooltip(e, emoteName, emoteUrl, state, source, hoveredImg, own
     fromInv && state !== 'owned' && state !== 'blocked'
       ? ' src-heatsync'
       : (state === 'global' || state === 'channel' || state === 'sub') && source
-        ? ' src-' + source.toLowerCase().replace(/[^a-z0-9]/g, '')
+        ? ` src-${source.toLowerCase().replace(/[^a-z0-9]/g, '')}`
         : ''
-  stateEl.className =
-    'tooltip-source ' + (state || 'global') + srcClass + (isStale ? ' stale' : '') + (isNsfw ? ' nsfw' : '')
+  stateEl.className = `tooltip-source ${state || 'global'}${srcClass}${isStale ? ' stale' : ''}${isNsfw ? ' nsfw' : ''}`
 
   // Position: anchor above the emote element
   const anchorEl = hoveredImg || e.target
@@ -456,7 +455,7 @@ function showEmojiTooltip(targetEl, emoji, name) {
   emojiChar.textContent = emoji
   const label = document.createElement('span')
   Object.assign(label.style, { display: 'block', marginTop: '4px' })
-  label.textContent = ':' + name + ':'
+  label.textContent = `:${name}:`
   nameEl.appendChild(emojiChar)
   nameEl.appendChild(label)
 
@@ -472,14 +471,14 @@ function showEmojiTooltip(targetEl, emoji, name) {
 
 // Refresh tooltip text/color if it's currently showing the given emote
 function refreshEmoteTooltip(emoteName, newState) {
-  if (!emoteTooltip || !emoteTooltip.classList.contains('visible')) return
+  if (!emoteTooltip?.classList.contains('visible')) return
   const nameEl = emoteTooltip.querySelector('.tooltip-name')
   if (nameEl?.textContent !== emoteName) return
   const stateEl = emoteTooltip.querySelector('.tooltip-source')
   if (!stateEl) return
   const labels = { owned: t('mc_emote_in_set'), blocked: t('mc_emote_blocked') }
   stateEl.textContent = labels[newState] || newState
-  stateEl.className = 'tooltip-source ' + (newState || 'global')
+  stateEl.className = `tooltip-source ${newState || 'global'}`
   // 2-state model: cross-highlight is white for everything except blocked
   // (red). No orange middle tier exists anymore, so the live-resync that
   // used to chase unadded→owned ladder transitions collapses to a single
@@ -889,7 +888,7 @@ function roundTooltipBadgeWidths(tooltip) {
     el.style.width = ''
     const w = el.getBoundingClientRect().width
     const rounded = Math.ceil(w)
-    if (Math.abs(w - rounded) > 0.01) el.style.width = rounded + 'px'
+    if (Math.abs(w - rounded) > 0.01) el.style.width = `${rounded}px`
   }
 }
 
@@ -930,8 +929,8 @@ function ensureUserTooltip() {
 }
 
 function formatCompact(n) {
-  if (n >= 1000000) return (n / 1000000).toFixed(1).replace(/\.0$/, '') + 'M'
-  if (n >= 1000) return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'K'
+  if (n >= 1000000) return `${(n / 1000000).toFixed(1).replace(/\.0$/, '')}M`
+  if (n >= 1000) return `${(n / 1000).toFixed(1).replace(/\.0$/, '')}K`
   return String(n)
 }
 
@@ -943,20 +942,20 @@ function getAccountAge(dateStr) {
   const y = now.getFullYear() - d.getFullYear()
   const m = now.getMonth() - d.getMonth()
   const days = now.getDate() - d.getDate()
-  if (y > 0) return y + 'y'
-  if (m > 0) return m + 'm'
-  return Math.max(0, days) + 'd'
+  if (y > 0) return `${y}y`
+  if (m > 0) return `${m}m`
+  return `${Math.max(0, days)}d`
 }
 
 function getCompactRelTime(dateStr) {
   if (!dateStr) return ''
   const ms = Date.now() - new Date(dateStr).getTime()
   const d = Math.floor(ms / 86400000)
-  if (d > 365) return Math.floor(d / 365) + 'y ago'
-  if (d > 30) return Math.floor(d / 30) + 'mo ago'
-  if (d > 0) return d + 'd ago'
+  if (d > 365) return `${Math.floor(d / 365)}y ago`
+  if (d > 30) return `${Math.floor(d / 30)}mo ago`
+  if (d > 0) return `${d}d ago`
   const h = Math.floor(ms / 3600000)
-  if (h > 0) return h + 'h ago'
+  if (h > 0) return `${h}h ago`
   return 'just now'
 }
 
@@ -988,7 +987,7 @@ function renderProfileCard(p, platform) {
   const age = getAccountAge(oldest)
 
   // Live indicator HTML helper
-  const liveStr = (vc) => `<span class="hs-pc-live">${vc > 0 ? '🔴 ' + escapeHtml(formatCompact(vc)) : '🔴'}</span>`
+  const liveStr = (vc) => `<span class="hs-pc-live">${vc > 0 ? `🔴 ${escapeHtml(formatCompact(vc))}` : '🔴'}</span>`
 
   // Bio with @mention/#tag autolinks
   const bioHtml = p.bio
@@ -1046,7 +1045,7 @@ function renderProfileCard(p, platform) {
   const _noteUser = p.username || p.twitch_username || p.kick_username || ''
   const _note = (typeof hsNoteGet === 'function' && hsNoteGet(_noteUser, null)?.text) || ''
   if (_note) {
-    const _short = _note.length > 60 ? _note.slice(0, 60) + '…' : _note
+    const _short = _note.length > 60 ? `${_note.slice(0, 60)}…` : _note
     sheetRows.push(
       `<dt>note</dt><dd data-k="note" style="color:#fff" title="${escapeHtml(_note)}">${escapeHtml(_short)}</dd>`,
     )
@@ -1054,16 +1053,16 @@ function renderProfileCard(p, platform) {
 
   // Platform identity rows — value text brand-colored, live dot inline.
   if (p.twitch_username) {
-    const live = p.twitch_is_live ? ' ' + liveStr(Number(p.twitch_viewer_count) || 0) : ''
+    const live = p.twitch_is_live ? ` ${liveStr(Number(p.twitch_viewer_count) || 0)}` : ''
     sheetRow('ttv', escapeHtml(p.twitch_username) + live, 'val-ttv', 'ttv')
   }
   if (p.kick_username) {
-    const live = p.kick_is_live ? ' ' + liveStr(Number(p.kick_viewer_count) || 0) : ''
+    const live = p.kick_is_live ? ` ${liveStr(Number(p.kick_viewer_count) || 0)}` : ''
     sheetRow('kick', escapeHtml(p.kick_username) + live, 'val-kick', 'kick')
   }
   if (p.youtube_username || p.youtube_channel_id) {
     const yname = p.youtube_username || p.youtube_channel_id
-    const live = p.youtube_is_live ? ' ' + liveStr(Number(p.youtube_viewer_count) || 0) : ''
+    const live = p.youtube_is_live ? ` ${liveStr(Number(p.youtube_viewer_count) || 0)}` : ''
     sheetRow('yt', escapeHtml(yname) + live, 'val-yt', 'yt')
   }
   if (age) sheetRow('acctage', escapeHtml(age), 'val-age', 'acctage')
@@ -1088,8 +1087,8 @@ function renderProfileCard(p, platform) {
   const followsYou = rel.profileFollowsViewerOnTwitch || rel.profileFollowsViewerOnKick
   if (followsYou) {
     const since = rel.profileFollowsViewerOnTwitchSince || rel.profileFollowsViewerOnKickSince
-    const ageStr = since ? ' ' + getCompactRelTime(since).replace(' ago', '') : ''
-    sheetRow('they', escapeHtml('follow you' + ageStr), 'val-they-follow', 'follows-you')
+    const ageStr = since ? ` ${getCompactRelTime(since).replace(' ago', '')}` : ''
+    sheetRow('they', escapeHtml(`follow you${ageStr}`), 'val-they-follow', 'follows-you')
   }
   // They → you (sub) — platform-verified flag only
   const subsYou = rel.profileSubbedToViewerOnTwitch || rel.profileSubbedToViewerOnKick
@@ -1097,16 +1096,16 @@ function renderProfileCard(p, platform) {
     const since = rel.profileTwitchSubSince || rel.profileKickSubSince
     const rawTier = rel.profileTwitchSubTier || rel.profileKickSubTier
     const tierNum = typeof rawTier === 'string' ? Math.round(Number(rawTier) / 1000) : rawTier
-    const tierStr = tierNum && tierNum > 1 ? ' T' + tierNum : ''
-    const ageStr = since ? ' ' + getCompactRelTime(since).replace(' ago', '') : ''
-    sheetRow('they', escapeHtml('sub to you' + tierStr + ageStr), 'val-they-sub', 'subs-you')
+    const tierStr = tierNum && tierNum > 1 ? ` T${tierNum}` : ''
+    const ageStr = since ? ` ${getCompactRelTime(since).replace(' ago', '')}` : ''
+    sheetRow('they', escapeHtml(`sub to you${tierStr}${ageStr}`), 'val-they-sub', 'subs-you')
   }
   // You → them (follow) — ?? respects explicit false from canonical youFollow
   const youFollow = rel.youFollow ?? rel.isFollowing ?? rel.followsOnTwitch ?? rel.followsOnKick
   if (youFollow) {
     const since = rel.followsOnTwitchSince || rel.followsOnKickSince
-    const ageStr = since ? ' ' + getCompactRelTime(since).replace(' ago', '') : ''
-    sheetRow('you', escapeHtml('follow' + ageStr), 'val-you-follow', 'you-follow')
+    const ageStr = since ? ` ${getCompactRelTime(since).replace(' ago', '')}` : ''
+    sheetRow('you', escapeHtml(`follow${ageStr}`), 'val-you-follow', 'you-follow')
   }
   // You → them (sub) — normalize tier
   const youSub = rel.youSub ?? rel.isSubscribed ?? rel.subscribedOnTwitch ?? rel.subscribedOnKick
@@ -1115,8 +1114,8 @@ function renderProfileCard(p, platform) {
     const tierNum = typeof rawTier === 'string' ? Math.round(Number(rawTier) / 1000) : rawTier
     const tier = tierNum || 1
     const since = rel.twitchSubSince || rel.kickSubSince
-    const ageStr = since ? ' ' + getCompactRelTime(since).replace(' ago', '') : ''
-    sheetRow('you', escapeHtml('sub' + (tier > 1 ? ' T' + tier : '') + ageStr), 'val-you-sub', 'you-sub')
+    const ageStr = since ? ` ${getCompactRelTime(since).replace(' ago', '')}` : ''
+    sheetRow('you', escapeHtml(`sub${tier > 1 ? ` T${tier}` : ''}${ageStr}`), 'val-you-sub', 'you-sub')
   }
   if (followsYou && youFollow) sheetRow('rel', 'mutual', 'val-mutual', 'mutual-follow')
   if (subsYou && youSub) sheetRow('rel', 'mutual sub', 'val-mutual-sub', 'mutual-sub')
@@ -1139,7 +1138,7 @@ function renderProfileCard(p, platform) {
       <div class="hs-pc-body">
         ${pfp ? `<img class="hs-pc-avatar" src="${escapeHtml(pfp)}" alt="${escapeHtml(displayName)}">` : ''}
         <div class="hs-pc-info">
-          <div class="hs-pc-header">${nativeBadges || `<span class="hs-pc-name${nameHsPaint ? ' ' + nameHsPaint.cls : ''}"${nameHsPaint ? nameHsPaint.splitAttr : ''} style="${nameHsPaint ? '' : namePaint}">${nameHsPaint ? nameHsPaint.html : escapeHtml(displayName)}</span>`}</div>
+          <div class="hs-pc-header">${nativeBadges || `<span class="hs-pc-name${nameHsPaint ? ` ${nameHsPaint.cls}` : ''}"${nameHsPaint ? nameHsPaint.splitAttr : ''} style="${nameHsPaint ? '' : namePaint}">${nameHsPaint ? nameHsPaint.html : escapeHtml(displayName)}</span>`}</div>
           ${bio}
           ${sheetHtml}
         </div>
@@ -1203,7 +1202,7 @@ async function applyTooltipPronouns(tooltip, twitchUserId, gen) {
   const data = await fetchPronouns('twitch', twitchUserId)
   if (gen !== _profileGen) return
   const words = data?.pronouns
-  if (!words || !words.length) return
+  if (!words?.length) return
   const header = tooltip.querySelector('.hs-pc-header')
   if (!header || header.querySelector('.hs-pc-pronoun')) return
   const chip = document.createElement('span')
@@ -1223,7 +1222,7 @@ function getTooltipChannelContext(userPlatform) {
       // On Kick live tab but need Twitch channel — find from config
       const liveCh = getLiveChannel()
       const ch = config.channels.find((c) => c.kick === liveCh || c.id === liveCh)
-      if (ch && ch.twitch) return ch.twitch
+      if (ch?.twitch) return ch.twitch
     }
     return getLiveChannel()
   }
@@ -1333,7 +1332,7 @@ async function showUserTooltip(targetEl, username, color, platform) {
     const nameHsPaint = fbUid ? hsPaintRender(fbUid, username) : null
     const header = nativeBadges
       ? nativeBadges
-      : `<span class="hs-pc-name${nameHsPaint ? ' ' + nameHsPaint.cls : ''}"${nameHsPaint ? nameHsPaint.splitAttr : ''} style="${nameHsPaint ? '' : namePaint || `color:${safeColor}`}">${nameHsPaint ? nameHsPaint.html : safeName}</span>`
+      : `<span class="hs-pc-name${nameHsPaint ? ` ${nameHsPaint.cls}` : ''}"${nameHsPaint ? nameHsPaint.splitAttr : ''} style="${nameHsPaint ? '' : namePaint || `color:${safeColor}`}">${nameHsPaint ? nameHsPaint.html : safeName}</span>`
     // NOTE: innerHTML XSS-safe — username via escapeHtml, color via sanitizeColor (hex-only),
     // nativeBadges from renderBadges which emits escaped <img> markup
     tooltip.innerHTML = `<div class="hs-pc-hero"><div class="hs-pc-hero-img"></div><div class="hs-pc-hero-scrim"></div></div><div class="hs-pc-body"><img class="hs-pc-avatar" src="https://heatsync.org/anon.webp" alt=""><div class="hs-pc-info"><div class="hs-pc-header">${header}</div><dl class="hs-pc-sheet">${platRow}</dl></div></div>`
@@ -1365,11 +1364,11 @@ function appendSubTenureBadge(tooltip, username, msgChannel) {
   if (isSelfChannel) {
     dt.textContent = 'they'
     dd.className = 'val-they-sub'
-    dd.textContent = 'sub to you ' + formatSubTenure(months)
+    dd.textContent = `sub to you ${formatSubTenure(months)}`
   } else {
     dt.textContent = 'ch sub'
     dd.className = 'val-ch'
-    dd.textContent = channelLogin + ' ' + formatSubTenure(months)
+    dd.textContent = `${channelLogin} ${formatSubTenure(months)}`
   }
   sheet.appendChild(dt)
   sheet.appendChild(dd)
@@ -1427,16 +1426,16 @@ async function fetchAndShowFollowage(tooltip, username, gen, userPlatform) {
   if (isSelfChannel && result.channelFollowedAt) {
     const sheet = tooltip.querySelector('.hs-pc-sheet')
     const youFollowVal = sheet?.querySelector('dd[data-k="you-follow"]')
-    const ageStr = ' ' + getCompactRelTime(result.channelFollowedAt).replace(' ago', '')
+    const ageStr = ` ${getCompactRelTime(result.channelFollowedAt).replace(' ago', '')}`
     if (youFollowVal) {
-      youFollowVal.textContent = 'follow' + ageStr
+      youFollowVal.textContent = `follow${ageStr}`
     } else if (sheet) {
       const dt = document.createElement('dt')
       dt.textContent = 'you'
       const dd = document.createElement('dd')
       dd.className = 'val-you-follow'
       dd.dataset.k = 'you-follow'
-      dd.textContent = 'follow' + ageStr
+      dd.textContent = `follow${ageStr}`
       sheet.appendChild(dt)
       sheet.appendChild(dd)
     }
@@ -1513,8 +1512,8 @@ function positionTooltipAtElement(tooltip, targetEl) {
     y = Math.max(margin, Math.min(y, vh - tipRect.height - margin))
   }
 
-  tooltip.style.left = Math.round(x) + 'px'
-  tooltip.style.top = Math.round(y) + 'px'
+  tooltip.style.left = `${Math.round(x)}px`
+  tooltip.style.top = `${Math.round(y)}px`
 }
 
 function hideUserTooltip() {
@@ -1620,7 +1619,7 @@ function showUserSkeleton(targetEl, username, color) {
   loading.className = 'hs-pc-loading'
   if (color) loading.style.color = color
   else loading.style.color = '#fff'
-  loading.textContent = username + '…'
+  loading.textContent = `${username}…`
   tooltip.appendChild(loading)
   tooltip.classList.add('visible')
   positionTooltipAtElement(tooltip, targetEl)

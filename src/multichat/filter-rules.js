@@ -19,7 +19,7 @@ function _frEscapeLiteral(p) {
 // compiled regex against short pathological probes under a time budget; a pattern
 // that trips it is unsafe regardless of shape. See automod.js for the rationale.
 const _FR_REDOS_PROBES = ['a'.repeat(28), '0'.repeat(28), 'ab'.repeat(14), 'a1'.repeat(14), ' '.repeat(28)].map(
-  (s) => s + ' !',
+  (s) => `${s} !`,
 )
 function _frTripsCatastrophic(re) {
   try {
@@ -138,7 +138,7 @@ function _frTokenizeExpr(src) {
 }
 
 function _frParseExpr(toks) {
-  if (!toks || !toks.length) return null
+  if (!toks?.length) return null
   let pos = 0
   const peek = () => toks[pos]
   const next = () => toks[pos++]
@@ -191,13 +191,13 @@ function _frParseExpr(toks) {
   }
   function parseTerm() {
     const tok = next()
-    if (!tok || tok.t !== 'word') return null
+    if (tok?.t !== 'word') return null
     const kw = tok.v.toLowerCase()
     // bits comparison: bits OP number
     if (kw === 'bits' && peek() && peek().t === 'op') {
       const cmp = next().v
       const numTok = next()
-      if (!numTok || numTok.t !== 'word') return null
+      if (numTok?.t !== 'word') return null
       const num = Number(numTok.v)
       if (!Number.isFinite(num)) return null
       return { op: 'bits', cmp, n: num }
@@ -249,7 +249,7 @@ function _frEvalNode(node, m) {
     case 'flag':
       if (node.name === 'first') return !!m.isFirstMsg
       if (node.name === 'action') return !!m.isAction
-      if (node.name === 'reply') return !!(m.replyTo && m.replyTo.user)
+      if (node.name === 'reply') return !!m.replyTo?.user
       if (node.name === 'cheer') return !!(m.bits && Number(m.bits) > 0)
       return false
     case 'user':
@@ -263,7 +263,7 @@ function _frEvalNode(node, m) {
     case 'type':
       if (node.v === 'first-message' || node.v === 'first') return !!m.isFirstMsg
       if (node.v === 'action') return !!m.isAction
-      if (node.v === 'reply') return !!(m.replyTo && m.replyTo.user)
+      if (node.v === 'reply') return !!m.replyTo?.user
       if (node.v === 'cheer') return !!(m.bits && Number(m.bits) > 0)
       return false
     case 'contains': {
@@ -330,7 +330,7 @@ function _frCompileOne(rule) {
       // by default. RegExp compiled once; never touches user-supplied raw regex.
       const esc = _frEscapeLiteral(val)
       try {
-        c.re = new RegExp('(?:^|[\\s,!?.:;\'"])' + esc + '(?=$|[\\s,!?.:;\'"])', flags)
+        c.re = new RegExp(`(?:^|[\\s,!?.:;\'"])${esc}(?=$|[\\s,!?.:;\'"])`, flags)
       } catch {
         c.re = null
       }
@@ -445,7 +445,7 @@ function _frTest(rule, m) {
       const mt = rule.value
       if (mt === 'first-message') return !!m.isFirstMsg
       if (mt === 'action') return !!m.isAction
-      if (mt === 'reply') return !!(m.replyTo && m.replyTo.user)
+      if (mt === 'reply') return !!m.replyTo?.user
       if (mt === 'cheer') return !!(m.bits && Number(m.bits) > 0)
       return false
     }

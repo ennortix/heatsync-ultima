@@ -113,10 +113,8 @@ function _optLabel(o) {
 
 function _setLabelSpan(def, extraHtml) {
   var tip = _setTip(def)
-  var tipAttr = tip ? ' data-tip="' + escapeHtml(tip) + '"' : ''
-  return (
-    '<span class="hs-mc-setting-label"' + tipAttr + '>' + (extraHtml || '') + escapeHtml(_setLabel(def)) + '</span>'
-  )
+  var tipAttr = tip ? ` data-tip="${escapeHtml(tip)}"` : ''
+  return `<span class="hs-mc-setting-label"${tipAttr}>${extraHtml || ''}${escapeHtml(_setLabel(def))}</span>`
 }
 
 function _depSatisfied(def) {
@@ -159,7 +157,7 @@ function _syncRowModEdge(el, def, opt) {
   if (!row) return
   row.classList.toggle('hs-mc-set-mod', _rowModified(def, opt))
   const group = row.closest('.hs-mc-settings-group')
-  const title = group && group.querySelector('[data-set-fold]')
+  const title = group?.querySelector('[data-set-fold]')
   if (!title) return
   const count = group.querySelectorAll('.hs-mc-setting-row.hs-mc-set-mod').length
   let cnt = title.querySelector('.hs-mc-set-modcnt')
@@ -173,7 +171,7 @@ function _syncRowModEdge(el, def, opt) {
     title.appendChild(document.createTextNode(' '))
     title.appendChild(cnt)
   }
-  cnt.textContent = count + '*'
+  cnt.textContent = `${count}*`
 }
 
 function _rowsForDef(def) {
@@ -199,16 +197,16 @@ function _rowsForDef(def) {
   if (def.type === 'boolmap') {
     for (const o of def.options) {
       var on = !!getSetting(def.key)[o.value]
-      var prefix = '<span style="color:' + o.color + '">' + (o.tag || '◆') + '</span> '
+      var prefix = `<span style="color:${o.color}">${o.tag || '◆'}</span> `
       var lbl = _optLabel(o)
       if (o.tag) lbl = lbl.replace(o.tag, '').trim()
       var oTip = o.tipKey ? t(o.tipKey) : o.tip || ''
       var oMod = _rowModified(def, o)
       var oChip = _reloadPending(def, o) ? '<button class="hs-mc-set-reload" data-set-reload>reload</button>' : ''
       rows.push({
-        id: def.key + ':' + o.value,
+        id: `${def.key}:${o.value}`,
         mod: oMod,
-        hay: (base + ' ' + lbl + ' ' + oTip + ' ' + o.value).toLowerCase(),
+        hay: `${base} ${lbl} ${oTip} ${o.value}`.toLowerCase(),
         html:
           '<div class="hs-mc-setting-row' +
           child +
@@ -227,7 +225,7 @@ function _rowsForDef(def) {
           o.value +
           '"><span class="hs-mc-toggle-knob"></span></button>' +
           '<span class="hs-mc-setting-label"' +
-          (oTip ? ' data-tip="' + escapeHtml(oTip) + '"' : '') +
+          (oTip ? ` data-tip="${escapeHtml(oTip)}"` : '') +
           '>' +
           prefix +
           escapeHtml(lbl) +
@@ -250,9 +248,9 @@ function _rowsForDef(def) {
           '</span>'
         : ''
       rows.push({
-        id: def.key + ':' + o.value,
+        id: `${def.key}:${o.value}`,
         mod: mMod,
-        hay: (base + ' ' + _optLabel(o) + ' ' + o.value).toLowerCase(),
+        hay: `${base} ${_optLabel(o)} ${o.value}`.toLowerCase(),
         html:
           '<div class="hs-mc-setting-row' +
           child +
@@ -386,7 +384,7 @@ function _rowsForDef(def) {
       ' ' +
       (def.type === 'enum'
         ? def.options
-            .map((o) => _optLabel(o) + ' ' + o.value)
+            .map((o) => `${_optLabel(o)} ${o.value}`)
             .join(' ')
             .toLowerCase()
         : ''),
@@ -437,15 +435,15 @@ function _regSections(cat, only) {
   }
   return sections
     .map((s) => {
-      var fold = _setCollapsed.has(_settingsSubtab + '|' + s.title)
+      var fold = _setCollapsed.has(`${_settingsSubtab}|${s.title}`)
       var modCount = s.rows.filter((r) => r.mod).length
       var counts = fold
         ? ' <span class="hs-mc-set-cnt">(' +
           s.rows.length +
-          (modCount ? ' · <span class="hs-mc-set-modcnt">' + modCount + '*</span>' : '') +
+          (modCount ? ` · <span class="hs-mc-set-modcnt">${modCount}*</span>` : '') +
           ')</span>'
         : modCount
-          ? ' <span class="hs-mc-set-modcnt">' + modCount + '*</span>'
+          ? ` <span class="hs-mc-set-modcnt">${modCount}*</span>`
           : ''
       return (
         '<div class="hs-mc-settings-group">' +
@@ -480,7 +478,7 @@ function _renderSearchResults() {
     if (!matched.length) continue
     count += matched.length
     var section = _setSectionTitle(def)
-    var gk = def.category + '|' + section
+    var gk = `${def.category}|${section}`
     var g = byKey.get(gk)
     if (!g) {
       g = { cat: def.category, section: section, rows: [] }
@@ -495,9 +493,9 @@ function _renderSearchResults() {
       (g) =>
         '<div class="hs-mc-settings-group">' +
         '<div class="hs-mc-set-search-hdr" data-set-jump="' +
-        escapeHtml(g.cat + '|' + g.section) +
+        escapeHtml(`${g.cat}|${g.section}`) +
         '">' +
-        escapeHtml(g.cat + ' · ' + g.section) +
+        escapeHtml(`${g.cat} · ${g.section}`) +
         '</div>' +
         g.rows.map((r) => r.html).join('') +
         '</div>',
@@ -527,7 +525,7 @@ function _renderMutedGroup() {
     t('mc_settings_muted_users') +
     '</div>' +
     (mutedUsers.size === 0
-      ? '<div class="hs-mc-setting-row" style="color:#808080;font-size:13px">' + t('mc_settings_no_muted') + '</div>'
+      ? `<div class="hs-mc-setting-row" style="color:#808080;font-size:13px">${t('mc_settings_no_muted')}</div>`
       : Array.from(mutedUsers)
           .sort()
           .map((u) => {
@@ -678,8 +676,8 @@ var FR_INPUT =
 
 function _renderFilterRuleRow(r) {
   var on = !!r.enabled
-  var typeLabel = FR_TYPE_LABELS[r.match && r.match.type] || '?'
-  var val = r.match && r.match.value ? escapeHtml(String(r.match.value)) : ''
+  var typeLabel = FR_TYPE_LABELS[r.match?.type] || '?'
+  var val = r.match?.value ? escapeHtml(String(r.match.value)) : ''
   var aLabel = r.action === 'hide' ? 'hide' : 'hl'
   var aColor = r.action === 'highlight' && r.color ? escapeHtml(r.color) : ''
   var scopeLabel = r.scope && r.scope !== 'all' ? escapeHtml(String(r.scope)) : 'all'
@@ -745,7 +743,7 @@ function _renderFilterRuleAddForm() {
     channels
       .map((ch) => {
         var label = ch.twitch || ch.kick || ch.id || ''
-        return '<option value="' + escapeHtml(ch.id) + '">' + escapeHtml(label) + '</option>'
+        return `<option value="${escapeHtml(ch.id)}">${escapeHtml(label)}</option>`
       })
       .join('')
   return (
@@ -812,7 +810,7 @@ function _renderFilterRulesGroup() {
     '<div class="hs-mc-settings-group-title" data-set-fold="rules">' +
     (fold ? '▸ ' : '▾ ') +
     'filter rules' +
-    (rules.length ? ' <span class="hs-mc-set-cnt">(' + rules.length + ')</span>' : '') +
+    (rules.length ? ` <span class="hs-mc-set-cnt">(${rules.length})</span>` : '') +
     '</div>' +
     (fold ? '' : ruleRows + _renderFilterRuleAddForm()) +
     '</div>'
@@ -952,9 +950,9 @@ function _renderCategoryPaneInner(cat) {
   if (cat === 'system') {
     // crash log block nests inside the advanced section, after its pill
     var adv = _regSections(cat, ['advanced'])
-    var advFolded = _setCollapsed.has(cat + '|advanced')
+    var advFolded = _setCollapsed.has(`${cat}|advanced`)
     if (!advFolded && adv.endsWith('</div>')) {
-      adv = adv.slice(0, -6) + _renderCrashLogBlock() + '</div>'
+      adv = `${adv.slice(0, -6) + _renderCrashLogBlock()}</div>`
     }
     return _regSections(cat, ['tabs', 'subsystems', 'language']) + _renderMutedGroup() + adv + _renderBackupGroup()
   }
@@ -995,7 +993,7 @@ async function _exportAllSettings() {
     var url = URL.createObjectURL(blob)
     var a = document.createElement('a')
     a.href = url
-    a.download = 'heatsync-settings-' + new Date().toISOString().slice(0, 10) + '.json'
+    a.download = `heatsync-settings-${new Date().toISOString().slice(0, 10)}.json`
     document.body.appendChild(a)
     a.click()
     a.remove()
@@ -1004,7 +1002,7 @@ async function _exportAllSettings() {
     }, 1000)
     showToast(t('mc_settingsui_export_ok'), 'info')
   } catch (err) {
-    showToast(t('mc_settingsui_export_failed', [err && err.message ? err.message : t('mc_common_unknown')]), 'error')
+    showToast(t('mc_settingsui_export_failed', [err?.message ? err.message : t('mc_common_unknown')]), 'error')
   }
 }
 
@@ -1015,7 +1013,7 @@ async function _importAllSettings() {
     input.accept = 'application/json,.json'
     input.style.display = 'none'
     input.onchange = async () => {
-      var file = input.files && input.files[0]
+      var file = input.files?.[0]
       input.remove()
       if (!file) {
         resolve(false)
@@ -1029,13 +1027,13 @@ async function _importAllSettings() {
       try {
         var txt = await file.text()
         var data = JSON.parse(txt)
-        if (!data || data.kind !== 'heatsync-settings') {
+        if (data?.kind !== 'heatsync-settings') {
           showToast(t('mc_settingsui_not_heatsync_file'), 'error')
           resolve(false)
           return
         }
         var writes = []
-        if (data.sync && data.sync.ui_settings && typeof data.sync.ui_settings === 'object') {
+        if (data.sync?.ui_settings && typeof data.sync.ui_settings === 'object') {
           // Merge — preserve any keys absent from the import. The SW's serialized
           // rmw chain owns the write (and sanitizes it, so corrupt fields don't
           // leak in); a local get→merge→set would race concurrent writes.
@@ -1065,7 +1063,7 @@ async function _importAllSettings() {
         resolve(true)
       } catch (err) {
         showToast(
-          t('mc_settingsui_import_failed', [err && err.message ? err.message : t('mc_settingsui_parse_error')]),
+          t('mc_settingsui_import_failed', [err?.message ? err.message : t('mc_settingsui_parse_error')]),
           'error',
         )
         resolve(false)
@@ -1090,7 +1088,7 @@ async function _loadCrashLog() {
     var cur = await new Promise((r) => {
       chrome.storage.local.get('hs_errors', r)
     })
-    var log = Array.isArray(cur && cur.hs_errors) ? cur.hs_errors : []
+    var log = Array.isArray(cur?.hs_errors) ? cur.hs_errors : []
     var diag = null
     try {
       diag = (await chrome.runtime.sendMessage({ type: 'get_diag' }))?.diag || null
@@ -1099,9 +1097,9 @@ async function _loadCrashLog() {
       var d = new Date(ts)
       return d.toISOString().replace('T', ' ').slice(0, 19)
     }
-    var head = diag ? '--- diag ---\n' + JSON.stringify(diag, null, 2) + '\n\n' : ''
+    var head = diag ? `--- diag ---\n${JSON.stringify(diag, null, 2)}\n\n` : ''
     if (log.length === 0) {
-      pre.textContent = head + '(no errors recorded)'
+      pre.textContent = `${head}(no errors recorded)`
       return
     }
     pre.textContent =
@@ -1154,7 +1152,7 @@ function _fmtPresetVal(def, v) {
   if (def.type === 'bool') return v ? 'on' : 'off'
   if (def.type === 'boolmap') {
     const offs = Object.keys(v).filter((k) => v[k] === false)
-    return offs.length ? 'off: ' + offs.join(', ') : 'all on'
+    return offs.length ? `off: ${offs.join(', ')}` : 'all on'
   }
   if (def.type === 'multiselect') return v.length ? v.join(', ') : 'none'
   return String(v)
@@ -1171,7 +1169,7 @@ function _applyPresetDiff(label, diff) {
   for (const c of changes) undo[c.key] = c.from
   _lastPresetUndo = { label: label, diff: undo }
   for (const c of changes) setSetting(c.key, c.to)
-  const changeCount = changes.length + ' change' + (changes.length === 1 ? '' : 's')
+  const changeCount = `${changes.length} change${changes.length === 1 ? '' : 's'}`
   showToast(t('mc_settingsui_preset_applied', [label, changeCount]), 'info')
   renderSettingsTab()
 }
@@ -1187,7 +1185,7 @@ function _saveCustomPreset(name) {
     const cur = getSetting(def.key)
     if (JSON.stringify(cur) !== JSON.stringify(def.default)) diff[def.key] = cur
   }
-  const entry = { id: 'c_' + Date.now().toString(36), name: name, diff: diff, createdAt: Date.now() }
+  const entry = { id: `c_${Date.now().toString(36)}`, name: name, diff: diff, createdAt: Date.now() }
   const next = _customPresets
     .filter((p) => p.name !== name)
     .concat(entry)
@@ -1236,7 +1234,7 @@ function _openPresetMenu(anchorEl) {
       danger: true,
       fn: () => {
         const delItems = _customPresets.map((p) => ({
-          label: '✕ ' + p.name,
+          label: `✕ ${p.name}`,
           danger: true,
           fn: () => {
             _deleteCustomPreset(p.id)
@@ -1256,11 +1254,11 @@ function _openPresetMenu(anchorEl) {
   })
   if (_lastPresetUndo) {
     items.push({
-      label: 'undo: ' + _lastPresetUndo.label,
+      label: `undo: ${_lastPresetUndo.label}`,
       fn: () => {
         const u = _lastPresetUndo
         _lastPresetUndo = null
-        _applyPresetDiff('undo ' + u.label, u.diff)
+        _applyPresetDiff(`undo ${u.label}`, u.diff)
       },
     })
   }
@@ -1341,10 +1339,7 @@ function _renderHelpOverlay() {
   ]
   function grid(pairs) {
     return pairs
-      .map(
-        (kv) =>
-          '<span class="hs-mc-set-help-key">' + escapeHtml(kv[0]) + '</span><span>' + escapeHtml(kv[1]) + '</span>',
-      )
+      .map((kv) => `<span class="hs-mc-set-help-key">${escapeHtml(kv[0])}</span><span>${escapeHtml(kv[1])}</span>`)
       .join('')
   }
   return (
@@ -1353,7 +1348,7 @@ function _renderHelpOverlay() {
     grid(always) +
     '</div>' +
     (viModeEnabled
-      ? '<div class="hs-mc-set-help-title">vi</div><div class="hs-mc-set-help-grid">' + grid(vim) + '</div>'
+      ? `<div class="hs-mc-set-help-title">vi</div><div class="hs-mc-set-help-grid">${grid(vim)}</div>`
       : '') +
     '</div>'
   )
@@ -1441,7 +1436,7 @@ function _bindSettingsKeyboard() {
     (e) => {
       if (currentTab !== 'settings') return
       const msgsEl = document.getElementById('hs-mc-messages')
-      if (!msgsEl || !msgsEl.querySelector('.hs-mc-settings-panel')) return
+      if (!msgsEl?.querySelector('.hs-mc-settings-panel')) return
       if (e.ctrlKey || e.metaKey || e.altKey) return
       const searchEl = msgsEl.querySelector('input.hs-mc-set-search')
       const t = e.target
@@ -1589,7 +1584,7 @@ function _bindSettingsKeyboard() {
         _setPendingKey = ''
         if (idx >= 0) {
           const fold = rows[idx].closest('.hs-mc-settings-group')
-          const title = fold && fold.querySelector('[data-set-fold]')
+          const title = fold?.querySelector('[data-set-fold]')
           if (title) {
             e.preventDefault()
             title.click()
@@ -1613,7 +1608,7 @@ function renderSettingsTab() {
   // (the panel grows inside it); keep its scroll across re-renders of
   // the same logical pane (toggle/applier-triggered rebuilds)
   var hadPanel = !!msgsEl.querySelector('.hs-mc-settings-panel')
-  var paneCtx = _settingsSubtab + '|' + _setQuery + '|' + !!_presetPending
+  var paneCtx = `${_settingsSubtab}|${_setQuery}|${!!_presetPending}`
   // The panel is position:absolute inset:0 and ONLY .hs-mc-set-subtab-body
   // scrolls — #hs-mc-messages itself never does, so preserving its scrollTop was
   // always 0 and every toggle reset the view to the top. Capture the inner body.
@@ -1628,7 +1623,7 @@ function renderSettingsTab() {
   } else if (searchActive) {
     var res = _renderSearchResults()
     bodyContent = res.html
-    countLabel = res.count + '/' + res.total
+    countLabel = `${res.count}/${res.total}`
   } else {
     bodyContent = _renderCategoryPane(_settingsSubtab)
   }
@@ -1664,7 +1659,7 @@ function renderSettingsTab() {
   // log pre needs an async fill, and keyboard focus needs restoring.
   if (_settingsSubtab === 'system' && !searchActive && getSetting('crashTelemetry')) _loadCrashLog()
   if (_setFocusRow) {
-    var fr = msgsEl.querySelector('[data-set-row="' + CSS.escape(_setFocusRow) + '"]')
+    var fr = msgsEl.querySelector(`[data-set-row="${CSS.escape(_setFocusRow)}"]`)
     if (fr) fr.classList.add('hs-mc-set-row-focus')
     else _setFocusRow = null
   }
@@ -1762,7 +1757,7 @@ function renderSettingsTab() {
     // Section fold/unfold
     var foldTitle = e.target.closest('.hs-mc-settings-group-title[data-set-fold]')
     if (foldTitle) {
-      var foldId = _settingsSubtab + '|' + foldTitle.dataset.setFold
+      var foldId = `${_settingsSubtab}|${foldTitle.dataset.setFold}`
       if (_setCollapsed.has(foldId)) _setCollapsed.delete(foldId)
       else _setCollapsed.add(foldId)
       _saveCollapsedSections()
@@ -1806,7 +1801,7 @@ function renderSettingsTab() {
     // Crash log buttons
     if (e.target.id === 'hs-set-crash-copy') {
       var pre = document.getElementById('hs-set-crash-pre')
-      if (pre && pre.textContent) {
+      if (pre?.textContent) {
         var copyBtn = e.target
         navigator.clipboard.writeText(pre.textContent).then(
           () => {
@@ -1932,8 +1927,8 @@ function renderSettingsTab() {
         if (!tipEl) return
         tipEl.textContent = label.dataset.tip
         var rect = label.getBoundingClientRect()
-        tipEl.style.left = rect.left + 'px'
-        tipEl.style.top = rect.bottom + 4 + 'px'
+        tipEl.style.left = `${rect.left}px`
+        tipEl.style.top = `${rect.bottom + 4}px`
         tipEl.classList.add('visible')
       },
       { capture: true, signal: mcSignal },

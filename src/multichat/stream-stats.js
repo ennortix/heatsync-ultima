@@ -96,7 +96,7 @@ function renderStreamSummary(channel) {
   if (!s || s.msgCount === 0) return
   const container = document.getElementById('hs-mc-container')
   if (!container) return
-  const id = 'hs-mc-summary-' + key.replace(/[^a-z0-9]/gi, '')
+  const id = `hs-mc-summary-${key.replace(/[^a-z0-9]/gi, '')}`
   if (document.getElementById(id)) return
   const card = document.createElement('div')
   card.id = id
@@ -122,7 +122,7 @@ function renderStreamSummary(channel) {
     row.style.color = '#c0c0c0'
     const lbl = document.createElement('span')
     lbl.style.color = '#808080'
-    lbl.textContent = label + ' '
+    lbl.textContent = `${label} `
     const list = document.createElement('span')
     list.textContent = items.map(([k, v]) => `${k} (${v})`).join(' · ')
     row.append(lbl, list)

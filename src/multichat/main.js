@@ -646,7 +646,7 @@
           const arrow = document.createElement('span')
           arrow.className = 'hs-arrow-down'
           arrow.textContent = '▼'
-          newBtn.append(arrow, ' ' + String(newMessageCount) + ' new')
+          newBtn.append(arrow, ` ${String(newMessageCount)} new`)
           newBtn.style.display = 'flex'
         } else {
           newBtn.style.display = 'none'
@@ -855,12 +855,7 @@
         if (mentionsBuffer.length > PERSIST_MAX_MENTIONS) {
           mentionsBuffer.splice(0, mentionsBuffer.length - PERSIST_MAX_MENTIONS)
         }
-        log(
-          'Restored mentions:',
-          mentionsBuffer.length,
-          'chrome:' + (mChrome?.length || 0),
-          'sync:' + (mSync?.length || 0),
-        )
+        log('Restored mentions:', mentionsBuffer.length, `chrome:${mChrome?.length || 0}`, `sync:${mSync?.length || 0}`)
       }
 
       try {
@@ -1164,7 +1159,7 @@
       // by kick_username only — pusher/relay messages carry a numeric kick
       // userId, and `kick:<numeric>` never matches (sender emotes silently
       // missing).
-      const slug = m.user && m.user.toLowerCase()
+      const slug = m.user?.toLowerCase()
       return slug ? `kick:${slug}` : null
     }
     if (m.platform === 'youtube') {
@@ -1378,10 +1373,10 @@
         if (m) m._renderedHtml = null
       }
     }
-    if (typeof irc !== 'undefined' && irc?.channels) {
+    if (irc?.channels) {
       for (const ch of irc.channels.keys()) patchBuf(irc.getMessages(ch))
     }
-    if (typeof kickChat !== 'undefined' && kickChat?.channels) {
+    if (kickChat?.channels) {
       for (const ch of kickChat.channels.keys()) patchBuf(kickChat.getMessages(ch))
     }
     if (typeof channelYtMessages !== 'undefined') channelYtMessages.forEach(patchBuf)
@@ -1422,10 +1417,10 @@
     }
     // Invalidate cached HTML immediately — the next render (debounced or
     // user-triggered by tab switch / new message) picks up the new emotes.
-    if (typeof irc !== 'undefined' && irc?.channels) {
+    if (irc?.channels) {
       for (const ch of irc.channels.keys()) patchBuf(irc.getMessages(ch))
     }
-    if (typeof kickChat !== 'undefined' && kickChat?.channels) {
+    if (kickChat?.channels) {
       for (const ch of kickChat.channels.keys()) patchBuf(kickChat.getMessages(ch))
     }
     if (typeof channelYtMessages !== 'undefined') channelYtMessages.forEach(patchBuf)
@@ -1571,7 +1566,7 @@
         const entries = []
         for (let i = 0; i < localStorage.length; i++) {
           const k = localStorage.key(i)
-          if (!k || !k.startsWith(prefix)) continue
+          if (!k?.startsWith(prefix)) continue
           let ts = 0
           try {
             const raw = localStorage.getItem(k)
@@ -1606,7 +1601,7 @@
   const _LAYOUT_MIRROR_KEYS = new Set(['tabPosition', 'chatPosition'])
   function _mirrorLayoutToLS(key, value) {
     try {
-      localStorage.setItem('hs_layout_' + key, JSON.stringify(value))
+      localStorage.setItem(`hs_layout_${key}`, JSON.stringify(value))
     } catch {}
   }
 
@@ -2115,7 +2110,7 @@
       const pad = getSetting('messageDensity') === 'cozy' ? '5px 8px' : '2px 4px'
       const root = document.documentElement
       root.style.setProperty('--hs-mc-row-pad', pad)
-      root.style.setProperty('--hs-mc-row-lh', getSetting('lineHeight') + 'px')
+      root.style.setProperty('--hs-mc-row-lh', `${getSetting('lineHeight')}px`)
     },
     // render cap — debounced re-render (range fires per step)
     renderCap: (() => {
@@ -2257,7 +2252,7 @@
 
   function _cwRollback(def, attempted, declined) {
     setSetting(def.key, !attempted, { silent: true })
-    document.querySelectorAll('.hs-mc-toggle-pill[data-set-key="' + def.key + '"]').forEach((pill) => {
+    document.querySelectorAll(`.hs-mc-toggle-pill[data-set-key="${def.key}"]`).forEach((pill) => {
       pill.classList.toggle('active', !attempted)
     })
     // silent setSetting skips apply handlers — repaint own flagged rows here
@@ -2318,7 +2313,7 @@
       // debounce, UI_SYNC_BLOCKLIST split, quota guard, and ws sync patch
       saveUiSetting(key, v)
     }
-    if (!opts || !opts.silent) {
+    if (!opts?.silent) {
       const applier = def.apply && _APPLIERS[def.apply]
       if (applier) {
         try {
@@ -2362,7 +2357,7 @@
     try {
       if (window.__hsHealth?.disabled?.includes(id)) return false
     } catch (_) {}
-    return !_gatesAtBoot || _gatesAtBoot[id] !== false
+    return _gatesAtBoot?.[id] !== false
   }
 
   // One hydration pass over the whole registry — replaces the per-setting
@@ -2376,7 +2371,7 @@
       localKeys.length ? chrome.storage.local.get(localKeys).catch(() => ({})) : {},
       cachedUiOverflow().catch(() => ({})),
     ])
-    const ui = (synced && synced.ui_settings) || {}
+    const ui = synced?.ui_settings || {}
     // custom presets ride along in ui_settings (declared in the registry as
     // system/state json; the shape filter below owns the semantics)
     _customPresets = Array.isArray(ui.customPresets)
@@ -2703,20 +2698,20 @@
   // Normalize YouTube URL — accepts full URLs or bare username
   const normalizeYtUrl = (raw) => {
     // Bare UC channel id → /channel/<id>/live (mirrors identityYtLiveUrl)
-    if (/^UC[\w-]{20,}$/.test(raw)) return 'https://www.youtube.com/channel/' + raw + '/live'
+    if (/^UC[\w-]{20,}$/.test(raw)) return `https://www.youtube.com/channel/${raw}/live`
     // Bare username (no slashes; handles allow . _ -) → /@name/live
     if (/^@?[\w.-]{3,30}$/.test(raw)) {
       const name = raw.startsWith('@') ? raw.slice(1) : raw
-      return 'https://www.youtube.com/@' + name + '/live'
+      return `https://www.youtube.com/@${name}/live`
     }
     try {
       const u = new URL(raw)
       const v = u.searchParams.get('v')
-      if (v) return 'https://www.youtube.com/watch?v=' + v
+      if (v) return `https://www.youtube.com/watch?v=${v}`
       const liveMatch = raw.match(/\/live\/([^?&/]+)/)
-      if (liveMatch) return 'https://www.youtube.com/live/' + liveMatch[1]
+      if (liveMatch) return `https://www.youtube.com/live/${liveMatch[1]}`
       const shortMatch = raw.match(/youtu\.be\/([^?&]+)/)
-      if (shortMatch) return 'https://www.youtube.com/watch?v=' + shortMatch[1]
+      if (shortMatch) return `https://www.youtube.com/watch?v=${shortMatch[1]}`
     } catch {}
     return raw
   }
@@ -2883,8 +2878,8 @@
         document.body.appendChild(menu)
         const mw = menu.offsetWidth,
           mh = menu.offsetHeight
-        menu.style.left = Math.min(e.clientX, window.innerWidth - mw - 4) + 'px'
-        menu.style.top = Math.min(e.clientY, window.innerHeight - mh - 4) + 'px'
+        menu.style.left = `${Math.min(e.clientX, window.innerWidth - mw - 4)}px`
+        menu.style.top = `${Math.min(e.clientY, window.innerHeight - mh - 4)}px`
         const dismiss = (ev) => {
           if (!menu.contains(ev.target)) {
             menu.remove()
@@ -2931,8 +2926,8 @@
       document.body.appendChild(menu)
       const mw = menu.offsetWidth,
         mh = menu.offsetHeight
-      menu.style.left = Math.min(e.clientX, window.innerWidth - mw - 4) + 'px'
-      menu.style.top = Math.min(e.clientY, window.innerHeight - mh - 4) + 'px'
+      menu.style.left = `${Math.min(e.clientX, window.innerWidth - mw - 4)}px`
+      menu.style.top = `${Math.min(e.clientY, window.innerHeight - mh - 4)}px`
 
       const dismiss = (ev) => {
         if (!menu.contains(ev.target)) {
@@ -3135,7 +3130,7 @@
     }
     const escaped = terms.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
     try {
-      keywordHighlightsRegex = new RegExp('\\b(' + escaped.join('|') + ')\\b', 'i')
+      keywordHighlightsRegex = new RegExp(`\\b(${escaped.join('|')})\\b`, 'i')
     } catch {
       keywordHighlightsRegex = null
     }
@@ -3209,7 +3204,7 @@
     if (!inputBarVisible) return
     const input = document.getElementById('hs-mc-input')
     const hasText = input ? (input.value || input.textContent || '').trim().length > 0 : false
-    const hasContent = hasText || (input && input.querySelector('img, span.hs-mc-emoji'))
+    const hasContent = hasText || input?.querySelector('img, span.hs-mc-emoji')
     if (hasContent) return
     // vi change-operators (cc/s/S/C, c+motion) empty the composer for one
     // synchronous beat before re-entering insert — never hide on that
@@ -3778,7 +3773,7 @@
             // turn it into a scrollable popover. User reads all parents in
             // place, no chat jump, hover stays alive.
             const chain = el._fullChain
-            if (!chain || !chain.length) return
+            if (!chain?.length) return
             el.replaceChildren()
             el.dataset.expanded = '1'
             el.style.overflowY = 'auto'
@@ -3843,10 +3838,10 @@
           overlay.style.overscrollBehavior = ''
           overlay._fullChain = chain
           overlay.style.position = 'fixed'
-          overlay.style.left = hRect.left + 'px'
-          overlay.style.width = hRect.width + 'px'
-          overlay.style.bottom = layoutViewportHeight - hRect.top + 'px'
-          overlay.style.maxHeight = availableUp + 'px'
+          overlay.style.left = `${hRect.left}px`
+          overlay.style.width = `${hRect.width}px`
+          overlay.style.bottom = `${layoutViewportHeight - hRect.top}px`
+          overlay.style.maxHeight = `${availableUp}px`
           overlay.style.display = 'block'
           for (let i = 0; i < chain.length; i++) {
             const parent = chain[i]
@@ -3860,7 +3855,7 @@
               if (remaining > 0) {
                 const chip = document.createElement('div')
                 chip.className = 'hs-mc-reply-stack-chip'
-                chip.textContent = '↑ ' + remaining + ' more'
+                chip.textContent = `↑ ${remaining} more`
                 chip.dataset.targetId = chain[chain.length - 1].id
                 overlay.insertBefore(chip, overlay.firstChild)
               }
@@ -3883,10 +3878,10 @@
           const overlay = ensureStackOverlayDown()
           overlay.replaceChildren()
           overlay.style.position = 'fixed'
-          overlay.style.left = hRect.left + 'px'
-          overlay.style.width = hRect.width + 'px'
-          overlay.style.top = hRect.bottom + 'px'
-          overlay.style.maxHeight = availableDown + 'px'
+          overlay.style.left = `${hRect.left}px`
+          overlay.style.width = `${hRect.width}px`
+          overlay.style.top = `${hRect.bottom}px`
+          overlay.style.maxHeight = `${availableDown}px`
           overlay.style.display = 'block'
           for (let i = 0; i < descChain.length; i++) {
             const child = descChain[i]
@@ -3937,7 +3932,7 @@
           if (!pill) return
           if (e.target.closest('a')) return
           const msg = pill.closest('.hs-mc-msg')
-          if (!msg || !msg.dataset.replyId) return
+          if (!msg?.dataset.replyId) return
           e.preventDefault()
           e.stopPropagation()
           if (_stackActiveRow === msg) {
@@ -3958,9 +3953,9 @@
           if (!_stackActiveRow) return
           if (_stackActiveRow.contains(e.target)) return
           const oUp = document.getElementById('hs-mc-reply-stack')
-          if (oUp && oUp.contains(e.target)) return
+          if (oUp?.contains(e.target)) return
           const oDown = document.getElementById('hs-mc-reply-stack-down')
-          if (oDown && oDown.contains(e.target)) return
+          if (oDown?.contains(e.target)) return
           dismissStack()
         },
         { signal: mcSignal },
@@ -4038,28 +4033,28 @@
           }
           const { layoutH } = _stackStyleCache
 
-          if (overlayUp && overlayUp.firstChild) {
+          if (overlayUp?.firstChild) {
             const availableUp = hRect.top - cRect.top
             if (availableUp < 24) {
               overlayUp.style.display = 'none'
             } else {
               overlayUp.style.display = 'block'
-              overlayUp.style.left = hRect.left + 'px'
-              overlayUp.style.width = hRect.width + 'px'
-              overlayUp.style.bottom = layoutH - hRect.top + 'px'
-              overlayUp.style.maxHeight = availableUp + 'px'
+              overlayUp.style.left = `${hRect.left}px`
+              overlayUp.style.width = `${hRect.width}px`
+              overlayUp.style.bottom = `${layoutH - hRect.top}px`
+              overlayUp.style.maxHeight = `${availableUp}px`
             }
           }
-          if (overlayDown && overlayDown.firstChild) {
+          if (overlayDown?.firstChild) {
             const availableDown = cRect.bottom - hRect.bottom
             if (availableDown < 24) {
               overlayDown.style.display = 'none'
             } else {
               overlayDown.style.display = 'block'
-              overlayDown.style.left = hRect.left + 'px'
-              overlayDown.style.width = hRect.width + 'px'
-              overlayDown.style.top = hRect.bottom + 'px'
-              overlayDown.style.maxHeight = availableDown + 'px'
+              overlayDown.style.left = `${hRect.left}px`
+              overlayDown.style.width = `${hRect.width}px`
+              overlayDown.style.top = `${hRect.bottom}px`
+              overlayDown.style.maxHeight = `${availableDown}px`
             }
           }
         })
@@ -4087,7 +4082,7 @@
       // down stack (closest to active row) so the latest reply stays visible
       // — same behavior chat itself has at-bottom.
       const tryExtendStack = (newDiv) => {
-        if (!_stackActiveRow || !_stackActiveRow.isConnected) return
+        if (!_stackActiveRow?.isConnected) return
         if (!_stackThreadId) return
         const replyId = newDiv.dataset.replyId || ''
         const replyThreadId = newDiv.dataset.replyThreadId || ''
@@ -4110,10 +4105,10 @@
         if (availableDown < 24) return
         const maxH = availableDown
         overlay.style.position = 'fixed'
-        overlay.style.left = hRect.left + 'px'
-        overlay.style.width = hRect.width + 'px'
-        overlay.style.top = hRect.bottom + 'px'
-        overlay.style.maxHeight = maxH + 'px'
+        overlay.style.left = `${hRect.left}px`
+        overlay.style.width = `${hRect.width}px`
+        overlay.style.top = `${hRect.bottom}px`
+        overlay.style.maxHeight = `${maxH}px`
         overlay.style.display = 'block'
         const row = buildMessageDiv(m, currentTab)
         if (!row) return
@@ -4134,7 +4129,7 @@
         for (const mut of muts) {
           for (const node of mut.addedNodes) {
             if (node.nodeType !== 1) continue
-            if (!node.classList || !node.classList.contains('hs-mc-msg')) continue
+            if (!node.classList?.contains('hs-mc-msg')) continue
             tryExtendStack(node)
           }
         }
@@ -4296,13 +4291,13 @@
     // 28px = Twitch /1.0 native; /2.0 = 56; /3.0 = 112. Base matches URL res so 1x is truly native.
     const baseEmote = 28
     const vars = {
-      '--hs-emote-size': baseEmote * emoteSize + 'px',
-      '--hs-time-font': 10 * emoteSize + 'px',
-      '--hs-badge-size': 18 * emoteSize + 'px',
-      '--hs-badge-font': 10 * emoteSize + 'px',
-      '--hs-stat-badge-font': 9 * emoteSize + 'px',
-      '--hs-stat-badge-line': 16 * emoteSize + 'px',
-      '--hs-badge-img': 18 * emoteSize + 'px',
+      '--hs-emote-size': `${baseEmote * emoteSize}px`,
+      '--hs-time-font': `${10 * emoteSize}px`,
+      '--hs-badge-size': `${18 * emoteSize}px`,
+      '--hs-badge-font': `${10 * emoteSize}px`,
+      '--hs-stat-badge-font': `${9 * emoteSize}px`,
+      '--hs-stat-badge-line': `${16 * emoteSize}px`,
+      '--hs-badge-img': `${18 * emoteSize}px`,
     }
     for (const el of targets) {
       for (const [k, v] of Object.entries(vars)) el.style.setProperty(k, v)
@@ -4333,7 +4328,7 @@
       if (t && (t.isContentEditable || ['INPUT', 'TEXTAREA'].includes(t.tagName))) return
       if (!isLiveSearchTab(currentTab)) return
       const bar = document.getElementById('hs-mc-search-bar')
-      if (!bar || !bar.classList.contains('visible')) return
+      if (!bar?.classList.contains('visible')) return
       const input = document.getElementById('hs-mc-search-input')
       if (!input) return
       e.preventDefault()
@@ -4357,7 +4352,7 @@
       if (t && (t.isContentEditable || ['INPUT', 'TEXTAREA'].includes(t.tagName))) return
       if (!isLiveSearchTab(currentTab)) return
       const bar = document.getElementById('hs-mc-search-bar')
-      if (!bar || !bar.classList.contains('visible')) return
+      if (!bar?.classList.contains('visible')) return
       if (!liveSearchQuery(currentTab)) return
       e.preventDefault()
       cycleLiveSearchMatch(e.key === 'n' ? 1 : -1)
@@ -4575,18 +4570,18 @@
     if (sizeNum >= 10 && sizeNum <= 22) {
       // One synced size drives both the panel chrome and the message area —
       // the old per-device override (F+/F-) folded into this setting.
-      root.style.setProperty('--hs-mc-base-size', sizeNum + 'px')
-      root.style.setProperty('--hs-chat-font', sizeNum + 'px')
+      root.style.setProperty('--hs-mc-base-size', `${sizeNum}px`)
+      root.style.setProperty('--hs-chat-font', `${sizeNum}px`)
     }
     const container = document.getElementById('hs-mc-container')
     if (!container) return
     container.style.setProperty('--hs-mc-font', stack)
     container.classList.toggle('hs-font-bitmap', isBitmap)
     if (sizeNum >= 10 && sizeNum <= 22) {
-      container.style.setProperty('--hs-mc-base-size', sizeNum + 'px')
-      container.style.setProperty('--hs-chat-font', sizeNum + 'px')
+      container.style.setProperty('--hs-mc-base-size', `${sizeNum}px`)
+      container.style.setProperty('--hs-chat-font', `${sizeNum}px`)
       const msgsEl = document.getElementById('hs-mc-messages')
-      if (msgsEl) msgsEl.style.setProperty('--hs-chat-font', sizeNum + 'px')
+      if (msgsEl) msgsEl.style.setProperty('--hs-chat-font', `${sizeNum}px`)
     }
   }
 
@@ -4671,16 +4666,16 @@
     for (const p of meta) {
       if (!p.show) continue
       const btn = document.createElement('button')
-      btn.className = 'hs-mc-pf-btn hs-mc-pf-' + p.key
+      btn.className = `hs-mc-pf-btn hs-mc-pf-${p.key}`
       btn.dataset.platform = p.key
       btn.classList.toggle('off', !filt[p.key])
       btn.textContent = p.label
-      btn.title = (filt[p.key] ? 'Hide ' : 'Show ') + p.key + ' messages'
+      btn.title = `${(filt[p.key] ? 'Hide ' : 'Show ') + p.key} messages`
       btn.addEventListener('click', () => {
         togglePlatformFilter(currentTab, p.key)
         const on = getPlatformFilter(currentTab)[p.key]
         btn.classList.toggle('off', !on)
-        btn.title = (on ? 'Hide ' : 'Show ') + p.key + ' messages'
+        btn.title = `${(on ? 'Hide ' : 'Show ') + p.key} messages`
         renderMessages(currentTab)
       })
       group.appendChild(btn)
@@ -5116,7 +5111,7 @@
         )
       }
     }
-    log('Created #hs-mc-container in', parent.tagName + '.' + [...parent.classList].join('.'))
+    log('Created #hs-mc-container in', `${parent.tagName}.${[...parent.classList].join('.')}`)
     // Reposition the unified resize handle now that the container has a real
     // rect. On no-chat pages (Twitch /directory etc) applyChatPosition fired
     // before this point with cont=null, so the handle was stranded at 0,0.
@@ -5311,7 +5306,7 @@
         // Fires Twitch's default empty-body celebration; the typed text still
         // goes out as a plain follow-up message via the IRC send path below.
         const QUEUE_SEL = '[data-test-selector="chat-private-callout-queue__callout-container"]'
-        const liveBtn = document.querySelector(QUEUE_SEL + ' [data-a-target="chat-private-callout__primary-button"]')
+        const liveBtn = document.querySelector(`${QUEUE_SEL} [data-a-target="chat-private-callout__primary-button"]`)
         const btn = liveBtn || claim._nativeShareBtn
         if (!btn || typeof getFiber !== 'function') return false
         try {
@@ -5519,7 +5514,7 @@
       } catch (_) {}
       const broadcastShare = () => {
         const QUEUE_SEL = '[data-test-selector="chat-private-callout-queue__callout-container"]'
-        const liveBtn = document.querySelector(QUEUE_SEL + ' [data-a-target="chat-private-callout__primary-button"]')
+        const liveBtn = document.querySelector(`${QUEUE_SEL} [data-a-target="chat-private-callout__primary-button"]`)
         const candidates = [liveBtn, claim._nativeShareBtn].filter(Boolean)
         const seen = new Set()
         const tryFiberOnClick = (btn) => {
@@ -5866,7 +5861,7 @@
     // Don't fight Twitch when chat is collapsed — let the native expand arrow work
     if (hostPlatform !== 'yt') {
       const rightCol = document.querySelector('.right-column')
-      const collapsed = rightCol && rightCol.classList.contains('right-column--collapsed')
+      const collapsed = rightCol?.classList.contains('right-column--collapsed')
       if (collapsed) return
       // Make sure chat column is visible (only when expanded)
       ensureChatColumnVisible()
@@ -6017,26 +6012,26 @@
       }
 
       if (tabPosition === 'top') {
-        if (th > 0) overlayElement.style.top = th + 'px'
-        overlayElement.style.bottom = ih + 'px'
+        if (th > 0) overlayElement.style.top = `${th}px`
+        overlayElement.style.bottom = `${ih}px`
       } else if (tabPosition === 'bottom') {
         overlayElement.style.top = '0px'
-        overlayElement.style.bottom = th + ih + 'px'
+        overlayElement.style.bottom = `${th + ih}px`
         // Park tabbar directly above inputbar
-        if (tabBarElement) tabBarElement.style.bottom = ih + 'px'
+        if (tabBarElement) tabBarElement.style.bottom = `${ih}px`
       } else if (tabPosition === 'right') {
         overlayElement.style.top = '0px'
-        overlayElement.style.bottom = ih + 'px'
+        overlayElement.style.bottom = `${ih}px`
         if (tw > 0) {
-          overlayElement.style.right = tw + 'px'
-          if (inputBarElement) inputBarElement.style.right = tw + 'px'
+          overlayElement.style.right = `${tw}px`
+          if (inputBarElement) inputBarElement.style.right = `${tw}px`
         }
       } else if (tabPosition === 'left') {
         overlayElement.style.top = '0px'
-        overlayElement.style.bottom = ih + 'px'
+        overlayElement.style.bottom = `${ih}px`
         if (tw > 0) {
-          overlayElement.style.left = tw + 'px'
-          if (inputBarElement) inputBarElement.style.left = tw + 'px'
+          overlayElement.style.left = `${tw}px`
+          if (inputBarElement) inputBarElement.style.left = `${tw}px`
         }
       }
 
@@ -6379,7 +6374,7 @@
     _nativeHiddenWatchdogStarted = true
     cleanup.setInterval(() => {
       const ds = document.body?.dataset
-      if (!ds || ds.hsSuppressNative !== '1') return
+      if (ds?.hsSuppressNative !== '1') return
       const beat = parseInt(ds.hsSuppressBeat, 10)
       const stale = !Number.isFinite(beat) || Date.now() - beat > 45000
       if (!stale && _hsOverlayRenderOk) return
@@ -6538,7 +6533,7 @@
     if (m.hsEmotes && typeof m.hsEmotes === 'object') {
       for (const name in m.hsEmotes) {
         const r = m.hsEmotes[name]
-        if (!r || !r.url) continue
+        if (!r?.url) continue
         ;(hsMsgRefs ||= new Map()).set(escapeHtml(name), {
           url: r.url,
           source: r.provider || 'heatsync',
@@ -6708,7 +6703,7 @@
   function buildFeedQuoteUserLink(feedUser, uid, hsPaint, paintStyle, color) {
     const name = feedUser || 'anon'
     const lower = name.toLowerCase()
-    const cls = `hs-mc-user hs-mc-mention${hsPaint ? ' ' + hsPaint.cls : ''}`
+    const cls = `hs-mc-user hs-mc-mention${hsPaint ? ` ${hsPaint.cls}` : ''}`
     const uidAttr = uid ? ` data-uid="${escapeHtml(uid)}"` : ''
     const splitAttr = hsPaint ? hsPaint.splitAttr : ''
     // Mount stamp (not a color decl) when painted — phase-locks this copy to
@@ -6891,7 +6886,7 @@
       }
       const content = renderFeedContent(m.text, m.emote_refs)
       // Canonical heat: formatHeat + ° suffix (≥10) + tier color/glow/breathe via heatSpanHtml
-      const heatHtml = (m.heat || 0) > 0 ? ' ' + heatSpanHtml(m.heat) : ''
+      const heatHtml = (m.heat || 0) > 0 ? ` ${heatSpanHtml(m.heat)}` : ''
       // All values sanitized — safe innerHTML (heat is numeric, emoji/color are hardcoded)
       div.innerHTML = `${tsSpan}${threadLink}${typeTag}${userLink}${feedPlusHtml}${heatHtml}: <span class="hs-feed-body">${content}</span>`
       div.addEventListener('click', (e) => {
@@ -6995,7 +6990,7 @@
           if (!input) return
           const momentUrl = permaEl.getAttribute('href')
           const cur = (typeof getInputText === 'function' ? getInputText() : input.value) || ''
-          const next = (cur.trim() ? `${cur.trimEnd()} ` : '') + momentUrl + ' '
+          const next = `${(cur.trim() ? `${cur.trimEnd()} ` : '') + momentUrl} `
           if (typeof wysiwygEnabled !== 'undefined' && wysiwygEnabled && typeof restoreWysiwygText === 'function') {
             restoreWysiwygText(input, next)
           } else {
@@ -7331,7 +7326,7 @@
     // When painted, drop the inline color decl (the class owns the paint
     // fill) and carry the mount stamp instead so every copy of the paint
     // phase-locks to the wall clock (lib/paint-spec.js syncDelayCalc).
-    const userLink = `<a href="${userHref}" target="_blank" rel="noopener noreferrer" class="hs-mc-user${hsPaint ? ' ' + hsPaint.cls : ''}" data-username="${escapeHtml(m.user.toLowerCase())}" data-platform="${plat}"${hsPaint ? hsPaint.splitAttr : ''} style="${hsPaint ? `--hsp-t:${paintPhaseNow()};` : paintStyle || 'color:' + sanitizeColor(hsNameColor || '#fff')}">${hsPaint ? hsPaint.html : escapeHtml(m.user)}</a>`
+    const userLink = `<a href="${userHref}" target="_blank" rel="noopener noreferrer" class="hs-mc-user${hsPaint ? ` ${hsPaint.cls}` : ''}" data-username="${escapeHtml(m.user.toLowerCase())}" data-platform="${plat}"${hsPaint ? hsPaint.splitAttr : ''} style="${hsPaint ? `--hsp-t:${paintPhaseNow()};` : paintStyle || `color:${sanitizeColor(hsNameColor || '#fff')}`}">${hsPaint ? hsPaint.html : escapeHtml(m.user)}</a>`
     let avatarHtml = ''
     if (avatarsEnabled) {
       const userKey = m.user.toLowerCase()
@@ -7378,7 +7373,7 @@
 
     // Sticker for super stickers
     let stickerHtml = ''
-    if (m.sticker && m.sticker.url) {
+    if (m.sticker?.url) {
       stickerHtml = ` <img src="${escapeHtml(m.sticker.url)}" alt="${escapeHtml(m.sticker.alt || 'sticker')}" loading="lazy" decoding="async" style="height:48px;vertical-align:middle;" />`
     }
 
@@ -7397,7 +7392,7 @@
     if (m.hsPaintUid) div.dataset.hsPaintUid = m.hsPaintUid
     if (isSuperChat && m.scColor) {
       const safeBg = sanitizeColor(m.scColor)
-      div.style.background = safeBg + '22'
+      div.style.background = `${safeBg}22`
       div.style.borderLeft = `3px solid ${safeBg}`
       div.style.paddingLeft = '4px'
     }
@@ -7453,7 +7448,7 @@
       div.style.setProperty('--hs-rule-hl', _frHL.highlight)
     }
     // Reply context bar (Chatterino-style) — all values escaped via escapeHtml
-    const replyLower = m.replyTo && m.replyTo.user ? m.replyTo.user.toLowerCase() : ''
+    const replyLower = m.replyTo?.user ? m.replyTo.user.toLowerCase() : ''
     // Paint the reply target's name with their 7TV cosmetic — same person, same
     // paint as their own messages. Twitch carries reply-parent-user-id; Kick
     // (no parent id) falls back to the name→uid map. data-uid lets
@@ -7461,15 +7456,15 @@
     const replyUid = (m.replyTo && (m.replyTo.userId || knownUserIds.get(userKey(replyLower, m.platform)))) || ''
     // HeatSync paint wins over 7TV here too — same precedence rule as the
     // sender username above.
-    const replyHsPaint = replyUid ? hsPaintRender(replyUid, '@' + (m.replyTo?.user || '')) : null
+    const replyHsPaint = replyUid ? hsPaintRender(replyUid, `@${m.replyTo?.user || ''}`) : null
     const replyPaint = replyHsPaint ? '' : replyUid ? userPaintStyle(replyUid, replyLower, m.platform) : ''
     // Mount stamp (not a color decl) when painted — phase-locks this copy to
     // the same wall-clock frame as every other copy of the paint.
     const replyStyle = replyHsPaint ? `--hsp-t:${paintPhaseNow()};` : replyPaint || `color:${mentionColor(replyLower)}`
     const replyUidAttr = replyUid ? ` data-uid="${escapeHtml(replyUid)}"` : ''
-    const replyUserCls = `hs-mc-user hs-mc-reply-user${replyHsPaint ? ' ' + replyHsPaint.cls : ''}`
+    const replyUserCls = `hs-mc-user hs-mc-reply-user${replyHsPaint ? ` ${replyHsPaint.cls}` : ''}`
     const replyUserSplitAttr = replyHsPaint ? replyHsPaint.splitAttr : ''
-    const replyUserHtml = replyHsPaint ? replyHsPaint.html : '@' + escapeHtml(m.replyTo?.user || '')
+    const replyUserHtml = replyHsPaint ? replyHsPaint.html : `@${escapeHtml(m.replyTo?.user || '')}`
     // Plus tenure ("+5mo"/"+3y") — identity signal, resolves regardless of
     // the paint setting. Same replyUid the reply-bar paint already resolved.
     let replyPlusHtml = ''
@@ -7481,11 +7476,11 @@
     // A blocked user's name + message snippet must not leak through a reply
     // context bar when someone else replies to them. Show a neutral marker
     // with no name, no text, no profile link.
-    const replyBlocked = m.replyTo && m.replyTo.user && isUserBlocked(m.replyTo.user, m.platform)
+    const replyBlocked = m.replyTo?.user && isUserBlocked(m.replyTo.user, m.platform)
     const replyBar = replyBlocked
       ? `<div class="hs-mc-reply-ctx">&#8618; Replying to [blocked]</div>`
-      : m.replyTo && m.replyTo.user
-        ? `<div class="hs-mc-reply-ctx" title="${escapeHtml(m.replyTo.user)}: ${escapeHtml(m.replyTo.text || '')}">&#8618; Replying to <a href="https://heatsync.org/user/${encodeURIComponent(m.replyTo.user)}" target="_blank" rel="noopener noreferrer" class="${replyUserCls}" data-username="${escapeHtml(replyLower)}"${replyUidAttr}${replyUserSplitAttr} style="${replyStyle}">${replyUserHtml}</a>${replyPlusHtml}${m.replyTo.text ? ': ' + escapeHtml(m.replyTo.text.length > 80 ? m.replyTo.text.slice(0, 80) + '...' : m.replyTo.text) : ''}</div>`
+      : m.replyTo?.user
+        ? `<div class="hs-mc-reply-ctx" title="${escapeHtml(m.replyTo.user)}: ${escapeHtml(m.replyTo.text || '')}">&#8618; Replying to <a href="https://heatsync.org/user/${encodeURIComponent(m.replyTo.user)}" target="_blank" rel="noopener noreferrer" class="${replyUserCls}" data-username="${escapeHtml(replyLower)}"${replyUidAttr}${replyUserSplitAttr} style="${replyStyle}">${replyUserHtml}</a>${replyPlusHtml}${m.replyTo.text ? `: ${escapeHtml(m.replyTo.text.length > 80 ? `${m.replyTo.text.slice(0, 80)}...` : m.replyTo.text)}` : ''}</div>`
         : ''
     // Redeem label — look up reward title from Hermes cache
     let redeemLabel = ''
@@ -7858,7 +7853,7 @@
   // Magenta #hashtags in chat — same pattern + link target as the feed so tags
   // are consistent on every surface. Splits on tags so attrs/img/<a> aren't touched.
   function highlightHashtagsInHtml(html) {
-    if (!html || !html.includes('#')) return html
+    if (!html?.includes('#')) return html
     // outsideTags skips whole <a>…</a> spans, not just tags. A url fragment
     // like ".../2026-07-22?m=…#mb812bf1a-46d8-…" is tag-shaped, and wrapping it
     // put an <a> inside an <a> — invalid html5, so the browser closes the outer
@@ -8007,7 +8002,7 @@
     if (u && f.bots && _BOT_NAMES.has(u)) return true
     if (typeof m.text !== 'string') return false
     if (f.cmds && m.text.charCodeAt(0) === 33) return true
-    if (_muteKeywordsRegex && _muteKeywordsRegex.test(m.text)) return true
+    if (_muteKeywordsRegex?.test(m.text)) return true
     return false
   }
   const _lastMsgTextByTab = new Map()
@@ -8030,19 +8025,19 @@
     const sx = Math.abs(parseFloat(wrap.dataset.hsModSx) || 1)
     const sy = Math.abs(parseFloat(wrap.dataset.hsModSy) || 1)
     if (sx > 1 && w) {
-      const m = Math.round((w * (sx - 1)) / 2) + 'px'
+      const m = `${Math.round((w * (sx - 1)) / 2)}px`
       wrap.style.setProperty('margin-left', m, 'important')
       wrap.style.setProperty('margin-right', m, 'important')
     }
     if (sy > 1 && h) {
-      const m = Math.round((h * (sy - 1)) / 2) + 'px'
+      const m = `${Math.round((h * (sy - 1)) / 2)}px`
       wrap.style.setProperty('margin-top', m, 'important')
       wrap.style.setProperty('margin-bottom', m, 'important')
     }
   }
   let _hsModReserveRO = null
   function _snapCompleteEmotes(root) {
-    if (!root || !root.querySelectorAll) return
+    if (!root?.querySelectorAll) return
     if (typeof hsSnapEmoteBox === 'function') {
       for (const eimg of root.querySelectorAll('img.hs-mc-emote')) {
         if (eimg.complete && eimg.naturalWidth) hsSnapEmoteBox(eimg)
@@ -8127,7 +8122,7 @@
     // isEmptyTab), so an O(1) firstChild check beats a descendant querySelector
     // on every appended message.
     const first = msgsEl.firstElementChild
-    if (first && first.classList.contains('hs-mc-empty')) first.remove()
+    if (first?.classList.contains('hs-mc-empty')) first.remove()
 
     // Compute key first so we can skip if a node with this key already exists
     // (IRC reconnect, replay echo, dual-send race — all paths benefit from
@@ -8733,7 +8728,7 @@
     // If search is active on mentions tab, don't clobber search results
     if (id === 'mentions') {
       const searchInput = document.getElementById('hs-mc-search-input')
-      if (searchInput && searchInput.value.trim()) return
+      if (searchInput?.value.trim()) return
     }
 
     const msgsEl = document.getElementById('hs-mc-messages')
@@ -8754,7 +8749,7 @@
     // "N new" counter). loadOlderScrollback passes bypassScrollPause so it CAN
     // re-render while paused — to paint older rows — without yanking the view
     // (it anchors scroll itself afterward).
-    if (isScrolledUp && !(opts && opts.bypassScrollPause)) {
+    if (isScrolledUp && !opts?.bypassScrollPause) {
       newMessageCount++
       if (newBtn) {
         newBtn.innerHTML = `<span class="hs-arrow-down">▼</span> ${newMessageCount} new`
@@ -8868,7 +8863,7 @@
       // First-run: a blank "no messages" panel teaches a new user nothing. When
       // no channels are configured, show an actionable CTA pointing at the core
       // multichat value (add streams across platforms) instead of a dead end.
-      if (id === 'live' && !(config.channels && config.channels.length)) {
+      if (id === 'live' && !config.channels?.length) {
         const title = document.createElement('div')
         title.style.cssText = 'font-weight:600;margin-bottom:4px'
         title.textContent = 'add your streams'
@@ -8936,7 +8931,7 @@
     if (newestTime > 0) {
       const cutoff = newestTime - STALE_WINDOW_MS
       const first = msgs[0]
-      if (first && first.time && first.time < cutoff) {
+      if (first?.time && first.time < cutoff) {
         msgs = msgs.filter((m) => m.type !== 'stream-event' || !m.time || m.time >= cutoff)
       }
     }
@@ -9618,7 +9613,7 @@
 
     // Match /username or /popout/username/chat or /embed/username/chat
     const match = location.pathname.match(/^\/(?:popout\/|embed\/)?([a-zA-Z0-9_-]+)/)
-    if (match && match[1]) {
+    if (match?.[1]) {
       const channel = match[1].toLowerCase()
       // Skip non-channel pages (shared module-scope Set above).
       if (NON_CHANNEL_PATHS.has(channel)) {
@@ -9999,10 +9994,10 @@
     // Clamp position so menu stays fully visible
     const menuRect = menu.getBoundingClientRect()
     if (menuRect.right > window.innerWidth) {
-      menu.style.left = Math.max(0, window.innerWidth - menuRect.width - 4) + 'px'
+      menu.style.left = `${Math.max(0, window.innerWidth - menuRect.width - 4)}px`
     }
     if (menuRect.bottom > window.innerHeight) {
-      menu.style.top = Math.max(0, rect.top - menuRect.height - 2) + 'px'
+      menu.style.top = `${Math.max(0, rect.top - menuRect.height - 2)}px`
     }
 
     // Dismiss on outside click
@@ -10316,7 +10311,7 @@
       // page mounts but the right-column flex slot stays 0-width — chat-shell
       // overflows off-screen to the right (x ≥ viewport.right). Detect and
       // fall back to body-mounted fixed-overlay mode so chat stays visible.
-      const chatShell = document.querySelector('.chat-shell, ' + CONFIG.SELECTORS.TWITCH_CHAT_SHELL)
+      const chatShell = document.querySelector(`.chat-shell, ${CONFIG.SELECTORS.TWITCH_CHAT_SHELL}`)
       if (chatShell) {
         const r = chatShell.getBoundingClientRect()
         if (r.right > window.innerWidth + 1 || r.width === 0) {
@@ -10369,10 +10364,10 @@
       _hsVolOsdEl.id = 'hs-vol-osd'
       document.body.appendChild(cleanup.trackNode(_hsVolOsdEl))
     }
-    _hsVolOsdEl.textContent = 'vol ' + Math.round(video.volume * 100) + '%'
+    _hsVolOsdEl.textContent = `vol ${Math.round(video.volume * 100)}%`
     const r = playerEl.getBoundingClientRect()
-    _hsVolOsdEl.style.left = Math.round(r.left + r.width / 2) + 'px'
-    _hsVolOsdEl.style.top = Math.round(r.top + 16) + 'px'
+    _hsVolOsdEl.style.left = `${Math.round(r.left + r.width / 2)}px`
+    _hsVolOsdEl.style.top = `${Math.round(r.top + 16)}px`
     _hsVolOsdEl.classList.add('visible')
     cleanup.clearTimeout(_hsVolOsdHideTimer)
     _hsVolOsdHideTimer = cleanup.setTimeout(() => {
@@ -10389,7 +10384,7 @@
         if (!scrollWheelVolumeEnabled) return
         // Never hijack scroll over HeatSync's own UI — every floating HS
         // surface (panel, picker, ctx menu, banners) uses an hs- prefixed id.
-        if (e.target.closest && e.target.closest('[id^="hs-"]')) return
+        if (e.target.closest?.('[id^="hs-"]')) return
         let playerEl = sel ? e.target.closest(sel) : null
         // Shift-only players (yt shorts): plain wheel stays the page's.
         if (!playerEl && modSel && e.shiftKey) playerEl = e.target.closest(modSel)
@@ -10412,7 +10407,7 @@
 
   function setupTwitchSideNavObserver() {
     if (hostPlatform !== 'twitch') return
-    document.documentElement.style.setProperty('--hs-twitch-sidenav-w', _twitchSideNavW + 'px')
+    document.documentElement.style.setProperty('--hs-twitch-sidenav-w', `${_twitchSideNavW}px`)
     if (_twitchSideNavObs) {
       try {
         _twitchSideNavObs.disconnect()
@@ -10477,7 +10472,7 @@
     const c = document.getElementById('hs-mc-container')
     if (!c) return
     if (c.offsetWidth > 0) {
-      document.documentElement.style.setProperty('--hs-panel-w', c.offsetWidth + 'px')
+      document.documentElement.style.setProperty('--hs-panel-w', `${c.offsetWidth}px`)
     }
     // Self-install a ResizeObserver on the container the first time we see it.
     // Call-site timing is unreliable on cold load (the panel is still 0-width
@@ -10489,7 +10484,7 @@
       _panelWObs = new ResizeObserver(() => {
         const el = document.getElementById('hs-mc-container')
         if (el && el.offsetWidth > 0) {
-          document.documentElement.style.setProperty('--hs-panel-w', el.offsetWidth + 'px')
+          document.documentElement.style.setProperty('--hs-panel-w', `${el.offsetWidth}px`)
         }
       })
       _panelWObs.observe(c)
@@ -10578,8 +10573,8 @@
           detectTheatreMode()
           return
         }
-        const c = m.target && m.target.className
-        const s = typeof c === 'string' ? c : (c && c.baseVal) || ''
+        const c = m.target?.className
+        const s = typeof c === 'string' ? c : c?.baseVal || ''
         if (s.indexOf('theat') !== -1 || s.indexOf('fullscreen') !== -1) {
           detectTheatreMode()
           return
@@ -10655,8 +10650,8 @@
     document.body.classList.toggle('hs-mode-normal', !theatreMode)
     // Push the chatWidth css var down so the per-position CSS can build offsets
     // off it (rather than chasing platform-specific selectors twice).
-    document.documentElement.style.setProperty('--hs-chat-w', chatWidth + 'px')
-    document.documentElement.style.setProperty('--hs-chat-h', chatHeight + 'px')
+    document.documentElement.style.setProperty('--hs-chat-w', `${chatWidth}px`)
+    document.documentElement.style.setProperty('--hs-chat-h', `${chatHeight}px`)
     // Refresh Twitch side-nav width — it can flip 50↔240 across a chat
     // toggle (user F11s, viewport crosses Twitch's expand breakpoint, etc).
     if (hostPlatform === 'twitch') updateTwitchSideNavWidth()
@@ -10760,7 +10755,7 @@
         // buttons aren't trapped under Following/Browse (HS lives inside
         // .channel-root__right-column's z=1 stacking context, can't outrank).
         const twitchTopOffset = hostPlatform === 'twitch' && !theatreMode ? _twitchTopNavH : 0
-        const topPx = twitchTopOffset + 'px'
+        const topPx = `${twitchTopOffset}px`
         if (chatPosition === 'left') {
           container.style.setProperty('top', topPx, 'important')
           container.style.setProperty('bottom', '0', 'important')
@@ -10864,7 +10859,7 @@
           // in lockstep. Off → drop the var so CSS sees 0 contribution.
           const suggOn = document.body.classList.contains('hs-yt-suggestions')
           const suggW = suggOn ? YT_SUGG_STRIP_W : 0
-          if (suggOn) document.documentElement.style.setProperty('--hs-yt-sugg-w', suggW + 'px')
+          if (suggOn) document.documentElement.style.setProperty('--hs-yt-sugg-w', `${suggW}px`)
           else document.documentElement.style.removeProperty('--hs-yt-sugg-w')
           availW = Math.max(200, usableW - chatWidth - suggW)
           availH = innerHeight
@@ -10883,8 +10878,8 @@
           finalW = availW
           finalH = aspectH
         }
-        const wPx = Math.round(finalW) + 'px'
-        const hPx = Math.round(finalH) + 'px'
+        const wPx = `${Math.round(finalW)}px`
+        const hPx = `${Math.round(finalH)}px`
         for (const el of ytSizedEls) {
           el.dataset._hsCYtSized = '1'
           el.style.setProperty('width', wPx, 'important')
@@ -10912,9 +10907,9 @@
             const flexy = document.querySelector('ytd-watch-flexy')
             const special = flexy && (flexy.hasAttribute('theater') || flexy.hasAttribute('fullscreen'))
             const mp = document.querySelector('#movie_player') || document.querySelector('.html5-video-player')
-            const b = mp && mp.getBoundingClientRect()
+            const b = mp?.getBoundingClientRect()
             if (!special && b && b.height > 0) {
-              document.documentElement.style.setProperty('--hs-yt-below-top', Math.round(b.bottom) + 'px')
+              document.documentElement.style.setProperty('--hs-yt-below-top', `${Math.round(b.bottom)}px`)
             } else {
               document.documentElement.style.removeProperty('--hs-yt-below-top')
             }
@@ -10989,8 +10984,8 @@
           finalW = availW
           finalH = aspectH
         }
-        const wPx = Math.round(finalW) + 'px'
-        const hPx = Math.round(finalH) + 'px'
+        const wPx = `${Math.round(finalW)}px`
+        const hPx = `${Math.round(finalH)}px`
         for (const el of kickPlayerEls) {
           el.dataset._hsCKickSized = '1'
           el.style.setProperty('width', wPx, 'important')
@@ -11262,7 +11257,7 @@
   // Falls back to the container top only if the overlay isn't mounted yet.
   function _insertPanelCallout(el) {
     const searchBar = document.getElementById('hs-mc-search-bar')
-    if (searchBar && searchBar.parentNode) {
+    if (searchBar?.parentNode) {
       searchBar.parentNode.insertBefore(el, searchBar.nextSibling)
       return
     }
@@ -11275,7 +11270,7 @@
   function showApiStatusBanner(source, state) {
     const container = document.getElementById('hs-mc-container')
     if (!container) return
-    const id = 'hs-mc-api-banner-' + (source || 'unknown').replace(/[^a-z0-9_-]/gi, '')
+    const id = `hs-mc-api-banner-${(source || 'unknown').replace(/[^a-z0-9_-]/gi, '')}`
     const existing = document.getElementById(id)
     if (state === 'up') {
       existing?.remove()
@@ -11420,7 +11415,7 @@
       if (msg.type === 'bg_irc_enrich' && msg.id && msg.hsEmotes) {
         try {
           const ech = (msg.channel || '').toLowerCase()
-          const rows = typeof irc !== 'undefined' && irc?.getMessages ? irc.getMessages(ech) : null
+          const rows = irc?.getMessages ? irc.getMessages(ech) : null
           if (rows) {
             for (const m of rows) {
               if (m && m.id === msg.id) {
@@ -11648,7 +11643,7 @@
           if (em.zeroWidth) continue
           if (window.__hsZwProbed.has(name)) continue
           // Only 7TV CDN URLs have a usable hash for the REST emote-by-id probe.
-          if (!em.url || !em.url.includes('cdn.7tv.app/emote/')) continue
+          if (!em.url?.includes('cdn.7tv.app/emote/')) continue
           const m = em.url.match(/cdn\.7tv\.app\/emote\/([A-Z0-9]+)/i)
           const sevenTvId = m?.[1] || em.hash
           if (!sevenTvId) continue
@@ -11662,7 +11657,7 @@
             await Promise.allSettled(
               batch.map(async ({ name, sevenTvId, em }) => {
                 try {
-                  const r = await fetch('https://7tv.io/v3/emotes/' + sevenTvId).then((r) => (r.ok ? r.json() : null))
+                  const r = await fetch(`https://7tv.io/v3/emotes/${sevenTvId}`).then((r) => (r.ok ? r.json() : null))
                   const isZw = !!(r && (r.flags || 0) & 256)
                   if (!isZw) return
                   em.zeroWidth = true
@@ -11707,7 +11702,7 @@
         // Key may be namespaced (twitch:alice) or legacy bare (alice). Delete both
         // so unmuting always clears the Set regardless of when the entry was written.
         const u = msg.username?.toLowerCase()
-        const bare = u && u.includes(':') ? u.split(':')[1] : null
+        const bare = u?.includes(':') ? u.split(':')[1] : null
         let changed = false
         if (u && mutedUsers.has(u)) {
           mutedUsers.delete(u)
@@ -11744,7 +11739,7 @@
       if (msg.type === 'user_unblocked') {
         // Delete both namespaced key AND legacy bare form so unblock always lands.
         const u = msg.username?.toLowerCase()
-        const bare = u && u.includes(':') ? u.split(':')[1] : null
+        const bare = u?.includes(':') ? u.split(':')[1] : null
         const had = (u && blockedUsers.delete(u)) | (bare && blockedUsers.delete(bare))
         if (had) renderMessages(currentTab, { bypassScrollPause: true })
       }
@@ -11838,7 +11833,7 @@
               const iter = arr || (typeof buf.values === 'function' ? buf.values() : null)
               if (!iter) return
               for (const m of iter) {
-                if (m && m.text && m.text.includes(msg.emoteName)) m._renderedHtml = null
+                if (m?.text?.includes(msg.emoteName)) m._renderedHtml = null
               }
             }
             // Twitch + Kick IRC buffers (per-channel)
@@ -11858,7 +11853,7 @@
             if (msgsEl) {
               for (const div of msgsEl.querySelectorAll('.hs-mc-msg[data-msg-key]')) {
                 const m = div._hsMsg
-                if (m && m.text && m.text.includes(msg.emoteName)) m._renderedHtml = null
+                if (m?.text?.includes(msg.emoteName)) m._renderedHtml = null
               }
             }
             // In-place swap reaches orphans and never touches scroll; the full
@@ -11967,7 +11962,7 @@
           action = msg.emoteName ? `removed 7TV emote ${msg.emoteName}` : msg.message || '7TV emote set updated'
         }
         // Strip leading "${actor} " duplicate that bg may include in single-emote case
-        if (actor && action.toLowerCase().startsWith(actor.toLowerCase() + ' ')) {
+        if (actor && action.toLowerCase().startsWith(`${actor.toLowerCase()} `)) {
           action = action.slice(actor.length + 1)
         }
         const dedup = window._hsStreamEventDedup || (window._hsStreamEventDedup = new Map())
@@ -12346,7 +12341,7 @@
         // content-warning pills flip live cross-tab (BG also writes these
         // keys when the server broadcasts a settings update)
         if (def.cw && typeof v === 'boolean') {
-          document.querySelectorAll('.hs-mc-toggle-pill[data-set-key="' + def.key + '"]').forEach((pill) => {
+          document.querySelectorAll(`.hs-mc-toggle-pill[data-set-key="${def.key}"]`).forEach((pill) => {
             pill.classList.toggle('active', v)
           })
         }
@@ -12549,7 +12544,7 @@
     let _liveEl = null
 
     function checkOffline() {
-      if (!_playerEl || !_playerEl.isConnected) _playerEl = document.querySelector('.channel-root__player')
+      if (!_playerEl?.isConnected) _playerEl = document.querySelector('.channel-root__player')
       const playerOffline = _playerEl
         ? _playerEl.classList.contains('channel-root__player--offline')
         : !!document.querySelector('.channel-root__player--offline')
@@ -12660,7 +12655,7 @@
     // tabs keeps their last-active one instead of being yanked onto the current
     // page's stream: being on lofigirl's page shouldn't override your nl_kripp
     // tab and dump lofigirl's chat in. A popout is single-channel — always live.
-    const hasChannelTabs = !!(config.channels && config.channels.length)
+    const hasChannelTabs = !!config.channels?.length
     return isYtPopout || (onStreamPage && !hasChannelTabs) ? 'live' : _savedActiveTab || 'live'
   }
 
@@ -12872,7 +12867,7 @@
     const loadChannelEmotes = (attempt = 0) => {
       safeSendMessage({ type: 'get_channel_emotes' })
         .then((resp) => {
-          if (!resp || !resp.count) {
+          if (!resp?.count) {
             if (attempt < 8)
               cleanup.setTimeout(() => loadChannelEmotes(attempt + 1), Math.min(500 * (attempt + 1), 3000))
           }
@@ -13122,7 +13117,7 @@
           document,
           'click',
           (e) => {
-            const sel = window.getSelection && window.getSelection()
+            const sel = window.getSelection?.()
             if (sel && String(sel).length > 0) return
             if (
               e.target.closest(
@@ -13306,7 +13301,7 @@
     // flagged `cleared` at the source (twitch IRC client / irc.js kick handler)
     // so future re-renders persist; this patches the currently-rendered rows.
     function _applyModNoticeDim(msg) {
-      if (!msg || msg.type !== 'notice') return
+      if (msg?.type !== 'notice') return
       const msgsEl = document.getElementById('hs-mc-messages')
       if (!msgsEl) return
       const samePlat = (row) => !(msg.platform && row.dataset.msgPlatform && msg.platform !== row.dataset.msgPlatform)
@@ -13479,7 +13474,7 @@
       }
       // Highlight-rule audio cue — once, on live arrival (this path is live-only;
       // history replay doesn't reach here). Own/hidden already returned above.
-      if (_frTw && _frTw.sound && typeof playFilterRuleSound === 'function') playFilterRuleSound(_frTw.sound)
+      if (_frTw?.sound && typeof playFilterRuleSound === 'function') playFilterRuleSound(_frTw.sound)
       const isMent = isMention(msg)
       bumpStreamStats(msg.channel, msg, isMent)
       if (isMent) {
@@ -13572,7 +13567,7 @@
         if (_frKi.hide) return
       }
       // Highlight-rule audio cue — once, on live kick arrival.
-      if (_frKi && _frKi.sound && typeof playFilterRuleSound === 'function') playFilterRuleSound(_frKi.sound)
+      if (_frKi?.sound && typeof playFilterRuleSound === 'function') playFilterRuleSound(_frKi.sound)
       const isMent = isMention(msg)
       bumpStreamStats(msg.channel, msg, isMent)
       if (isMent) {
@@ -13703,7 +13698,7 @@
         // redeem text carries no channel, so a global text key would drop an
         // identical reward redeemed in a different channel as a false duplicate.
         const now = Date.now()
-        const dedupKey = channel + ' ' + text
+        const dedupKey = `${channel} ${text}`
         if (streamEventDedup.has(dedupKey) && now - streamEventDedup.get(dedupKey) < 60000) return
         streamEventDedup.set(dedupKey, now)
         // Prune old entries
@@ -13848,7 +13843,7 @@
               type: 'notice',
               noticeType: 'pin',
               systemMsg:
-                eventType === 'pin' ? `pinned${pinBy ? ' ' + pinBy + ':' : ':'} ${pinText}`.trim() : 'message unpinned',
+                eventType === 'pin' ? `pinned${pinBy ? ` ${pinBy}:` : ':'} ${pinText}`.trim() : 'message unpinned',
               channel,
               time: Date.now(),
               isSynthetic: true,
@@ -13859,12 +13854,12 @@
         } else if (eventType === 'prediction-start') {
           toggleKey = 'pred'
           eventClass = 'event-pred'
-          const title = data?.title ? ' — ' + String(data.title) : ''
+          const title = data?.title ? ` — ${String(data.title)}` : ''
           text = `[${channel}] ◆ new prediction up${title}`
         } else if (eventType === 'poll-start') {
           toggleKey = 'poll'
           eventClass = 'event-poll'
-          const title = data?.title ? ' — ' + String(data.title) : ''
+          const title = data?.title ? ` — ${String(data.title)}` : ''
           text = `[${channel}] ◆ new poll up${title}`
         } else return
 
@@ -14527,7 +14522,7 @@
         // Skip new-tab clicks — those don't navigate this tab
         if (a.target && a.target !== '_self') return
         const href = a.getAttribute('href')
-        if (!href || !href.startsWith('/')) return
+        if (!href?.startsWith('/')) return
         // Streamer slug = single-segment path (no slashes after first), not a
         // reserved Kick route. Mirrors the eligibility checks in waitForMount.
         const slug = href.replace(/^\/+|\/+$/g, '').toLowerCase()

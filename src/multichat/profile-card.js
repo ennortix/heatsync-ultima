@@ -486,8 +486,8 @@ function pcBuildSessionSection(username) {
 
 function pcFmt(n) {
   n = Number(n) || 0
-  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'm'
-  if (n >= 1_000) return (n / 1_000).toFixed(1).replace(/\.0$/, '') + 'k'
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, '')}m`
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1).replace(/\.0$/, '')}k`
   return String(n)
 }
 
@@ -503,15 +503,15 @@ function pcAppendBioWithAutolinks(parent, text) {
       const span = document.createElement('span')
       span.className = 'hs-mc-user hs-pcard-bio-mention'
       span.dataset.username = name
-      span.textContent = '@' + name
+      span.textContent = `@${name}`
       parent.appendChild(span)
     } else if (p[0] === '#' && p.length >= 2) {
       const a = document.createElement('a')
       a.className = 'hs-pcard-bio-tag'
-      a.href = 'https://heatsync.org/tags/' + encodeURIComponent(p.slice(1).toLowerCase())
+      a.href = `https://heatsync.org/tags/${encodeURIComponent(p.slice(1).toLowerCase())}`
       a.target = '_blank'
       a.rel = 'noopener noreferrer'
-      a.textContent = '#' + p.slice(1)
+      a.textContent = `#${p.slice(1)}`
       parent.appendChild(a)
     } else {
       parent.appendChild(document.createTextNode(p))
@@ -531,13 +531,13 @@ function pcMakeSection(title) {
 
 function pcMakePill(plat, name, isLive) {
   const pill = document.createElement('a')
-  pill.className = 'hs-pcard-pill hs-pcard-pill-' + plat
+  pill.className = `hs-pcard-pill hs-pcard-pill-${plat}`
   pill.target = '_blank'
   pill.rel = 'noopener noreferrer'
-  if (plat === 'twitch') pill.href = 'https://twitch.tv/' + encodeURIComponent(name)
-  else if (plat === 'kick') pill.href = 'https://kick.com/' + encodeURIComponent(name)
-  else if (plat === 'youtube') pill.href = 'https://youtube.com/@' + encodeURIComponent(name)
-  else if (plat === 'heatsync') pill.href = 'https://heatsync.org/user/' + encodeURIComponent(name)
+  if (plat === 'twitch') pill.href = `https://twitch.tv/${encodeURIComponent(name)}`
+  else if (plat === 'kick') pill.href = `https://kick.com/${encodeURIComponent(name)}`
+  else if (plat === 'youtube') pill.href = `https://youtube.com/@${encodeURIComponent(name)}`
+  else if (plat === 'heatsync') pill.href = `https://heatsync.org/user/${encodeURIComponent(name)}`
   const label = plat === 'twitch' ? 'ttv' : plat === 'kick' ? 'kick' : plat === 'youtube' ? 'yt' : 'hs'
   pill.textContent = `${label}:${name}`
   if (isLive) {
@@ -594,7 +594,7 @@ function pcBuildModActions(username) {
       } else if (typeof prefetchModFor === 'function') prefetchModFor(ch)
       continue
     }
-    const key = plat + ':' + ch
+    const key = `${plat}:${ch}`
     if (!groups.has(key))
       groups.set(key, {
         channel: ch,
@@ -633,7 +633,7 @@ function pcBuildModActions(username) {
     row.className = 'hs-pcard-mod-row'
     const chLabel = document.createElement('span')
     chLabel.className = 'hs-pcard-mod-ch'
-    chLabel.textContent = platform === 'kick' ? '#' + channel + ' (kick)' : '#' + channel
+    chLabel.textContent = platform === 'kick' ? `#${channel} (kick)` : `#${channel}`
     row.appendChild(chLabel)
     const actions = [
       { label: 'del msg', title: "delete this user's latest message", need: 'msg', action: 'delete' },
@@ -647,7 +647,7 @@ function pcBuildModActions(username) {
     ]
     for (const a of actions) {
       const b = document.createElement('button')
-      b.className = 'hs-pcard-mod-btn' + (a.danger ? ' hs-pcard-mod-btn-danger' : '')
+      b.className = `hs-pcard-mod-btn${a.danger ? ' hs-pcard-mod-btn-danger' : ''}`
       b.type = 'button'
       b.textContent = a.label
       b.title = a.title
@@ -739,7 +739,7 @@ function renderProfileCardView() {
     if (idUid && typeof hasResolvedHsPaint === 'function' && hasResolvedHsPaint(idUid)) {
       applyHsPaintToElement(titleEl, idUid)
     } else if (idPaint) {
-      titleEl.style.cssText += ';' + idPaint
+      titleEl.style.cssText += `;${idPaint}`
     } else if (data?.color) {
       // No paint — fall back to the user's saved HeatSync name color instead
       // of leaving the header uncolored.
@@ -834,7 +834,7 @@ function renderProfileCardView() {
     a.target = '_blank'
     a.rel = 'noopener noreferrer'
     a.style.cssText = 'color:var(--hs-plat-twitch);font-weight:700;text-decoration:none;'
-    a.textContent = '@' + linkedTwitch
+    a.textContent = `@${linkedTwitch}`
     xref.appendChild(a)
     xref.appendChild(document.createTextNode(' on twitch'))
     idText.appendChild(xref)
@@ -1030,7 +1030,7 @@ function renderProfileCardView() {
     const liveDot = (vc) => {
       const live = document.createElement('span')
       live.className = 'hs-pc-live'
-      live.textContent = vc ? ' 🔴 ' + pcFmt(vc) : ' 🔴'
+      live.textContent = vc ? ` 🔴 ${pcFmt(vc)}` : ' 🔴'
       return live
     }
     // Platform usernames render as clickable links to the channel page —
@@ -1055,7 +1055,7 @@ function renderProfileCardView() {
       addRow(
         'ttv',
         mkLink(
-          'https://twitch.tv/' + encodeURIComponent(twU),
+          `https://twitch.tv/${encodeURIComponent(twU)}`,
           twU,
           (ls.twitch ?? data.twitch_is_live) ? data.twitch_viewer_count || 0 : undefined,
         ),
@@ -1066,7 +1066,7 @@ function renderProfileCardView() {
       addRow(
         'kick',
         mkLink(
-          'https://kick.com/' + encodeURIComponent(kiU),
+          `https://kick.com/${encodeURIComponent(kiU)}`,
           kiU,
           (ls.kick ?? data.kick_is_live) ? data.kick_viewer_count || 0 : undefined,
         ),
@@ -1076,15 +1076,15 @@ function renderProfileCardView() {
     if (ytU || data.youtube_channel_id) {
       const ytName = ytU || username
       const ytHref = ytU
-        ? 'https://youtube.com/@' + encodeURIComponent(ytU)
-        : 'https://youtube.com/channel/' + encodeURIComponent(data.youtube_channel_id)
+        ? `https://youtube.com/@${encodeURIComponent(ytU)}`
+        : `https://youtube.com/channel/${encodeURIComponent(data.youtube_channel_id)}`
       addRow(
         'yt',
         mkLink(ytHref, ytName, (ls.youtube ?? data.youtube_is_live) ? data.youtube_viewer_count || 0 : undefined),
         'val-yt',
       )
     } else if (activeProfileCard.platform === 'yt' || activeProfileCard.platform === 'youtube') {
-      addRow('yt', mkLink('https://youtube.com/@' + encodeURIComponent(username), username), 'val-yt')
+      addRow('yt', mkLink(`https://youtube.com/@${encodeURIComponent(username)}`, username), 'val-yt')
     }
 
     // acctage
@@ -1113,7 +1113,7 @@ function renderProfileCardView() {
     // Kick channel-specific stats from /api/v2/channels — only when no
     // heatsync-tracked twitch followers (would be redundant) or when the
     // profile is Kick-only (synth).
-    if (data._kick_recent_categories && data._kick_recent_categories.length) {
+    if (data._kick_recent_categories?.length) {
       const cat = data._kick_recent_categories[0]
       if (cat?.name) addRow('playing', cat.name, 'val-kick')
     }
@@ -1168,7 +1168,7 @@ function renderProfileCardView() {
             : 'https://youtube.com'
     }
 
-    const ssec = pcMakeSection(plat + ' · live')
+    const ssec = pcMakeSection(`${plat} · live`)
     ssec.classList.add('hs-pcard-stream')
     const line = document.createElement('div')
     if (vc) line.appendChild(document.createTextNode(`${pcFmt(vc)} viewers — `))
@@ -1198,11 +1198,11 @@ function renderProfileCardView() {
       tsEl.textContent = ts
       const platEl = document.createElement('span')
       const plat = m.platform || 'twitch'
-      platEl.className = 'hs-pcard-msg-plat hs-pcard-pill-' + plat
+      platEl.className = `hs-pcard-msg-plat hs-pcard-pill-${plat}`
       platEl.textContent = plat === 'kick' ? 'k' : plat === 'youtube' ? 'y' : 't'
       const textEl = document.createElement('span')
       textEl.className = 'hs-pcard-msg-text'
-      textEl.textContent = m.text.length > 240 ? m.text.slice(0, 240) + '…' : m.text
+      textEl.textContent = m.text.length > 240 ? `${m.text.slice(0, 240)}…` : m.text
       row.appendChild(tsEl)
       row.appendChild(platEl)
       row.appendChild(textEl)
@@ -1232,7 +1232,7 @@ function renderProfileCardView() {
 async function pcApplyPronouns(card, twitchUserId) {
   const data = await fetchPronouns('twitch', twitchUserId)
   const words = data?.pronouns
-  if (!words || !words.length) return
+  if (!words?.length) return
   const root = document.getElementById('hs-mc-messages')?.querySelector('.hs-pcard') || card
   const idText = root.querySelector('.hs-pcard-id-text')
   if (!idText) return
@@ -1350,7 +1350,7 @@ function _pcKnownCrossLinks(username) {
   if (typeof _profileCache === 'undefined' || !username) return {}
   const u = String(username).toLowerCase()
   for (const [k, v] of _profileCache) {
-    if (k.endsWith(':' + u)) return v?.profile || {}
+    if (k.endsWith(`:${u}`)) return v?.profile || {}
   }
   return {}
 }
@@ -1359,7 +1359,7 @@ function _patchProfileCacheRel(username, patch) {
   if (typeof _profileCache === 'undefined' || !_profileCache) return
   const u = String(username).toLowerCase()
   for (const [k, v] of _profileCache) {
-    if (!k.endsWith(':' + u)) continue
+    if (!k.endsWith(`:${u}`)) continue
     const prof = v?.profile
     if (!prof) continue
     prof.relationship = { ...(prof.relationship || {}), ...patch }
@@ -1477,7 +1477,7 @@ async function pcToggleBlock(profileId, username, currentlyBlocked) {
     const path = `/api/user/block/${encodeURIComponent(profileId)}`
     const resp = targetBlocked
       ? await apiFetch(path, { method: 'POST', auth: true, body: {} })
-      : await apiFetch(path + '?sync_twitch=0', { method: 'DELETE', auth: true })
+      : await apiFetch(`${path}?sync_twitch=0`, { method: 'DELETE', auth: true })
     if (!resp?.ok) {
       const msg = String(resp?.error || '').toLowerCase()
       if (!msg.includes('already blocked') && !msg.includes('not blocked')) {
@@ -1664,7 +1664,7 @@ function pcMention(name) {
     inputBarVisible = true
     const input = document.getElementById('hs-mc-input')
     if (!input) return
-    const tag = '@' + name + ' '
+    const tag = `@${name} `
     if (input.tagName === 'INPUT') {
       const cur = input.value || ''
       const sep = cur && !cur.endsWith(' ') ? ' ' : ''

@@ -156,7 +156,7 @@ try {
       // ties don't replace), preserving this tab's own suppressed counters.
       const merged = new Map()
       for (const e of [..._recentSentMessages, ...incoming]) {
-        if (!e || !e.text) continue
+        if (!e?.text) continue
         const k = `${e.text}:${e.time || 0}:${e.synthId || ''}`
         const existing = merged.get(k)
         if (!existing || (existing.time || 0) < (e.time || 0)) merged.set(k, e)
@@ -602,7 +602,7 @@ const REMOTE_COMPLETION_CAP = 300
 // to the viewer's heatsync set. Gated to third-party providers with a URL —
 // owned/blocked/pending are filtered later in autoAddInputEmotes.
 function trackCompletionForAutoAdd(match) {
-  if (!match || match.type !== 'emote' || !match.name || !match.url) return
+  if (match?.type !== 'emote' || !match.name || !match.url) return
   // A synthesized "name0" overlay carries the BASE emote's url — auto-adding it
   // persisted a bogus literal "name0" emote server-side, burning an inventory
   // slot. The base emote is tracked on its own; the "0" is a render convention.
@@ -1096,7 +1096,7 @@ function renderSendTargetChips() {
     const on = resolved[p.key]
     const btn = document.createElement('button')
     btn.type = 'button'
-    btn.className = 'hs-mc-st-btn hs-mc-st-' + p.key
+    btn.className = `hs-mc-st-btn hs-mc-st-${p.key}`
     btn.classList.toggle('off', !on)
     btn.textContent = p.label
     btn.title = `send to ${p.key}: ${on ? 'on' : 'off'}`
@@ -1135,7 +1135,7 @@ function getInputText() {
       text += img.dataset.emoteName || img.alt || ''
       const modWords = img.dataset.hsWords || img.dataset.hsModWords // back-compat
       if (modWords) {
-        for (const w of modWords.split(/\s+/).filter(Boolean)) text += ' ' + w
+        for (const w of modWords.split(/\s+/).filter(Boolean)) text += ` ${w}`
       }
     }
     const extractNode = (node) => {
@@ -1161,13 +1161,13 @@ function getInputText() {
             if (!_firstStackChild && ename) {
               // Overlay emoji — emit ":name:0" so peer renderers stack it on top
               // (the unicode-char form would render beside, not over, the base).
-              text += ':' + ename + ':0'
+              text += `:${ename}:0`
             } else {
               // Base emoji — unicode char (renderer treats a bare emoji as base).
               text += child.textContent || ''
             }
             const emjMods = child.dataset.hsWords
-            if (emjMods) for (const w of emjMods.split(/\s+/).filter(Boolean)) text += ' ' + w
+            if (emjMods) for (const w of emjMods.split(/\s+/).filter(Boolean)) text += ` ${w}`
           }
           _firstStackChild = false
         }
@@ -1177,13 +1177,13 @@ function getInputText() {
         // Bare-username Tab completion → serialize as @user so recipients
         // render it as a colored mention chip (processEmotes only colors @-prefixed).
         const u = node.dataset.username || node.textContent || ''
-        text += node.dataset.completionType === 'user-bare' ? '@' + u : u
+        text += node.dataset.completionType === 'user-bare' ? `@${u}` : u
         _lastWasChip = true
       } else if (node.nodeType === Node.ELEMENT_NODE && node.classList?.contains('hs-mc-emoji')) {
         sepBefore()
         text += node.textContent || ''
         const emjMods = node.dataset.hsWords
-        if (emjMods) for (const w of emjMods.split(/\s+/).filter(Boolean)) text += ' ' + w
+        if (emjMods) for (const w of emjMods.split(/\s+/).filter(Boolean)) text += ` ${w}`
         _lastWasChip = true
       } else if (node.nodeType === Node.ELEMENT_NODE) {
         text += node.textContent || ''
@@ -1399,7 +1399,7 @@ function initInput() {
   let emoteBtn = document.getElementById('hs-mc-emote-btn')
   // Foreign mark = wired by a dead extension context (same firefox trap as the
   // composer mark above). Clone-replace sheds the dead listeners, then rewire.
-  if (emoteBtn && emoteBtn._hsInitialized && emoteBtn._hsInitialized !== MC_WIRE_CTX) {
+  if (emoteBtn?._hsInitialized && emoteBtn._hsInitialized !== MC_WIRE_CTX) {
     const fresh = emoteBtn.cloneNode(true)
     emoteBtn.replaceWith(fresh)
     emoteBtn = fresh
@@ -2070,7 +2070,7 @@ function initInput() {
         // Composer mention chips are editable text, not an author reference —
         // right-clicking one keeps the native menu (cut/copy), never the
         // follow/block user menu (which would target yourself when you @self).
-        if (userEl && userEl.closest('#hs-mc-input')) return
+        if (userEl?.closest('#hs-mc-input')) return
         // Right-clicking a real link/embed (not a username) → keep native menu.
         if (
           !userEl &&
@@ -2118,7 +2118,7 @@ function hsRelPeek(username, platform) {
   let c = _profileCache.get(`${platform || 'unknown'}:${u}`)
   if (!c) {
     for (const [k, v] of _profileCache) {
-      if (k.endsWith(':' + u)) {
+      if (k.endsWith(`:${u}`)) {
         c = v
         break
       }
@@ -2394,7 +2394,7 @@ function openUserCtxMenu(x, y, username, platform, ctx = {}) {
       fn: () => {
         const input = document.getElementById('hs-mc-search-input')
         if (!input) return
-        input.value = '@' + String(username).toLowerCase()
+        input.value = `@${String(username).toLowerCase()}`
         input.dispatchEvent(new Event('input', { bubbles: true }))
         input.focus()
       },
@@ -2682,7 +2682,7 @@ function mcQuoteToInput(text) {
   if (!input) return
   if (typeof showInputBar === 'function') showInputBar()
   input.focus()
-  const toInsert = text + ' '
+  const toInsert = `${text} `
   if (input.isContentEditable) {
     if (!document.execCommand('insertText', false, toInsert)) {
       input.textContent = (input.textContent || '') + toInsert
@@ -2859,7 +2859,7 @@ function _mentionInMcInput(username) {
   const mention = `@${username} `
   if (input.tagName === 'INPUT' || input.tagName === 'TEXTAREA') {
     const cur = input.value
-    input.value = (cur && !cur.endsWith(' ') ? cur + ' ' : cur) + mention
+    input.value = (cur && !cur.endsWith(' ') ? `${cur} ` : cur) + mention
     input.focus()
     try {
       input.setSelectionRange(input.value.length, input.value.length)
@@ -2954,8 +2954,8 @@ function showHsCtxMenu(x, y, header, items) {
     vh = window.innerHeight
   const flipX = x + mw + 8 > vw
   const flipY = y + mh + 8 > vh
-  menu.style.left = (flipX ? Math.max(4, x - mw) : Math.min(x, vw - mw - 4)) + 'px'
-  menu.style.top = (flipY ? Math.max(4, y - mh) : Math.min(y, vh - mh - 4)) + 'px'
+  menu.style.left = `${flipX ? Math.max(4, x - mw) : Math.min(x, vw - mw - 4)}px`
+  menu.style.top = `${flipY ? Math.max(4, y - mh) : Math.min(y, vh - mh - 4)}px`
   if (flipX) menu.classList.add('hs-mc-em-flip-x')
   if (flipY) menu.classList.add('hs-mc-em-flip-y')
   menu.style.visibility = ''
@@ -3510,7 +3510,7 @@ function chipToText(el) {
     let txt = el.dataset.emoteName || el.alt || ''
     const mods = el.dataset.hsWords || el.dataset.hsModWords
     if (mods) {
-      for (const w of mods.split(/\s+/).filter(Boolean)) txt += ' ' + w
+      for (const w of mods.split(/\s+/).filter(Boolean)) txt += ` ${w}`
       // Trailing space keeps modifier tokens parseable when merged into adjacent
       // text — "Kappa w!" + "4He" must become "Kappa w! 4He", not "Kappa w!4He".
       txt += ' '
@@ -3522,14 +3522,14 @@ function chipToText(el) {
     for (const child of el.children) {
       if (child.classList?.contains('hs-mc-emoji')) {
         const name = child.dataset.emojiName || child.getAttribute('data-emoji-name')
-        parts.push(name ? ':' + name + ':' : child.textContent || '')
+        parts.push(name ? `:${name}:` : child.textContent || '')
         continue
       }
       if (child.tagName !== 'IMG') continue
       let txt = child.dataset.emoteName || child.alt || ''
       const mods = child.dataset.hsWords || child.dataset.hsModWords
       if (mods) {
-        for (const w of mods.split(/\s+/).filter(Boolean)) txt += ' ' + w
+        for (const w of mods.split(/\s+/).filter(Boolean)) txt += ` ${w}`
         txt += ' '
       }
       parts.push(txt)
@@ -3538,11 +3538,11 @@ function chipToText(el) {
   }
   if (el.classList?.contains('hs-mc-user')) {
     const u = el.dataset.username || el.textContent || ''
-    return el.dataset.completionType === 'user-bare' ? '@' + u : u
+    return el.dataset.completionType === 'user-bare' ? `@${u}` : u
   }
   if (el.classList?.contains('hs-mc-emoji')) {
     const name = el.dataset.emojiName || el.getAttribute('data-emoji-name')
-    return name ? ':' + name + ':' : el.textContent || ''
+    return name ? `:${name}:` : el.textContent || ''
   }
   return null
 }
@@ -3795,7 +3795,7 @@ function unwrapStuckChips(inputEl, acceptWhitespace) {
       if (child.nodeType === Node.TEXT_NODE) imagifyValidWordsInTextNode(child)
     }
   }
-  if (changed && cursorTarget && cursorTarget.parentNode) {
+  if (changed && cursorTarget?.parentNode) {
     const sel = window.getSelection()
     if (sel) {
       const r = document.createRange()
@@ -3915,7 +3915,7 @@ function handleInputChange(e) {
           const span = document.createElement('span')
           span.className = 'hs-mc-emoji'
           span.textContent = emoji
-          span.title = ':' + match[1] + ':'
+          span.title = `:${match[1]}:`
           span.setAttribute('data-emoji-name', match[1])
           span.setAttribute('contenteditable', 'false') // atomic — caret can't enter
           const tail = text.slice(cursorOffset)
@@ -4013,7 +4013,7 @@ function handleInputChange(e) {
             // overlay name typed as prose stays text until Tab.
             if (!resolved) {
               const ov = lookupEmoteWithOverlay(word)
-              if (ov && ov.isOverlay) {
+              if (ov?.isOverlay) {
                 const bt = text.slice(0, cursor - match[0].length)
                 let stackable = false
                 if (bt.trim() === '') {
@@ -4225,7 +4225,7 @@ function tryOverlayOnZero(input) {
         const span = document.createElement('span')
         span.className = 'hs-mc-emoji'
         span.textContent = echar
-        span.title = ':' + ename + ':'
+        span.title = `:${ename}:`
         span.setAttribute('data-emoji-name', ename)
         span.setAttribute('contenteditable', 'false')
         overlayEl = span
@@ -4755,7 +4755,7 @@ function _getMergedAcEmotes() {
       ? activeTabEmotePools()
       : [channelEmoteCaches[currentTab] || channelEmoteCaches[getCurrentChannel()]].filter(Boolean)
   let poolsSig = ''
-  for (const p of acPools) poolsSig += (p?.size || 0) + ','
+  for (const p of acPools) poolsSig += `${p?.size || 0},`
   // The toggle rides in the signature: flipping it has to invalidate the memo,
   // otherwise suggestions keep serving the old pool until the next emote load.
   const acInventory = getSetting('suggestInventoryEmotes') !== false
@@ -4825,7 +4825,7 @@ function findEmoteMatches(search) {
       if (!color) _hsPrefetchList.push(bare)
       const recencyRank = recency.get(bare)
       if (bare.startsWith(searchLower)) {
-        matches.push({ name: '@' + username.replace(/^@/, ''), url: null, priority: 0, type: 'user', recencyRank })
+        matches.push({ name: `@${username.replace(/^@/, '')}`, url: null, priority: 0, type: 'user', recencyRank })
       }
     }
     if (_hsPrefetchList.length) {
@@ -4893,7 +4893,7 @@ function findEmoteMatches(search) {
       for (const [name, emote] of acEmotes) {
         if (emote.source === 'heatsync' && emote.state !== 'owned') continue
         const nl = name.toLowerCase()
-        const overlayName = name + '0'
+        const overlayName = `${name}0`
         if (seen.has(overlayName.toLowerCase())) continue
         const tier = tierByName.get(name) ?? 2
         if (nl === baseLower) {
@@ -5032,7 +5032,7 @@ function insertCompletionKeepOpen(match) {
   // Use saved positions from acState for consistent cycling
   const beforeWord = input.value.slice(0, acState.wordStart)
   const insertText = match.type === 'emoji' ? match.emoji : match.name
-  const newValue = beforeWord + insertText + ' ' + acState.afterText
+  const newValue = `${beforeWord + insertText} ${acState.afterText}`
 
   input.value = newValue
   pendingMessage = input.value
@@ -5336,7 +5336,7 @@ function insertCompletionWysiwyg(match) {
         existingEmote.classList.remove('hs-input-overlay')
         stack.parentNode.insertBefore(existingEmote, stack.nextSibling)
         // Insert a separator space so following typed text gets a word break
-        if (!existingEmote.nextSibling || existingEmote.nextSibling.textContent !== ' ') {
+        if (existingEmote.nextSibling?.textContent !== ' ') {
           existingEmote.parentNode.insertBefore(document.createTextNode(' '), existingEmote.nextSibling)
         }
         if (stack.children.length === 1) {
@@ -5396,7 +5396,7 @@ function insertCompletionWysiwyg(match) {
       if (space) placeCaretAfter(space, 1)
       else placeCaretAfter(span)
     } else {
-      const textNode = document.createTextNode(match.name + ' ')
+      const textNode = document.createTextNode(`${match.name} `)
       existingEmote.replaceWith(textNode)
       placeCaretAfter(textNode)
     }
@@ -5440,7 +5440,7 @@ function insertCompletionWysiwyg(match) {
       if (space) placeCaretAfter(space, 1)
       else placeCaretAfter(existingText)
     } else {
-      const textNode = document.createTextNode(match.name + ' ')
+      const textNode = document.createTextNode(`${match.name} `)
       existingText.replaceWith(textNode)
       placeCaretAfter(textNode)
     }
@@ -5494,7 +5494,7 @@ function insertCompletionWysiwyg(match) {
       if (space) placeCaretAfter(space, 1)
       else placeCaretAfter(span)
     } else {
-      const textNode = document.createTextNode(match.name + ' ')
+      const textNode = document.createTextNode(`${match.name} `)
       existingUser.replaceWith(textNode)
       placeCaretAfter(textNode)
     }
@@ -5568,7 +5568,7 @@ function insertCompletionWysiwyg(match) {
     // trailing spaces collapse to 0 width and look invisible. Backspace
     // handler still consumes this in one keystroke, so it behaves like a
     // typed space (1st press eats it, 2nd press deletes the chip).
-    const space = document.createTextNode(' ' + after)
+    const space = document.createTextNode(` ${after}`)
     const parent = textNode.parentNode
     const nextSibling = textNode.nextSibling
     if (nextSibling) {
@@ -5660,7 +5660,7 @@ function insertCompletionWysiwyg(match) {
     insertElement(span)
   } else {
     // Plain text completion (fallback)
-    const newText = before + match.name + ' ' + after
+    const newText = `${before + match.name} ${after}`
     textNode.textContent = newText
     const newPos = before.length + match.name.length + 1
     range.setStart(textNode, newPos)
@@ -5739,7 +5739,7 @@ function showCycleTooltip() {
   const dot = () => mkSpan(' · ', 'color:#555;')
   tt.replaceChildren()
   tt.appendChild(mkSpan(`${acState.index + 1}/${acState.matches.length}`, 'color:#888;'))
-  tt.appendChild(mkSpan(' ' + (m.type === 'emoji' ? `${m.emoji} ${m.name}` : m.name), 'color:#fff;'))
+  tt.appendChild(mkSpan(` ${m.type === 'emoji' ? `${m.emoji} ${m.name}` : m.name}`, 'color:#fff;'))
   if (meta.cat) {
     tt.appendChild(dot())
     tt.appendChild(mkSpan(meta.cat, 'color:#9e9e9e;'))
@@ -5833,7 +5833,7 @@ function getTriggerContext(input, triggerChar, minLen) {
         ? _hsTriggerContextRe.bareWord
         : triggerChar === '@' && minLen === 0
           ? _hsTriggerContextRe.mention
-          : new RegExp(triggerChar + '([a-z0-9_]{' + minLen + ',})$', 'i')
+          : new RegExp(`${triggerChar}([a-z0-9_]{${minLen},})$`, 'i')
   if (wysiwygEnabled) {
     const sel = window.getSelection()
     if (!sel?.rangeCount) return null
@@ -5879,7 +5879,7 @@ function showEmojiDropdown(matches, selectedIndex) {
   dd.textContent = ''
   matches.forEach((entry, i) => {
     const row = document.createElement('div')
-    row.className = 'hs-mc-emoji-row' + (i === selectedIndex ? ' selected' : '')
+    row.className = `hs-mc-emoji-row${i === selectedIndex ? ' selected' : ''}`
     row.dataset.index = i
 
     if (entry.type === 'emoji') {
@@ -5898,7 +5898,7 @@ function showEmojiDropdown(matches, selectedIndex) {
 
     const nameSpan = document.createElement('span')
     nameSpan.className = 'hs-mc-emoji-name'
-    nameSpan.textContent = entry.type === 'emoji' ? ':' + entry.name + ':' : entry.name
+    nameSpan.textContent = entry.type === 'emoji' ? `:${entry.name}:` : entry.name
     row.appendChild(nameSpan)
 
     row.addEventListener('mousedown', (e) => {
@@ -5940,7 +5940,7 @@ function insertEmojiFromDropdown(match) {
   acState.active = true
   // Bare-word picks hand Tab-cycle the bare query — prefixing ':' would make
   // the next Tab re-search emoji shortcodes instead of the word they typed.
-  acState.search = emojiAcState.bare ? emojiAcState.query : ':' + emojiAcState.query
+  acState.search = emojiAcState.bare ? emojiAcState.query : `:${emojiAcState.query}`
   acState.remoteDone = false
   acState.remotePending = false
 
@@ -5962,7 +5962,7 @@ function checkEmojiAutocomplete() {
   // compareAcMatches comparator) — own inventory, channel emotes, cached
   // 7tv/bttv/ffz sets, and unicode emoji. Local-cache reads only, so this is
   // safe to run on every debounced keystroke (no network in the hot path).
-  const matches = findEmoteMatches(':' + ctx.query).slice(0, EMOJI_DROPDOWN_MAX)
+  const matches = findEmoteMatches(`:${ctx.query}`).slice(0, EMOJI_DROPDOWN_MAX)
   if (matches.length === 0) {
     if (emojiAcState.active) hideEmojiDropdown()
     return
@@ -6025,7 +6025,7 @@ function showMentionDropdown(matches, selectedIndex) {
   dd.textContent = ''
   matches.forEach((entry, i) => {
     const row = document.createElement('div')
-    row.className = 'hs-mc-emoji-row' + (i === selectedIndex ? ' selected' : '')
+    row.className = `hs-mc-emoji-row${i === selectedIndex ? ' selected' : ''}`
     row.dataset.index = i
 
     const nameSpan = document.createElement('span')
@@ -6069,7 +6069,7 @@ function insertMentionFromDropdown(match) {
   acState.index = mentionAcState.matches.indexOf(match)
   if (acState.index === -1) acState.index = 0
   acState.active = true
-  acState.search = '@' + mentionAcState.query
+  acState.search = `@${mentionAcState.query}`
   acState.remoteDone = false
   acState.remotePending = false
 
@@ -6090,7 +6090,7 @@ function checkMentionAutocomplete() {
   // findEmoteMatches('@'+query) already ranks current-channel recent
   // chatters (getRecencyMap) ahead of the rest of usernameCache — the same
   // comparator Tab-cycle uses for an explicit @-search.
-  const matches = findEmoteMatches('@' + ctx.query).slice(0, MENTION_DROPDOWN_MAX)
+  const matches = findEmoteMatches(`@${ctx.query}`).slice(0, MENTION_DROPDOWN_MAX)
   if (matches.length === 0) {
     if (mentionAcState.active) hideMentionDropdown()
     return
@@ -6114,7 +6114,7 @@ function setReplyState(state) {
   const indicator = document.createElement('div')
   indicator.id = 'hs-mc-reply-indicator'
   const label = document.createElement('span')
-  label.textContent = '\u21a9 ' + t('mc_input_replying_to', [String(state.user || '').replace(/^@+/, '')])
+  label.textContent = `\u21a9 ${t('mc_input_replying_to', [String(state.user || '').replace(/^@+/, '')])}`
   const cancel = document.createElement('button')
   cancel.id = 'hs-mc-reply-cancel'
   cancel.textContent = '✕'
@@ -6254,14 +6254,14 @@ function showSlashDropdown(matches, idx) {
   dd.textContent = ''
   matches.forEach((c, i) => {
     const row = document.createElement('div')
-    row.className = 'hs-mc-slash-row' + (i === idx ? ' selected' : '')
+    row.className = `hs-mc-slash-row${i === idx ? ' selected' : ''}`
     row.dataset.index = i
     const name = document.createElement('span')
     name.className = 'hs-mc-slash-name'
-    name.textContent = '/' + c.cmd
+    name.textContent = `/${c.cmd}`
     const args = document.createElement('span')
     args.className = 'hs-mc-slash-args'
-    args.textContent = c.args ? ' ' + c.args : ''
+    args.textContent = c.args ? ` ${c.args}` : ''
     const desc = document.createElement('span')
     desc.className = 'hs-mc-slash-desc'
     desc.textContent = c.desc
@@ -6288,7 +6288,7 @@ function hideSlashDropdown() {
 function insertSlashCommand(c) {
   const input = document.getElementById('hs-mc-input')
   if (!input) return
-  const inserted = '/' + c.cmd + (c.args ? ' ' : '')
+  const inserted = `/${c.cmd}${c.args ? ' ' : ''}`
   if (wysiwygEnabled) {
     input.textContent = inserted
     const range = document.createRange()
@@ -6582,15 +6582,15 @@ async function handleSlashCommand(text, input) {
   }
 
   if (cmd === 'shrug') {
-    return (rest.trim() ? rest.trim() + ' ' : '') + '¯\\_(ツ)_/¯'
+    return `${rest.trim() ? `${rest.trim()} ` : ''}¯\\_(ツ)_/¯`
   }
 
   if (cmd === 'tableflip') {
-    return (rest.trim() ? rest.trim() + ' ' : '') + '(╯°□°)╯︵ ┻━┻'
+    return `${rest.trim() ? `${rest.trim()} ` : ''}(╯°□°)╯︵ ┻━┻`
   }
 
   if (cmd === 'unflip') {
-    return (rest.trim() ? rest.trim() + ' ' : '') + '┬─┬ノ( ゜-゜ノ)'
+    return `${rest.trim() ? `${rest.trim()} ` : ''}┬─┬ノ( ゜-゜ノ)`
   }
 
   if (cmd === 'lclear') {
@@ -6751,7 +6751,7 @@ async function handleSlashCommand(text, input) {
       const P = (tags, login, text) =>
         `@${tags};id=${U()};tmi-sent-ts=${TS} :${login}!${login}@${login}.tmi.twitch.tv PRIVMSG #${ch} :${text}`
       const UN = (tags, text) =>
-        `@${tags};id=${U()};tmi-sent-ts=${TS} :tmi.twitch.tv USERNOTICE #${ch}${text ? ' :' + text : ''}`
+        `@${tags};id=${U()};tmi-sent-ts=${TS} :tmi.twitch.tv USERNOTICE #${ch}${text ? ` :${text}` : ''}`
       const L = [
         P(
           'badges=;color=#00FF7F;display-name=SharedGuy;room-id=111;source-room-id=222;source-id=x;user-id=901',
@@ -7441,7 +7441,7 @@ async function handleSlashCommand(text, input) {
       showToast(t('mc_input_usage_nuke'), 'error')
       return true
     }
-    const windowSec = Math.min(NUKE_MAX_WINDOW, nm && nm[2] ? Math.max(1, parseInt(nm[2], 10)) : 30)
+    const windowSec = Math.min(NUKE_MAX_WINDOW, nm?.[2] ? Math.max(1, parseInt(nm[2], 10)) : 30)
     const since = Date.now() - windowSec * 1000
     const needle = term.toLowerCase()
     // Collect deletable matches from both platform buffers, newest dropped first
@@ -7662,7 +7662,7 @@ async function showChatStatusPanel(channel) {
   wrap.className = 'hs-mc-status-overlay'
   const loading = document.createElement('div')
   loading.className = 'hs-mc-status-loading'
-  loading.textContent = 'fetching #' + channel + '…'
+  loading.textContent = `fetching #${channel}…`
   wrap.appendChild(loading)
   wrap.addEventListener('click', () => wrap.remove())
   document.body.appendChild(wrap)
@@ -7674,7 +7674,7 @@ async function showChatStatusPanel(channel) {
   }
   if (!document.body.contains(wrap)) return
   if (!panel) {
-    loading.textContent = 'could not fetch #' + channel + ' (offline or not on twitch?)'
+    loading.textContent = `could not fetch #${channel} (offline or not on twitch?)`
     setTimeout(() => wrap?.remove(), 5000)
     return
   }
@@ -7785,7 +7785,7 @@ function autoAddInputEmotes(text) {
     if (!rec) continue
     if (typeof blockedEmoteNames !== 'undefined' && blockedEmoteNames.has(word)) continue
     if (typeof inventoryEmotes !== 'undefined' && inventoryEmotes.has(word)) continue
-    if (typeof pendingEmoteOps !== 'undefined' && pendingEmoteOps.has(word)) continue
+    if (pendingEmoteOps?.has(word)) continue
     // Skip heatsync curated globals — server rejects with "global emotes cannot
     // be added to personal inventory" and they already render for everyone, so
     // the POST is wasted and the failure toast misleads ("failed to add Wave"
@@ -8281,7 +8281,7 @@ async function sendMessage() {
       .catch((err) => {
         // A leg rejected (context invalidation, throw) rather than returning an
         // error string — without this the pending '•' hangs forever.
-        log('dual-send rejected: ' + ((err && err.message) || err))
+        log(`dual-send rejected: ${err?.message || err}`)
         input.style.borderColor = 'var(--hs-danger)'
         setTimeout(() => {
           input.style.borderColor = ''
@@ -8311,7 +8311,7 @@ async function sendMessage() {
         }
       })
       .catch((err) => {
-        log('yt-only send rejected: ' + ((err && err.message) || err))
+        log(`yt-only send rejected: ${err?.message || err}`)
         markPendingFailed(_synthId, 'send_failed')
       })
     return
@@ -8365,7 +8365,7 @@ async function sendMessage() {
       }
     })
     .catch((err) => {
-      log('twitch send rejected: ' + ((err && err.message) || err))
+      log(`twitch send rejected: ${err?.message || err}`)
       input.style.borderColor = 'var(--hs-danger)'
       setTimeout(() => {
         input.style.borderColor = ''
@@ -8402,7 +8402,7 @@ async function sendYoutubeMessage(text, videoId) {
     // chat_restricted carries YT's human reason ("Subscribers-only mode") —
     // ride it on the code string so the toast can show WHY instead of a
     // generic failure. youtubeSendErrorMessage splits it back off.
-    if (resp?.error && resp?.reason) return resp.error + ':' + resp.reason
+    if (resp?.error && resp?.reason) return `${resp.error}:${resp.reason}`
     return resp?.error || 'send_failed'
   } catch (e) {
     log('YouTube send error:', e.message)
@@ -8515,11 +8515,11 @@ async function handleMediaUpload(file) {
   showInputBar()
   input.focus()
   if (input.isContentEditable) {
-    if (!document.execCommand('insertText', false, url + ' ')) {
-      input.textContent = (input.textContent || '') + url + ' '
+    if (!document.execCommand('insertText', false, `${url} `)) {
+      input.textContent = `${(input.textContent || '') + url} `
     }
   } else {
-    input.value = (input.value || '') + url + ' '
+    input.value = `${(input.value || '') + url} `
     input.dispatchEvent(new Event('input', { bubbles: true }))
   }
 }

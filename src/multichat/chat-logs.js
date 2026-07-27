@@ -200,7 +200,7 @@ async function searchChatLogs(query) {
 }
 
 function exportChatLogs(format) {
-  if (!activeChatLogs || !activeChatLogs.rows.length) return
+  if (!activeChatLogs?.rows.length) return
   const { username, channel, rows } = activeChatLogs
   let body, mime, ext
   if (format === 'json') {
@@ -225,7 +225,7 @@ function exportChatLogs(format) {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = `chatlogs-${username}${channel ? '-' + channel : ''}.${ext}`
+  a.download = `chatlogs-${username}${channel ? `-${channel}` : ''}.${ext}`
   document.body.appendChild(a)
   a.click()
   a.remove()
@@ -293,7 +293,7 @@ function renderChatLogsView() {
     scopeBtn.title =
       scope === 'channel'
         ? `currently scoped to #${channel} — click to see all channels`
-        : 'currently showing all channels — click to scope to #' + channel
+        : `currently showing all channels — click to scope to #${channel}`
     scopeBtn.addEventListener('click', async () => {
       const newScope = scope === 'channel' ? 'all' : 'channel'
       activeChatLogs.scope = newScope
@@ -363,7 +363,7 @@ function renderChatLogsView() {
     } else {
       empty.textContent = query
         ? `no matches for "${query}"`
-        : `no archived messages from ${username}${channel ? ' in #' + channel : ''} yet`
+        : `no archived messages from ${username}${channel ? ` in #${channel}` : ''} yet`
     }
     list.appendChild(empty)
   } else {

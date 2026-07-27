@@ -217,15 +217,14 @@ async function mcSearch7tvApi(q, signal, opts) {
   })
   if (!resp.ok) throw new Error(`7tv ${resp.status}`)
   const data = await resp.json()
-  const items =
-    (data && data.data && data.data.emotes && data.data.emotes.search && data.data.emotes.search.items) || []
+  const items = data?.data?.emotes?.search?.items || []
   return items.map((e) => ({
     name: e.defaultName,
     url: `https://cdn.7tv.app/emote/${e.id}/1x.avif`,
     provider: '7tv',
     id: e.id,
-    animated: !!(e.flags && e.flags.animated),
-    zeroWidth: !!(e.flags && e.flags.defaultZeroWidth),
+    animated: !!e.flags?.animated,
+    zeroWidth: !!e.flags?.defaultZeroWidth,
   }))
 }
 
@@ -286,7 +285,7 @@ async function mcSearchHsApi(q, signal, opts) {
   })
   if (!r.ok) throw new Error(`hs ${r.status}`)
   const data = await r.json()
-  const items = (data && data.results && Array.isArray(data.results.hs) && data.results.hs) || []
+  const items = (data?.results && Array.isArray(data.results.hs) && data.results.hs) || []
   return items.map((e) => ({
     name: e.name,
     url: e.url, // already an absolute cdn.heatsync.org url
@@ -436,9 +435,9 @@ function staticEmoteSrc(url) {
   // Kick: extensionless /fullsize URLs have no CDN static variant — proxy
   // them (files.kick.com is allowlisted server-side; static pngs pass through)
   if (/files\.kick\.com\/emotes\//i.test(url))
-    return 'https://heatsync.org/api/emote-proxy?url=' + encodeURIComponent(url) + '&static=1'
+    return `https://heatsync.org/api/emote-proxy?url=${encodeURIComponent(url)}&static=1`
   if (!/\.(gif|webp)(\?|$)/i.test(url)) return url
-  return 'https://heatsync.org/api/emote-proxy?url=' + encodeURIComponent(url) + '&static=1'
+  return `https://heatsync.org/api/emote-proxy?url=${encodeURIComponent(url)}&static=1`
 }
 
 // Upgrade emote URL to match current emote size setting.
@@ -758,11 +757,11 @@ function renderEmoteSections(sections, emptyMsg = t('mc_emote_no_loaded'), opts)
     // Cold-start: personal + channel + global caches are all empty. Not the
     // "no search matches" case (that passes opts.noHeaders + its own emptyMsg)
     // — point the user at the one-click channel import instead of a dead end.
-    const channel = !(opts && opts.noHeaders) && getCurrentChannel()
+    const channel = !opts?.noHeaders && getCurrentChannel()
     if (channel) return renderEmoteColdStart(channel)
     return `<div class="hs-mc-picker-empty">${escapeHtml(emptyMsg)}</div>`
   }
-  const noHeaders = !!(opts && opts.noHeaders)
+  const noHeaders = !!opts?.noHeaders
   return sections
     .map((s, si) => {
       const chunks = []
@@ -771,7 +770,7 @@ function renderEmoteSections(sections, emptyMsg = t('mc_emote_no_loaded'), opts)
       }
       const chunksHtml = chunks
         .map((c, ci) => {
-          const key = si + '-' + ci
+          const key = `${si}-${ci}`
           _chunkStore.set(key, c)
           const h = estimateChunkHeight(c.length)
           return (
@@ -950,7 +949,7 @@ function showEmotePicker(tab = null) {
     picker.classList.add('visible')
     const bar = document.getElementById('hs-mc-inputbar')
     const barHeight = bar && inputBarVisible ? bar.offsetHeight : 0
-    picker.style.bottom = barHeight + 'px'
+    picker.style.bottom = `${barHeight}px`
     adjustOverlayForPicker(true)
     // Now that the picker has layout, fill any chunks the IntersectionObserver
     // never got to (first open in a hidden/occluded tab — IO doesn't fire there).
@@ -1006,7 +1005,7 @@ function showEmotePicker(tab = null) {
     chipBar.title = 'toggle which providers to search'
     for (const src of MC_REMOTE_SOURCES) {
       const btn = document.createElement('button')
-      btn.className = 'hs-mc-src-chip' + (mcPickerSources.has(src) ? ' active' : '')
+      btn.className = `hs-mc-src-chip${mcPickerSources.has(src) ? ' active' : ''}`
       btn.dataset.src = src
       btn.textContent = src
       btn.type = 'button'
@@ -1016,7 +1015,7 @@ function showEmotePicker(tab = null) {
     // accent marks it as a HeatSync filter, distinct from the brand-colored
     // provider chips.
     const exactBtn = document.createElement('button')
-    exactBtn.className = 'hs-mc-exact-chip' + (mcExactMatch ? ' active' : '')
+    exactBtn.className = `hs-mc-exact-chip${mcExactMatch ? ' active' : ''}`
     exactBtn.textContent = t('mc_emote_exact')
     exactBtn.title = 'exact name match only'
     exactBtn.type = 'button'
@@ -1179,7 +1178,7 @@ function showEmotePicker(tab = null) {
         const before = input.value.slice(0, pos)
         const after = input.value.slice(pos)
         const space = before.length > 0 && !before.endsWith(' ') ? ' ' : ''
-        input.value = before + space + name + ' ' + after
+        input.value = `${before + space + name} ${after}`
         pendingMessage = input.value
       }
       input.focus()
@@ -1215,7 +1214,7 @@ function showEmotePicker(tab = null) {
   // Position picker flush above input bar (or at bottom if hidden)
   const bar = document.getElementById('hs-mc-inputbar')
   const barHeight = bar && inputBarVisible ? bar.offsetHeight : 0
-  picker.style.bottom = barHeight + 'px'
+  picker.style.bottom = `${barHeight}px`
   adjustOverlayForPicker(true)
   // Picker now has layout — force-fill the visible chunks so a first open in a
   // hidden/occluded tab (where the IntersectionObserver never fires) isn't blank.
@@ -1280,7 +1279,7 @@ function adjustOverlayForPicker(open) {
   const barBase = hasBottomTabs ? 90 : 52
   const pickerEl = document.getElementById('hs-mc-emote-picker')
   const pickerHeight = open && pickerEl ? pickerEl.offsetHeight : 0
-  overlay.style.bottom = barBase + pickerHeight + 'px'
+  overlay.style.bottom = `${barBase + pickerHeight}px`
 }
 
 // Blocked emotes: stored by HASH (matches background.js/server)
@@ -1480,7 +1479,7 @@ function createInputEmoteImg(emoteName) {
   img.dataset.source = _resolvedSource
   // Owned shadows global/channel — surface what the user actually controls.
   img.dataset.state = inventoryEmotes.has(emoteName) ? 'owned' : emote.state || 'global'
-  img.classList.add('hs-state-' + img.dataset.state)
+  img.classList.add(`hs-state-${img.dataset.state}`)
   if (emote.nsfw) img.classList.add('hs-state-nsfw') // v1.6 cyan dashed
   if (isOverlay) img.dataset.zeroWidth = '1'
   // Broken-image recovery — shared helper in input.js (cache-bust retry then
@@ -1672,8 +1671,8 @@ function pasteEmoteToInput(emoteName, modWords) {
       // Fallback: emote not in cache, insert as text
       const text = input.textContent || ''
       const space = text.length > 0 && !text.endsWith(' ') ? ' ' : ''
-      const modTail = modWords ? ' ' + modWords.trim() : ''
-      input.textContent = text + space + emoteName + modTail + ' '
+      const modTail = modWords ? ` ${modWords.trim()}` : ''
+      input.textContent = `${text + space + emoteName + modTail} `
       cursorToEnd(input)
     }
     pendingMessage = getInputText()
@@ -1682,8 +1681,8 @@ function pasteEmoteToInput(emoteName, modWords) {
     const before = input.value.slice(0, pos)
     const after = input.value.slice(pos)
     const space = before.length > 0 && !before.endsWith(' ') ? ' ' : ''
-    const modTail = modWords ? ' ' + modWords.trim() : ''
-    const insert = emoteName + modTail + ' '
+    const modTail = modWords ? ` ${modWords.trim()}` : ''
+    const insert = `${emoteName + modTail} `
     input.value = before + space + insert + after
     pendingMessage = input.value
     input.selectionStart = input.selectionEnd = pos + space.length + insert.length
@@ -2511,9 +2510,9 @@ function replaceSenderEmotes(senderKey, nameToEmote) {
     // escapeHtml'd at render — never scheme-checked. Reject non-http(s) so a
     // crafted javascript:/data:/blob: url can't become an <img src> beacon or
     // feed the data-emote-url window.open sink on every viewer who renders it.
-    if (data && data.url) {
+    if (data?.url) {
       let u = String(data.url)
-      if (u.startsWith('//')) u = 'https:' + u
+      if (u.startsWith('//')) u = `https:${u}`
       if (!safeUrl(u)) {
         if (inner.delete(name)) {
           changed = true
@@ -2600,7 +2599,7 @@ function activeTabEmotePools() {
   const push = (k) => {
     if (!k) return
     const m = channelEmoteCaches[k] || channelEmoteCaches[String(k).toLowerCase()]
-    if (m && m.size && !seen.has(m)) {
+    if (m?.size && !seen.has(m)) {
       seen.add(m)
       pools.push(m)
     }
@@ -2653,7 +2652,7 @@ function kickifyEmoteText(text) {
     // Never touch a token the user (or kick's own composer) already wrote.
     if (word.startsWith('[emote:')) return word
     const e = typeof lookupEmoteRenderOrder === 'function' ? lookupEmoteRenderOrder(word) : null
-    if (!e || e.source !== 'kick' || !e.url) return word
+    if (e?.source !== 'kick' || !e.url) return word
     const m = KICK_EMOTE_ID_RE.exec(e.url)
     return m ? `[emote:${m[1]}:${word}]` : word
   })
@@ -2864,7 +2863,7 @@ function _buildChannelEmoteCache(ch, emotes, platform) {
   // set, so this is housekeeping, but it keeps the registry honest.
   try {
     const sreg = window._hsStaleEmotes
-    const sm = sreg && sreg.get((ch || '').toLowerCase())
+    const sm = sreg?.get((ch || '').toLowerCase())
     if (sm) {
       for (const name of [...sm.keys()]) {
         if (chCache.has(name)) sm.delete(name)
@@ -2907,7 +2906,7 @@ async function loadEmotes() {
       const rf = stored.hs_removed_emote_fallback
       if (rf && typeof rf === 'object') {
         for (const [name, e] of Object.entries(rf)) {
-          if (e && e.url)
+          if (e?.url)
             removedEmoteFallback.set(name, {
               url: e.url,
               source: e.source || 'heatsync',
@@ -3181,7 +3180,7 @@ function _hsMcHexToHue(h) {
   return hsModHexToHue(h)
 }
 function _hsMcApplyMods(html, mods, hue) {
-  if ((!mods || !mods.length) && hue == null) return html
+  if (!mods?.length && hue == null) return html
   // Stamp the ORDERED effect list on the wrapper so the hover tooltip can show
   // what was applied and in what sequence. Only the composed transform/filter
   // survives otherwise, which can't be read back into "wide, then cursed".
@@ -3271,7 +3270,7 @@ function hsSnapEmoteBox(img) {
   // Input-composer chips are bare IMGs with no wrapper/stack, but they sit
   // inline with typed text and so contribute the same fractional advance that
   // smeared post-emote text in chat rows.
-  if (!img || !img.classList) return
+  if (!img?.classList) return
   if (!img.classList.contains('hs-mc-emote') && !img.classList.contains('hs-input-emote')) return
   _hsSnapQueue.add(img)
   if (_hsSnapScheduled) return
@@ -3288,7 +3287,7 @@ function hsSnapEmoteBox(img) {
         im.closest('.hs-mc-emote-stack') ||
         im.closest('.hs-mc-emote-wrapper') ||
         (im.classList.contains('hs-input-emote') ? im : null)
-      if (box && box.isConnected) items.push({ box, im })
+      if (box?.isConnected) items.push({ box, im })
     }
     _hsSnapQueue.clear()
     // Read every width first, then write — one layout pass per frame. Use
@@ -3311,7 +3310,7 @@ function hsSnapEmoteBox(img) {
       }
       // A modifier scale (w!/ffzW/h!) must reserve space sized to the emote's
       // REAL untransformed width — capture its own wrapper's box now, apply below.
-      if (mw && mw.dataset.hsModSx) {
+      if (mw?.dataset.hsModSx) {
         it.modWrap = mw
         it.modW = mw.offsetWidth
         it.modH = mw.offsetHeight
@@ -3322,7 +3321,7 @@ function hsSnapEmoteBox(img) {
       // now would pin a width from a transitional (or not-yet-decoded) asset under
       // the stable emote-url key, and a later render would apply that wrong width.
       if (!it.w || !it.im.complete || !it.im.naturalWidth) continue
-      const px = it.w + 'px'
+      const px = `${it.w}px`
       if (it.box.style.width !== px) it.box.style.width = px
       // Accurate modifier space reservation: the static margins in
       // hsModBuildStyleAttr assume a 28px base, so a natively-wide emote scaled
@@ -3334,12 +3333,12 @@ function hsSnapEmoteBox(img) {
         const sx = Math.abs(parseFloat(it.modWrap.dataset.hsModSx) || 1)
         const sy = Math.abs(parseFloat(it.modWrap.dataset.hsModSy) || 1)
         if (sx > 1 && it.modW) {
-          const m = Math.round((it.modW * (sx - 1)) / 2) + 'px'
+          const m = `${Math.round((it.modW * (sx - 1)) / 2)}px`
           it.modWrap.style.setProperty('margin-left', m, 'important')
           it.modWrap.style.setProperty('margin-right', m, 'important')
         }
         if (sy > 1 && it.modH) {
-          const m = Math.round((it.modH * (sy - 1)) / 2) + 'px'
+          const m = `${Math.round((it.modH * (sy - 1)) / 2)}px`
           it.modWrap.style.setProperty('margin-top', m, 'important')
           it.modWrap.style.setProperty('margin-bottom', m, 'important')
         }
@@ -3528,11 +3527,10 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
   let pendingMods = []
   let pendingHue = null
 
-  const _lastItem = () =>
-    pendingStack && pendingStack.items.length ? pendingStack.items[pendingStack.items.length - 1] : null
+  const _lastItem = () => (pendingStack?.items.length ? pendingStack.items[pendingStack.items.length - 1] : null)
 
   const _flushStackToResult = () => {
-    if (!pendingStack || !pendingStack.items.length) {
+    if (!pendingStack?.items.length) {
       pendingStack = null
       return
     }
@@ -3826,7 +3824,7 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
         const meta = chKey && window._hsStaleEmotes ? window._hsStaleEmotes.get(chKey)?.get(word) : null
         if (meta) {
           const liveSet = channelEmoteCaches[chKey] || channelEmoteCaches[channel]
-          const liveNow = !!(liveSet && liveSet.has(word))
+          const liveNow = !!liveSet?.has(word)
           // Identity: only ghost the emote that was actually removed. Trust the
           // hash when both sides have one; else require the same provider —
           // removal events only cover 7TV channel emotes, so a same-name global

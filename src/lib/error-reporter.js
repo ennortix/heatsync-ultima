@@ -205,7 +205,7 @@
       const p = chrome?.runtime?.id && chrome?.runtime?.sendMessage?.({ type: 'report_error', errors: batch })
       if (p && typeof p.then === 'function') {
         p.then((resp) => {
-          if (!resp || resp.ok !== true) _writeDirect(batch)
+          if (resp?.ok !== true) _writeDirect(batch)
         }).catch(() => _writeDirect(batch))
         return
       }
@@ -253,7 +253,7 @@
   // never trigger a spurious reload.
   function _ctxDead() {
     try {
-      return !(chrome && chrome.runtime && chrome.runtime.id)
+      return !chrome?.runtime?.id
     } catch (_) {
       return true
     }

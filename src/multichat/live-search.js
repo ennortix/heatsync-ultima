@@ -18,7 +18,7 @@ function _lsIsDangerous(p) {
 // tight time budget. Catches catastrophic-backtracking shapes the static heuristic
 // didn't anticipate (e.g. /a{100}b/). Kept local for test isolation (mirrors automod).
 const _LS_REDOS_PROBES = ['a'.repeat(28), '0'.repeat(28), 'ab'.repeat(14), 'a1'.repeat(14), ' '.repeat(28)].map(
-  (s) => s + ' !',
+  (s) => `${s} !`,
 )
 function _lsTripsCatastrophicBacktracking(re) {
   try {

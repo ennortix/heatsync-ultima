@@ -122,7 +122,7 @@ function watchTwitchPersistentPlayer() {
       return
     }
     _ttvPpDetachObs = new MutationObserver(() => {
-      if (pp && pp.isConnected) return
+      if (pp?.isConnected) return
       try {
         cleanup.untrackObserver(_ttvPpDetachObs)
       } catch (_) {}
@@ -140,7 +140,7 @@ function watchTwitchPersistentPlayer() {
       } catch (_) {}
     }
     _ttvPpObserver = new MutationObserver(() => {
-      if (_ttvPpLastSeen && _ttvPpLastSeen.isConnected) {
+      if (_ttvPpLastSeen?.isConnected) {
         try {
           cleanup.untrackObserver(_ttvPpObserver)
         } catch (_) {}
@@ -179,7 +179,7 @@ function updateTwitchSideNavWidth() {
   const next = w && w > 0 ? Math.round(w) : TWITCH_SIDE_NAV_WIDTH
   if (next === _twitchSideNavW) return
   _twitchSideNavW = next
-  document.documentElement.style.setProperty('--hs-twitch-sidenav-w', next + 'px')
+  document.documentElement.style.setProperty('--hs-twitch-sidenav-w', `${next}px`)
   if (chatPosition === 'left') {
     try {
       applyPlatformPositionOverrides()
@@ -206,7 +206,7 @@ function updateTwitchTopNavHeight() {
   }
   if (h === _twitchTopNavH) return
   _twitchTopNavH = h
-  document.documentElement.style.setProperty('--hs-twitch-topnav-h', h + 'px')
+  document.documentElement.style.setProperty('--hs-twitch-topnav-h', `${h}px`)
   if (chatPosition === 'left' || chatPosition === 'top') {
     try {
       applyPlatformPositionOverrides()
@@ -216,7 +216,7 @@ function updateTwitchTopNavHeight() {
 
 function setupTwitchTopNavObserver() {
   if (hostPlatform !== 'twitch') return
-  document.documentElement.style.setProperty('--hs-twitch-topnav-h', _twitchTopNavH + 'px')
+  document.documentElement.style.setProperty('--hs-twitch-topnav-h', `${_twitchTopNavH}px`)
   if (_twitchTopNavObs) {
     try {
       _twitchTopNavObs.disconnect()
@@ -271,7 +271,7 @@ function softTwitchNav(prevLiveCh) {
   // native chat-shell children that paint during Twitch's teardown/remount.
   document.body.classList.add('hs-mc-navigating')
   // Step 1 — detach from doomed chat-shell ahead of twitch's teardown.
-  if (container && container.parentElement && container.parentElement !== document.body) {
+  if (container?.parentElement && container.parentElement !== document.body) {
     document.body.appendChild(container)
   }
   // Step 2 — flip CSS state to match the new URL's mount surface.
@@ -359,7 +359,7 @@ function softTwitchNav(prevLiveCh) {
           setNativeChatHidden(true)
         } catch (_) {}
     })
-    const target = document.querySelector('.chat-shell, ' + CONFIG.SELECTORS.TWITCH_CHAT_SHELL)
+    const target = document.querySelector(`.chat-shell, ${CONFIG.SELECTORS.TWITCH_CHAT_SHELL}`)
     if (target) {
       reHide.observe(target, { childList: true })
       cleanup.trackObserver(reHide)

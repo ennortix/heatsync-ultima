@@ -15,7 +15,7 @@ function getKickSidebarWidth() {
 }
 
 function syncKickSidebarVar() {
-  document.documentElement.style.setProperty('--hs-kick-sidebar-w', getKickSidebarWidth() + 'px')
+  document.documentElement.style.setProperty('--hs-kick-sidebar-w', `${getKickSidebarWidth()}px`)
 }
 
 /**
@@ -25,14 +25,14 @@ function applyKickChatWidth() {
   const chatroom = document.getElementById('channel-chatroom')
   if (!chatroom) return
   chatWidth = Math.min(MAX_CHAT_WIDTH, Math.max(MIN_CHAT_WIDTH, chatWidth))
-  document.documentElement.style.setProperty('--hs-kick-chat-width', chatWidth + 'px')
-  document.documentElement.style.setProperty('--chat-width', chatWidth + 'px')
+  document.documentElement.style.setProperty('--hs-kick-chat-width', `${chatWidth}px`)
+  document.documentElement.style.setProperty('--chat-width', `${chatWidth}px`)
   syncKickSidebarVar()
   // C button took chat off the right edge — chatroom is hidden via CSS,
   // skip restoring its width (would un-hide it visually as the shell still
   // claims layout when display is intercepted by the cascade).
   if (chatPosition && chatPosition !== 'right') return
-  chatroom.style.setProperty('width', chatWidth + 'px', 'important')
+  chatroom.style.setProperty('width', `${chatWidth}px`, 'important')
 }
 
 /**
@@ -64,7 +64,7 @@ function setupKickResizeHandle() {
     if (pendingWidth === lastGhostWidth) return
     lastGhostWidth = pendingWidth
     chatWidth = pendingWidth
-    if (ghost) ghost.style.width = pendingWidth + 'px'
+    if (ghost) ghost.style.width = `${pendingWidth}px`
   }
 
   handle.addEventListener(
@@ -203,12 +203,12 @@ function updateKickTopNavHeight() {
   }
   if (h === _kickTopNavH) return
   _kickTopNavH = h
-  document.documentElement.style.setProperty('--hs-kick-topnav-h', h + 'px')
+  document.documentElement.style.setProperty('--hs-kick-topnav-h', `${h}px`)
 }
 
 function setupKickTopNavObserver() {
   if (!isKick) return
-  document.documentElement.style.setProperty('--hs-kick-topnav-h', _kickTopNavH + 'px')
+  document.documentElement.style.setProperty('--hs-kick-topnav-h', `${_kickTopNavH}px`)
   if (_kickTopNavObs) {
     try {
       _kickTopNavObs.disconnect()

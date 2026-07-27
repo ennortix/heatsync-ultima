@@ -126,7 +126,7 @@ function setupYouTubeResizeHandle() {
     if (pendingWidth === lastGhostWidth) return
     lastGhostWidth = pendingWidth
     chatWidth = pendingWidth
-    if (ghost) ghost.style.width = pendingWidth + 'px'
+    if (ghost) ghost.style.width = `${pendingWidth}px`
   }
 
   handle.addEventListener(
@@ -227,7 +227,7 @@ let _hsYtBelowRO = null,
 function _hsClearYtFullBleed() {
   for (const sel of ['#full-bleed-container', '#player-full-bleed-container']) {
     const el = document.querySelector(sel)
-    if (el && el.style.height) el.style.removeProperty('height')
+    if (el?.style.height) el.style.removeProperty('height')
   }
 }
 function _hsSetYtBelowTop() {
@@ -238,13 +238,13 @@ function _hsSetYtBelowTop() {
     return
   }
   const flexy = document.querySelector('ytd-watch-flexy')
-  if (flexy && flexy.hasAttribute('fullscreen')) {
+  if (flexy?.hasAttribute('fullscreen')) {
     document.documentElement.style.removeProperty('--hs-yt-below-top')
     _hsClearYtFullBleed()
     return
   }
   const mp = document.querySelector('#movie_player') || document.querySelector('.html5-video-player')
-  const b = mp && mp.getBoundingClientRect()
+  const b = mp?.getBoundingClientRect()
   if (!b || b.height <= 0) return
   // THEATRE + side chat: YT keeps #full-bleed-container at the full-WIDTH 16:9
   // height while the real player is height-capped smaller, and the #below reflow
@@ -253,9 +253,9 @@ function _hsSetYtBelowTop() {
   // never chat-right). Collapse the container to the real player height so the
   // metadata flows right under the video. The ResizeObserver + move-poll re-run
   // this whenever the player resizes, so it stays in sync.
-  if (flexy && flexy.hasAttribute('theater')) {
+  if (flexy?.hasAttribute('theater')) {
     document.documentElement.style.removeProperty('--hs-yt-below-top')
-    const h = Math.round(b.height) + 'px'
+    const h = `${Math.round(b.height)}px`
     for (const sel of ['#full-bleed-container', '#player-full-bleed-container']) {
       const el = document.querySelector(sel)
       if (el && el.style.height !== h) el.style.height = h
@@ -264,7 +264,7 @@ function _hsSetYtBelowTop() {
   }
   // Non-theatre: CSS pins #below position:fixed at this var; no container surgery.
   _hsClearYtFullBleed()
-  document.documentElement.style.setProperty('--hs-yt-below-top', Math.round(b.bottom) + 'px')
+  document.documentElement.style.setProperty('--hs-yt-below-top', `${Math.round(b.bottom)}px`)
 }
 // YT shifts the player's POSITION without changing its SIZE — theater masthead
 // hide-on-scroll, description/comments panel expand-collapse, native miniplayer
@@ -282,7 +282,7 @@ function _hsCheckYtPlayerMoved() {
     return
   }
   const mp = document.querySelector('#movie_player') || document.querySelector('.html5-video-player')
-  const b = mp && mp.getBoundingClientRect()
+  const b = mp?.getBoundingClientRect()
   if (!b || b.height === 0) return
   const last = _hsLastMpRect
   _hsLastMpRect = { top: b.top, left: b.left } // always track, even while settling

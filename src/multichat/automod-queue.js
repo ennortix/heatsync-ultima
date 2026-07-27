@@ -55,7 +55,7 @@ function automodHoldToRowModel(payload) {
     reason: payload.reason === 'blocked_term' ? 'blocked_term' : 'automod',
     category: payload.category ? String(payload.category) : null,
     level: Number(payload.level) || 0,
-    terms: terms && terms.length ? terms : null,
+    terms: terms?.length ? terms : null,
     status: 'pending',
     resolvedBy: null,
     errorText: null,
@@ -76,7 +76,7 @@ function automodHoldToRowModel(payload) {
 function automodReasonChipText(row) {
   if (!row) return ''
   if (row.reason === 'blocked_term') {
-    const term = row.terms && row.terms[0]
+    const term = row.terms?.[0]
     return term ? `blocked term: ${term}` : 'blocked term'
   }
   if (row.category) return row.level ? `${row.category} (level ${row.level})` : row.category

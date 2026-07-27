@@ -275,11 +275,11 @@ function parseIrcLine(raw, channel) {
         type: 'roomstate',
         channel: ch,
         time: Date.now(),
-        slow: tags['slow'] != null ? parseInt(tags['slow'], 10) : null,
+        slow: tags.slow != null ? parseInt(tags.slow, 10) : null,
         subsOnly: tags['subs-only'] != null ? tags['subs-only'] === '1' : null,
         emoteOnly: tags['emote-only'] != null ? tags['emote-only'] === '1' : null,
         followersOnly: tags['followers-only'] != null ? parseInt(tags['followers-only'], 10) : null,
-        r9k: tags['r9k'] != null ? tags['r9k'] === '1' : null,
+        r9k: tags.r9k != null ? tags.r9k === '1' : null,
       }
     }
 
@@ -1230,7 +1230,7 @@ class KickChat {
         const msg = {
           user: message.username || 'anonymous',
           text: message.message || '',
-          systemMsg: `${message.username || 'Anonymous'} gifted ${message.amount} KICKs${message.giftName ? ' (' + message.giftName + ')' : ''}!`,
+          systemMsg: `${message.username || 'Anonymous'} gifted ${message.amount} KICKs${message.giftName ? ` (${message.giftName})` : ''}!`,
           // feeds sanitizeColor()/COLOR_RE downstream (main.js) — must stay literal hex, no var(). Canonical gold.
           color: '#ffd700',
           badges: '',
@@ -1432,12 +1432,12 @@ class KickChat {
         t.includes('added 7TV emote')
       )
         return false
-      const isStreamEvent = m.type === 'stream-event' || (m.text && m.text.includes('◆') && !m.user)
+      const isStreamEvent = m.type === 'stream-event' || (m.text?.includes('◆') && !m.user)
       if (isStreamEvent && m.text) {
         if (!m.type) m.type = 'stream-event'
         if (!m.text.startsWith('[')) {
           const em = m.text.match(/^([a-zA-Z0-9_]+) ◆/)
-          if (em) m.text = `[${em[1]}]` + m.text.slice(em[1].length)
+          if (em) m.text = `[${em[1]}]${m.text.slice(em[1].length)}`
         }
         if (seenEventTexts.has(m.text)) return false
         seenEventTexts.add(m.text)
@@ -1449,8 +1449,8 @@ class KickChat {
       filtered.length,
       'msgs for',
       ch,
-      'chrome:' + (chromeMsgs?.length || 0),
-      'sync:' + (syncMsgs?.length || 0),
+      `chrome:${chromeMsgs?.length || 0}`,
+      `sync:${syncMsgs?.length || 0}`,
     )
     for (const msg of filtered) {
       msg.isHistory = true

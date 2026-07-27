@@ -119,7 +119,7 @@ function findYtChannelIdForUser(key) {
   const fromPaintUid = (puid) => (typeof puid === 'string' && puid.startsWith('yt_') ? puid.slice(3) : null)
   const container = document.getElementById('hs-mc-messages')
   if (container) {
-    const sel = `.hs-mc-msg .hs-mc-user[data-platform="yt"][data-username="${CSS.escape('@' + key)}"], .hs-mc-msg .hs-mc-user[data-platform="yt"][data-username="${CSS.escape(key)}"]`
+    const sel = `.hs-mc-msg .hs-mc-user[data-platform="yt"][data-username="${CSS.escape(`@${key}`)}"], .hs-mc-msg .hs-mc-user[data-platform="yt"][data-username="${CSS.escape(key)}"]`
     for (const userEl of container.querySelectorAll(sel)) {
       const found = fromPaintUid(userEl.closest('.hs-mc-msg')?.dataset.hsPaintUid)
       if (found) return found
@@ -182,7 +182,7 @@ async function flushYtNameLookups() {
     try {
       const resp = await safeSendMessage({
         type: 'api_fetch',
-        path: '/api/profile/' + encodeURIComponent(key),
+        path: `/api/profile/${encodeURIComponent(key)}`,
         method: 'GET',
       })
       const tid = resp?.data?.twitch_id || resp?.twitch_id || null
@@ -196,7 +196,7 @@ async function flushYtNameLookups() {
         // user so updateCosmeticsInPlace can find them once cosmetics resolve.
         const container = document.getElementById('hs-mc-messages')
         if (container) {
-          const sel = `.hs-mc-msg .hs-mc-user[data-platform="yt"][data-username="${CSS.escape('@' + key)}"], .hs-mc-msg .hs-mc-user[data-platform="yt"][data-username="${CSS.escape(key)}"]`
+          const sel = `.hs-mc-msg .hs-mc-user[data-platform="yt"][data-username="${CSS.escape(`@${key}`)}"], .hs-mc-msg .hs-mc-user[data-platform="yt"][data-username="${CSS.escape(key)}"]`
           for (const userEl of container.querySelectorAll(sel)) {
             const div = userEl.closest('.hs-mc-msg')
             if (div && !div.dataset.uid) div.dataset.uid = tidStr
@@ -487,7 +487,7 @@ function retryOrHideBadgeImg(img) {
   const base = img.dataset.hsSrc || (img.dataset.hsSrc = img.src.replace(/[?&]hsr=\d+$/, ''))
   cleanup.setTimeout(
     () => {
-      img.src = base + (base.includes('?') ? '&' : '?') + 'hsr=' + img.dataset.hsRetry
+      img.src = `${base + (base.includes('?') ? '&' : '?')}hsr=${img.dataset.hsRetry}`
     },
     200 * (n + 1),
   )
@@ -563,7 +563,7 @@ function updateHsColorsInPlace(userIds) {
 function _placeHsPlusTenureToken(el, since) {
   if (!el) return
   const next = el.nextElementSibling
-  if (next && next.classList.contains('hs-plus-tenure')) return
+  if (next?.classList.contains('hs-plus-tenure')) return
   const token = buildPlusTenureToken(since)
   if (token) el.insertAdjacentElement('afterend', token)
 }
@@ -656,8 +656,8 @@ function updateCosmeticsInPlace(userIds) {
           const base = cosmetic.badge.host?.url || ''
           // 7TV returns protocol-relative URLs (//cdn.7tv.app/...) — promote
           // to https before validation so safeUrl doesn't drop them.
-          const absBase = base.startsWith('//') ? 'https:' + base : base
-          const rawUrl = (absBase.endsWith('/') ? absBase : absBase + '/') + file.name
+          const absBase = base.startsWith('//') ? `https:${base}` : base
+          const rawUrl = (absBase.endsWith('/') ? absBase : `${absBase}/`) + file.name
           const url = safeUrl(rawUrl)
           if (url) {
             const img = document.createElement('img')
@@ -699,13 +699,13 @@ function updateThirdPartyBadgesInPlace() {
     const safe = safeUrl(url)
     if (!safe) return null
     const img = document.createElement('img')
-    img.className = 'hs-mc-badge-img ' + cls
+    img.className = `hs-mc-badge-img ${cls}`
     img.alt = title || ''
     img.title = title || ''
     img.decoding = 'async'
     img.width = 18
     img.height = 18
-    img.style.cssText = 'width:18px;height:18px;' + (bg ? `background:${bg};` : '')
+    img.style.cssText = `width:18px;height:18px;${bg ? `background:${bg};` : ''}`
     // Insert FIRST, then set src (caller) — so an immediate QUIC-drop error
     // fires while the img is already under msgsEl and the capture-phase error
     // handler (retryOrHideBadgeImg) catches it. Mirrors updateCosmeticsInPlace.
@@ -855,7 +855,7 @@ function getMcPaintStyle(userId) {
   if (!getSetting('sevenTvPaints')) return ''
   const cosmetic = mcUserCosmetics.get(userId)
   const paint = cosmetic?.paint
-  if (!paint || !paint.function) return ''
+  if (!paint?.function) return ''
   const cached = _mcPaintStyleCache.get(paint)
   if (cached !== undefined) return cached
   const style = _computeMcPaintStyle(paint)

@@ -166,7 +166,7 @@ function loadWhispers() {
         const v1 = stored.hs_whispers
         if (v1 && typeof v1 === 'object' && !v1.timeline) {
           for (const [key, conv] of Object.entries(v1)) {
-            if (!conv || !conv.msgs) continue
+            if (!conv?.msgs) continue
             whisperUsersSet(key, {
               platform: conv.platform || (key.startsWith('hs:') ? 'heatsync' : 'twitch'),
               userId: conv.userId,
@@ -661,7 +661,7 @@ function renderWhispersTab() {
       // HeatSync paint (own-platform cosmetic) wins over 7TV — same precedence
       // rule as the live sender row (see hsPaintRender in paints.js).
       const hsPaint = m.platform === 'heatsync' || !uid ? null : hsPaintRender(uid, name)
-      const cls = `hs-mc-user${hsPaint ? ' ' + hsPaint.cls : ''}`
+      const cls = `hs-mc-user${hsPaint ? ` ${hsPaint.cls}` : ''}`
       const style = hsPaint ? '' : paint || `color:${color};font-weight:600`
       const inner = hsPaint ? hsPaint.html : safe
       const splitAttr = hsPaint ? hsPaint.splitAttr : ''

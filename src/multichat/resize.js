@@ -93,7 +93,7 @@ function setupResizeHandle() {
     lastGhostWidth = pendingWidth
     chatWidth = pendingWidth
     // Compositor-only update — no layout, no React reconcile
-    if (ghost) ghost.style.width = pendingWidth + (isVertical() ? 90 : 0) + 'px'
+    if (ghost) ghost.style.width = `${pendingWidth + (isVertical() ? 90 : 0)}px`
   }
 
   handle.addEventListener(
@@ -244,8 +244,8 @@ function applyChatWidth(cachedRightCol) {
   const isVertical = tabPosition === 'left' || tabPosition === 'right'
   const colWidth = chatWidth + (isVertical ? 90 : 0)
 
-  rightCol.style.setProperty('width', colWidth + 'px', 'important')
-  rightCol.style.setProperty('min-width', colWidth + 'px', 'important')
+  rightCol.style.setProperty('width', `${colWidth}px`, 'important')
+  rightCol.style.setProperty('min-width', `${colWidth}px`, 'important')
   rightCol.style.setProperty('flex-shrink', '0', 'important')
 
   const innerCol = rightCol.querySelector('.channel-root__right-column')
@@ -299,7 +299,7 @@ async function loadChatHeight() {
       chatHeight = Math.max(MIN_CHAT_HEIGHT, Math.min(getMaxChatHeight(), data.hs_chat_height))
       // Mirror loadChatWidth: push CSS var + reposition the unified handle so
       // the panel + orange bar render at the saved height on first paint.
-      document.documentElement.style.setProperty('--hs-chat-h', chatHeight + 'px')
+      document.documentElement.style.setProperty('--hs-chat-h', `${chatHeight}px`)
       try {
         positionChatResizeHandle()
       } catch {}
@@ -482,11 +482,9 @@ function ensureChatResizeHandle() {
           baseStyle +
           `top:${panelTop}px;left:0;height:${panelBottom - panelTop}px;width:${pendingW}px;border-right:3px solid #fff;will-change:width;`
       } else if (chatPosition === 'top') {
-        ghost.style.cssText =
-          baseStyle + `top:0;left:0;right:0;height:${pendingH}px;border-bottom:3px solid #fff;will-change:height;`
+        ghost.style.cssText = `${baseStyle}top:0;left:0;right:0;height:${pendingH}px;border-bottom:3px solid #fff;will-change:height;`
       } else if (chatPosition === 'bottom') {
-        ghost.style.cssText =
-          baseStyle + `bottom:0;left:0;right:0;height:${pendingH}px;border-top:3px solid #fff;will-change:height;`
+        ghost.style.cssText = `${baseStyle}bottom:0;left:0;right:0;height:${pendingH}px;border-top:3px solid #fff;will-change:height;`
       }
       document.body.appendChild(ghost)
       e.preventDefault()
@@ -516,17 +514,17 @@ function ensureChatResizeHandle() {
         liveRaf = requestAnimationFrame(() => {
           liveRaf = 0
           if (chatPosition === 'right') {
-            handle.style.left = panelRight - pendingW + 'px'
-            if (ghost) ghost.style.width = pendingW + 'px'
+            handle.style.left = `${panelRight - pendingW}px`
+            if (ghost) ghost.style.width = `${pendingW}px`
           } else if (chatPosition === 'left') {
-            handle.style.left = panelLeft + pendingW - 10 + 'px'
-            if (ghost) ghost.style.width = pendingW + 'px'
+            handle.style.left = `${panelLeft + pendingW - 10}px`
+            if (ghost) ghost.style.width = `${pendingW}px`
           } else if (chatPosition === 'top') {
-            handle.style.top = panelTop + pendingH - 10 + 'px'
-            if (ghost) ghost.style.height = pendingH + 'px'
+            handle.style.top = `${panelTop + pendingH - 10}px`
+            if (ghost) ghost.style.height = `${pendingH}px`
           } else if (chatPosition === 'bottom') {
-            handle.style.top = panelBottom - pendingH + 'px'
-            if (ghost) ghost.style.height = pendingH + 'px'
+            handle.style.top = `${panelBottom - pendingH}px`
+            if (ghost) ghost.style.height = `${pendingH}px`
           }
         })
       }
@@ -555,8 +553,8 @@ function ensureChatResizeHandle() {
     // Final commit — single reflow for the player + React tree.
     if (axis === 'x') chatWidth = pendingW
     else chatHeight = pendingH
-    document.documentElement.style.setProperty('--hs-chat-w', chatWidth + 'px')
-    document.documentElement.style.setProperty('--hs-chat-h', chatHeight + 'px')
+    document.documentElement.style.setProperty('--hs-chat-w', `${chatWidth}px`)
+    document.documentElement.style.setProperty('--hs-chat-h', `${chatHeight}px`)
     applyChatPosition()
     requestAnimationFrame(() => {
       try {
@@ -666,28 +664,28 @@ function positionChatResizeHandle() {
   const cWidth = r ? r.width : window.innerWidth
   const cHeight = r ? r.height : window.innerHeight
   if (chatPosition === 'right') {
-    handle.style.top = cTop + 'px'
-    handle.style.left = cLeft + 'px'
-    handle.style.height = cHeight + 'px'
-    handle.style.width = HS_RESIZE_PX + 'px'
+    handle.style.top = `${cTop}px`
+    handle.style.left = `${cLeft}px`
+    handle.style.height = `${cHeight}px`
+    handle.style.width = `${HS_RESIZE_PX}px`
     handle.style.cursor = 'col-resize'
   } else if (chatPosition === 'left') {
-    handle.style.top = cTop + 'px'
-    handle.style.left = cRight - HS_RESIZE_PX + 'px'
-    handle.style.height = cHeight + 'px'
-    handle.style.width = HS_RESIZE_PX + 'px'
+    handle.style.top = `${cTop}px`
+    handle.style.left = `${cRight - HS_RESIZE_PX}px`
+    handle.style.height = `${cHeight}px`
+    handle.style.width = `${HS_RESIZE_PX}px`
     handle.style.cursor = 'col-resize'
   } else if (chatPosition === 'top') {
-    handle.style.top = cBottom - HS_RESIZE_PX + 'px'
-    handle.style.left = cLeft + 'px'
-    handle.style.width = cWidth + 'px'
-    handle.style.height = HS_RESIZE_PX + 'px'
+    handle.style.top = `${cBottom - HS_RESIZE_PX}px`
+    handle.style.left = `${cLeft}px`
+    handle.style.width = `${cWidth}px`
+    handle.style.height = `${HS_RESIZE_PX}px`
     handle.style.cursor = 'row-resize'
   } else if (chatPosition === 'bottom') {
-    handle.style.top = cTop + 'px'
-    handle.style.left = cLeft + 'px'
-    handle.style.width = cWidth + 'px'
-    handle.style.height = HS_RESIZE_PX + 'px'
+    handle.style.top = `${cTop}px`
+    handle.style.left = `${cLeft}px`
+    handle.style.width = `${cWidth}px`
+    handle.style.height = `${HS_RESIZE_PX}px`
     handle.style.cursor = 'row-resize'
   }
 }
@@ -718,7 +716,7 @@ async function loadChatWidth() {
       // 340px until the first applyChatPosition fires (theatre toggle, drag
       // end, etc) — at which point the panel + bar visibly jump to the saved
       // width. That's the "first-load teleport" the user reports.
-      document.documentElement.style.setProperty('--hs-chat-w', chatWidth + 'px')
+      document.documentElement.style.setProperty('--hs-chat-w', `${chatWidth}px`)
       applyChatWidth()
       try {
         positionChatResizeHandle()
@@ -807,9 +805,9 @@ function applyYouTubeChatWidth() {
   // Full freedom — only clamp to viewport so the chat can't escape it.
   const ytMax = Math.max(MIN_CHAT_WIDTH, window.innerWidth - 10)
   chatWidth = Math.min(ytMax, Math.max(MIN_CHAT_WIDTH, chatWidth))
-  secondary.style.setProperty('width', chatWidth + 'px', 'important')
-  secondary.style.setProperty('min-width', chatWidth + 'px', 'important')
-  secondary.style.setProperty('max-width', chatWidth + 'px', 'important')
+  secondary.style.setProperty('width', `${chatWidth}px`, 'important')
+  secondary.style.setProperty('min-width', `${chatWidth}px`, 'important')
+  secondary.style.setProperty('max-width', `${chatWidth}px`, 'important')
   secondary.style.setProperty('flex', 'none', 'important')
   // Note: NOT setting width on #hs-mc-container — chat-right now uses
   // position:fixed via CSS (body.hs-platform-yt.hs-chat-right #hs-mc-container)

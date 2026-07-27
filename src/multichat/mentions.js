@@ -44,7 +44,7 @@ function isMention(msg) {
   if (typeof isUserBlocked === 'function' && isUserBlocked(msg.user, msg.platform)) return false
   const text = msg.text.toLowerCase()
   for (const t of targets) {
-    if (text.includes('@' + t)) return true
+    if (text.includes(`@${t}`)) return true
   }
   const key = targets.join('|')
   if (_mentionReKey !== key) {
@@ -316,9 +316,9 @@ function notifyMention(msg) {
   if (!notificationsEnabled || !unfocused) return
   const channel = msg.channel ? ` in #${msg.channel}` : ''
   const title = `${msg.user}${channel}`
-  const body = msg.text.length > 200 ? truncateSafe(msg.text, 200) + '...' : msg.text
+  const body = msg.text.length > 200 ? `${truncateSafe(msg.text, 200)}...` : msg.text
   resolveNotifIcon(msg.user, msg.platform, msg.avatar).then((icon) =>
-    fireNotification(title, body, 'hs-mention-' + Date.now(), icon),
+    fireNotification(title, body, `hs-mention-${Date.now()}`, icon),
   )
 }
 
@@ -364,7 +364,7 @@ function scanExistingMentions() {
     const textLower = text.toLowerCase()
     let matched = false
     for (const t of targets) {
-      if (textLower.includes('@' + t)) {
+      if (textLower.includes(`@${t}`)) {
         matched = true
         break
       }

@@ -164,11 +164,11 @@ function isYtModForSync() {
 try {
   chrome.storage.local.get('hs_yt_mod_status', (v) => {
     void chrome.runtime.lastError
-    _ytModState = !!(v && v.hs_yt_mod_status && v.hs_yt_mod_status.isMod)
+    _ytModState = !!v?.hs_yt_mod_status?.isMod
   })
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area === 'local' && changes.hs_yt_mod_status) {
-      _ytModState = !!(changes.hs_yt_mod_status.newValue && changes.hs_yt_mod_status.newValue.isMod)
+      _ytModState = !!changes.hs_yt_mod_status.newValue?.isMod
     }
   })
 } catch (_) {}
@@ -198,7 +198,7 @@ function rebuildModToolbarButtons() {
     const def = MOD_BUTTON_CATALOG[id]
     if (!def) continue
     const b = document.createElement('button')
-    b.className = 'hs-mod-btn hs-mod-' + def.action
+    b.className = `hs-mod-btn hs-mod-${def.action}`
     b.type = 'button'
     b.textContent = def.label
     b.title = def.title + (def.hotkey ? ` (${def.hotkey.toUpperCase()})` : '')
@@ -762,7 +762,7 @@ function _isModForRow(row) {
 }
 
 function _bulkRowSelectable(row) {
-  if (!row || !row.dataset) return false
+  if (!row?.dataset) return false
   const plat = row.dataset.msgPlatform || 'twitch'
   if (plat === 'youtube' || plat === 'yt') return false
   if (!row.dataset.msgId || !row.dataset.msgChannel || !(row.dataset.msgLogin || row.dataset.msgUser)) return false

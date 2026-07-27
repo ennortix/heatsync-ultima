@@ -593,7 +593,9 @@ function positionChatResizeHandle() {
   // it'd persist as a stale inline style after toggling back to HS mode.
   if (typeof getSetting === 'function' && getSetting('nativeVisible')) return
   const handle = ensureChatResizeHandle()
-  ;['top', 'bottom', 'left', 'right', 'width', 'height'].forEach((p) => handle.style.removeProperty(p))
+  ;['top', 'bottom', 'left', 'right', 'width', 'height'].forEach((p) => {
+    handle.style.removeProperty(p)
+  })
   // For YT, chat-right is now position:fixed so the unified handle
   // owns ALL four positions. For Twitch/Kick, chat-right uses the
   // existing per-platform handles (which have ghost-preview perf

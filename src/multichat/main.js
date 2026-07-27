@@ -1264,7 +1264,9 @@
   function flushSenderEmoteBatch() {
     if (!senderEmotePending.size) return
     const batch = [...senderEmotePending].slice(0, SENDER_EMOTE_BATCH)
-    batch.forEach((k) => senderEmotePending.delete(k))
+    batch.forEach((k) => {
+      senderEmotePending.delete(k)
+    })
     // Any push-supplied ver for a key in this batch rides along as the edge
     // cache-bust; multiple keys' vers join into one opaque token.
     let bust = null
@@ -4766,7 +4768,9 @@
     const existingChannelTabs = tabBarElement.querySelectorAll(
       '.hs-mc-tab[data-tab]:not([data-tab="live"]):not([data-tab="feed"]):not([data-tab="mentions"]):not([data-tab="whispers"]):not([data-tab="discover"]):not([data-tab="pinned"]):not([data-tab="modlog"]):not([data-tab="add"]):not([data-tab="settings"]):not([data-tab="popout"]):not([data-tab="collapse"]):not([data-tab="native"]):not([data-tab="actions"])',
     )
-    existingChannelTabs.forEach((t) => t.remove())
+    existingChannelTabs.forEach((t) => {
+      t.remove()
+    })
 
     // Add channel tabs before the + button in the scroll section
     const scrollSection = tabBarElement.querySelector('.hs-mc-tabs-scroll') || tabBarElement
@@ -10724,7 +10728,9 @@
       if (isRight) {
         if (container.dataset._hsChatOverride === '1') {
           delete container.dataset._hsChatOverride
-          GEOM_PROPS.forEach((p) => container.style.removeProperty(p))
+          GEOM_PROPS.forEach((p) => {
+            container.style.removeProperty(p)
+          })
           container.style.removeProperty('background')
           container.style.removeProperty('overflow')
           // YT chat-right is now position:fixed via CSS rule — don't set
@@ -10738,7 +10744,9 @@
         }
       } else {
         container.dataset._hsChatOverride = '1'
-        GEOM_PROPS.forEach((p) => container.style.removeProperty(p))
+        GEOM_PROPS.forEach((p) => {
+          container.style.removeProperty(p)
+        })
         container.style.setProperty('position', 'fixed', 'important')
         // On twitch no-channel pages (directory/settings/…) the panel mounts in
         // a gutter with no host content beneath it, so it can sit BELOW twitch's
@@ -10795,7 +10803,9 @@
           const e = document.querySelector(s)
           if (e && e.dataset._hsCYtSized === '1') {
             delete e.dataset._hsCYtSized
-            ;['width', 'height', 'max-width', 'max-height', 'min-height'].forEach((p) => e.style.removeProperty(p))
+            ;['width', 'height', 'max-width', 'max-height', 'min-height'].forEach((p) => {
+              e.style.removeProperty(p)
+            })
           }
         })
         document.documentElement.style.removeProperty('--hs-yt-below-top')
@@ -10922,7 +10932,9 @@
         for (const el of ytSizedEls) {
           if (el.dataset._hsCYtSized === '1') {
             delete el.dataset._hsCYtSized
-            PLAYER_GEOM.forEach((p) => el.style.removeProperty(p))
+            PLAYER_GEOM.forEach((p) => {
+              el.style.removeProperty(p)
+            })
           }
         }
         document.documentElement.style.removeProperty('--hs-yt-below-top')
@@ -10948,7 +10960,9 @@
       for (const stale of document.querySelectorAll('[data-_hs-c-kick-sized]')) {
         if (targetSet.has(stale)) continue
         delete stale.dataset._hsCKickSized
-        KICK_PLAYER_GEOM.forEach((p) => stale.style.removeProperty(p))
+        KICK_PLAYER_GEOM.forEach((p) => {
+          stale.style.removeProperty(p)
+        })
       }
       if (chatPosition === 'top' || chatPosition === 'bottom' || chatPosition === 'left' || chatPosition === 'right') {
         const navEl = document.querySelector('nav, [class*="navbar"]')
@@ -11009,7 +11023,9 @@
         for (const el of kickPlayerEls) {
           if (el?.dataset._hsCKickSized === '1') {
             delete el.dataset._hsCKickSized
-            KICK_PLAYER_GEOM.forEach((p) => el.style.removeProperty(p))
+            KICK_PLAYER_GEOM.forEach((p) => {
+              el.style.removeProperty(p)
+            })
           }
         }
       }
@@ -12526,7 +12542,9 @@
       // burst the panel would pop in up to 1.5s late on every livestream. Plain
       // timeouts (not IfVisible) so a freshly-opened/focused livestream resolves
       // in ~300ms. Cheap (a few DOM checks); they no-op once steady-state holds.
-      ;[250, 600, 1100, 2000, 3500].forEach((ms) => cleanup.setTimeout(checkYtLive, ms))
+      ;[250, 600, 1100, 2000, 3500].forEach((ms) => {
+        cleanup.setTimeout(checkYtLive, ms)
+      })
       return
     }
     // Popout chat has no video — don't mark as offline

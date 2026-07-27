@@ -1111,7 +1111,9 @@ function listenForSocialEvents() {
           }
         }
       }
-      channelYtMessages.forEach((buf) => flagBuf(buf))
+      channelYtMessages.forEach((buf) => {
+        flagBuf(buf)
+      })
       flagBuf(mentionsBuffer)
     }
     if (msg.type === 'youtube_status') {

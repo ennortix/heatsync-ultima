@@ -645,7 +645,9 @@ function setupEmoteTooltipHandlers() {
       _dismissRafPending = false
       if (emoteTooltip?.classList.contains('visible')) {
         hideEmoteTooltip()
-        document.querySelectorAll('.hs-emote-highlight').forEach((w) => w.classList.remove('hs-emote-highlight'))
+        document.querySelectorAll('.hs-emote-highlight').forEach((w) => {
+          w.classList.remove('hs-emote-highlight')
+        })
       }
       hideBadgeTooltip()
       // Skip link tooltip — mouse is still on the link, scroll-driven hides
@@ -710,7 +712,9 @@ function setupEmoteTooltipHandlers() {
         if (emoteTooltip?.classList.contains('visible')) {
           if (!onEmote && !target?.closest?.('#hs-emote-tooltip')) {
             hideEmoteTooltip()
-            document.querySelectorAll('.hs-emote-highlight').forEach((w) => w.classList.remove('hs-emote-highlight'))
+            document.querySelectorAll('.hs-emote-highlight').forEach((w) => {
+              w.classList.remove('hs-emote-highlight')
+            })
           }
           // Don't reposition — stays anchored to element
         }

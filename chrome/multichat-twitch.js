@@ -874,10 +874,14 @@ if (typeof window !== 'undefined') {
   // --- nuclear ---
 
   function _destroyAll() {
-    _intervals.forEach((id) => clearInterval(id))
+    _intervals.forEach((id) => {
+      clearInterval(id)
+    })
     _intervals.clear()
 
-    _timeouts.forEach((id) => clearTimeout(id))
+    _timeouts.forEach((id) => {
+      clearTimeout(id)
+    })
     _timeouts.clear()
 
     _observers.forEach((obs) => {
@@ -887,7 +891,9 @@ if (typeof window !== 'undefined') {
     })
     _observers.clear()
 
-    _rafs.forEach((id) => cancelAnimationFrame(id))
+    _rafs.forEach((id) => {
+      cancelAnimationFrame(id)
+    })
     _rafs.clear()
 
     for (let i = _listeners.length - 1; i >= 0; i--) {
@@ -5975,7 +5981,9 @@ const _trackedListeners = []
 mcSignal.addEventListener('abort', () => {
   _timers.intervals.forEach(clearInterval)
   _timers.timeouts.forEach(clearTimeout)
-  _timers.observers.forEach((o) => o.disconnect())
+  _timers.observers.forEach((o) => {
+    o.disconnect()
+  })
   _pendingRafs.forEach(cancelAnimationFrame)
   _pendingRafs.clear()
   for (const { target, fn } of _trackedListeners) {
@@ -23525,7 +23533,9 @@ function renderVisibleChunks(scope) {
 function attachChunkObserver(scope) {
   const scrollRoot = scope.querySelector('.hs-mc-picker-scroll') || scope
   const obs = ensureChunkObserver(scrollRoot)
-  scope.querySelectorAll('.hs-mc-picker-chunk:not(.hs-mc-chunk-ready)').forEach((el) => obs.observe(el))
+  scope.querySelectorAll('.hs-mc-picker-chunk:not(.hs-mc-chunk-ready)').forEach((el) => {
+    obs.observe(el)
+  })
   renderVisibleChunks(scope)
 }
 
@@ -23869,7 +23879,9 @@ function showEmotePicker(tab = null) {
       const size = parseInt(btn.dataset.size, 10)
       setEmoteSize(size)
       // Update active state
-      picker.querySelectorAll('.hs-mc-size-btn').forEach((b) => b.classList.remove('active'))
+      picker.querySelectorAll('.hs-mc-size-btn').forEach((b) => {
+        b.classList.remove('active')
+      })
       btn.classList.add('active')
     })
   })
@@ -23880,9 +23892,13 @@ function showEmotePicker(tab = null) {
       const newTab = tabBtn.dataset.tab
       const oldTab = pickerTab
       pickerTab = newTab
-      picker.querySelectorAll('.hs-mc-picker-tab').forEach((t) => t.classList.remove('active'))
+      picker.querySelectorAll('.hs-mc-picker-tab').forEach((t) => {
+        t.classList.remove('active')
+      })
       tabBtn.classList.add('active')
-      picker.querySelectorAll('.hs-mc-tab-content').forEach((c) => (c.style.display = 'none'))
+      picker.querySelectorAll('.hs-mc-tab-content').forEach((c) => {
+        c.style.display = 'none'
+      })
       const display = newTab === 'emotes' || newTab === 'settings' || newTab === 'twitch' ? 'flex' : 'block'
       document.getElementById(`hs-mc-tab-${newTab}`).style.display = display
       if (newTab === 'twitch') renderTwitchTab()
@@ -27481,7 +27497,9 @@ function setupEmoteTooltipHandlers() {
       _dismissRafPending = false
       if (emoteTooltip?.classList.contains('visible')) {
         hideEmoteTooltip()
-        document.querySelectorAll('.hs-emote-highlight').forEach((w) => w.classList.remove('hs-emote-highlight'))
+        document.querySelectorAll('.hs-emote-highlight').forEach((w) => {
+          w.classList.remove('hs-emote-highlight')
+        })
       }
       hideBadgeTooltip()
       // Skip link tooltip — mouse is still on the link, scroll-driven hides
@@ -27546,7 +27564,9 @@ function setupEmoteTooltipHandlers() {
         if (emoteTooltip?.classList.contains('visible')) {
           if (!onEmote && !target?.closest?.('#hs-emote-tooltip')) {
             hideEmoteTooltip()
-            document.querySelectorAll('.hs-emote-highlight').forEach((w) => w.classList.remove('hs-emote-highlight'))
+            document.querySelectorAll('.hs-emote-highlight').forEach((w) => {
+              w.classList.remove('hs-emote-highlight')
+            })
           }
           // Don't reposition — stays anchored to element
         }
@@ -29806,7 +29826,9 @@ function attachPredictionHandlers() {
         // Hide bet rows + lock button immediately, keep resolve/cancel
         const pred = btn.closest('.hs-mc-prediction') || container.querySelector('.hs-mc-prediction')
         if (pred) {
-          pred.querySelectorAll('.hs-mc-pred-bet-row').forEach((el) => el.remove())
+          pred.querySelectorAll('.hs-mc-pred-bet-row').forEach((el) => {
+            el.remove()
+          })
           pred.querySelector('.hs-mc-pred-lock-btn')?.remove()
         }
         btn.textContent = `\u2713 ${t('mc_pred_locked')}`
@@ -29850,7 +29872,9 @@ function attachPredictionHandlers() {
             .querySelectorAll(
               '.hs-mc-pred-mod-row, .hs-mc-pred-mod-notice, .hs-mc-pred-bet-row, .hs-mc-pred-resolve-btn',
             )
-            .forEach((el) => el.remove())
+            .forEach((el) => {
+              el.remove()
+            })
           pred.classList.add('hs-mc-pred-resolved')
         }
         btn.textContent = `\u2713 ${t('mc_pred_ended')}`
@@ -29888,7 +29912,9 @@ function attachPredictionHandlers() {
             .querySelectorAll(
               '.hs-mc-pred-mod-row, .hs-mc-pred-mod-notice, .hs-mc-pred-bet-row, .hs-mc-pred-resolve-btn',
             )
-            .forEach((el) => el.remove())
+            .forEach((el) => {
+              el.remove()
+            })
           pred.classList.add('hs-mc-pred-canceled')
         }
         btn.textContent = `\u2713 ${t('mc_pred_refunded')}`
@@ -29935,9 +29961,9 @@ function attachPredictionHandlers() {
   container.querySelectorAll('.hs-mc-pred-create-dur').forEach((btn) => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation()
-      container
-        .querySelectorAll('.hs-mc-pred-create-dur')
-        .forEach((b) => b.classList.remove('hs-mc-pred-create-dur-active'))
+      container.querySelectorAll('.hs-mc-pred-create-dur').forEach((b) => {
+        b.classList.remove('hs-mc-pred-create-dur-active')
+      })
       btn.classList.add('hs-mc-pred-create-dur-active')
     })
   })
@@ -30097,7 +30123,9 @@ function maybeBroadcastNewPoll(channel, pollData) {
 }
 
 function clearBannerTimers() {
-  _bannerTimers.forEach((id) => cleanup.clearInterval(id))
+  _bannerTimers.forEach((id) => {
+    cleanup.clearInterval(id)
+  })
   _bannerTimers = []
 }
 
@@ -32142,9 +32170,9 @@ function attachPollHandlers() {
   container.querySelectorAll('.hs-mc-poll-create-dur').forEach((btn) => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation()
-      container
-        .querySelectorAll('.hs-mc-poll-create-dur')
-        .forEach((b) => b.classList.remove('hs-mc-poll-create-dur-active'))
+      container.querySelectorAll('.hs-mc-poll-create-dur').forEach((b) => {
+        b.classList.remove('hs-mc-poll-create-dur-active')
+      })
       btn.classList.add('hs-mc-poll-create-dur-active')
     })
   })
@@ -35197,7 +35225,9 @@ function listenForSocialEvents() {
           }
         }
       }
-      channelYtMessages.forEach((buf) => flagBuf(buf))
+      channelYtMessages.forEach((buf) => {
+        flagBuf(buf)
+      })
       flagBuf(mentionsBuffer)
     }
     if (msg.type === 'youtube_status') {
@@ -41897,7 +41927,9 @@ function stripMcMutedMessage(msg) {
   })
   // Mention links share .hs-mc-user (so they get color/hover) but live inside
   // the message body — strip them or they leak through the muted CSS.
-  msg.querySelectorAll('.hs-mc-mention, .hs-mc-reply-ctx').forEach((el) => el.remove())
+  msg.querySelectorAll('.hs-mc-mention, .hs-mc-reply-ctx').forEach((el) => {
+    el.remove()
+  })
   // Remove emote images and other content (not user/badge/timestamp/platform)
   msg.querySelectorAll('img:not(.hs-mc-badge-img), .heatsync-emote-wrapper, .hs-mc-emote').forEach((el) => {
     if (
@@ -50601,7 +50633,9 @@ function queueYtNameToTwitchId(user) {
 async function flushYtNameLookups() {
   if (!ytNameLookupPending.size) return
   const batch = [...ytNameLookupPending].slice(0, YT_NAME_BATCH)
-  batch.forEach((k) => ytNameLookupPending.delete(k))
+  batch.forEach((k) => {
+    ytNameLookupPending.delete(k)
+  })
   // Serialize — Promise.all over the batch was firing 8 concurrent
   // /api/profile/X requests that monopolized the SW's heatsync slot pool
   // and starved channel-emote / cosmetics fetches. YT cosmetics aren't
@@ -50756,7 +50790,9 @@ function queueKickNameToCosmetics(user) {
 async function flushKickNameLookups() {
   if (!kickNameLookupPending.size) return
   const batch = [...kickNameLookupPending].slice(0, KICK_NAME_BATCH)
-  batch.forEach((k) => kickNameLookupPending.delete(k))
+  batch.forEach((k) => {
+    kickNameLookupPending.delete(k)
+  })
   let resp = null
   try {
     resp = await safeSendMessage({ type: 'get_kick_user_cosmetics', kickUsernames: batch })
@@ -50878,7 +50914,9 @@ function flushMcCosmeticsBatch() {
   // resolves in the first batch instead of last. Off-screen/scrolled-away
   // users still fill in as the queue drains.
   const batch = [...mcCosmeticsPending].slice(-25)
-  batch.forEach((id) => mcCosmeticsPending.delete(id))
+  batch.forEach((id) => {
+    mcCosmeticsPending.delete(id)
+  })
   safeSendMessage({ type: 'get_user_cosmetics', twitchIds: batch })
     .then((resp) => {
       if (!resp?.cosmetics) return
@@ -53448,7 +53486,9 @@ function positionChatResizeHandle() {
   // it'd persist as a stale inline style after toggling back to HS mode.
   if (typeof getSetting === 'function' && getSetting('nativeVisible')) return
   const handle = ensureChatResizeHandle()
-  ;['top', 'bottom', 'left', 'right', 'width', 'height'].forEach((p) => handle.style.removeProperty(p))
+  ;['top', 'bottom', 'left', 'right', 'width', 'height'].forEach((p) => {
+    handle.style.removeProperty(p)
+  })
   // For YT, chat-right is now position:fixed so the unified handle
   // owns ALL four positions. For Twitch/Kick, chat-right uses the
   // existing per-platform handles (which have ghost-preview perf
@@ -58308,7 +58348,9 @@ const STORAGE_KEY = 'heatsync_multichat'
   function flushSenderEmoteBatch() {
     if (!senderEmotePending.size) return
     const batch = [...senderEmotePending].slice(0, SENDER_EMOTE_BATCH)
-    batch.forEach((k) => senderEmotePending.delete(k))
+    batch.forEach((k) => {
+      senderEmotePending.delete(k)
+    })
     // Any push-supplied ver for a key in this batch rides along as the edge
     // cache-bust; multiple keys' vers join into one opaque token.
     let bust = null
@@ -61810,7 +61852,9 @@ const STORAGE_KEY = 'heatsync_multichat'
     const existingChannelTabs = tabBarElement.querySelectorAll(
       '.hs-mc-tab[data-tab]:not([data-tab="live"]):not([data-tab="feed"]):not([data-tab="mentions"]):not([data-tab="whispers"]):not([data-tab="discover"]):not([data-tab="pinned"]):not([data-tab="modlog"]):not([data-tab="add"]):not([data-tab="settings"]):not([data-tab="popout"]):not([data-tab="collapse"]):not([data-tab="native"]):not([data-tab="actions"])',
     )
-    existingChannelTabs.forEach((t) => t.remove())
+    existingChannelTabs.forEach((t) => {
+      t.remove()
+    })
 
     // Add channel tabs before the + button in the scroll section
     const scrollSection = tabBarElement.querySelector('.hs-mc-tabs-scroll') || tabBarElement
@@ -67768,7 +67812,9 @@ const STORAGE_KEY = 'heatsync_multichat'
       if (isRight) {
         if (container.dataset._hsChatOverride === '1') {
           delete container.dataset._hsChatOverride
-          GEOM_PROPS.forEach((p) => container.style.removeProperty(p))
+          GEOM_PROPS.forEach((p) => {
+            container.style.removeProperty(p)
+          })
           container.style.removeProperty('background')
           container.style.removeProperty('overflow')
           // YT chat-right is now position:fixed via CSS rule — don't set
@@ -67782,7 +67828,9 @@ const STORAGE_KEY = 'heatsync_multichat'
         }
       } else {
         container.dataset._hsChatOverride = '1'
-        GEOM_PROPS.forEach((p) => container.style.removeProperty(p))
+        GEOM_PROPS.forEach((p) => {
+          container.style.removeProperty(p)
+        })
         container.style.setProperty('position', 'fixed', 'important')
         // On twitch no-channel pages (directory/settings/…) the panel mounts in
         // a gutter with no host content beneath it, so it can sit BELOW twitch's
@@ -67839,7 +67887,9 @@ const STORAGE_KEY = 'heatsync_multichat'
           const e = document.querySelector(s)
           if (e && e.dataset._hsCYtSized === '1') {
             delete e.dataset._hsCYtSized
-            ;['width', 'height', 'max-width', 'max-height', 'min-height'].forEach((p) => e.style.removeProperty(p))
+            ;['width', 'height', 'max-width', 'max-height', 'min-height'].forEach((p) => {
+              e.style.removeProperty(p)
+            })
           }
         })
         document.documentElement.style.removeProperty('--hs-yt-below-top')
@@ -67966,7 +68016,9 @@ const STORAGE_KEY = 'heatsync_multichat'
         for (const el of ytSizedEls) {
           if (el.dataset._hsCYtSized === '1') {
             delete el.dataset._hsCYtSized
-            PLAYER_GEOM.forEach((p) => el.style.removeProperty(p))
+            PLAYER_GEOM.forEach((p) => {
+              el.style.removeProperty(p)
+            })
           }
         }
         document.documentElement.style.removeProperty('--hs-yt-below-top')
@@ -67992,7 +68044,9 @@ const STORAGE_KEY = 'heatsync_multichat'
       for (const stale of document.querySelectorAll('[data-_hs-c-kick-sized]')) {
         if (targetSet.has(stale)) continue
         delete stale.dataset._hsCKickSized
-        KICK_PLAYER_GEOM.forEach((p) => stale.style.removeProperty(p))
+        KICK_PLAYER_GEOM.forEach((p) => {
+          stale.style.removeProperty(p)
+        })
       }
       if (chatPosition === 'top' || chatPosition === 'bottom' || chatPosition === 'left' || chatPosition === 'right') {
         const navEl = document.querySelector('nav, [class*="navbar"]')
@@ -68053,7 +68107,9 @@ const STORAGE_KEY = 'heatsync_multichat'
         for (const el of kickPlayerEls) {
           if (el?.dataset._hsCKickSized === '1') {
             delete el.dataset._hsCKickSized
-            KICK_PLAYER_GEOM.forEach((p) => el.style.removeProperty(p))
+            KICK_PLAYER_GEOM.forEach((p) => {
+              el.style.removeProperty(p)
+            })
           }
         }
       }
@@ -69570,7 +69626,9 @@ const STORAGE_KEY = 'heatsync_multichat'
       // burst the panel would pop in up to 1.5s late on every livestream. Plain
       // timeouts (not IfVisible) so a freshly-opened/focused livestream resolves
       // in ~300ms. Cheap (a few DOM checks); they no-op once steady-state holds.
-      ;[250, 600, 1100, 2000, 3500].forEach((ms) => cleanup.setTimeout(checkYtLive, ms))
+      ;[250, 600, 1100, 2000, 3500].forEach((ms) => {
+        cleanup.setTimeout(checkYtLive, ms)
+      })
       return
     }
     // Popout chat has no video — don't mark as offline

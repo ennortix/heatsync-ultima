@@ -168,10 +168,14 @@
   // --- nuclear ---
 
   function _destroyAll() {
-    _intervals.forEach((id) => clearInterval(id))
+    _intervals.forEach((id) => {
+      clearInterval(id)
+    })
     _intervals.clear()
 
-    _timeouts.forEach((id) => clearTimeout(id))
+    _timeouts.forEach((id) => {
+      clearTimeout(id)
+    })
     _timeouts.clear()
 
     _observers.forEach((obs) => {
@@ -181,7 +185,9 @@
     })
     _observers.clear()
 
-    _rafs.forEach((id) => cancelAnimationFrame(id))
+    _rafs.forEach((id) => {
+      cancelAnimationFrame(id)
+    })
     _rafs.clear()
 
     for (let i = _listeners.length - 1; i >= 0; i--) {

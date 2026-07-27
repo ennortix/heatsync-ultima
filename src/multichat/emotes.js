@@ -741,7 +741,9 @@ function renderVisibleChunks(scope) {
 function attachChunkObserver(scope) {
   const scrollRoot = scope.querySelector('.hs-mc-picker-scroll') || scope
   const obs = ensureChunkObserver(scrollRoot)
-  scope.querySelectorAll('.hs-mc-picker-chunk:not(.hs-mc-chunk-ready)').forEach((el) => obs.observe(el))
+  scope.querySelectorAll('.hs-mc-picker-chunk:not(.hs-mc-chunk-ready)').forEach((el) => {
+    obs.observe(el)
+  })
   renderVisibleChunks(scope)
 }
 
@@ -1085,7 +1087,9 @@ function showEmotePicker(tab = null) {
       const size = parseInt(btn.dataset.size, 10)
       setEmoteSize(size)
       // Update active state
-      picker.querySelectorAll('.hs-mc-size-btn').forEach((b) => b.classList.remove('active'))
+      picker.querySelectorAll('.hs-mc-size-btn').forEach((b) => {
+        b.classList.remove('active')
+      })
       btn.classList.add('active')
     })
   })
@@ -1096,9 +1100,13 @@ function showEmotePicker(tab = null) {
       const newTab = tabBtn.dataset.tab
       const oldTab = pickerTab
       pickerTab = newTab
-      picker.querySelectorAll('.hs-mc-picker-tab').forEach((t) => t.classList.remove('active'))
+      picker.querySelectorAll('.hs-mc-picker-tab').forEach((t) => {
+        t.classList.remove('active')
+      })
       tabBtn.classList.add('active')
-      picker.querySelectorAll('.hs-mc-tab-content').forEach((c) => (c.style.display = 'none'))
+      picker.querySelectorAll('.hs-mc-tab-content').forEach((c) => {
+        c.style.display = 'none'
+      })
       const display = newTab === 'emotes' || newTab === 'settings' || newTab === 'twitch' ? 'flex' : 'block'
       document.getElementById(`hs-mc-tab-${newTab}`).style.display = display
       if (newTab === 'twitch') renderTwitchTab()

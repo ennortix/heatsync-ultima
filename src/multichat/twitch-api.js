@@ -1139,7 +1139,9 @@ function attachPredictionHandlers() {
         // Hide bet rows + lock button immediately, keep resolve/cancel
         const pred = btn.closest('.hs-mc-prediction') || container.querySelector('.hs-mc-prediction')
         if (pred) {
-          pred.querySelectorAll('.hs-mc-pred-bet-row').forEach((el) => el.remove())
+          pred.querySelectorAll('.hs-mc-pred-bet-row').forEach((el) => {
+            el.remove()
+          })
           pred.querySelector('.hs-mc-pred-lock-btn')?.remove()
         }
         btn.textContent = `\u2713 ${t('mc_pred_locked')}`
@@ -1183,7 +1185,9 @@ function attachPredictionHandlers() {
             .querySelectorAll(
               '.hs-mc-pred-mod-row, .hs-mc-pred-mod-notice, .hs-mc-pred-bet-row, .hs-mc-pred-resolve-btn',
             )
-            .forEach((el) => el.remove())
+            .forEach((el) => {
+              el.remove()
+            })
           pred.classList.add('hs-mc-pred-resolved')
         }
         btn.textContent = `\u2713 ${t('mc_pred_ended')}`
@@ -1221,7 +1225,9 @@ function attachPredictionHandlers() {
             .querySelectorAll(
               '.hs-mc-pred-mod-row, .hs-mc-pred-mod-notice, .hs-mc-pred-bet-row, .hs-mc-pred-resolve-btn',
             )
-            .forEach((el) => el.remove())
+            .forEach((el) => {
+              el.remove()
+            })
           pred.classList.add('hs-mc-pred-canceled')
         }
         btn.textContent = `\u2713 ${t('mc_pred_refunded')}`
@@ -1268,9 +1274,9 @@ function attachPredictionHandlers() {
   container.querySelectorAll('.hs-mc-pred-create-dur').forEach((btn) => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation()
-      container
-        .querySelectorAll('.hs-mc-pred-create-dur')
-        .forEach((b) => b.classList.remove('hs-mc-pred-create-dur-active'))
+      container.querySelectorAll('.hs-mc-pred-create-dur').forEach((b) => {
+        b.classList.remove('hs-mc-pred-create-dur-active')
+      })
       btn.classList.add('hs-mc-pred-create-dur-active')
     })
   })
@@ -1430,7 +1436,9 @@ function maybeBroadcastNewPoll(channel, pollData) {
 }
 
 function clearBannerTimers() {
-  _bannerTimers.forEach((id) => cleanup.clearInterval(id))
+  _bannerTimers.forEach((id) => {
+    cleanup.clearInterval(id)
+  })
   _bannerTimers = []
 }
 
@@ -3475,9 +3483,9 @@ function attachPollHandlers() {
   container.querySelectorAll('.hs-mc-poll-create-dur').forEach((btn) => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation()
-      container
-        .querySelectorAll('.hs-mc-poll-create-dur')
-        .forEach((b) => b.classList.remove('hs-mc-poll-create-dur-active'))
+      container.querySelectorAll('.hs-mc-poll-create-dur').forEach((b) => {
+        b.classList.remove('hs-mc-poll-create-dur-active')
+      })
       btn.classList.add('hs-mc-poll-create-dur-active')
     })
   })

@@ -51,7 +51,9 @@ const _trackedListeners = []
 mcSignal.addEventListener('abort', () => {
   _timers.intervals.forEach(clearInterval)
   _timers.timeouts.forEach(clearTimeout)
-  _timers.observers.forEach((o) => o.disconnect())
+  _timers.observers.forEach((o) => {
+    o.disconnect()
+  })
   _pendingRafs.forEach(cancelAnimationFrame)
   _pendingRafs.clear()
   for (const { target, fn } of _trackedListeners) {

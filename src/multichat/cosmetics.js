@@ -173,7 +173,9 @@ function queueYtNameToTwitchId(user) {
 async function flushYtNameLookups() {
   if (!ytNameLookupPending.size) return
   const batch = [...ytNameLookupPending].slice(0, YT_NAME_BATCH)
-  batch.forEach((k) => ytNameLookupPending.delete(k))
+  batch.forEach((k) => {
+    ytNameLookupPending.delete(k)
+  })
   // Serialize — Promise.all over the batch was firing 8 concurrent
   // /api/profile/X requests that monopolized the SW's heatsync slot pool
   // and starved channel-emote / cosmetics fetches. YT cosmetics aren't
@@ -328,7 +330,9 @@ function queueKickNameToCosmetics(user) {
 async function flushKickNameLookups() {
   if (!kickNameLookupPending.size) return
   const batch = [...kickNameLookupPending].slice(0, KICK_NAME_BATCH)
-  batch.forEach((k) => kickNameLookupPending.delete(k))
+  batch.forEach((k) => {
+    kickNameLookupPending.delete(k)
+  })
   let resp = null
   try {
     resp = await safeSendMessage({ type: 'get_kick_user_cosmetics', kickUsernames: batch })
@@ -450,7 +454,9 @@ function flushMcCosmeticsBatch() {
   // resolves in the first batch instead of last. Off-screen/scrolled-away
   // users still fill in as the queue drains.
   const batch = [...mcCosmeticsPending].slice(-25)
-  batch.forEach((id) => mcCosmeticsPending.delete(id))
+  batch.forEach((id) => {
+    mcCosmeticsPending.delete(id)
+  })
   safeSendMessage({ type: 'get_user_cosmetics', twitchIds: batch })
     .then((resp) => {
       if (!resp?.cosmetics) return

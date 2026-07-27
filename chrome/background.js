@@ -10852,6 +10852,13 @@ async function bgIrcRestoreFromStorage() {
     for (const [k, v] of Object.entries(all)) {
       if (!k.startsWith('hs_irc_') || k.startsWith('hs_irc_sync_') || k === 'hs_irc_parser_version') continue
       const ch = k.slice('hs_irc_'.length)
+      // A key written before channel sanitization existed could carry protocol
+      // characters straight back into the JOIN loop on restore — drop any key
+      // whose channel isn't already in canonical form instead of trusting it.
+      if (ch !== bgIrcSafeChannel(ch)) {
+        expired.push(k)
+        continue
+      }
       // Missing/invalid ts counts as stale — unknown-age data fails safe.
       if (!ch || !v?.msgs?.length || !(Date.now() - (v.ts || 0) < 86400000)) {
         // Skipped buffers were previously left in storage forever — every
@@ -11639,8 +11646,27 @@ function bgIrcUnregisterTabInterest(tabId, ch) {
   bgBroadcastOpenChannels()
 }
 
+// Twitch logins are [a-z0-9_]{1,25}. Every JOIN/PART below interpolates the
+// channel into a raw IRC protocol line, so a name carrying \r\n would inject
+// a second command onto the user's own authenticated connection. Anything
+// non-conforming is stripped to empty and the join is dropped — the manual
+// add-channel form and the join_channel handler already enforce this shape;
+// the profile-card "add as channel" path (server-supplied twitch_username)
+// did not, which is what this closes.
+function bgIrcSafeChannel(ch) {
+  // Non-strings are rejected outright rather than stringified — String({})
+  // would otherwise yield a bogus but "valid-looking" channel that passes the
+  // caller's truthiness guard and joins a channel nobody asked for.
+  if (typeof ch !== 'string') return ''
+  return ch
+    .toLowerCase()
+    .replace(/[^a-z0-9_]/g, '')
+    .slice(0, 25)
+}
+
 function bgIrcEnsureChannel(ch) {
-  ch = ch.toLowerCase()
+  ch = bgIrcSafeChannel(ch)
+  if (!ch) return
   const isNew = !BG_IRC.channels.has(ch)
   if (isNew) {
     BG_IRC.channels.set(ch, new BGCircularBuffer(BG_IRC_PERSIST_MAX))
@@ -11752,7 +11778,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true
   }
   if (message.type === 'bg_irc_join') {
-    const ch = (message.channel || '').toLowerCase()
+    const ch = bgIrcSafeChannel(message.channel)
     if (!ch) {
       sendResponse({ ok: false, error: 'no channel' })
       return true

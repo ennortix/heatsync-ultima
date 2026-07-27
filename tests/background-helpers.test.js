@@ -938,3 +938,67 @@ describe('fetchRecentArchiveRows', () => {
     expect(h.calls[1]).toContain('limit=1')
   })
 })
+
+// ── bgIrcSafeChannel (IRC protocol-line injection guard) ─────────────────────
+
+const { bgIrcSafeChannel } = new Function(
+  `${extractFn('bgIrcSafeChannel')}\nreturn { bgIrcSafeChannel }`,
+)()
+
+describe('bgIrcSafeChannel (JOIN/PART interpolate raw IRC lines)', () => {
+  test('passes a normal twitch login through, lowercased', () => {
+    expect(bgIrcSafeChannel('NL_Kripp')).toBe('nl_kripp')
+  })
+  test('strips CRLF so a name cannot inject a second IRC command', () => {
+    expect(bgIrcSafeChannel('x\r\nPRIVMSG #victim :hi')).toBe('xprivmsgvictimhi')
+  })
+  test('drops every character outside [a-z0-9_]', () => {
+    expect(bgIrcSafeChannel('a b:c#d,e')).toBe('abcde')
+  })
+  test('caps at twitch max login length', () => {
+    expect(bgIrcSafeChannel('a'.repeat(60))).toHaveLength(25)
+  })
+  test('nullish / non-string inputs collapse to empty (caller drops the join)', () => {
+    expect(bgIrcSafeChannel(null)).toBe('')
+    expect(bgIrcSafeChannel(undefined)).toBe('')
+    expect(bgIrcSafeChannel({})).toBe('')
+  })
+  test('a name that is already canonical is a fixed point (storage-restore guard relies on this)', () => {
+    for (const ch of ['xqc', 'nl_kripp', 'a1_b2']) expect(bgIrcSafeChannel(ch)).toBe(ch)
+  })
+})
+
+// ── emote CDN allowlist parity: background.js ↔ early-inject-main.js ─────────
+
+describe('EMOTE_CDN allowlist parity across worlds', () => {
+  const EARLY_SRC = readFileSync(new URL('../chrome/early-inject-main.js', import.meta.url), 'utf8')
+  const earlyRe = EARLY_SRC.match(/const EMOTE_CDN_RE\s*=\s*\n?\s*(\/\^https[^\n]*\/)/)
+  const bgRe = BG_SRC.match(/const EMOTE_CDN_PATTERN\s*=\s*\n?\s*(\/\^https[^\n]*\/)/)
+
+  test('both allowlists are still findable (fails loudly on source drift)', () => {
+    expect(earlyRe).not.toBeNull()
+    expect(bgRe).not.toBeNull()
+  })
+
+  // MAIN-world url-map patching must accept every host the SW accepts, or
+  // self-hosted/kick emotes silently fail to patch native img.src.
+  const hosts = [
+    'https://cdn.heatsync.org/emotes/a.webp',
+    'https://heatsync.org/uploads/a.webp',
+    'https://files.kick.com/emotes/1/fullsize',
+    'https://cdn.7tv.app/emote/1/1x.webp',
+    'https://cdn.betterttv.net/emote/1/1x',
+    'https://cdn.frankerfacez.com/emote/1/1',
+    'https://static-cdn.jtvnw.net/emoticons/v2/1/default/dark/1.0',
+  ]
+  for (const url of hosts) {
+    test(`MAIN-world allowlist accepts ${new URL(url).host}`, () => {
+      expect(new Function(`return ${earlyRe[1]}`)().test(url)).toBe(true)
+    })
+  }
+  test('both worlds reject a non-CDN origin', () => {
+    for (const m of [earlyRe, bgRe]) {
+      expect(new Function(`return ${m[1]}`)().test('https://evil.example/pixel.gif')).toBe(false)
+    }
+  })
+})

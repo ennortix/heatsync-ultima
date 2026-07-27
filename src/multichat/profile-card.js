@@ -1068,7 +1068,11 @@ function renderProfileCardView() {
       addRow('yt', mkLink(`https://youtube.com/@${encodeURIComponent(username)}`, username, undefined, 'y'), 'val-yt')
     }
     // heatsync profile — always present ('h' hotkey; pill-era parity)
-    addRow('hs', mkLink(`https://heatsync.org/user/${encodeURIComponent(username)}`, username, undefined, 'h'), 'val-hs')
+    addRow(
+      'hs',
+      mkLink(`https://heatsync.org/user/${encodeURIComponent(username)}`, username, undefined, 'h'),
+      'val-hs',
+    )
 
     // acctage
     const dates = [data.twitch_created_at, data.kick_created_at]

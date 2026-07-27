@@ -31657,21 +31657,6 @@ async function sendHighlightedTwitchMessage(channelId, message, nonce, replyPare
   }
 }
 
-// Best-effort Bits balance for the composer's highlight affordance. Read-only;
-// null on any failure (the button still works — the send surfaces a real error
-// if the balance is short).
-async function fetchTwitchBitsBalance() {
-  const token = getTwitchAuthToken()
-  if (!token) return null
-  try {
-    const data = await twitchGql('{ currentUser { bitsBalance } }')
-    const bal = data?.data?.currentUser?.bitsBalance
-    return typeof bal === 'number' ? bal : null
-  } catch {
-    return null
-  }
-}
-
 async function claimCommunityPoints(claimId, channelId, channelLogin) {
   const token = getTwitchAuthToken()
   if (!token) return false
@@ -31702,13 +31687,8 @@ async function claimCommunityPoints(claimId, channelId, channelLogin) {
   } catch (e) {
     log('Failed to claim bonus points:', e.message)
   }
-  // Silent claim — toast was noisy when tracking multiple channels (e.g.
-  // nl_kripp claims firing while viewing asmongold247). Points still credit;
-  // the toast was the only visible signal and the user explicitly didn't
-  // want it. Re-enable behind a setting if needed in future.
-  // if (claimed && channelLogin) {
-  //   try { window.HsNotifs?.emit?.('toast', { text: '+50 · ' + channelLogin, level: 'success' }) } catch (_) {}
-  // }
+  // Silent claim by design — a toast per claim was noisy when tracking multiple
+  // channels; points still credit without one.
   return claimed
 }
 

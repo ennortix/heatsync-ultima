@@ -26,7 +26,7 @@ function slice(startMarker, endMarker) {
 }
 
 // Carve the kill-switch helper + the send fn (both between these markers).
-const body = slice('function _isHighlightSendKilled(', '// Best-effort Bits balance')
+const body = slice('function _isHighlightSendKilled(', 'async function claimCommunityPoints(')
 
 // Build a runnable factory. Deps are injected as params so each test controls
 // the environment (proxy result, token, health flags) without globals leaking.

@@ -65984,52 +65984,64 @@ const STORAGE_KEY = 'heatsync_multichat'
       hideMultistreamBanner()
       return
     }
-    // Already linked in config? Skip.
+    // Find this streamer's config entry (any platform overlap). Suppress only
+    // when it already covers every platform they're live on — an entry linked
+    // as twitch+kick must still get the nudge when their youtube goes live.
+    // config yt values may be full URLs while identity carries a handle, so
+    // compare youtube by extracted @handle.
     const lower = channelName.toLowerCase()
-    const alreadyLinked = config.channels.some((ch) => {
+    const ytHandleOf = (v) => {
+      if (!v) return null
+      const m = String(v).match(/@([^/?]+)/)
+      return (m ? m[1] : String(v)).toLowerCase()
+    }
+    const matchEntry = config.channels.find((ch) => {
       const t = ch.twitch?.toLowerCase()
       const k = ch.kick?.toLowerCase()
-      const y = ch.youtube?.toLowerCase()
-      const matchesThis =
+      const y = ytHandleOf(ch.youtube)
+      return (
         t === lower ||
         k === lower ||
         y === lower ||
         (id.twitch && t === id.twitch.toLowerCase()) ||
         (id.kick && k === id.kick.toLowerCase()) ||
-        (id.youtube && y === id.youtube.toLowerCase())
-      if (!matchesThis) return false
-      // Linked = at least 2 of {twitch,kick,youtube} populated
-      let count = 0
-      if (ch.twitch) count++
-      if (ch.kick) count++
-      if (ch.youtube) count++
-      return count >= 2
+        (id.youtube && y === ytHandleOf(id.youtube))
+      )
     })
-    if (alreadyLinked) {
+    const missingLive = liveOn.filter((p) => id[p] && !matchEntry?.[p])
+    if (matchEntry && missingLive.length === 0) {
       _multistreamLastResult = 'hidden'
       hideMultistreamBanner()
       return
     }
-    // Build banner
-    const platLabel = (p) => (p === 'twitch' ? 'Twitch' : p === 'kick' ? 'Kick' : p === 'youtube' ? 'YouTube' : p)
+    // Build banner. Copy stays name-free and lowercase — the banner sits on
+    // the streamer's own tab, and the panel is ~360px wide: a display name
+    // pushes the platform list (the whole point) past the ellipsis.
     const otherPlatforms = liveOn.filter((p) => p !== platform)
-    const display = res.profile?.display_name || channelName
     _multistreamLastResult = 'shown'
     el.replaceChildren()
     el.hidden = false
     const text = document.createElement('span')
     text.className = 'hs-mc-multi-text'
-    text.textContent = `${display} is also live on ${otherPlatforms.map(platLabel).join(' + ')}`
+    text.textContent = `also live on ${otherPlatforms.join(' + ')}`
     const linkBtn = document.createElement('button')
     linkBtn.className = 'hs-mc-multi-link'
     linkBtn.textContent = 'link channels'
     linkBtn.addEventListener('click', (e) => {
       e.preventDefault()
-      const entry = { id: `linked_${Date.now()}` }
-      if (id.twitch) entry.twitch = id.twitch
-      if (id.kick) entry.kick = id.kick
-      if (id.youtube) entry.youtube = id.youtube
-      config.channels.push(entry)
+      // Merge into the existing entry when there is one — pushing a fresh
+      // entry for an already-tabbed streamer would duplicate their tab.
+      if (matchEntry) {
+        if (id.twitch && !matchEntry.twitch) matchEntry.twitch = id.twitch
+        if (id.kick && !matchEntry.kick) matchEntry.kick = id.kick
+        if (id.youtube && !matchEntry.youtube) matchEntry.youtube = id.youtube
+      } else {
+        const entry = { id: `linked_${Date.now()}` }
+        if (id.twitch) entry.twitch = id.twitch
+        if (id.kick) entry.kick = id.kick
+        if (id.youtube) entry.youtube = id.youtube
+        config.channels.push(entry)
+      }
       saveConfig()
       try {
         updateTabBar()

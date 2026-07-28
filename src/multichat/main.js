@@ -2876,6 +2876,7 @@
           <button class="hs-mc-tab hs-mc-util-btn" data-tab="settings" title="${t('mc_btn_settings')}">\u2699</button>
           <button class="hs-mc-tab hs-mc-util-btn hs-mc-collapse-btn" id="hs-mc-collapse-btn" data-tab="collapse" title="hide chat (\\)" aria-label="hide chat"></button>
           <button class="hs-mc-tab hs-mc-util-btn hs-mc-popout-btn" data-tab="popout" title="pop out chat to standalone window" style="display:none">\u26f6</button>
+          <button class="hs-mc-tab hs-mc-util-btn hs-mc-sub-btn" data-tab="subscribe" title="subscribe \u2014 support this channel" style="display:none">$</button>
         </div>
         <div id="hs-mc-platfilter"></div>
       </div>
@@ -2901,6 +2902,8 @@
         switchTab('add')
       } else if (tabId === 'popout') {
         openPopoutForCurrentTab()
+      } else if (tabId === 'subscribe') {
+        openSubForCurrentTab(tab)
       } else if (tabId === 'live') {
         showLiveChannelPicker(tab)
       } else if (tabId === 'collapse') {
@@ -3001,6 +3004,9 @@
       }
 
       mkItem('edit', '#fff', () => showEditChannelForm(tabId))
+      for (const l of channelSubLinks(ch)) {
+        mkItem(l.label, '#ff8700', () => window.open(l.url, '_blank', 'noopener'))
+      }
       mkItem('remove', 'var(--hs-danger)', () => removeChannel(tabId))
 
       // Append then clamp to viewport so it doesn't overflow off-screen
@@ -6302,6 +6308,7 @@
       if (settingsBtn) settingsBtn.textContent = id === 'settings' ? '✕' : '⚙'
     }
     updatePopoutBtnVisibility()
+    updateSubBtnVisibility()
 
     // Channel/tab switch flips which channel-emote cache the picker reads —
     // mark cache dirty + queue idle prebuild for the new context.
@@ -11506,6 +11513,79 @@
     const btn = tabBarElement?.querySelector('.hs-mc-popout-btn')
     if (!btn) return
     btn.style.display = resolvePopoutContext() ? '' : 'none'
+  }
+
+  // Platform subscribe deep-links for a channel tab. The money path must
+  // never dead-end: twitch/kick land on the real checkout, youtube lands on
+  // the channel with the subscribe confirm (join/membership sits right next
+  // to it when the channel has one — a /join deep-link 404-pages channels
+  // without memberships, so we deliberately don't use it).
+  function channelSubLinks(ch) {
+    const links = []
+    if (!ch) return links
+    if (ch.twitch)
+      links.push({ label: 'sub — twitch', url: `https://www.twitch.tv/subs/${encodeURIComponent(ch.twitch)}` })
+    if (ch.kick) links.push({ label: 'sub — kick', url: `https://kick.com/${encodeURIComponent(ch.kick)}` })
+    if (ch.youtube) {
+      try {
+        const u = new URL(ch.youtube)
+        const m = u.pathname.match(/^\/(@[\w.-]+|channel\/[\w-]+|c\/[\w.-]+|user\/[\w.-]+)/)
+        if (u.protocol === 'https:' && /(^|\.)(youtube\.com|youtube-nocookie\.com)$/.test(u.hostname) && m) {
+          links.push({ label: 'sub — youtube', url: `https://www.youtube.com/${m[1]}?sub_confirmation=1` })
+        }
+      } catch (_) {}
+    }
+    return links
+  }
+
+  // One platform → straight to its sub page. Simulcast tab → tiny picker,
+  // same square black chrome as the tab context menu.
+  function openSubForCurrentTab(anchorEl) {
+    const links = channelSubLinks(getChannelById(currentTab))
+    if (!links.length) return
+    if (links.length === 1) {
+      window.open(links[0].url, '_blank', 'noopener')
+      return
+    }
+    document.getElementById('hs-mc-ctx-menu')?.remove()
+    const menu = document.createElement('div')
+    menu.id = 'hs-mc-ctx-menu'
+    menu.style.cssText =
+      'position:fixed;z-index:99999;background:#000;border:1px solid #808080;border-radius:0;padding:4px 0;min-width:150px;font-size:13px;font-family:inherit;'
+    for (const l of links) {
+      const item = document.createElement('div')
+      item.textContent = l.label
+      item.style.cssText = 'padding:6px 12px;cursor:pointer;color:#ff8700;'
+      item.addEventListener('mouseenter', () => (item.style.background = 'rgba(255,255,255,0.06)'), {
+        signal: mcSignal,
+      })
+      item.addEventListener('mouseleave', () => (item.style.background = ''), { signal: mcSignal })
+      item.addEventListener('click', () => {
+        menu.remove()
+        window.open(l.url, '_blank', 'noopener')
+      })
+      menu.appendChild(item)
+    }
+    document.body.appendChild(menu)
+    const r = anchorEl?.getBoundingClientRect?.()
+    const mw = menu.offsetWidth,
+      mh = menu.offsetHeight
+    menu.style.left = `${Math.min(r ? r.left : 0, window.innerWidth - mw - 4)}px`
+    menu.style.top = `${Math.min(r ? r.bottom + 2 : 0, window.innerHeight - mh - 4)}px`
+    const dismiss = (ev) => {
+      if (!menu.contains(ev.target)) {
+        menu.remove()
+        document.removeEventListener('click', dismiss)
+      }
+    }
+    cleanup.setTimeout(() => document.addEventListener('click', dismiss, { signal: mcSignal }), 0)
+  }
+
+  // $ shows only when the active tab has at least one platform sub target.
+  function updateSubBtnVisibility() {
+    const btn = tabBarElement?.querySelector('.hs-mc-sub-btn')
+    if (!btn) return
+    btn.style.display = channelSubLinks(getChannelById(currentTab)).length ? '' : 'none'
   }
 
   // Drop a panel callout (status/error banner) directly below the search/filter

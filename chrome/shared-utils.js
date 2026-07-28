@@ -239,3 +239,41 @@
     getMainWorldNonce,
   }
 })()
+
+// Emote continuity fallback — one delegated capture-phase error listener: any
+// <img> from a third-party emote CDN that fails to load retries ONCE through
+// heatsync's continuity byte cache. Covers every ext render surface (multichat
+// rows, native-chat injection, tooltips, picker) without touching creation
+// sites. Zero cost on the happy path; only fires when the provider CDN fails.
+// Guarded: shared-utils loads with both content-script groups on twitch.
+;(() => {
+  if (window.__hsEmoteFallbackInstalled) return
+  window.__hsEmoteFallbackInstalled = true
+  // Mirrors EMOTE_FALLBACK_HOSTS server-side (services/emote-cache.ts).
+  const HS_EC_HOSTS = new Set([
+    'cdn.7tv.app',
+    'cdn.betterttv.net',
+    'cdn.frankerfacez.com',
+    'files.kick.com',
+    'static-cdn.jtvnw.net',
+  ])
+  document.addEventListener(
+    'error',
+    (e) => {
+      const img = e.target
+      if (!img || img.tagName !== 'IMG' || img.dataset.hsEcFb) return
+      const src = img.currentSrc || img.src || ''
+      let host
+      try {
+        host = new URL(src).hostname
+      } catch (_) {
+        return
+      }
+      if (!HS_EC_HOSTS.has(host)) return
+      img.dataset.hsEcFb = '1'
+      img.removeAttribute('srcset')
+      img.src = 'https://heatsync.org/api/emotes/cdn?u=' + encodeURIComponent(src)
+    },
+    true,
+  )
+})()

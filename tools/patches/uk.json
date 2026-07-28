@@ -1,6 +1,6 @@
 {
   "manifest_name": "heatsync",
-  "manifest_description": "Кастомні emotes для чатів Twitch, Kick та YouTube. Безмежні слоти, автодоповнення Tab, синхронізація в реальному часі.",
+  "manifest_description": "Одна панель для живого чату Twitch, Kick + YouTube. Плюс безкоштовний інвентар на 5000 емоцій, що працює на будь-якому каналі",
   "common_loading": "завантаження...",
   "common_extension_updated": "Розширення оновлено — оновіть сторінку",
   "common_no_matches": "немає результатів",
@@ -39,7 +39,7 @@
   "welcome_step1_title": "увійди на heatsync.org",
   "welcome_step1_desc": "увійди через Twitch або Kick для створення акаунту",
   "welcome_step2_title": "завантаж свої emotes",
-  "welcome_step2_desc": "додай будь-які зображення — без обмеження слотів, усі формати",
+  "welcome_step2_desc": "додай будь-які зображення — 5000 слотів, усі формати",
   "welcome_step3_title": "використовуй у чаті",
   "welcome_step3_desc": "натисни кнопку heatsync у чаті Twitch/Kick для доступу до своїх emotes",
   "welcome_cta": "почати",

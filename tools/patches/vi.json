@@ -1,6 +1,6 @@
 {
   "manifest_name": "heatsync",
-  "manifest_description": "Emote tùy chỉnh cho chat Twitch, Kick và YouTube. Slot không giới hạn, gõ tab để hoàn thành, đồng bộ thời gian thực.",
+  "manifest_description": "Một bảng cho chat trực tiếp của Twitch, Kick + YouTube. Kèm kho 5000 emote miễn phí đi theo bạn vào mọi kênh",
   "common_loading": "đang tải...",
   "common_extension_updated": "Tiện ích đã cập nhật — tải lại trang",
   "common_no_matches": "không có kết quả",
@@ -39,7 +39,7 @@
   "welcome_step1_title": "đăng nhập tại heatsync.org",
   "welcome_step1_desc": "đăng nhập bằng Twitch hoặc Kick để tạo tài khoản",
   "welcome_step2_title": "tải emote lên",
-  "welcome_step2_desc": "thêm bất kỳ ảnh nào — không giới hạn slot, hỗ trợ mọi định dạng",
+  "welcome_step2_desc": "thêm bất kỳ ảnh nào — 5000 slot, hỗ trợ mọi định dạng",
   "welcome_step3_title": "dùng trong chat",
   "welcome_step3_desc": "bấm nút heatsync trong chat Twitch/Kick để mở emote của bạn",
   "welcome_cta": "bắt đầu",

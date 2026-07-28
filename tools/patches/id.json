@@ -1,6 +1,6 @@
 {
   "manifest_name": "heatsync",
-  "manifest_description": "Emote kustom untuk chat Twitch, Kick, dan YouTube. Slot tak terbatas, autocomplete dengan tab, sinkronisasi real-time.",
+  "manifest_description": "Satu panel untuk live chat Twitch, Kick + YouTube. Plus inventaris 5000 emote gratis yang ikut denganmu ke channel mana pun",
   "common_loading": "memuat...",
   "common_extension_updated": "Ekstensi diperbarui — refresh halaman",
   "common_no_matches": "tidak ada hasil",
@@ -39,7 +39,7 @@
   "welcome_step1_title": "login di heatsync.org",
   "welcome_step1_desc": "masuk dengan Twitch atau Kick untuk membuat akun",
   "welcome_step2_title": "upload emote kamu",
-  "welcome_step2_desc": "tambahkan gambar apa saja — tanpa batas slot, semua format didukung",
+  "welcome_step2_desc": "tambahkan gambar apa saja — 5000 slot, semua format didukung",
   "welcome_step3_title": "pakai di chat",
   "welcome_step3_desc": "klik tombol heatsync di chat Twitch/Kick untuk akses emote kamu",
   "welcome_cta": "mulai",

@@ -1,6 +1,6 @@
 {
   "manifest_name": "heatsync",
-  "manifest_description": "Anpassade emotes för Twitch-, Kick- och YouTube-chatt. Obegränsade slottar, tab-komplettering, realtidssynkronisering.",
+  "manifest_description": "En panel för livechatt på Twitch, Kick + YouTube. Plus ett gratis förråd med 5000 emotes som följer med dig till varje kanal",
   "common_loading": "läser in...",
   "common_extension_updated": "Tillägget uppdaterat — ladda om sidan",
   "common_no_matches": "inga träffar",
@@ -39,7 +39,7 @@
   "welcome_step1_title": "logga in på heatsync.org",
   "welcome_step1_desc": "logga in med Twitch eller Kick för att skapa konto",
   "welcome_step2_title": "ladda upp dina emotes",
-  "welcome_step2_desc": "lägg till valfria bilder — inga slottar-gränser, alla format stöds",
+  "welcome_step2_desc": "lägg till valfria bilder — 5000 slots, alla format stöds",
   "welcome_step3_title": "använd dem i chatten",
   "welcome_step3_desc": "klicka på heatsync-knappen i Twitch/Kick-chatten för att nå dina emotes",
   "welcome_cta": "kom igång",

@@ -1,6 +1,6 @@
 {
   "manifest_name": "heatsync",
-  "manifest_description": "Egyéni emote-ok Twitch, Kick és YouTube chathez. Korlátlan slot, tab-kiegészítés, valós idejű szinkronizálás.",
+  "manifest_description": "Egy panel a Twitch, Kick + YouTube élő chathez. Ráadásul ingyenes, 5000 helyes emote-tár, ami minden csatornára veled tart",
   "common_loading": "betöltés...",
   "common_extension_updated": "Bővítmény frissült — frissítsd az oldalt",
   "common_no_matches": "nincs találat",
@@ -39,7 +39,7 @@
   "welcome_step1_title": "jelentkezz be a heatsync.org oldalon",
   "welcome_step1_desc": "lépj be Twitch vagy Kick fiókkal a regisztrációhoz",
   "welcome_step2_title": "töltsd fel az emote-jaidat",
-  "welcome_step2_desc": "tölts fel bármilyen képet — nincs slot-korlát, minden formátum támogatott",
+  "welcome_step2_desc": "tölts fel bármilyen képet — 5000 slot, minden formátum támogatott",
   "welcome_step3_title": "használd a chatben",
   "welcome_step3_desc": "kattints a heatsync gombra a Twitch/Kick chatben az emote-jaidhoz",
   "welcome_cta": "kezdjük",

@@ -44,5 +44,6 @@
   "mc_chat_hype_train": "Hype Train",
   "mc_chat_hype_level": "Lvl $LEVEL$",
   "mc_tip_emoji": "Emoji",
-  "mc_whisper_hint": "/w Nutzer Nachricht · /dm Nutzer Nachricht · /r Nachricht"
+  "mc_whisper_hint": "/w Nutzer Nachricht · /dm Nutzer Nachricht · /r Nachricht",
+  "manifest_description": "Ein Panel für den Livechat von Twitch, Kick + YouTube. Dazu ein kostenloses Inventar mit 5000 Emote-Plätzen für jeden Kanal"
 }

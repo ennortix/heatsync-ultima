@@ -1,6 +1,6 @@
 {
   "manifest_name": "heatsync",
-  "manifest_description": "Twitch、Kick 與 YouTube 聊天室自訂表情。無限格位、Tab 自動補全、即時同步。",
+  "manifest_description": "一個面板同時看 Twitch、Kick、YouTube 直播聊天。另有 5000 個免費表情位，隨你進入任何頻道",
   "common_loading": "載入中...",
   "common_extension_updated": "擴充功能已更新 — 請重新整理頁面",
   "common_no_matches": "無符合結果",
@@ -39,7 +39,7 @@
   "welcome_step1_title": "在 heatsync.org 登入",
   "welcome_step1_desc": "用 Twitch 或 Kick 登入以建立帳號",
   "welcome_step2_title": "上傳你的表情",
-  "welcome_step2_desc": "新增任何圖片 — 無格位限制、支援所有格式",
+  "welcome_step2_desc": "新增任何圖片 — 5000 個格位、支援所有格式",
   "welcome_step3_title": "在聊天室使用",
   "welcome_step3_desc": "在 Twitch/Kick 聊天室點擊 heatsync 按鈕來存取你的表情",
   "welcome_cta": "開始",

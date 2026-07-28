@@ -1,6 +1,6 @@
 {
   "manifest_name": "heatsync",
-  "manifest_description": "Twitch, Kick और YouTube चैट के लिए कस्टम इमोट। असीमित स्लॉट, टैब कम्पलीशन, रियल-टाइम सिंक।",
+  "manifest_description": "Twitch, Kick + YouTube के लाइव चैट के लिए एक पैनल। साथ में 5000 इमोट का मुफ़्त संग्रह जो हर चैनल में आपके साथ चलता है",
   "common_loading": "लोड हो रहा है...",
   "common_extension_updated": "एक्सटेंशन अपडेट हो गया — पेज रिफ्रेश करें",
   "common_no_matches": "कोई मेल नहीं",
@@ -39,7 +39,7 @@
   "welcome_step1_title": "heatsync.org पर लॉगिन करें",
   "welcome_step1_desc": "अकाउंट बनाने के लिए Twitch या Kick से लॉगिन करें",
   "welcome_step2_title": "अपने इमोट अपलोड करें",
-  "welcome_step2_desc": "कोई भी छवि जोड़ें — कोई स्लॉट सीमा नहीं, सभी फॉर्मेट समर्थित",
+  "welcome_step2_desc": "कोई भी छवि जोड़ें — 5000 स्लॉट, सभी फॉर्मेट समर्थित",
   "welcome_step3_title": "उन्हें चैट में उपयोग करें",
   "welcome_step3_desc": "अपने इमोट तक पहुंचने के लिए Twitch/Kick चैट में heatsync बटन पर क्लिक करें",
   "welcome_cta": "शुरू करें",

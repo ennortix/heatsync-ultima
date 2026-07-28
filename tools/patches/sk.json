@@ -1,6 +1,6 @@
 {
   "manifest_name": "heatsync",
-  "manifest_description": "Vlastné emotky pre chat na Twitchi, Kicku a YouTube. Neobmedzené sloty, doplňovanie tabom, synchronizácia v reálnom čase.",
+  "manifest_description": "Jeden panel pre živý chat Twitch, Kick + YouTube. K tomu bezplatný inventár na 5000 emotov, ktorý vás sprevádza každým kanálom",
   "common_loading": "načítavam...",
   "common_extension_updated": "Rozšírenie aktualizované — obnov stránku",
   "common_no_matches": "žiadne výsledky",
@@ -39,7 +39,7 @@
   "welcome_step1_title": "prihlás sa na heatsync.org",
   "welcome_step1_desc": "prihlás sa cez Twitch alebo Kick a vytvor si účet",
   "welcome_step2_title": "nahraj svoje emotky",
-  "welcome_step2_desc": "pridaj akékoľvek obrázky — bez limitu slotov, všetky formáty",
+  "welcome_step2_desc": "pridaj akékoľvek obrázky — 5000 slotov, všetky formáty",
   "welcome_step3_title": "používaj ich v chate",
   "welcome_step3_desc": "klikni na tlačidlo heatsync v chate Twitchu/Kicku a otvor si svoje emotky",
   "welcome_cta": "začať",

@@ -30,5 +30,6 @@
   "mc_settings_keyword_highlights_placeholder": "satır başına bir anahtar kelime",
   "mc_chat_hype_train": "hype train",
   "mc_tip_emoji": "emoji",
-  "mc_whisper_hint": "/w kullanıcı mesaj · /dm kullanıcı mesaj · /r mesaj"
+  "mc_whisper_hint": "/w kullanıcı mesaj · /dm kullanıcı mesaj · /r mesaj",
+  "manifest_description": "Twitch, Kick + YouTube canlı sohbeti için tek panel. Ayrıca her kanalda yanınızda olan 5000 kişilik ücretsiz emote envanteri"
 }

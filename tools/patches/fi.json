@@ -1,6 +1,6 @@
 {
   "manifest_name": "heatsync",
-  "manifest_description": "Mukautetut emotet Twitchin, Kickin ja YouTuben chattiin. Rajaton paikkamäärä, sarkaintäydennys, reaaliaikainen synkronointi.",
+  "manifest_description": "Yksi paneeli Twitchin, Kickin + YouTuben live-chattiin. Lisäksi ilmainen 5000 emoten varasto, joka seuraa sinua joka kanavalle",
   "common_loading": "ladataan...",
   "common_extension_updated": "Laajennus päivitetty — päivitä sivu",
   "common_no_matches": "ei osumia",
@@ -39,7 +39,7 @@
   "welcome_step1_title": "kirjaudu sivulle heatsync.org",
   "welcome_step1_desc": "kirjaudu Twitchillä tai Kickillä luodaksesi tilin",
   "welcome_step2_title": "lataa emotesi",
-  "welcome_step2_desc": "lisää mitä tahansa kuvia — ei paikkarajoja, kaikki formaatit tuettu",
+  "welcome_step2_desc": "lisää mitä tahansa kuvia — 5000 paikkaa, kaikki formaatit tuettu",
   "welcome_step3_title": "käytä niitä chatissä",
   "welcome_step3_desc": "klikkaa heatsync-painiketta Twitchin/Kickin chatissä päästäksesi emoteihisi",
   "welcome_cta": "aloita",

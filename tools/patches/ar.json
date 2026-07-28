@@ -1,6 +1,6 @@
 {
   "manifest_name": "heatsync",
-  "manifest_description": "إيموتس مخصصة لدردشة Twitch وKick وYouTube. خانات غير محدودة، إكمال تلقائي بـ Tab، مزامنة فورية.",
+  "manifest_description": "لوحة واحدة لدردشة تويتش وكيك ويوتيوب المباشرة. بالإضافة إلى مخزون مجاني من 5000 إيموت يرافقك في أي قناة",
   "common_loading": "جارٍ التحميل...",
   "common_extension_updated": "تم تحديث الإضافة — حدّث الصفحة",
   "common_no_matches": "لا توجد نتائج",
@@ -39,7 +39,7 @@
   "welcome_step1_title": "سجّل دخول على heatsync.org",
   "welcome_step1_desc": "سجّل عبر Twitch أو Kick لإنشاء حسابك",
   "welcome_step2_title": "ارفع إيموتسك",
-  "welcome_step2_desc": "أضف أي صور — لا حدود على الخانات، جميع الصيغ مدعومة",
+  "welcome_step2_desc": "أضف أي صور — 5000 خانة، جميع الصيغ مدعومة",
   "welcome_step3_title": "استخدمها في الدردشة",
   "welcome_step3_desc": "اضغط زر heatsync في دردشة Twitch/Kick لفتح إيموتسك",
   "welcome_cta": "ابدأ",

@@ -1,6 +1,6 @@
 {
   "manifest_name": "heatsync",
-  "manifest_description": "Custom emotes para sa Twitch, Kick at YouTube chat. Walang limit na slots, tab completion, real-time sync.",
+  "manifest_description": "Isang panel para sa live chat ng Twitch, Kick + YouTube. Plus libreng 5000-slot na emote inventory na kasama mo sa bawat channel",
   "common_loading": "naglo-load...",
   "common_extension_updated": "Na-update ang extension — i-refresh ang page",
   "common_no_matches": "walang nakitang resulta",
@@ -39,7 +39,7 @@
   "welcome_step1_title": "mag-login sa heatsync.org",
   "welcome_step1_desc": "mag-sign in gamit ang Twitch o Kick para gumawa ng account",
   "welcome_step2_title": "mag-upload ng emotes",
-  "welcome_step2_desc": "magdagdag ng anumang larawan — walang slot limits, lahat ng format suportado",
+  "welcome_step2_desc": "magdagdag ng anumang larawan — 5000 slots, lahat ng format suportado",
   "welcome_step3_title": "gamitin sa chat",
   "welcome_step3_desc": "i-click ang heatsync button sa Twitch/Kick chat para makita ang iyong emotes",
   "welcome_cta": "magsimula",

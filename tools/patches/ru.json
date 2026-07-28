@@ -1,6 +1,6 @@
 {
   "manifest_name": "heatsync",
-  "manifest_description": "Кастомные эмоуты для чата Twitch, Kick и YouTube. Безлимитные слоты, автодополнение по Tab, синхронизация в реальном времени.",
+  "manifest_description": "Одна панель для живого чата Twitch, Kick + YouTube. Плюс бесплатный инвентарь на 5000 эмоций, который работает на любом канале",
   "common_loading": "загрузка...",
   "common_extension_updated": "Расширение обновлено — обновите страницу",
   "common_no_matches": "ничего не найдено",
@@ -39,7 +39,7 @@
   "welcome_step1_title": "войдите на heatsync.org",
   "welcome_step1_desc": "войдите через Twitch или Kick, чтобы создать аккаунт",
   "welcome_step2_title": "загрузите свои эмоуты",
-  "welcome_step2_desc": "добавьте любые изображения — без ограничения слотов, все форматы поддерживаются",
+  "welcome_step2_desc": "добавьте любые изображения — 5000 слотов, все форматы поддерживаются",
   "welcome_step3_title": "используйте их в чате",
   "welcome_step3_desc": "нажмите кнопку heatsync в чате Twitch/Kick, чтобы получить доступ к своим эмоутам",
   "welcome_cta": "начать",

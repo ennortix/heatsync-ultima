@@ -1,6 +1,6 @@
 {
   "manifest_name": "heatsync",
-  "manifest_description": "Emote personalizzate per chat di Twitch, Kick e YouTube. Slot illimitati, completamento con tab, sincronizzazione in tempo reale.",
+  "manifest_description": "Un pannello per la chat live di Twitch, Kick + YouTube. In più un inventario gratuito da 5000 emote che ti segue in ogni canale",
   "common_loading": "caricamento...",
   "common_extension_updated": "Estensione aggiornata — ricarica la pagina",
   "common_no_matches": "nessun risultato",
@@ -39,7 +39,7 @@
   "welcome_step1_title": "accedi su heatsync.org",
   "welcome_step1_desc": "accedi con Twitch o Kick per creare il tuo account",
   "welcome_step2_title": "carica le tue emote",
-  "welcome_step2_desc": "aggiungi qualsiasi immagine — nessun limite di slot, tutti i formati supportati",
+  "welcome_step2_desc": "aggiungi qualsiasi immagine — 5000 slot, tutti i formati supportati",
   "welcome_step3_title": "usale in chat",
   "welcome_step3_desc": "clicca il pulsante heatsync nella chat di Twitch/Kick per accedere alle tue emote",
   "welcome_cta": "inizia",

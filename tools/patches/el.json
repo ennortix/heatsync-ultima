@@ -1,6 +1,6 @@
 {
   "manifest_name": "heatsync",
-  "manifest_description": "Προσαρμοσμένα emotes για chat στο Twitch, Kick και YouTube. Απεριόριστες θέσεις, αυτόματη συμπλήρωση με tab, συγχρονισμός σε πραγματικό χρόνο.",
+  "manifest_description": "Ένα πάνελ για το ζωντανό chat σε Twitch, Kick + YouTube. Επιπλέον, δωρεάν αποθήκη 5000 emote που σε ακολουθεί σε κάθε κανάλι",
   "common_loading": "φόρτωση...",
   "common_extension_updated": "Η επέκταση ενημερώθηκε — ανανέωσε τη σελίδα",
   "common_no_matches": "χωρίς αποτελέσματα",
@@ -39,7 +39,7 @@
   "welcome_step1_title": "συνδέσου στο heatsync.org",
   "welcome_step1_desc": "συνδέσου με Twitch ή Kick για να φτιάξεις λογαριασμό",
   "welcome_step2_title": "ανέβασε τα emotes σου",
-  "welcome_step2_desc": "πρόσθεσε όποια εικόνα — χωρίς όρια θέσεων, υποστηρίζονται όλα τα formats",
+  "welcome_step2_desc": "πρόσθεσε όποια εικόνα — 5000 θέσεις, υποστηρίζονται όλα τα formats",
   "welcome_step3_title": "χρησιμοποίησέ τα στο chat",
   "welcome_step3_desc": "πάτα το κουμπί heatsync στο chat του Twitch/Kick για να βρεις τα emotes σου",
   "welcome_cta": "ξεκίνα",

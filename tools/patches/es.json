@@ -30,5 +30,6 @@
   "mc_settings_keyword_highlights_desc": "Los mensajes con cualquiera de estas palabras se tiñen de naranja, como una mención personal. Una por línea, sin distinguir mayúsculas, palabras completas.",
   "mc_settings_keyword_highlights_placeholder": "una palabra clave por línea",
   "mc_chat_hype_train": "hype train",
-  "mc_tip_emoji": "emoji"
+  "mc_tip_emoji": "emoji",
+  "manifest_description": "Un panel para el chat en vivo de Twitch, Kick + YouTube. Más un inventario gratuito de 5000 emotes que te sigue a cualquier canal"
 }

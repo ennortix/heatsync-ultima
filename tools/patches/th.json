@@ -1,6 +1,6 @@
 {
   "manifest_name": "heatsync",
-  "manifest_description": "อีโมตคัสตอมสำหรับแชท Twitch, Kick และ YouTube ช่องว่างไม่จำกัด เติมคำด้วย Tab ซิงค์เรียลไทม์",
+  "manifest_description": "แผงเดียวสำหรับแชทสดของ Twitch, Kick + YouTube พร้อมคลังอิโมทฟรี 5000 ช่องที่ติดตามคุณไปทุกช่อง",
   "common_loading": "กำลังโหลด...",
   "common_extension_updated": "อัปเดตส่วนขยายแล้ว — โปรดรีเฟรชหน้า",
   "common_no_matches": "ไม่พบผลลัพธ์",
@@ -39,7 +39,7 @@
   "welcome_step1_title": "เข้าสู่ระบบที่ heatsync.org",
   "welcome_step1_desc": "ลงชื่อเข้าใช้ด้วย Twitch หรือ Kick เพื่อสร้างบัญชี",
   "welcome_step2_title": "อัปโหลดอีโมตของคุณ",
-  "welcome_step2_desc": "เพิ่มภาพใดก็ได้ — ไม่มีขีดจำกัดช่อง รองรับทุกฟอร์แมต",
+  "welcome_step2_desc": "เพิ่มภาพใดก็ได้ — 5000 ช่อง รองรับทุกฟอร์แมต",
   "welcome_step3_title": "ใช้ในแชท",
   "welcome_step3_desc": "คลิกปุ่ม heatsync ในแชท Twitch/Kick เพื่อเข้าถึงอีโมตของคุณ",
   "welcome_cta": "เริ่มต้น",

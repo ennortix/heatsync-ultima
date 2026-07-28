@@ -1,6 +1,6 @@
 {
   "manifest_name": "heatsync",
-  "manifest_description": "אימוג'ים מותאמים אישית לצ'אט Twitch, Kick ו-YouTube. סלוטים בלתי מוגבלים, השלמה אוטומטית עם Tab, סנכרון בזמן אמת.",
+  "manifest_description": "פאנל אחד לצ׳אט החי של טוויץ׳, קיק + יוטיוב. בנוסף מלאי חינמי של 5000 אימוטים שמלווה אותך בכל ערוץ",
   "common_loading": "טוען...",
   "common_extension_updated": "ההרחבה עודכנה — רענן את הדף",
   "common_no_matches": "אין תוצאות",
@@ -39,7 +39,7 @@
   "welcome_step1_title": "התחבר ב-heatsync.org",
   "welcome_step1_desc": "התחבר עם Twitch או Kick כדי ליצור חשבון",
   "welcome_step2_title": "העלה את האימוג'ים שלך",
-  "welcome_step2_desc": "הוסף תמונות כלשהן — ללא מגבלת סלוטים, כל הפורמטים נתמכים",
+  "welcome_step2_desc": "הוסף תמונות כלשהן — 5000 סלוטים, כל הפורמטים נתמכים",
   "welcome_step3_title": "השתמש בהם בצ'אט",
   "welcome_step3_desc": "לחץ על כפתור heatsync בצ'אט Twitch/Kick כדי לגשת לאימוג'ים שלך",
   "welcome_cta": "התחל",

@@ -1,6 +1,6 @@
 {
   "manifest_name": "heatsync",
-  "manifest_description": "Emote tersuai untuk chat Twitch, Kick dan YouTube. Slot tanpa had, autolengkap dengan tab, penyegerakan masa nyata.",
+  "manifest_description": "Satu panel untuk sembang langsung Twitch, Kick + YouTube. Plus inventori 5000 emote percuma yang ikut anda ke mana-mana saluran",
   "common_loading": "memuat...",
   "common_extension_updated": "Sambungan dikemas kini — muat semula halaman",
   "common_no_matches": "tiada padanan",
@@ -39,7 +39,7 @@
   "welcome_step1_title": "log masuk di heatsync.org",
   "welcome_step1_desc": "log masuk dengan Twitch atau Kick untuk buat akaun",
   "welcome_step2_title": "muat naik emote anda",
-  "welcome_step2_desc": "tambah apa-apa imej — tiada had slot, semua format disokong",
+  "welcome_step2_desc": "tambah apa-apa imej — 5000 slot, semua format disokong",
   "welcome_step3_title": "guna dalam chat",
   "welcome_step3_desc": "klik butang heatsync di chat Twitch/Kick untuk akses emote anda",
   "welcome_cta": "mula",

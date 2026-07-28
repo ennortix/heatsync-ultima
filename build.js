@@ -570,11 +570,10 @@ const COPY_FILES = [
   'kick-autocomplete-hook.js',
   'pcard-early.js',
   'early-layout.js',
-  'i18n-override.js',
 ]
 
 // Assets (images, etc)
-const ASSETS = ['icon-16.png', 'icon-48.png', 'icon-96.png', 'icon-128.png', 'icon-48-black.png', 'COGGERS-1x.webp']
+const ASSETS = ['icon-16.png', 'icon-48.png', 'icon-96.png', 'icon-128.png', 'icon-48-black.png']
 
 // Strip ES module syntax from bundled files
 function stripExports(content) {

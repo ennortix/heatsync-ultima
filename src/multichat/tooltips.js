@@ -800,6 +800,7 @@ function shapeIdentity(profile) {
   const liveOn = []
   if (profile.twitch_is_live) liveOn.push('twitch')
   if (profile.kick_is_live) liveOn.push('kick')
+  if (profile.youtube_is_live) liveOn.push('youtube')
   return {
     ok: true,
     profile,

@@ -28037,6 +28037,7 @@ function shapeIdentity(profile) {
   const liveOn = []
   if (profile.twitch_is_live) liveOn.push('twitch')
   if (profile.kick_is_live) liveOn.push('kick')
+  if (profile.youtube_is_live) liveOn.push('youtube')
   return {
     ok: true,
     profile,
@@ -66370,11 +66371,14 @@ const STORAGE_KEY = 'heatsync_multichat'
     const alreadyLinked = config.channels.some((ch) => {
       const t = ch.twitch?.toLowerCase()
       const k = ch.kick?.toLowerCase()
+      const y = ch.youtube?.toLowerCase()
       const matchesThis =
         t === lower ||
         k === lower ||
+        y === lower ||
         (id.twitch && t === id.twitch.toLowerCase()) ||
-        (id.kick && k === id.kick.toLowerCase())
+        (id.kick && k === id.kick.toLowerCase()) ||
+        (id.youtube && y === id.youtube.toLowerCase())
       if (!matchesThis) return false
       // Linked = at least 2 of {twitch,kick,youtube} populated
       let count = 0

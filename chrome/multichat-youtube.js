@@ -62222,7 +62222,7 @@ const STORAGE_KEY = 'heatsync_multichat'
     // them updateTabBar (runs on every channel load) silently removes the ⇄ / ⚡
     // buttons right after they render. That was "BUG 1: ⇄ missing on kick".
     const existingChannelTabs = tabBarElement.querySelectorAll(
-      '.hs-mc-tab[data-tab]:not([data-tab="live"]):not([data-tab="feed"]):not([data-tab="mentions"]):not([data-tab="whispers"]):not([data-tab="discover"]):not([data-tab="pinned"]):not([data-tab="modlog"]):not([data-tab="add"]):not([data-tab="settings"]):not([data-tab="popout"]):not([data-tab="collapse"]):not([data-tab="native"]):not([data-tab="actions"])',
+      '.hs-mc-tab[data-tab]:not([data-tab="live"]):not([data-tab="feed"]):not([data-tab="mentions"]):not([data-tab="whispers"]):not([data-tab="discover"]):not([data-tab="pinned"]):not([data-tab="modlog"]):not([data-tab="add"]):not([data-tab="settings"]):not([data-tab="popout"]):not([data-tab="collapse"]):not([data-tab="native"]):not([data-tab="actions"]):not([data-tab="subscribe"])',
     )
     existingChannelTabs.forEach((t) => {
       t.remove()

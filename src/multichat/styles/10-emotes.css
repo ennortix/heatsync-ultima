@@ -435,6 +435,13 @@
       cursor: default;
       user-select: none;
     }
+    /* Per-category color coding — border+text together. Cyan above stays the
+       fallback for unknown categories. ansi: 201/196/40/244. Mirror of web
+       .hs-emote-cw[data-cw]. */
+    .hs-mc-emote-wrapper.hs-mc-emote-cw[data-cw="sexual"] { border-color: #ff00ff; color: #ff00ff; }
+    .hs-mc-emote-wrapper.hs-mc-emote-cw[data-cw="gore"]   { border-color: #ff0000; color: #ff0000; }
+    .hs-mc-emote-wrapper.hs-mc-emote-cw[data-cw="drugs"]  { border-color: #00d700; color: #00d700; }
+    .hs-mc-emote-wrapper.hs-mc-emote-cw[data-cw="hate"]   { border-color: #808080; color: #808080; }
     /* No hover plate / state fill — the box is informational, not clickable. */
     .hs-mc-emote-wrapper.hs-mc-emote-cw::before {
       display: none;

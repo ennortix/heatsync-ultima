@@ -60,7 +60,7 @@
       padding: 8px 10px; margin: 0; resize: vertical; min-height: 72px;
       font-family: inherit; font-size: 13px; line-height: 1.4; outline: none;
     }
-    .hs-note-editor-ta::placeholder { color: #555; }
+    .hs-note-editor-ta::placeholder { color: #aaa; }
     .hs-note-editor-ta:focus { box-shadow: inset 0 0 0 1px var(--hs-gold); }
     .hs-note-editor-foot {
       display: flex; align-items: center; justify-content: space-between;
@@ -73,7 +73,7 @@
     }
     .hs-note-editor-del:hover { background: var(--hs-danger); color: #000; border-color: var(--hs-danger); }
     .hs-mc-ctx .hs-mc-em-header {
-      padding: 4px 10px; font-size: 13px; color: #555;
+      padding: 4px 10px; font-size: 13px; color: #aaa;
       background: #050505;
     }
     .hs-mc-ctx .hs-mc-em-item {
@@ -343,7 +343,7 @@
     #hs-user-tooltip .hs-pc-sheet dt { color: #888; font-weight: 400; }
     #hs-user-tooltip .hs-pc-sheet dd { color: #fff; font-weight: 700; }
     #hs-user-tooltip .hs-pc-sheet dt:nth-of-type(even),
-    #hs-user-tooltip .hs-pc-sheet dd:nth-of-type(even) { background: #1f1f1f; }
+    #hs-user-tooltip .hs-pc-sheet dd:nth-of-type(even) { background: #303030; }
     /* Mirror of .hs-pcard-sheet ANSI semantic palette — see comment in
        the pcard sheet block for the full reasoning. */
     #hs-user-tooltip .hs-pc-sheet .val-age { color: var(--hs-warn); }

@@ -331,7 +331,7 @@
       white-space: normal;
     }
     .hs-feed-embed-rich-card * { white-space: normal; }
-    .hs-feed-embed-rich-card:hover { border-color: #555; }
+    .hs-feed-embed-rich-card:hover { border-color: #808080; }
     .hs-feed-embed-rich-thumb,
     .hs-feed-embed-rich-thumb-placeholder {
       width: 64px;

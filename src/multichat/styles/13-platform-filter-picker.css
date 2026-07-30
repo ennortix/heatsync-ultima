@@ -95,8 +95,8 @@
        color entirely. */
     .hs-mc-pf-btn.off {
       background: transparent !important;
-      color: #555 !important;
-      border-color: #333 !important;
+      color: #808080 !important;
+      border-color: #808080 !important;
     }
     .hs-mc-pf-btn:hover,
     .hs-mc-pf-btn:active { background: #fff !important; color: #000 !important; border-color: #fff !important; }
@@ -158,8 +158,8 @@
     .hs-mc-st-btn.hs-mc-st-youtube { border-color: var(--hs-plat-youtube) !important; background: transparent !important; color: var(--hs-plat-youtube) !important; }
     .hs-mc-st-btn.off {
       background: transparent !important;
-      color: #555 !important;
-      border-color: #333 !important;
+      color: #808080 !important;
+      border-color: #808080 !important;
     }
     /* The send cluster's "where it goes" marker. Not a button — a one-glyph
        label, dim so it never competes with the letters.
@@ -173,7 +173,7 @@
        whisper arrow). Flex handles the vertical centring here, so no
        vertical-align hack is needed. */
     .hs-mc-st-arrow {
-      color: #666;
+      color: #aaa;
       font-family: ui-monospace, "DejaVu Sans Mono", "Liberation Mono", monospace;
       font-size: 19px;
       font-weight: 700;

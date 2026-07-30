@@ -8803,7 +8803,9 @@ function injectStyles() {
       font-style: italic;
       border-left: 3px solid var(--evt);
       border-bottom: 1px solid #000;
-      background: color-mix(in srgb, var(--evt) 7%, #000);
+      /* No tinted background. Any near-black wash reads as a muddy grey block
+         where it abuts a true-black row; the 3px stripe plus saturated text
+         already carry type identity at full contrast. */
       color: var(--evt);
     }
     .hs-mc-stream-event .hs-mc-user { text-decoration: none; font-weight: bold; }
@@ -10074,7 +10076,7 @@ function injectStyles() {
       unicode-bidi: plaintext;
     }
     .hs-mc-msg.hs-mc-zebra, .hs-feed-msg.hs-mc-zebra {
-      background: #1f1f1f;
+      background: #303030;
     }
     /* Hovered-row tint while the reply stack is shown — same dark olive as stack rows.
        Critical: ONLY change the background. Changing padding/line-height shrinks the
@@ -11192,7 +11194,7 @@ function injectStyles() {
       padding: 8px 10px; margin: 0; resize: vertical; min-height: 72px;
       font-family: inherit; font-size: 13px; line-height: 1.4; outline: none;
     }
-    .hs-note-editor-ta::placeholder { color: #555; }
+    .hs-note-editor-ta::placeholder { color: #aaa; }
     .hs-note-editor-ta:focus { box-shadow: inset 0 0 0 1px var(--hs-gold); }
     .hs-note-editor-foot {
       display: flex; align-items: center; justify-content: space-between;
@@ -11205,7 +11207,7 @@ function injectStyles() {
     }
     .hs-note-editor-del:hover { background: var(--hs-danger); color: #000; border-color: var(--hs-danger); }
     .hs-mc-ctx .hs-mc-em-header {
-      padding: 4px 10px; font-size: 13px; color: #555;
+      padding: 4px 10px; font-size: 13px; color: #aaa;
       background: #050505;
     }
     .hs-mc-ctx .hs-mc-em-item {
@@ -11475,7 +11477,7 @@ function injectStyles() {
     #hs-user-tooltip .hs-pc-sheet dt { color: #888; font-weight: 400; }
     #hs-user-tooltip .hs-pc-sheet dd { color: #fff; font-weight: 700; }
     #hs-user-tooltip .hs-pc-sheet dt:nth-of-type(even),
-    #hs-user-tooltip .hs-pc-sheet dd:nth-of-type(even) { background: #1f1f1f; }
+    #hs-user-tooltip .hs-pc-sheet dd:nth-of-type(even) { background: #303030; }
     /* Mirror of .hs-pcard-sheet ANSI semantic palette — see comment in
        the pcard sheet block for the full reasoning. */
     #hs-user-tooltip .hs-pc-sheet .val-age { color: var(--hs-warn); }
@@ -13087,7 +13089,7 @@ img.hs-fx-zero { margin-left: -4px; }
     .hs-pcard-sheet dd { color: #fff; font-weight: 700; }
     /* Zebra cadence — alt rows use the same #1f1f1f as chat zebra. */
     .hs-pcard-sheet dt:nth-of-type(even),
-    .hs-pcard-sheet dd:nth-of-type(even) { background: #1f1f1f; }
+    .hs-pcard-sheet dd:nth-of-type(even) { background: #303030; }
     /* Semantic color on values — only fields with state earn a color. */
     /* ANSI 256-mapped semantic colors. Each row's value carries meaning via hue:
        identity = brand, time = yellow, tier = amber/silver, power = red,
@@ -13182,7 +13184,7 @@ img.hs-fx-zero { margin-left: -4px; }
       color: #fff; white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere;
       max-height: 96px; overflow-y: auto; font-size: 13px; line-height: 1.4;
     }
-    .hs-pcard-note-body.hs-pcard-note-empty { color: #555; font-style: italic; }
+    .hs-pcard-note-body.hs-pcard-note-empty { color: #aaa; font-style: italic; }
     .hs-pcard-note-edit {
       align-self: flex-start; background: transparent; color: #fff; border: 1px solid #333;
       padding: 3px 10px; cursor: pointer; font-family: inherit; font-size: 13px;
@@ -13318,8 +13320,8 @@ img.hs-fx-zero { margin-left: -4px; }
        color entirely. */
     .hs-mc-pf-btn.off {
       background: transparent !important;
-      color: #555 !important;
-      border-color: #333 !important;
+      color: #808080 !important;
+      border-color: #808080 !important;
     }
     .hs-mc-pf-btn:hover,
     .hs-mc-pf-btn:active { background: #fff !important; color: #000 !important; border-color: #fff !important; }
@@ -13381,8 +13383,8 @@ img.hs-fx-zero { margin-left: -4px; }
     .hs-mc-st-btn.hs-mc-st-youtube { border-color: var(--hs-plat-youtube) !important; background: transparent !important; color: var(--hs-plat-youtube) !important; }
     .hs-mc-st-btn.off {
       background: transparent !important;
-      color: #555 !important;
-      border-color: #333 !important;
+      color: #808080 !important;
+      border-color: #808080 !important;
     }
     /* The send cluster's "where it goes" marker. Not a button — a one-glyph
        label, dim so it never competes with the letters.
@@ -13396,7 +13398,7 @@ img.hs-fx-zero { margin-left: -4px; }
        whisper arrow). Flex handles the vertical centring here, so no
        vertical-align hack is needed. */
     .hs-mc-st-arrow {
-      color: #666;
+      color: #aaa;
       font-family: ui-monospace, "DejaVu Sans Mono", "Liberation Mono", monospace;
       font-size: 19px;
       font-weight: 700;
@@ -14737,7 +14739,7 @@ img.hs-fx-zero { margin-left: -4px; }
       flex-wrap: wrap;
     }
     .hs-mc-setting-row:nth-child(even) {
-      background: #1a1a1a;
+      background: #303030;
     }
     /* White-bg/black-text hover is for CLICKABLE toggle rows. Exclude the
        filter-rules editor (the add-form + each rule row): those are a multi-field
@@ -15904,7 +15906,7 @@ img.hs-fx-zero { margin-left: -4px; }
       white-space: normal;
     }
     .hs-feed-embed-rich-card * { white-space: normal; }
-    .hs-feed-embed-rich-card:hover { border-color: #555; }
+    .hs-feed-embed-rich-card:hover { border-color: #808080; }
     .hs-feed-embed-rich-thumb,
     .hs-feed-embed-rich-thumb-placeholder {
       width: 64px;
@@ -18377,7 +18379,7 @@ img.hs-fx-zero { margin-left: -4px; }
     .hs-cl-public-archive:hover { background: #fff; color: #000; border-color: #fff; }
     .hs-cl-permalink {
       margin-left: auto;
-      background: transparent; color: #444;
+      background: transparent; color: #aaa;
       border: none; padding: 0 4px; cursor: pointer;
       font-family: inherit; font-size: 13px; line-height: 1;
       opacity: 0; transition: opacity 0.08s;

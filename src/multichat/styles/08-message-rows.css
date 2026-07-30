@@ -59,7 +59,7 @@
       unicode-bidi: plaintext;
     }
     .hs-mc-msg.hs-mc-zebra, .hs-feed-msg.hs-mc-zebra {
-      background: #1f1f1f;
+      background: #303030;
     }
     /* Hovered-row tint while the reply stack is shown — same dark olive as stack rows.
        Critical: ONLY change the background. Changing padding/line-height shrinks the

@@ -450,7 +450,9 @@
       font-style: italic;
       border-left: 3px solid var(--evt);
       border-bottom: 1px solid #000;
-      background: color-mix(in srgb, var(--evt) 7%, #000);
+      /* No tinted background. Any near-black wash reads as a muddy grey block
+         where it abuts a true-black row; the 3px stripe plus saturated text
+         already carry type identity at full contrast. */
       color: var(--evt);
     }
     .hs-mc-stream-event .hs-mc-user { text-decoration: none; font-weight: bold; }

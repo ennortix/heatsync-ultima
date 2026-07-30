@@ -1004,7 +1004,7 @@
       flex-wrap: wrap;
     }
     .hs-mc-setting-row:nth-child(even) {
-      background: #1a1a1a;
+      background: #303030;
     }
     /* White-bg/black-text hover is for CLICKABLE toggle rows. Exclude the
        filter-rules editor (the add-form + each rule row): those are a multi-field

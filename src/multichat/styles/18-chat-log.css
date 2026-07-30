@@ -106,7 +106,7 @@
     .hs-cl-public-archive:hover { background: #fff; color: #000; border-color: #fff; }
     .hs-cl-permalink {
       margin-left: auto;
-      background: transparent; color: #444;
+      background: transparent; color: #aaa;
       border: none; padding: 0 4px; cursor: pointer;
       font-family: inherit; font-size: 13px; line-height: 1;
       opacity: 0; transition: opacity 0.08s;

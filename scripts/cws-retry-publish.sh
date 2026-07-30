@@ -39,6 +39,18 @@ if grep -q 'ITEM_NOT_UPDATABLE' <<<"$out"; then
   exit 0
 fi
 
+# CWS refuses an upload whose manifest version is not GREATER than the published
+# one. When the published version it names is the very version we are pushing,
+# the upload already landed (the review cleared between runs) and the goal state
+# is reached — that is success, not failure. Without this the timer re-uploads an
+# already-published version every hour forever, crying failure each time.
+if grep -q 'PKG_INVALID_VERSION_NUMBER' <<<"$out" && grep -q "published package: ${VERSION}" <<<"$out"; then
+  say "ALREADY PUBLISHED $VERSION on CWS — disabling $TIMER"
+  systemctl --user disable --now "$TIMER" 2>>"$LOG"
+  command -v notify-send >/dev/null && notify-send "heatsync" "chrome web store: $VERSION already live"
+  exit 0
+fi
+
 # Anything else is a real failure worth surfacing rather than retrying blindly.
 say "FAILED (rc=$rc): $(tail -3 <<<"$out" | tr '\n' ' ')"
 command -v notify-send >/dev/null && notify-send "heatsync" "cws publish failed — see $LOG"

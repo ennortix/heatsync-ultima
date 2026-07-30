@@ -3734,7 +3734,9 @@ async function fetchChannelOwnerEmotes(channelName, channelId = null, platform =
         if (old !== key) {
           delete channelEmotesMap[old]
           delete channelEmotesFetchedAt[old]
+          const evictedSetId = seventvEmoteSetIds.get(old)
           seventvEmoteSetIds.delete(old)
+          release7TVEmoteSet(evictedSetId)
           seventvPolledChannels.delete(old)
         }
       }
@@ -3792,7 +3794,9 @@ async function fetchChannelOwnerEmotes(channelName, channelId = null, platform =
       // Nothing to fall back to — clear the sentinel so the next join retries.
       delete channelEmotesMap[key]
     }
+    const failedSetId = seventvEmoteSetIds.get(key)
     seventvEmoteSetIds.delete(key)
+    release7TVEmoteSet(failedSetId)
   }
 }
 
@@ -4115,6 +4119,9 @@ let seventvZombieTimer = null
 const seventvSubscribedSets = new Set() // Track which set IDs we've subscribed to
 const seventvPendingSubs = new Set() // Queued while connection is opening
 const SEVENTV_MAX_RECONNECT_ATTEMPTS = 5
+// The Hello payload states how many subscriptions this connection may hold.
+// Unknown until it lands, then honored for both set and user subscriptions.
+let seventvSubLimit = Infinity
 // Idle disconnect: the socket only carries emote/cosmetic deltas for open
 // platform tabs — at zero tabs every event is discarded work, so we close
 // after a short grace and reconnect when a tab returns (subs replay on open).
@@ -4222,6 +4229,7 @@ function ensure7TVConnection() {
             if (eventData.type === 'entitlement.create') capture7TVPersonalEntitlement(eventData.body)
           }
         } else if (message.op === 1) {
+          if (message.d?.subscription_limit > 0) seventvSubLimit = message.d.subscription_limit
           log(' 7TV EventAPI: Hello received, session:', message.d.session_id)
         } else if (message.op === 2) {
           // Server heartbeat — no response needed
@@ -4303,6 +4311,10 @@ function ensure7TVConnection() {
 function send7TVSubscribe(setId) {
   if (!seventvWebSocket || seventvWebSocket.readyState !== WebSocket.OPEN) return
   if (seventvSubscribedSets.has(setId)) return
+  if (seventvSubscribedSets.size + seventvUserSubs.size >= seventvSubLimit) {
+    log(' 7TV EventAPI: subscription_limit reached, skipping set', setId.slice(0, 12))
+    return
+  }
 
   seventvWebSocket.send(
     JSON.stringify({
@@ -4312,6 +4324,27 @@ function send7TVSubscribe(setId) {
   )
   seventvSubscribedSets.add(setId)
   log(' 7TV EventAPI: Subscribed to', setId.slice(0, 12))
+}
+
+/**
+ * Drop a set subscription once no channel maps to it. Without the explicit
+ * op 36 the subscription lingers on 7TV's side for the life of the socket —
+ * a long session that hops channels would keep paying for dead sets and
+ * eventually push against subscription_limit.
+ */
+function release7TVEmoteSet(setId) {
+  if (!setId) return
+  for (const id of seventvEmoteSetIds.values()) if (id === setId) return // still in use
+  seventvPendingSubs.delete(setId)
+  if (!seventvSubscribedSets.delete(setId)) return
+  if (!seventvWebSocket || seventvWebSocket.readyState !== WebSocket.OPEN) return
+  seventvWebSocket.send(
+    JSON.stringify({
+      op: 36,
+      d: { type: 'emote_set.*', condition: { object_id: setId } },
+    }),
+  )
+  log(' 7TV EventAPI: Unsubscribed from', setId.slice(0, 12))
 }
 
 // Track per-user 7TV subscriptions so we get real-time badge/paint changes
@@ -4325,6 +4358,10 @@ function send7TVUserSubscribe(seventvUserId) {
     return
   }
   if (seventvUserSubs.has(seventvUserId)) return
+  if (seventvSubscribedSets.size + seventvUserSubs.size >= seventvSubLimit) {
+    log(' 7TV EventAPI: subscription_limit reached, skipping user', seventvUserId.slice(0, 12))
+    return
+  }
   seventvWebSocket.send(
     JSON.stringify({
       op: 35,

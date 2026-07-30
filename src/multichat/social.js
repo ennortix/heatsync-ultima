@@ -783,35 +783,41 @@ function listenForSocialEvents() {
       if (!Number.isNaN(ts) && msg.data.username !== 'Anonymous') {
         noteSeenEvent('live', ts)
       }
-      if (!feedLoaded) return
-      // Dedup: skip if already in feed
-      const id = msg.data.base36_id
-      if (id && feedMessages.some((m) => m.base36_id === id)) return
-
       if (msg.data.username === 'Anonymous') return
-      // Following tab is OPs only — replies still update their thread + the
-      // parent's reply_count below, but never get unshifted as a top-level row.
-      if (isOpMsg(msg.data)) {
-        feedMessages.unshift(msg.data)
-        if (feedMessages.length > 150) feedMessages.pop()
-      }
+      const id = msg.data.base36_id
+      // Already in the feed buffer — the optimistic insert from your own post,
+      // or a duplicate delivery. Never re-buffer it.
+      const alreadyBuffered = !!(id && feedMessages.some((m) => m.base36_id === id))
 
-      // Real-time thread update: if reply to the active thread, append it
-      const replyTo = msg.data.reply_to
-      if (replyTo && activeThread && activeThread.id === replyTo) {
-        if (!activeThread.replies.some((r) => r.base36_id === id)) {
-          activeThread.replies.push(msg.data)
-          if (activeThread.op) activeThread.op.reply_count = (activeThread.op.reply_count || 0) + 1
+      // Buffer maintenance genuinely needs a loaded feed. The CHAT-side row
+      // below does not, and gating both on feedLoaded meant a session that
+      // never opened the feed tab saw no [OP]/[RE] lines at all — the reason
+      // replies never showed up in chat.
+      if (feedLoaded && !alreadyBuffered) {
+        // Following tab is OPs only — replies still update their thread + the
+        // parent's reply_count below, but never get unshifted as a top-level row.
+        if (isOpMsg(msg.data)) {
+          feedMessages.unshift(msg.data)
+          if (feedMessages.length > 150) feedMessages.pop()
         }
-      }
-      // Update OP reply count in feed data
-      if (replyTo) {
-        const parent = feedMessages.find((m) => m.base36_id === replyTo)
-        if (parent) parent.reply_count = (parent.reply_count || 0) + 1
+
+        // Real-time thread update: if reply to the active thread, append it
+        const replyTo = msg.data.reply_to
+        if (replyTo && activeThread && activeThread.id === replyTo) {
+          if (!activeThread.replies.some((r) => r.base36_id === id)) {
+            activeThread.replies.push(msg.data)
+            if (activeThread.op) activeThread.op.reply_count = (activeThread.op.reply_count || 0) + 1
+          }
+        }
+        // Update OP reply count in feed data
+        if (replyTo) {
+          const parent = feedMessages.find((m) => m.base36_id === replyTo)
+          if (parent) parent.reply_count = (parent.reply_count || 0) + 1
+        }
       }
 
       if (currentTab === 'feed') {
-        renderFeed()
+        if (feedLoaded && !alreadyBuffered) renderFeed()
       } else {
         updateTabIndicator('feed')
         // Inline notification in chat (routed through toggle system)
@@ -1295,6 +1301,14 @@ function isOpMsg(m) {
 // in front of you is automatically a valid reply target, including your own.
 let lastInlineFeedOpId = null
 
+// base36_id -> when we last built an inline row for it. Your own post reaches
+// this twice — once as the local echo the instant it posts, once when the
+// websocket broadcasts it back — and replies aren't covered by the
+// feedMessages buffer dedup (only OPs get unshifted), so without this a reply
+// you sent would render as two identical [RE] rows.
+const _inlineFeedRowSeen = new Map()
+const INLINE_ROW_DEDUP_MS = 120_000
+
 /**
  * Map a feed row (websocket payload or a just-posted response) onto the
  * inline `feed-post` chat row. Both callers used to build this object
@@ -1312,6 +1326,17 @@ function buildFeedInlineNotif(f) {
   const notifType = f.is_thread_op ? 'mop' : isOpMsg(f) ? 'op' : 're'
   if ((notifType === 'op' || notifType === 'mop') && f.base36_id) {
     lastInlineFeedOpId = f.base36_id
+  }
+  const now = Date.now()
+  if (f.base36_id) {
+    const seenAt = _inlineFeedRowSeen.get(f.base36_id)
+    if (seenAt && now - seenAt < INLINE_ROW_DEDUP_MS) return null
+    _inlineFeedRowSeen.set(f.base36_id, now)
+    // Bounded: drop the oldest half once it grows, rather than sweeping the
+    // whole map on every post.
+    if (_inlineFeedRowSeen.size > 400) {
+      for (const k of [..._inlineFeedRowSeen.keys()].slice(0, 200)) _inlineFeedRowSeen.delete(k)
+    }
   }
   return {
     notifType,

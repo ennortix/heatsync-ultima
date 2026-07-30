@@ -40350,11 +40350,23 @@ async function fetchRemoteEmoteMatches(search) {
         // at 0 would interleave it into page 1 on sort ties instead of after.
         _ai: acState._aiSeq++,
       })
-      // Remember for auto-add-on-send (only matters if the user actually sends it).
-      recentRemoteCompletions.delete(it.name)
-      recentRemoteCompletions.set(it.name, { url: it.url, source: src, zeroWidth: !!it.zeroWidth })
-      while (recentRemoteCompletions.size > REMOTE_COMPLETION_CAP) {
-        recentRemoteCompletions.delete(recentRemoteCompletions.keys().next().value)
+      // Auto-add-on-send registry: ONLY the emote whose name the user literally
+      // typed. Everything they cycle onto registers through
+      // insertCompletionKeepOpen → trackCompletionForAutoAdd, so this covers the
+      // one case that path can't: the full name typed out and sent without ever
+      // pressing Tab past the first hit.
+      //
+      // Registering the whole fetched page (what this used to do) meant every
+      // word in a sent message that happened to appear anywhere in a catalog
+      // search this session got silently added to the viewer's inventory —
+      // hundreds of names the user never saw, burning finite slots. Harmless
+      // while the fetch was lazy; not once it fires on the first Tab.
+      if (lower === searchLower) {
+        recentRemoteCompletions.delete(it.name)
+        recentRemoteCompletions.set(it.name, { url: it.url, source: src, zeroWidth: !!it.zeroWidth })
+        while (recentRemoteCompletions.size > REMOTE_COMPLETION_CAP) {
+          recentRemoteCompletions.delete(recentRemoteCompletions.keys().next().value)
+        }
       }
     }
     if (add.length) {
@@ -43037,18 +43049,19 @@ function handleInputKeydownInner(e, input) {
         // Calculate positions for text input cycling (textarea only)
         if (!wysiwygEnabled && input.value !== undefined) captureAcWordBounds(input)
 
-        if (matches.length > 0) {
-          insertCompletionKeepOpen(matches[0])
-          showCycleTooltip()
-          // Local matches satisfy the common case — do NOT hit 7TV/BTTV/FFZ yet.
-          // The catalog search fires lazily, only once you cycle past the last
-          // local match (see Tab-cycle branch above).
-        } else {
-          // No local hit at all — the cross-provider catalog search is the only
-          // way to complete this word, so fire it now; it inserts the first
-          // remote hit when the fetch resolves.
-          fetchRemoteEmoteMatches(word)
-        }
+        if (matches.length > 0) insertCompletionKeepOpen(matches[0])
+        // The catalog search starts on the FIRST Tab, always — not lazily once
+        // you cycle within LOOKAHEAD of the end. With locals present it costs
+        // nothing visible: the local hit is already inserted above and the
+        // merge is append-only, so the catalog lands AFTER your channel/global
+        // emotes and your chip and position never move. You cycle straight
+        // from 7/7 into 8/240 instead of stalling at the end waiting on a
+        // fetch nobody had asked for yet. With no locals it is the only way to
+        // complete the word, and it inserts the first remote hit on arrival.
+        // Before showCycleTooltip on purpose: the fetch flips remotePending
+        // synchronously, so the first tooltip already reads "searching 7tv…".
+        fetchRemoteEmoteMatches(word)
+        showCycleTooltip()
       }
     }
     return
@@ -47894,6 +47907,16 @@ async function sendMessage() {
   // drop the cursor. Refreshed on every send, so continuous rapid-fire —
   // "type, Enter, type, Enter" — stays locked to the composer.
   armComposerStickyFocus(input)
+  // Queue the empty-bar auto-hide, same as clearInput() does for every other
+  // path that empties the composer. The send tail clears input.value directly
+  // instead of going through clearInput, so it never armed one — auto-hide
+  // here rested entirely on "the user eventually clicks away and blurs". A
+  // keyboard-first flow (vi mode especially) never blurs, and the sticky-focus
+  // window above actively reasserts focus, so the empty bar sat on screen
+  // until an explicit Escape. hideInputBar() is a no-op while the rapid-fire
+  // window is open and re-runs every guard when it expires, so this doesn't
+  // yank the composer out from under "type, Enter, type, Enter".
+  cleanup.setTimeout(() => hideInputBar(), 0)
 
   // --- Kick send path (single, dual, or triple including YT) ---
   if (sendToKick) {

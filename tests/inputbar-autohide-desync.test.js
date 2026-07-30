@@ -203,3 +203,46 @@ describe('showInputBar', () => {
     expect(bar.classList.contains('hs-hidden')).toBe(true)
   })
 })
+
+/**
+ * The send path must arm the empty-bar auto-hide itself.
+ *
+ * Regression anchor (2026-07-30, vi mode): "the input bar is still not auto
+ * hiding when the input box is empty". Every other path that empties the
+ * composer goes through clearInput(), which queues a hideInputBar(). The send
+ * tail clears input.value/textContent DIRECTLY and never armed one — it leaned
+ * on "the input's blur handler hides the empty bar 200ms after the user
+ * actually clicks away". A keyboard-first flow never clicks away, and
+ * armComposerStickyFocus actively reasserts focus for the rapid-fire window,
+ * so after a send the empty bar sat there until an explicit Escape.
+ */
+import { readFileSync as _readFileSync } from 'node:fs'
+import { join as _join } from 'node:path'
+
+describe('send path arms the empty-bar auto-hide', () => {
+  const SRC = _readFileSync(_join(import.meta.dir, '..', 'src', 'multichat', 'input.js'), 'utf8')
+  const sendStart = SRC.indexOf('async function sendMessage()')
+  const sendTail = SRC.slice(sendStart, SRC.indexOf('--- Kick send path', sendStart))
+
+  test('sendMessage queues hideInputBar after clearing the composer', () => {
+    expect(sendStart).toBeGreaterThan(-1)
+    expect(sendTail).toContain('setTimeout(() => hideInputBar(), 0)')
+    // Must come after the sticky-focus window is armed — hideInputBar reads
+    // that window to decide between hiding now and retrying when it expires.
+    const stickyAt = sendTail.indexOf('armComposerStickyFocus(input)')
+    const hideAt = sendTail.indexOf('setTimeout(() => hideInputBar(), 0)')
+    expect(stickyAt).toBeGreaterThan(-1)
+    expect(hideAt).toBeGreaterThan(stickyAt)
+  })
+
+  test('the hide is deferred, not synchronous — a sync hide lands mid-send', () => {
+    // A bare hideInputBar() in the tail would fire before the send paths that
+    // arm keepComposerOpen, yanking the composer out from under the send.
+    expect(sendTail).not.toMatch(/^\s*hideInputBar\(\)$/m)
+  })
+
+  test('clearInput still queues its own hide for every non-send path', () => {
+    const ci = SRC.slice(SRC.indexOf('function clearInput('), SRC.indexOf('function matchSlashCommands('))
+    expect(ci).toContain('setTimeout(() => hideInputBar(), 0)')
+  })
+})

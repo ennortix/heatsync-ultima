@@ -62879,7 +62879,7 @@ const STORAGE_KEY = 'heatsync_multichat'
         const tw = ch.twitch?.toLowerCase()
         const ki = ch.kick?.toLowerCase()
         const idLower = ch.id?.toLowerCase()
-        const isLive = isChannelLive(tw) || isChannelLive(ki) || ((!tw && !ki) && isChannelLive(idLower))
+        const isLive = isChannelLive(tw) || isChannelLive(ki) || (!tw && !ki && isChannelLive(idLower))
         tab.dataset.live = String(isLive)
       }
       // YT-only tabs aren't in liveChannelSet (which is Twitch-only), so
@@ -67668,7 +67668,7 @@ const STORAGE_KEY = 'heatsync_multichat'
       const tw = ch.twitch?.toLowerCase()
       const ki = ch.kick?.toLowerCase()
       const idLower = id?.toLowerCase()
-      const isLive = isChannelLive(tw) || isChannelLive(ki) || ((!tw && !ki) && isChannelLive(idLower))
+      const isLive = isChannelLive(tw) || isChannelLive(ki) || (!tw && !ki && isChannelLive(idLower))
       tab.dataset.live = String(isLive)
     })
   }

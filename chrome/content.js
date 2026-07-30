@@ -9589,7 +9589,9 @@
     // outranks the class-based hsp-<hash> rule, so without the check a 7TV
     // batch resolving second silently erases a paint someone paid for.
     // Mirrors client/chat/seventv-cosmetics.js on the website.
-    if (el?.classList) { for (const c of el.classList) if (c.startsWith('hsp-')) return }
+    if (el?.classList) {
+      for (const c of el.classList) if (c.startsWith('hsp-')) return
+    }
     const fn = (paint.function || '').toLowerCase()
     if (fn === 'url' && paint.image_url) {
       const safe = safeUrl(paint.image_url)

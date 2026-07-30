@@ -1,5 +1,16 @@
 /**
- * Composer auto-hide visibility bookkeeping (src/multichat/main.js).
+ * Composer visibility policy: which tabs may have a composer at all
+ * (tabAcceptsInput / tabSendsToChat), and the show/hide bookkeeping around it
+ * (src/multichat/main.js).
+ *
+ * Regression anchor: "I'm on no tab and can type and get the input box to show
+ * up but messages don't send." Every surface kept its OWN list of tabs that
+ * may have a composer — switchTab, the type-to-reveal handler, the paste
+ * handler, the profile-card and chat-log restores — and they disagreed. A tab
+ * missing from one list (modlog was missing from three) got a composer that
+ * resolved its send target to the TAB ID and posted into the void. One
+ * predicate answers it now, and sendMessage refuses out loud if anything
+ * still slips through.
  *
  * Regression anchor: "why is the input box not auto-hiding" — an empty
  * composer bar stranded on screen with auto-hide switched on.
@@ -30,6 +41,13 @@ const end = SRC.indexOf('  function createOverlay(')
 if (start === -1 || end === -1 || end <= start) throw new Error('carve markers not found')
 const CARVE = SRC.slice(start, end)
 
+const predSrc = SRC.slice(SRC.indexOf('  function tabSendsToChat('), SRC.indexOf('  // The DOM class is the truth'))
+const makePredicates = (liveChannel, channelIds) =>
+  new Function('getLiveChannel', 'getChannelById', `${predSrc}; return { tabSendsToChat, tabAcceptsInput }`)(
+    () => liveChannel,
+    (id) => (channelIds.includes(id) ? { id } : undefined),
+  )
+
 // Minimal element stand-in: the class set is the only state these functions read.
 const fakeEl = () => {
   const classes = new Set()
@@ -49,12 +67,12 @@ let overlay
 let now
 let opts
 
-function build({ autoHide = true, visibleFlag = true, hidden = false, keepUntil = 0 } = {}) {
+function build({ autoHide = true, visibleFlag = true, hidden = false, keepUntil = 0, canInput = true } = {}) {
   bar = fakeEl()
   overlay = fakeEl()
   if (hidden) bar.classList.add('hs-hidden')
   now = 1000
-  opts = { autoHide }
+  opts = { autoHide, canInput }
   const document = {
     getElementById: (id) => {
       if (id === 'hs-mc-inputbar') return bar
@@ -71,6 +89,8 @@ function build({ autoHide = true, visibleFlag = true, hidden = false, keepUntil 
     'performance',
     'cleanup',
     'autoHideEligible',
+    'tabAcceptsInput',
+    'currentTab',
     'adjustOverlayForPicker',
     '_updateMcLayout',
     'initialVisible',
@@ -93,6 +113,8 @@ function build({ autoHide = true, visibleFlag = true, hidden = false, keepUntil 
     { now: () => now },
     { setTimeout: (fn, ms) => timers.push({ fn, at: now + ms }) },
     () => opts.autoHide,
+    () => opts.canInput,
+    'somechannel',
     () => {},
     () => {},
     visibleFlag,
@@ -104,6 +126,35 @@ function build({ autoHide = true, visibleFlag = true, hidden = false, keepUntil 
 
 beforeEach(() => {
   now = 1000
+})
+
+describe('tabAcceptsInput', () => {
+  const onChannelPage = makePredicates('xqc', ['nl_kripp'])
+  const onDirectory = makePredicates(null, ['nl_kripp'])
+
+  test('channel tabs and the live tab on a stream page can send', () => {
+    expect(onChannelPage.tabAcceptsInput('nl_kripp')).toBe(true)
+    expect(onChannelPage.tabAcceptsInput('live')).toBe(true)
+    expect(onChannelPage.tabSendsToChat('live')).toBe(true)
+  })
+
+  test('the live tab off a stream page has no target', () => {
+    expect(onDirectory.tabAcceptsInput('live')).toBe(false)
+  })
+
+  test('social tabs take input but are not chat destinations', () => {
+    for (const id of ['feed', 'whispers', 'mentions']) {
+      expect(onChannelPage.tabAcceptsInput(id)).toBe(true)
+      expect(onChannelPage.tabSendsToChat(id)).toBe(false)
+    }
+  })
+
+  test('view-only tabs and stale ids send nowhere', () => {
+    // "modlog" used to resolve as the target CHANNEL NAME and post into the void
+    for (const id of ['add', 'settings', 'discover', 'pinned', 'modlog', 'deleted_channel', '', null]) {
+      expect(onChannelPage.tabAcceptsInput(id)).toBe(false)
+    }
+  })
 })
 
 describe('hideInputBar', () => {
@@ -144,5 +195,11 @@ describe('showInputBar', () => {
     api.showInputBar()
     expect(bar.classList.contains('hs-hidden')).toBe(false)
     expect(api.flag).toBe(true)
+  })
+
+  test('refuses to reveal on a tab that cannot send', () => {
+    const { api } = build({ visibleFlag: false, hidden: true, canInput: false })
+    api.showInputBar()
+    expect(bar.classList.contains('hs-hidden')).toBe(true)
   })
 })

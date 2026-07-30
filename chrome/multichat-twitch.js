@@ -40946,7 +40946,7 @@ function initInput() {
       'keydown',
       (e) => {
         if (e.key !== 'Tab') return
-        if (currentTab === 'add' || currentTab === 'settings') return
+        if (!tabAcceptsInput(currentTab)) return
         const active = document.activeElement
         const input = document.getElementById('hs-mc-input')
         if (!input) return
@@ -41011,7 +41011,7 @@ function initInput() {
         // autocomplete/dropdown keeps Tab (cycle/select); otherwise we swallow
         // it so Tab never tabs the composer OUT into the host page.
         if (e.key === 'Tab' && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey) {
-          if (currentTab === 'add' || currentTab === 'settings') return
+          if (!tabAcceptsInput(currentTab)) return
           const inp = document.getElementById('hs-mc-input')
           if (!inp) return
           const ae = document.activeElement
@@ -41033,7 +41033,7 @@ function initInput() {
         // Class, not the cached flag — a stale `true` here means a hidden bar
         // that no keystroke can ever reveal.
         if (syncInputBarVisible()) return
-        if (currentTab === 'add' || currentTab === 'settings') return
+        if (!tabAcceptsInput(currentTab)) return
         const input = document.getElementById('hs-mc-input')
         if (!input) return
         // Don't steal focus from other inputs
@@ -41063,7 +41063,7 @@ function initInput() {
       'paste',
       (e) => {
         if (syncInputBarVisible()) return
-        if (currentTab === 'add') return
+        if (!tabAcceptsInput(currentTab)) return
         const input = document.getElementById('hs-mc-input')
         if (!input) return
         // Don't steal paste from other inputs
@@ -47581,6 +47581,18 @@ async function sendMessage() {
     return
   }
 
+  // Nothing to send to from here (add/settings/discover/pinned/modlog, the
+  // live tab off a channel page, or a stale id from a removed channel). The
+  // composer isn't reachable on those tabs any more — but if one ever slips
+  // through, say so instead of falling through to the resolver below, where
+  // targetChannel defaulted to the TAB ID and addressed a channel named
+  // "modlog". Text stays in the box.
+  if (!tabAcceptsInput(currentTab)) {
+    flashInputError(input)
+    showToast(t('mc_input_no_channel'), 'error')
+    return
+  }
+
   // Determine target channel + platform
   let targetChannel
   let ch = null
@@ -47595,9 +47607,6 @@ async function sendMessage() {
       const lower = targetChannel.toLowerCase()
       ch = config.channels.find((c) => c.twitch?.toLowerCase() === lower || c.kick?.toLowerCase() === lower) || null
     }
-  } else if (currentTab === 'add' || currentTab === 'settings') {
-    flashInputError(input)
-    return
   } else {
     ch = config.channels.find((c) => c.id === currentTab)
     targetChannel = ch?.twitch || ch?.kick || currentTab
@@ -48588,17 +48597,11 @@ async function resolveFollowTargetId(platform, username, ids = {}) {
 function closeProfileCard() {
   if (!activeProfileCard) return
   activeProfileCard = null
-  // renderMessages will redo input visibility logic via switchTab? No, switchTab not called here.
-  // Restore input bar visibility based on currentTab (flag moves with class —
-  // see hide site above)
-  const inputBar = document.getElementById('hs-mc-inputbar')
-  if (inputBar) {
-    const hideOnTabs = ['add', 'settings', 'discover', 'pinned']
-    if (!hideOnTabs.includes(currentTab)) {
-      inputBar.classList.remove('hs-hidden')
-      inputBarVisible = true
-    }
-  }
+  // switchTab isn't called here, so restore the bar ourselves — through
+  // showInputBar, which owns the "may this tab have a composer" call and keeps
+  // the visible flag in step. (The local tab list this replaced was a copy
+  // that never learned about modlog.)
+  showInputBar()
   renderMessages(currentTab)
 }
 
@@ -49867,14 +49870,11 @@ function setupProfileCardHandlers() {
 
 function pcMention(name) {
   closeProfileCard()
-  // If on a non-chat tab, switch to live first
-  const isChatTab =
-    currentTab === 'live' || (typeof config !== 'undefined' && config.channels?.some((c) => c.id === currentTab))
-  if (!isChatTab) switchTab('live')
+  // Mentioning someone means chatting to them — move to a tab that reaches a
+  // real chat first (the social tabs refuse a bare send).
+  if (!tabSendsToChat(currentTab)) switchTab('live')
   cleanup.setTimeout(() => {
-    const inputBar = document.getElementById('hs-mc-inputbar')
-    if (inputBar) inputBar.classList.remove('hs-hidden')
-    inputBarVisible = true
+    showInputBar()
     const input = document.getElementById('hs-mc-input')
     if (!input) return
     const tag = `@${name} `
@@ -50072,14 +50072,10 @@ function closeChatLogsView() {
     cleanup.untrackObserver(_clLoadMoreObs)
     _clLoadMoreObs = null
   }
-  const inputBar = document.getElementById('hs-mc-inputbar')
-  if (inputBar) {
-    const hideOnTabs = ['add', 'settings', 'discover', 'pinned']
-    if (!hideOnTabs.includes(currentTab)) {
-      inputBar.classList.remove('hs-hidden')
-      inputBarVisible = true
-    }
-  }
+  // showInputBar owns the "may this tab have a composer" call (and keeps the
+  // visible flag in step) — the local tab list here was a third copy of it,
+  // already out of date: it never included modlog.
+  showInputBar()
   if (typeof renderMessages === 'function') renderMessages(currentTab)
 }
 
@@ -57940,8 +57936,11 @@ const STORAGE_KEY = 'heatsync_multichat'
 
   // State
   let config = { channels: [], enabled: true }
-  let currentTab = 'feed'
-  let prevTab = 'feed'
+  // 'live' is the only tab that can never be hidden — the pre-restore default
+  // must be one you can actually see, or the window before boot's switchTab
+  // paints a tab that isn't in the bar.
+  let currentTab = 'live'
+  let prevTab = 'live'
   let liveChannel = null // override channel for live tab (null = use URL channel)
   let livePlatformMap = {} // per-URL-channel platform overrides: { [urlCh]: { twitch, kick, youtube } }
   let liveChannelSet = new Set() // live per the direct /live-status poll (lowercase names)
@@ -59967,7 +59966,9 @@ const STORAGE_KEY = 'heatsync_multichat'
       const pickerOpen = document.getElementById('hs-mc-emote-picker')?.classList.contains('visible') || false
       // Honor the pop-out override — never actually hide there even if the
       // setting is switched on (canAutoHideInput would keep it off anyway).
-      if (v && !isYtPopout) {
+      // Switching auto-hide OFF still can't conjure a composer on a tab that
+      // has nowhere to send.
+      if ((v && !isYtPopout) || !tabAcceptsInput(currentTab)) {
         if (bar) bar.classList.add('hs-hidden')
         inputBarVisible = false
       } else {
@@ -61173,6 +61174,30 @@ const STORAGE_KEY = 'heatsync_multichat'
   const hermesToggles = {}
   for (const [k, v] of Object.entries(HERMES_EVENT_TYPES)) hermesToggles[k] = v.defaultOn
 
+  // Can the composer actually send from this tab? ONE answer, used by every
+  // path that shows, focuses, reveals, or sends from the bar — a box you can
+  // type into that quietly eats the message is worse than no box.
+  //   live      — the channel the page is on (nothing on /directory)
+  //   feed      — posts to your heatsync feed (placeholder says so)
+  //   whispers  — /r, /w, /dm; a bare send is refused out loud
+  //   mentions  — same, slash commands only
+  //   <channel> — a configured channel tab
+  // add / settings / discover / pinned / modlog — and any stale id left behind
+  // by a removed channel — can't send anywhere: sendMessage's targetChannel
+  // fell back to the TAB ID, so Enter on the modlog tab addressed a channel
+  // named "modlog" and the message went nowhere, silently.
+  // Narrower: tabs where a plain message goes to a live CHAT. The social tabs
+  // take input but refuse a bare send, so anything that means "start chatting
+  // to this person" (profile-card mention) needs this one, not the broad test.
+  function tabSendsToChat(id) {
+    if (!id) return false
+    if (id === 'live') return !!getLiveChannel()
+    return !!getChannelById(id)
+  }
+  function tabAcceptsInput(id) {
+    return tabSendsToChat(id) || id === 'feed' || id === 'whispers' || id === 'mentions'
+  }
+
   // The DOM class is the truth; inputBarVisible is only a cache of it. Several
   // paths add/remove hs-hidden directly (log + profile-card views, the autoHide
   // toggle, a container rebuild that mints a fresh bar), so the cache can drift
@@ -61187,6 +61212,9 @@ const STORAGE_KEY = 'heatsync_multichat'
   }
 
   function showInputBar() {
+    // Single choke point for every reveal (emote click-paste, quote, mention,
+    // upload, type-to-reveal): a tab that can't send never gets a composer.
+    if (!tabAcceptsInput(currentTab)) return
     if (syncInputBarVisible()) return
     inputBarVisible = true
     const bar = document.getElementById('hs-mc-inputbar')
@@ -63976,7 +64004,7 @@ const STORAGE_KEY = 'heatsync_multichat'
       // focused). A rebuild with a draft pending (twitch swapped the container
       // mid-typing) must stay visible, or the restored draft hides with the
       // bar and reads as "my message got eaten".
-      if (canAutoHideInput() && !pendingMessage.trim()) {
+      if (!tabAcceptsInput(currentTab) || (canAutoHideInput() && !pendingMessage.trim())) {
         inputBarElement.classList.add('hs-hidden')
         inputBarVisible = false
       } else {
@@ -64310,7 +64338,8 @@ const STORAGE_KEY = 'heatsync_multichat'
     // Hide input bar on add-channel form, or when auto-hide is on
     if (inputBarElement) {
       const pickerOpen = document.getElementById('hs-mc-emote-picker')?.classList.contains('visible')
-      if (id === 'add' || id === 'settings' || id === 'discover' || id === 'pinned' || id === 'modlog') {
+      // No send target on this tab ⇒ no composer, auto-hide setting or not.
+      if (!tabAcceptsInput(id)) {
         inputBarElement.classList.add('hs-hidden')
         inputBarVisible = false
       } else if (autoHideEligible() && !pickerOpen) {
@@ -68328,7 +68357,9 @@ const STORAGE_KEY = 'heatsync_multichat'
   let _savedActiveTab = null
   // 'discover' intentionally omitted — tab is hidden from the bar pre-launch,
   // so a stale saved 'discover' falls back to 'live' on restore.
-  const BUILTIN_TABS = ['live', 'feed', 'mentions', 'pinned', 'modlog', 'add']
+  // 'whispers' belongs here too — it's a real, restorable tab; leaving it out
+  // silently bounced you to 'live' every reload if that's where you were.
+  const BUILTIN_TABS = ['live', 'feed', 'mentions', 'whispers', 'pinned', 'modlog', 'add']
   async function loadActiveTab() {
     try {
       const stored = await cachedUiSettings()
@@ -70914,7 +70945,18 @@ const STORAGE_KEY = 'heatsync_multichat'
     // page's stream: being on lofigirl's page shouldn't override your nl_kripp
     // tab and dump lofigirl's chat in. A popout is single-channel — always live.
     const hasChannelTabs = !!config.channels?.length
-    return isYtPopout || (onStreamPage && !hasChannelTabs) ? 'live' : _savedActiveTab || 'live'
+    // A saved tab that is now HIDDEN (or whose subsystem was switched off) is
+    // not restorable — you land on a tab that isn't in the bar, so nothing
+    // looks selected ("I'm on no tab") while the composer quietly points at
+    // that invisible surface. loadActiveTab validates the id against
+    // BUILTIN_TABS + channels but runs before hiddenTabs is known, and
+    // applyHiddenTabs' own correction only fires if it runs AFTER this restore
+    // — on a cold boot it doesn't.
+    const restorable =
+      _savedActiveTab &&
+      !hiddenTabs.has(_savedActiveTab) &&
+      !(_TAB_SUBSYSTEM[_savedActiveTab] && !isEnabled(_TAB_SUBSYSTEM[_savedActiveTab]))
+    return isYtPopout || (onStreamPage && !hasChannelTabs) ? 'live' : restorable ? _savedActiveTab : 'live'
   }
 
   // PHASE -1 kill-switch aborts init before any panel/HsNotifs infra exists,

@@ -362,17 +362,11 @@ async function resolveFollowTargetId(platform, username, ids = {}) {
 function closeProfileCard() {
   if (!activeProfileCard) return
   activeProfileCard = null
-  // renderMessages will redo input visibility logic via switchTab? No, switchTab not called here.
-  // Restore input bar visibility based on currentTab (flag moves with class —
-  // see hide site above)
-  const inputBar = document.getElementById('hs-mc-inputbar')
-  if (inputBar) {
-    const hideOnTabs = ['add', 'settings', 'discover', 'pinned']
-    if (!hideOnTabs.includes(currentTab)) {
-      inputBar.classList.remove('hs-hidden')
-      inputBarVisible = true
-    }
-  }
+  // switchTab isn't called here, so restore the bar ourselves — through
+  // showInputBar, which owns the "may this tab have a composer" call and keeps
+  // the visible flag in step. (The local tab list this replaced was a copy
+  // that never learned about modlog.)
+  showInputBar()
   renderMessages(currentTab)
 }
 
@@ -1641,14 +1635,11 @@ function setupProfileCardHandlers() {
 
 function pcMention(name) {
   closeProfileCard()
-  // If on a non-chat tab, switch to live first
-  const isChatTab =
-    currentTab === 'live' || (typeof config !== 'undefined' && config.channels?.some((c) => c.id === currentTab))
-  if (!isChatTab) switchTab('live')
+  // Mentioning someone means chatting to them — move to a tab that reaches a
+  // real chat first (the social tabs refuse a bare send).
+  if (!tabSendsToChat(currentTab)) switchTab('live')
   cleanup.setTimeout(() => {
-    const inputBar = document.getElementById('hs-mc-inputbar')
-    if (inputBar) inputBar.classList.remove('hs-hidden')
-    inputBarVisible = true
+    showInputBar()
     const input = document.getElementById('hs-mc-input')
     if (!input) return
     const tag = `@${name} `

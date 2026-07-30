@@ -1493,7 +1493,7 @@ function initInput() {
       'keydown',
       (e) => {
         if (e.key !== 'Tab') return
-        if (currentTab === 'add' || currentTab === 'settings') return
+        if (!tabAcceptsInput(currentTab)) return
         const active = document.activeElement
         const input = document.getElementById('hs-mc-input')
         if (!input) return
@@ -1558,7 +1558,7 @@ function initInput() {
         // autocomplete/dropdown keeps Tab (cycle/select); otherwise we swallow
         // it so Tab never tabs the composer OUT into the host page.
         if (e.key === 'Tab' && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey) {
-          if (currentTab === 'add' || currentTab === 'settings') return
+          if (!tabAcceptsInput(currentTab)) return
           const inp = document.getElementById('hs-mc-input')
           if (!inp) return
           const ae = document.activeElement
@@ -1580,7 +1580,7 @@ function initInput() {
         // Class, not the cached flag — a stale `true` here means a hidden bar
         // that no keystroke can ever reveal.
         if (syncInputBarVisible()) return
-        if (currentTab === 'add' || currentTab === 'settings') return
+        if (!tabAcceptsInput(currentTab)) return
         const input = document.getElementById('hs-mc-input')
         if (!input) return
         // Don't steal focus from other inputs
@@ -1610,7 +1610,7 @@ function initInput() {
       'paste',
       (e) => {
         if (syncInputBarVisible()) return
-        if (currentTab === 'add') return
+        if (!tabAcceptsInput(currentTab)) return
         const input = document.getElementById('hs-mc-input')
         if (!input) return
         // Don't steal paste from other inputs
@@ -8128,6 +8128,18 @@ async function sendMessage() {
     return
   }
 
+  // Nothing to send to from here (add/settings/discover/pinned/modlog, the
+  // live tab off a channel page, or a stale id from a removed channel). The
+  // composer isn't reachable on those tabs any more — but if one ever slips
+  // through, say so instead of falling through to the resolver below, where
+  // targetChannel defaulted to the TAB ID and addressed a channel named
+  // "modlog". Text stays in the box.
+  if (!tabAcceptsInput(currentTab)) {
+    flashInputError(input)
+    showToast(t('mc_input_no_channel'), 'error')
+    return
+  }
+
   // Determine target channel + platform
   let targetChannel
   let ch = null
@@ -8142,9 +8154,6 @@ async function sendMessage() {
       const lower = targetChannel.toLowerCase()
       ch = config.channels.find((c) => c.twitch?.toLowerCase() === lower || c.kick?.toLowerCase() === lower) || null
     }
-  } else if (currentTab === 'add' || currentTab === 'settings') {
-    flashInputError(input)
-    return
   } else {
     ch = config.channels.find((c) => c.id === currentTab)
     targetChannel = ch?.twitch || ch?.kick || currentTab

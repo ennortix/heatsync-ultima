@@ -96,14 +96,10 @@ function closeChatLogsView() {
     cleanup.untrackObserver(_clLoadMoreObs)
     _clLoadMoreObs = null
   }
-  const inputBar = document.getElementById('hs-mc-inputbar')
-  if (inputBar) {
-    const hideOnTabs = ['add', 'settings', 'discover', 'pinned']
-    if (!hideOnTabs.includes(currentTab)) {
-      inputBar.classList.remove('hs-hidden')
-      inputBarVisible = true
-    }
-  }
+  // showInputBar owns the "may this tab have a composer" call (and keeps the
+  // visible flag in step) — the local tab list here was a third copy of it,
+  // already out of date: it never included modlog.
+  showInputBar()
   if (typeof renderMessages === 'function') renderMessages(currentTab)
 }
 

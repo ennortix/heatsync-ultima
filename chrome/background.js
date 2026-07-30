@@ -11590,10 +11590,19 @@ function bgIrcRecordToExt(rec, channelHint) {
   if (t === 'clearchat') {
     const target = rec.targetUsername || ''
     const duration = rec.banDuration
+    // A LIVE CLEARCHAT line with no ban-duration tag means permanent, per
+    // twitch's protocol. A REPLAYED record with no duration FIELD means we
+    // never stored one — those are not the same thing, and this shared
+    // string-builder used to treat them identically, manufacturing
+    // "permanently banned" for a 1s timeout. Explicit 0 = recorded permanent
+    // ban; null/undefined = unknown, so say something true instead.
+    const durationKnown = duration != null
     const text = target
       ? duration
         ? `${target} timed out for ${duration}s`
-        : `${target} was permanently banned`
+        : durationKnown
+          ? `${target} was permanently banned`
+          : `${target} was removed from chat`
       : 'Chat was cleared'
     return {
       type: 'notice',
@@ -11632,6 +11641,11 @@ function bgIrcMergeServerBacklog(ch, records) {
     if (!msg) continue
     if (msg.id && existingIds.has(msg.id)) continue
     if (!msg.id && existingFp.has(fpKey(msg))) continue
+    // Mod notices need the (target, type, window) check too, not just id +
+    // fingerprint: two history sources describe ONE timeout with different
+    // wording and different ids, so both slipped through and the same action
+    // rendered twice. bgIrcDupModNotice is the same collapse the live path uses.
+    if (bgIrcDupModNotice(buf, msg)) continue
     toAdd.push(msg)
   }
   if (toAdd.length === 0) return
@@ -13392,16 +13406,24 @@ function _kpHandleModEvent(d, kind) {
   } else if (kind === 'ban') {
     const targetUser = ev.user?.username || ''
     if (!targetUser) return
-    // expires_at present + still future ⇒ timeout; otherwise a permanent ban.
+    // expires_at present ⇒ it was a TIMEOUT. Permanence is the ABSENCE of an
+    // expiry, never "the expiry already passed" — the old `expMs > Date.now()`
+    // reclassified every short timeout as a permanent ban, because a 1s timeout
+    // has always elapsed by the time we process the event (and every replayed
+    // one has elapsed by definition). That printed "was permanently banned"
+    // about a person who was muted for one second.
     const expMs = ev.expires_at ? Date.parse(ev.expires_at) : 0
-    const isTimeout = !!expMs && expMs > Date.now()
+    const isTimeout = !!expMs
+    // Remaining time can be <=0 for an already-elapsed timeout; report at least
+    // 1s rather than a nonsense negative duration.
+    const remainingSec = Math.max(1, Math.round((expMs - Date.now()) / 1000))
     broadcastToTabs({
       type: 'kick_moderation',
       action: isTimeout ? 'timeout' : 'ban',
       channel: slug,
       targetUser,
       targetUserId: ev.user?.id != null ? String(ev.user.id) : '',
-      banDuration: isTimeout ? Math.max(1, Math.round((expMs - Date.now()) / 1000)) : 0,
+      banDuration: isTimeout ? remainingSec : 0,
     })
   } else if (kind === 'unban') {
     const targetUser = ev.user?.username || ''

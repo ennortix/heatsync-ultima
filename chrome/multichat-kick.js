@@ -21896,7 +21896,7 @@ class KickChat extends ChatClient {
         : action === 'unban'
           ? `${target} was unbanned`
           : action === 'timeout'
-            ? `${target} timed out for ${message.banDuration}s`
+            ? `${target} timed out for ${message.banDuration || 1}s`
             : `${target} was banned`
     this.emit('message', {
       type: 'notice',
@@ -57811,7 +57811,26 @@ const STORAGE_KEY = 'heatsync_multichat'
   let prevTab = 'feed'
   let liveChannel = null // override channel for live tab (null = use URL channel)
   let livePlatformMap = {} // per-URL-channel platform overrides: { [urlCh]: { twitch, kick, youtube } }
-  let liveChannelSet = new Set() // channels currently live (lowercase twitch names)
+  let liveChannelSet = new Set() // live per the direct /live-status poll (lowercase names)
+  // Live per the service worker's /api/live/following snapshot. Declared HERE,
+  // beside the poll set, so isChannelLive() below can never touch it in its
+  // temporal dead zone. null = no snapshot seen yet (distinct from "none live").
+  let _swLiveSet = null
+
+  /* Is this lowercase channel name live, per EITHER source?
+   *
+   * Two sources exist and neither is a superset: the service worker's
+   * /api/live/following snapshot (_swLiveSet — only channels you follow) and the
+   * direct live-status poll (liveChannelSet — whatever tabs are open). They used
+   * to be UNIONED INTO liveChannelSet, which made the set monotonic: a channel
+   * that went offline kept its dot because nothing ever removed it, and an EMPTY
+   * snapshot (i.e. "nothing you follow is live", the normal case) skipped the
+   * update entirely so the stale dot became permanent. Deriving membership at
+   * read time means either source refreshing is enough to clear a dot. */
+  function isChannelLive(name) {
+    if (!name) return false
+    return (_swLiveSet ? _swLiveSet.has(name) : false) || liveChannelSet.has(name)
+  }
   // Channels we've already surfaced as "went live" this session. A channel can
   // only legitimately go off→on once per session — every later stream:online
   // for the same channel is a server re-broadcast (connect-snapshot, EventSub
@@ -62677,10 +62696,7 @@ const STORAGE_KEY = 'heatsync_multichat'
         const tw = ch.twitch?.toLowerCase()
         const ki = ch.kick?.toLowerCase()
         const idLower = ch.id?.toLowerCase()
-        const isLive =
-          (tw && liveChannelSet.has(tw)) ||
-          (ki && liveChannelSet.has(ki)) ||
-          (!tw && !ki && idLower && liveChannelSet.has(idLower))
+        const isLive = isChannelLive(tw) || isChannelLive(ki) || ((!tw && !ki) && isChannelLive(idLower))
         tab.dataset.live = String(isLive)
       }
       // YT-only tabs aren't in liveChannelSet (which is Twitch-only), so
@@ -67303,7 +67319,7 @@ const STORAGE_KEY = 'heatsync_multichat'
   // every 60s and pushed via `live_followed_updated`. We use it to short-circuit
   // /api/platform/live-status calls for channels the SW already covers — at
   // 100k users this turns the per-content 30s poll into a no-op for most users.
-  let _swLiveSet = null
+  // (declared beside liveChannelSet at the top — isChannelLive() reads both)
 
   function startLiveStatusPolling() {
     // Seed from SW cached snapshot, so first paint doesn't wait on the network.
@@ -67331,13 +67347,11 @@ const STORAGE_KEY = 'heatsync_multichat'
         .map((s) => String(s.username || '').toLowerCase())
         .filter(Boolean),
     )
-    // Stamp dots from SW snapshot, then re-apply local cache as overlay.
+    // Re-stamp unconditionally. _swLiveSet has just been REPLACED (not merged),
+    // so an empty snapshot is real information — "none of the channels you
+    // follow are live" — and has to be able to clear a dot.
     if (!tabBarElement) return
-    if (_swLiveSet.size) {
-      const merged = new Set([...liveChannelSet, ..._swLiveSet])
-      liveChannelSet = merged
-      applyLiveDotsFromCache()
-    }
+    applyLiveDotsFromCache()
   }
 
   // Debounced re-poll — call when user activity suggests stale dots are
@@ -67407,8 +67421,9 @@ const STORAGE_KEY = 'heatsync_multichat'
       // Merge SW snapshot + fresh twitch + fresh kick into one live set, then
       // stamp every tab (both platforms) via the shared cache-applier so
       // Kick-only tabs light up from kickLive, not the twitch set.
+      // Poll-owned set ONLY. Folding _swLiveSet in here is what made a stale
+      // snapshot entry survive every subsequent poll; isChannelLive() reads both.
       const liveSet = new Set([
-        ...(_swLiveSet || []),
         ...(Array.isArray(data?.live) ? data.live.map((c) => c.toLowerCase()) : []),
         ...(Array.isArray(data?.kickLive) ? data.kickLive.map((c) => c.toLowerCase()) : []),
       ])
@@ -67462,10 +67477,7 @@ const STORAGE_KEY = 'heatsync_multichat'
       const tw = ch.twitch?.toLowerCase()
       const ki = ch.kick?.toLowerCase()
       const idLower = id?.toLowerCase()
-      const isLive =
-        (tw && liveChannelSet.has(tw)) ||
-        (ki && liveChannelSet.has(ki)) ||
-        (!tw && !ki && idLower && liveChannelSet.has(idLower))
+      const isLive = isChannelLive(tw) || isChannelLive(ki) || ((!tw && !ki) && isChannelLive(idLower))
       tab.dataset.live = String(isLive)
     })
   }
@@ -71804,7 +71816,7 @@ const STORAGE_KEY = 'heatsync_multichat'
           // the grace, so it still surfaces (and gets recorded so any later
           // re-broadcast of the same channel is deduped).
           if (sessionWentLiveSeen.has(channel)) return
-          const _alreadyLive = liveChannelSet?.has(channel) || _swLiveSet?.has(channel)
+          const _alreadyLive = isChannelLive(channel)
           const _inGrace = Date.now() - mcStartedAt < 90000
           sessionWentLiveSeen.add(channel)
           if (_alreadyLive || _inGrace) return

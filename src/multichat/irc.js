@@ -1159,7 +1159,7 @@ class KickChat extends ChatClient {
         : action === 'unban'
           ? `${target} was unbanned`
           : action === 'timeout'
-            ? `${target} timed out for ${message.banDuration}s`
+            ? `${target} timed out for ${message.banDuration || 1}s`
             : `${target} was banned`
     this.emit('message', {
       type: 'notice',

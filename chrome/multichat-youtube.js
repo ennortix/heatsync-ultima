@@ -39233,10 +39233,12 @@ function trackSentMessage(text, hostOverride, synthId, echoes, reply) {
   // sync latency easily wins the race against the ~100-300ms platform
   // chat round-trip.
   try {
-    // Strip per-tab echo counters before persisting: each tab receives its own
-    // echo stream and must count independently — a leaked counter would make
-    // another tab suppress its FIRST (only rendered) copy of the message.
-    chrome.storage.local.set({ [RECENT_SENT_KEY]: _recentSentMessages.map(({ suppressed, ...rest }) => rest) })
+    // Strip per-tab echo bookkeeping before persisting: each tab receives its
+    // own echo stream and must account independently — a leaked counter would
+    // make another tab suppress its FIRST (only rendered) copy of the message.
+    chrome.storage.local.set({
+      [RECENT_SENT_KEY]: _recentSentMessages.map(({ suppressed, seenPlatforms, rendered, ...rest }) => rest),
+    })
   } catch (_) {}
 }
 
@@ -39294,31 +39296,52 @@ try {
   }
 } catch (_) {}
 
-function isSentEcho(msgText, _msgPlatform) {
+// Normalise the platform tag an echo arrives with. Call sites pass literals
+// ('twitch' | 'kick' | 'youtube'), but msg.platform elsewhere in the codebase
+// uses 'yt' — one spelling here or the two are different buckets.
+function _echoPlatformKey(p) {
+  const s = String(p || '').toLowerCase()
+  if (s === 'yt') return 'youtube'
+  return s || 'unknown'
+}
+
+function isSentEcho(msgText, msgPlatform) {
   const cutoff = Date.now() - SENT_DEDUP_WINDOW
-  // FIFO oldest-first: each echo is claimed by the OLDEST send whose expected
-  // echo count isn't exhausted. The old newest-first scan locked two same-text
-  // sends onto one entry, so the 2nd send's only echo was counted as the 1st
-  // send's dual-send duplicate and silently dropped.
+  const platform = _echoPlatformKey(msgPlatform)
+  // FIFO oldest-first: each echo is claimed by the OLDEST send that hasn't
+  // already taken an echo from THIS platform. The old newest-first scan locked
+  // two same-text sends onto one entry, so the 2nd send's only echo was counted
+  // as the 1st send's dual-send duplicate and silently dropped.
   for (let i = 0; i < _recentSentMessages.length; i++) {
     const entry = _recentSentMessages[i]
     // continue (not break): a cross-tab merge can briefly leave the array out
     // of time order, so one stale entry doesn't mean the rest are stale too.
     if (entry.time < cutoff) continue
     if (!_echoTextMatches(entry, msgText)) continue
-    const seen = entry.suppressed || 0
-    // Exhausted: this send already accounted for one echo per target platform;
-    // let a later same-text send claim this echo instead.
-    if (seen >= (entry.echoes || 1)) continue
+    // Claim by PLATFORM, not by a count of expected echoes.
+    //
+    // The count came from the send targets the extension knew about
+    // (sendToTwitch + sendToKick + sendToYoutube). Any echo the extension
+    // didn't predict — a leg fanned out server-side, a relay, a target
+    // resolved after the entry was tracked — overran that count, and an
+    // overrun echo fell out of the loop and rendered as a SECOND copy of
+    // your own message. Counting what actually arrives cannot undercount.
+    const seen = entry.seenPlatforms || (entry.seenPlatforms = [])
+    // This entry already took an echo from this platform, so this one belongs
+    // to a LATER identical send (or a stranger repeating you) — keep looking.
+    if (seen.includes(platform)) continue
+    seen.push(platform)
     // Host-platform badge attribution happens separately via peekSentHost,
     // so we don't suppress on host mismatch — that would drop the only
     // echo when sending from one platform to a single-platform channel
     // on a different host (e.g. kick.com → twitch-only mellen).
-    entry.suppressed = seen + 1
-    // First echo of a send displays; its per-platform duplicates (dual/triple
-    // send) are suppressed. The entry is kept (skipped once exhausted, pruned
-    // at the 24h window) so peekSentHost can still attribute badges.
-    return seen >= 1
+    //
+    // First echo of a send displays; every other platform's copy of that same
+    // send is suppressed. The entry is kept (pruned at the 24h window) so
+    // peekSentHost can still attribute badges.
+    if (entry.rendered) return true
+    entry.rendered = true
+    return false
   }
   return false
 }

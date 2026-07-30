@@ -38,7 +38,7 @@ function loadIsSentEcho() {
   const src = readFileSync(join(import.meta.dir, '..', 'src', 'multichat', 'input.js'), 'utf8')
   // isSentEcho calls _echoTextMatches (reply-prefix tolerance), which in turn
   // calls _unkickEmotes (kick's [emote:id:name] wire form) — carve all three.
-  const body = `${carve(src, '_unkickEmotes')}\n${carve(src, '_echoTextMatches')}\n${carve(src, 'isSentEcho')}`
+  const body = `${carve(src, '_unkickEmotes')}\n${carve(src, '_echoTextMatches')}\n${carve(src, '_echoPlatformKey')}\n${carve(src, 'isSentEcho')}`
   // Bind the module-scoped state the function closes over.
   return (entries) =>
     new Function('_recentSentMessages', 'SENT_DEDUP_WINDOW', `${body}; return isSentEcho`)(entries, 10000)
@@ -112,7 +112,7 @@ test('non-reply entry never strips a stranger\'s "@you " prefix', () => {
   const entries = [{ text: 'same text', time: now(), synthId: 'a', echoes: 1 }]
   const isSentEcho = makeIsSentEcho(entries)
   expect(isSentEcho('@mellen same text', 'twitch')).toBe(false) // stranger's reply renders
-  expect(entries[0].suppressed).toBeUndefined() // and never touched the entry
+  expect(entries[0].seenPlatforms).toBeUndefined() // and never touched the entry
 })
 
 test('entries outside the 10s window are ignored', () => {
@@ -145,5 +145,78 @@ test('exhausted entries stay in the array for peekSentHost badge attribution', (
   isSentEcho('hello', 'twitch')
   isSentEcho('hello', 'kick')
   expect(entries.length).toBe(1)
-  expect(entries[0].suppressed).toBe(2)
+  expect(entries[0].seenPlatforms).toEqual(['twitch', 'kick'])
+})
+
+/**
+ * The count-overrun class — reported 2026-07-30 as "double posting on K and T".
+ *
+ * `echoes` was the number of send targets the EXTENSION knew about
+ * (sendToTwitch + sendToKick + sendToYoutube) at the moment it tracked the
+ * send. Any echo it didn't predict — a leg fanned out server-side, a relay, a
+ * target resolved after tracking — overran that count. The overrun echo fell
+ * out of the loop unclaimed and rendered as a second copy of your own message,
+ * one row tagged [T] and one tagged [K].
+ *
+ * Suppression is keyed on the platform the echo actually arrived from, so an
+ * undercounted entry cannot leak a duplicate. These fixtures all set `echoes`
+ * to the WRONG value on purpose; it must not matter.
+ */
+test('REGRESSION: undercounted send (echoes:1) still suppresses the second platform', () => {
+  const entries = [{ text: 'hello', time: now(), synthId: 'a', echoes: 1 }]
+  const isSentEcho = makeIsSentEcho(entries)
+  expect(isSentEcho('hello', 'twitch')).toBe(false) // first copy renders
+  expect(isSentEcho('hello', 'kick')).toBe(true) // was rendering a 2nd row
+})
+
+test('REGRESSION: an entry with no echoes field at all still dedups across platforms', () => {
+  const entries = [{ text: 'hello', time: now(), synthId: 'a' }]
+  const isSentEcho = makeIsSentEcho(entries)
+  expect(isSentEcho('hello', 'twitch')).toBe(false)
+  expect(isSentEcho('hello', 'kick')).toBe(true)
+})
+
+test('three platforms, one row — even when the entry claims a single target', () => {
+  const entries = [{ text: 'gg', time: now(), synthId: 'a', echoes: 1 }]
+  const isSentEcho = makeIsSentEcho(entries)
+  const rendered = ['twitch', 'kick', 'youtube'].filter((p) => !isSentEcho('gg', p))
+  expect(rendered).toEqual(['twitch'])
+})
+
+test("'yt' and 'youtube' land in ONE bucket, not two", () => {
+  // Call sites pass 'youtube' but msg.platform elsewhere says 'yt'. Left
+  // unnormalised they read as two different platforms, so a redelivery under
+  // the other spelling would be suppressed as if it were a second platform's
+  // copy — and a genuine second send of the same text would vanish with it.
+  // One bucket means the repeat falls through to a later entry instead.
+  const entries = [{ text: 'gg', time: now(), synthId: 'a', echoes: 3 }]
+  const isSentEcho = makeIsSentEcho(entries)
+  expect(isSentEcho('gg', 'youtube')).toBe(false)
+  expect(isSentEcho('gg', 'yt')).toBe(false) // same bucket → treated as a later send
+  expect(entries[0].seenPlatforms).toEqual(['youtube']) // not ['youtube','yt']
+})
+
+test('a platform that echoes twice does not swallow a later identical send', () => {
+  // Stale redelivery (kick has been seen re-broadcasting 20+ min later) must
+  // not consume the echo credit belonging to a genuine second send of the
+  // same text — that would silently drop the second send's only copy.
+  const t = now()
+  const entries = [
+    { text: 'lol', time: t - 200, synthId: 'a', echoes: 1 },
+    { text: 'lol', time: t - 100, synthId: 'b', echoes: 1 },
+  ]
+  const isSentEcho = makeIsSentEcho(entries)
+  expect(isSentEcho('lol', 'twitch')).toBe(false) // send #1 renders
+  expect(isSentEcho('lol', 'twitch')).toBe(false) // send #2 renders
+  expect(entries[0].seenPlatforms).toEqual(['twitch'])
+  expect(entries[1].seenPlatforms).toEqual(['twitch'])
+})
+
+test('dual-send reply: undercounted, prefixed twitch echo, still one row', () => {
+  // Composite of the two failure modes: the twitch leg arrives with a
+  // server-side "@parent " prefix AND the entry undercounts its targets.
+  const entries = [{ text: 'theres no way lol', time: now(), synthId: 'a', echoes: 1, reply: true }]
+  const isSentEcho = makeIsSentEcho(entries)
+  expect(isSentEcho('@coaoaba theres no way lol', 'twitch')).toBe(false)
+  expect(isSentEcho('theres no way lol', 'kick')).toBe(true)
 })

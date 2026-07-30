@@ -918,6 +918,7 @@ const MENTION_DROPDOWN_MAX = 20
 // with /<word>. Heatsync-owned + common pass-through Twitch/Kick mod commands.
 const SLASH_COMMANDS = [
   { cmd: 'op', args: '<text>', desc: 'post to home feed' },
+  { cmd: 'opr', args: '<text>', desc: 'reply to the last [OP] shown in chat' },
   { cmd: 'w', args: '<user> <msg>', desc: 'twitch whisper' },
   { cmd: 'dm', args: '<user> <msg>', desc: 'heatsync DM' },
   { cmd: 'r', args: '<msg>', desc: 'reply to last whisper' },
@@ -6517,7 +6518,32 @@ async function handleSlashCommand(text, input) {
       return true
     }
     const ok = await postFeedMessage(rest.trim(), { topLevel: true })
-    showToast(ok ? t('mc_input_success') : t('mc_input_post_failed'), ok ? 'success' : 'error')
+    // postFeedMessage already surfaces the specific failure (401/429/409) —
+    // a second generic toast on top of it just says less, twice.
+    if (ok) showToast(t('mc_input_success'), 'success')
+    clearInput(input)
+    return true
+  }
+
+  // /opr <text> — reply to the last feed [OP] that appeared inline in chat.
+  // Deliberately NOT wired to /re: that is an alias of /r, which sends a
+  // WHISPER. Repointing it would turn a mistyped private reply into a public
+  // post, and that is not a direction this should ever fail in.
+  if (cmd === 'opr') {
+    if (!rest.trim()) {
+      showToast('usage: /opr <text>')
+      return true
+    }
+    if (!hsAuthToken) {
+      showToast(t('mc_input_login_first_op'), 'error')
+      return true
+    }
+    if (!lastInlineFeedOpId) {
+      showToast('no post in chat to reply to yet', 'error')
+      return true
+    }
+    const ok = await postFeedMessage(rest.trim(), { replyTo: lastInlineFeedOpId })
+    if (ok) showToast(t('mc_input_success'), 'success')
     clearInput(input)
     return true
   }
@@ -7775,6 +7801,7 @@ async function handleSlashCommand(text, input) {
 
 const SLASH_HELP_LINES = [
   '/op <text>             — post to home',
+  '/opr <text>            — reply to last [OP] in chat',
   '/w <user> <msg>        — twitch whisper',
   '/dm <user> <msg>       — heatsync DM',
   '/r <msg>               — reply to last whisper',

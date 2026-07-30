@@ -4699,8 +4699,11 @@
   }
 
   // Inject an inline notification into active chat tabs
-  function injectInlineNotif(notifType, msg) {
-    if (!inlineNotifs[notifType]) return
+  function injectInlineNotif(notifType, msg, opts = {}) {
+    // opts.force — receipts for something YOU just did (posting from chat)
+    // aren't notifications about other people, so the per-type toggle that
+    // silences other users' feed posts must not also silence your own.
+    if (!inlineNotifs[notifType] && !opts.force) return
     const typeDef = INLINE_NOTIF_TYPES[notifType]
     if (!typeDef) return
 

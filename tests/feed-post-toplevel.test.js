@@ -34,14 +34,15 @@ function sliceBetween(src, startMarker, endMarker) {
 
 const fnSrc = sliceBetween(
   SOCIAL_SRC,
-  'async function postFeedMessage(text, { topLevel = false } = {}) {',
+  'async function postFeedMessage(text, { topLevel = false, replyTo = null } = {}) {',
   '\nfunction startDiscoverPolling() {',
 )
 
 /** Build a fresh postFeedMessage with stubbed environment; returns the fn
  * plus a capture of every apiFetch call body. */
-function harness({ activeThread = null } = {}) {
+function harness({ activeThread = null, currentTab = 'feed', posted = null } = {}) {
   const calls = []
+  const echoes = []
   const stubs = {
     document: {
       getElementById: () => ({ value: 'x', dataset: {}, style: {} }),
@@ -50,12 +51,14 @@ function harness({ activeThread = null } = {}) {
     wysiwygEnabled: false,
     pendingMessage: '',
     activeThread,
-    currentTab: 'feed',
+    currentTab,
     feedMessages: [],
     apiFetch: async (path, opts) => {
       calls.push({ path, body: opts.body })
-      return { ok: true, data: {} }
+      return { ok: true, data: posted ? { message: posted } : {} }
     },
+    buildFeedInlineNotif: (f) => ({ notifType: 'op', msg: { base36_id: f.base36_id, created_at: f.created_at } }),
+    injectInlineNotif: (notifType, msg, opts) => echoes.push({ notifType, msg, opts }),
     updateCharCount: () => {},
     hideInputBar: () => {},
     updateInputPlaceholder: () => {},
@@ -67,7 +70,7 @@ function harness({ activeThread = null } = {}) {
   }
   const names = Object.keys(stubs)
   const factory = new Function(...names, `${fnSrc}\nreturn postFeedMessage`)
-  return { postFeedMessage: factory(...names.map((n) => stubs[n])), calls }
+  return { postFeedMessage: factory(...names.map((n) => stubs[n])), calls, echoes }
 }
 
 describe('postFeedMessage — topLevel gate (the /op-in-thread-view regression)', () => {
@@ -105,5 +108,64 @@ describe('caller contracts (input.js source)', () => {
     )
     expect(feedBlock).toContain('postFeedMessage(text)')
     expect(feedBlock).not.toContain('topLevel: true')
+  })
+})
+
+// /op posted fine but chat never showed it. The websocket new-message echo
+// can't do the job: postFeedMessage optimistically unshifts the post into
+// feedMessages, so the ws handler's "already in feed" dedup returns before it
+// reaches injectInlineNotif (and it bails outright when the feed tab was never
+// opened). The post must therefore echo itself.
+describe('own post echoes into chat', () => {
+  test('posting while on a chat tab injects the inline row', async () => {
+    const { postFeedMessage, echoes } = harness({
+      currentTab: 'kripp',
+      posted: { base36_id: '00002p', created_at: '2026-07-30T19:00:00Z' },
+    })
+    await postFeedMessage('hello', { topLevel: true })
+    expect(echoes.length).toBe(1)
+    expect(echoes[0].msg.base36_id).toBe('00002p')
+  })
+
+  test('the echo bypasses the inline-notif toggle — it is your own receipt', async () => {
+    const { postFeedMessage, echoes } = harness({
+      currentTab: 'kripp',
+      posted: { base36_id: '00002p', created_at: '2026-07-30T19:00:00Z' },
+    })
+    await postFeedMessage('hello', { topLevel: true })
+    expect(echoes[0].opts?.force).toBe(true)
+  })
+
+  test('a server row with no created_at still echoes', async () => {
+    const { postFeedMessage, echoes } = harness({
+      currentTab: 'kripp',
+      posted: { base36_id: '00002p' },
+    })
+    await postFeedMessage('hello', { topLevel: true })
+    expect(echoes.length).toBe(1)
+    expect(echoes[0].msg.created_at).toBeTruthy()
+  })
+
+  test('no echo on the feed tab — the post is already visible there', async () => {
+    const { postFeedMessage, echoes } = harness({
+      currentTab: 'feed',
+      posted: { base36_id: '00002p', created_at: '2026-07-30T19:00:00Z' },
+    })
+    await postFeedMessage('hello', { topLevel: true })
+    expect(echoes.length).toBe(0)
+  })
+})
+
+describe('replyTo — /opr targets the last [OP] seen in chat', () => {
+  test('replyTo wins over the open thread', async () => {
+    const { postFeedMessage, calls } = harness({ activeThread: { id: 'openthread', replies: [] } })
+    await postFeedMessage('nice one', { replyTo: '00002p' })
+    expect(calls[0].body.reply_to).toBe('00002p')
+  })
+
+  test('without replyTo the open thread still wins (unchanged)', async () => {
+    const { postFeedMessage, calls } = harness({ activeThread: { id: 'openthread', replies: [] } })
+    await postFeedMessage('nice one')
+    expect(calls[0].body.reply_to).toBe('openthread')
   })
 })

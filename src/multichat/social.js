@@ -815,24 +815,8 @@ function listenForSocialEvents() {
       } else {
         updateTabIndicator('feed')
         // Inline notification in chat (routed through toggle system)
-        const f = msg.data
-        const t = new Date(f.created_at).getTime()
-        if (!Number.isNaN(t)) {
-          const notifType = f.is_thread_op ? 'mop' : (f.is_op != null ? !!f.is_op : !f.reply_to) ? 'op' : 're'
-          injectInlineNotif(notifType, {
-            type: 'feed-post',
-            base36_id: f.base36_id,
-            feedUser: f.username || f.display_name || 'anon',
-            text: f.content || '',
-            color: f.user_color || '#fff',
-            time: t,
-            heat: f.heat || 0,
-            reply_to: f.reply_to,
-            emote_refs: f.emote_refs,
-            is_op: f.is_op,
-            is_thread_op: f.is_thread_op,
-          })
-        }
+        const row = buildFeedInlineNotif(msg.data)
+        if (row) injectInlineNotif(row.notifType, row.msg)
       }
     }
     if (msg.type === 'dm_new' && msg.data) {
@@ -1304,6 +1288,47 @@ function listenForSocialEvents() {
 // >>id, never as top-level rows. Mirrors buildFeedMessageDiv's isOp test.
 function isOpMsg(m) {
   return m.is_op != null ? !!m.is_op : !m.reply_to || m.reply_to === ''
+}
+
+// The last feed OP surfaced as an inline row in chat — what /opr replies to.
+// Set from ONE place (buildFeedInlineNotif) so anything that can put an [OP]
+// in front of you is automatically a valid reply target, including your own.
+let lastInlineFeedOpId = null
+
+/**
+ * Map a feed row (websocket payload or a just-posted response) onto the
+ * inline `feed-post` chat row. Both callers used to build this object
+ * separately; they must stay identical or your own post renders differently
+ * from everyone else's.
+ *
+ * @param {object} f feed message row
+ * @returns {{notifType: string, msg: object}|null} null when the row carries
+ *   no usable timestamp (the renderer needs one for its ts column)
+ */
+function buildFeedInlineNotif(f) {
+  if (!f) return null
+  const t = new Date(f.created_at).getTime()
+  if (Number.isNaN(t)) return null
+  const notifType = f.is_thread_op ? 'mop' : isOpMsg(f) ? 'op' : 're'
+  if ((notifType === 'op' || notifType === 'mop') && f.base36_id) {
+    lastInlineFeedOpId = f.base36_id
+  }
+  return {
+    notifType,
+    msg: {
+      type: 'feed-post',
+      base36_id: f.base36_id,
+      feedUser: f.username || f.display_name || 'anon',
+      text: f.content || '',
+      color: f.user_color || '#fff',
+      time: t,
+      heat: f.heat || 0,
+      reply_to: f.reply_to,
+      emote_refs: f.emote_refs,
+      is_op: f.is_op,
+      is_thread_op: f.is_thread_op,
+    },
+  }
 }
 
 async function fetchFeed(append = false) {
@@ -2265,7 +2290,7 @@ function _extractFeedBodyText(root) {
     .trim()
 }
 
-async function postFeedMessage(text, { topLevel = false } = {}) {
+async function postFeedMessage(text, { topLevel = false, replyTo = null } = {}) {
   const input = document.getElementById('hs-mc-input')
   if (!input) return false
 
@@ -2300,10 +2325,14 @@ async function postFeedMessage(text, { topLevel = false } = {}) {
     body.media_url = mediaUrl
     body.media_type = mediaType
   }
-  // In thread view, global input posts as a reply to the active thread —
-  // unless the caller explicitly forced a top-level post (topLevel: /op's
-  // whole purpose; it silently became a thread reply before this gate).
-  if (activeThread && !topLevel) {
+  // An explicit target wins over view state — /opr replies to the last [OP]
+  // you saw in chat, which is usually NOT the thread you happen to have open.
+  if (replyTo) {
+    body.reply_to = replyTo
+  } else if (activeThread && !topLevel) {
+    // In thread view, global input posts as a reply to the active thread —
+    // unless the caller explicitly forced a top-level post (topLevel: /op's
+    // whole purpose; it silently became a thread reply before this gate).
     body.reply_to = activeThread.id
   }
 
@@ -2338,7 +2367,24 @@ async function postFeedMessage(text, { topLevel = false } = {}) {
       }
     }
     if (currentTab === 'feed') renderFeed()
-    return true
+    // Echo your own post into chat, exactly as someone else's would appear.
+    // The websocket new-message echo CANNOT do this: the optimistic unshift
+    // above already put this id in feedMessages, so the ws handler's dedup
+    // returns before it ever reaches injectInlineNotif (and it bails outright
+    // when the feed tab was never opened). That's why /op looked like it did
+    // nothing — the post landed, chat just never said so. force: your own
+    // action's receipt isn't a notification about someone else, so the
+    // per-type inline-notif toggle doesn't gate it.
+    if (posted && currentTab !== 'feed') {
+      // created_at defended: the row is unusable without a timestamp, and a
+      // post the server hasn't stamped yet must still show up.
+      const row = buildFeedInlineNotif({
+        ...posted,
+        created_at: posted.created_at || new Date().toISOString(),
+      })
+      if (row) injectInlineNotif(row.notifType, row.msg, { force: true })
+    }
+    return posted || true
   } else {
     input.style.borderColor = 'var(--hs-danger)'
     const errMsg =

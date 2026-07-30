@@ -41030,7 +41030,9 @@ function initInput() {
           inp.focus()
           return
         }
-        if (inputBarVisible) return
+        // Class, not the cached flag — a stale `true` here means a hidden bar
+        // that no keystroke can ever reveal.
+        if (syncInputBarVisible()) return
         if (currentTab === 'add' || currentTab === 'settings') return
         const input = document.getElementById('hs-mc-input')
         if (!input) return
@@ -41060,7 +41062,7 @@ function initInput() {
     document.addEventListener(
       'paste',
       (e) => {
-        if (inputBarVisible) return
+        if (syncInputBarVisible()) return
         if (currentTab === 'add') return
         const input = document.getElementById('hs-mc-input')
         if (!input) return
@@ -44879,10 +44881,6 @@ function insertCompletionWysiwyg(match) {
         // bare emote img.
         existingEmote.classList.remove('hs-input-overlay')
         stack.parentNode.insertBefore(existingEmote, stack.nextSibling)
-        // Insert a separator space so following typed text gets a word break
-        if (existingEmote.nextSibling?.textContent !== ' ') {
-          existingEmote.parentNode.insertBefore(document.createTextNode(' '), existingEmote.nextSibling)
-        }
         if (stack.children.length === 1) {
           const base = stack.firstElementChild
           stack.parentNode.insertBefore(base, stack)
@@ -44890,6 +44888,26 @@ function insertCompletionWysiwyg(match) {
         } else if (stack.children.length === 0) {
           stack.remove()
         }
+        // Re-separate BOTH sides of the freed chip, adding only what's missing.
+        // Left: the former base now sits flush against it, and touching chips
+        // are exactly what unwrapStuckChips rewrites on the next input (which
+        // yanks the caret back between them). Right: the trailing whitespace is
+        // the caret's home, and caretOnActiveCompletion only accepts a caret in
+        // the text node IMMEDIATELY after the chip — the old exact-nbsp compare
+        // saw the plain space the overlay path leaves, inserted a SECOND
+        // separator in front of it, and orphaned the caret one node too far
+        // right, so the next Tab tore the cycle down instead of advancing
+        // (overlay, overlay, overlay, then a non-overlay match: Tab and
+        // Shift+Tab both went dead).
+        if (isInlineChip(existingEmote.previousSibling)) {
+          existingEmote.parentNode.insertBefore(document.createTextNode('\u00A0'), existingEmote)
+        }
+        let tail = existingEmote.nextSibling
+        if (!(tail?.nodeType === Node.TEXT_NODE && /^\s/.test(tail.textContent || ''))) {
+          tail = document.createTextNode('\u00A0')
+          existingEmote.parentNode.insertBefore(tail, existingEmote.nextSibling)
+        }
+        placeCaretAfter(tail, 1)
       } else if (!stack && wantsOverlay) {
         // Cycle landed on an overlay match while the cycling img is standalone.
         // Find a preceding base — element chip or a raw emoji ending a
@@ -61155,8 +61173,21 @@ const STORAGE_KEY = 'heatsync_multichat'
   const hermesToggles = {}
   for (const [k, v] of Object.entries(HERMES_EVENT_TYPES)) hermesToggles[k] = v.defaultOn
 
+  // The DOM class is the truth; inputBarVisible is only a cache of it. Several
+  // paths add/remove hs-hidden directly (log + profile-card views, the autoHide
+  // toggle, a container rebuild that mints a fresh bar), so the cache can drift
+  // — and every drift is a dead composer: a stale `false` on a VISIBLE bar made
+  // hideInputBar() early-return forever (empty bar stranded on screen,
+  // "auto-hide stopped working"), a stale `true` on a HIDDEN bar made
+  // showInputBar() early-return (no way to type). Re-read before each decision.
+  function syncInputBarVisible() {
+    const bar = document.getElementById('hs-mc-inputbar')
+    if (bar) inputBarVisible = !bar.classList.contains('hs-hidden')
+    return inputBarVisible
+  }
+
   function showInputBar() {
-    if (inputBarVisible) return
+    if (syncInputBarVisible()) return
     inputBarVisible = true
     const bar = document.getElementById('hs-mc-inputbar')
     if (bar) bar.classList.remove('hs-hidden')
@@ -61186,7 +61217,7 @@ const STORAGE_KEY = 'heatsync_multichat'
   let _autoHideRetryTimer = null
   function hideInputBar() {
     if (!autoHideEligible()) return
-    if (!inputBarVisible) return
+    if (!syncInputBarVisible()) return
     const input = document.getElementById('hs-mc-input')
     const hasText = input ? (input.value || input.textContent || '').trim().length > 0 : false
     const hasContent = hasText || input?.querySelector('img, span.hs-mc-emoji')
@@ -61218,6 +61249,15 @@ const STORAGE_KEY = 'heatsync_multichat'
     inputBarVisible = false
     const bar = document.getElementById('hs-mc-inputbar')
     if (bar) bar.classList.add('hs-hidden')
+    // Hiding blurs the composer. Tell vi-mode to let go NOW — its own focusout
+    // detach is 150ms behind, and a key pressed inside that gap runs as a vi
+    // command on an invisible composer (blockEvent kills it) instead of
+    // reaching the type-to-reveal handler. Every hide funnels through here, so
+    // the timer-driven and reconciler-driven hides are covered too, not just
+    // the vi-initiated one.
+    try {
+      window.__hsViDetachNow?.(document.getElementById('hs-mc-input'))
+    } catch (_) {}
     const overlay = document.getElementById('hs-mc-overlay')
     if (overlay) overlay.style.bottom = '0'
     _updateMcLayout?.()
@@ -63939,6 +63979,13 @@ const STORAGE_KEY = 'heatsync_multichat'
       if (canAutoHideInput() && !pendingMessage.trim()) {
         inputBarElement.classList.add('hs-hidden')
         inputBarVisible = false
+      } else {
+        // Born visible — say so. A rebuild during the keepComposerOpen window
+        // (or with a draft pending) left the flag on its pre-rebuild `false`
+        // while the fresh bar carried no hs-hidden class, and that stranded
+        // combination is unrecoverable on its own: hideInputBar() bails on the
+        // flag, so the empty bar stays up until something types into it.
+        inputBarVisible = true
       }
       log('Created input bar')
     }

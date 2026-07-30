@@ -3316,8 +3316,21 @@
   const hermesToggles = {}
   for (const [k, v] of Object.entries(HERMES_EVENT_TYPES)) hermesToggles[k] = v.defaultOn
 
+  // The DOM class is the truth; inputBarVisible is only a cache of it. Several
+  // paths add/remove hs-hidden directly (log + profile-card views, the autoHide
+  // toggle, a container rebuild that mints a fresh bar), so the cache can drift
+  // — and every drift is a dead composer: a stale `false` on a VISIBLE bar made
+  // hideInputBar() early-return forever (empty bar stranded on screen,
+  // "auto-hide stopped working"), a stale `true` on a HIDDEN bar made
+  // showInputBar() early-return (no way to type). Re-read before each decision.
+  function syncInputBarVisible() {
+    const bar = document.getElementById('hs-mc-inputbar')
+    if (bar) inputBarVisible = !bar.classList.contains('hs-hidden')
+    return inputBarVisible
+  }
+
   function showInputBar() {
-    if (inputBarVisible) return
+    if (syncInputBarVisible()) return
     inputBarVisible = true
     const bar = document.getElementById('hs-mc-inputbar')
     if (bar) bar.classList.remove('hs-hidden')
@@ -3347,7 +3360,7 @@
   let _autoHideRetryTimer = null
   function hideInputBar() {
     if (!autoHideEligible()) return
-    if (!inputBarVisible) return
+    if (!syncInputBarVisible()) return
     const input = document.getElementById('hs-mc-input')
     const hasText = input ? (input.value || input.textContent || '').trim().length > 0 : false
     const hasContent = hasText || input?.querySelector('img, span.hs-mc-emoji')
@@ -3379,6 +3392,15 @@
     inputBarVisible = false
     const bar = document.getElementById('hs-mc-inputbar')
     if (bar) bar.classList.add('hs-hidden')
+    // Hiding blurs the composer. Tell vi-mode to let go NOW — its own focusout
+    // detach is 150ms behind, and a key pressed inside that gap runs as a vi
+    // command on an invisible composer (blockEvent kills it) instead of
+    // reaching the type-to-reveal handler. Every hide funnels through here, so
+    // the timer-driven and reconciler-driven hides are covered too, not just
+    // the vi-initiated one.
+    try {
+      window.__hsViDetachNow?.(document.getElementById('hs-mc-input'))
+    } catch (_) {}
     const overlay = document.getElementById('hs-mc-overlay')
     if (overlay) overlay.style.bottom = '0'
     _updateMcLayout?.()
@@ -6100,6 +6122,13 @@
       if (canAutoHideInput() && !pendingMessage.trim()) {
         inputBarElement.classList.add('hs-hidden')
         inputBarVisible = false
+      } else {
+        // Born visible — say so. A rebuild during the keepComposerOpen window
+        // (or with a draft pending) left the flag on its pre-rebuild `false`
+        // while the fresh bar carried no hs-hidden class, and that stranded
+        // combination is unrecoverable on its own: hideInputBar() bails on the
+        // flag, so the empty bar stays up until something types into it.
+        inputBarVisible = true
       }
       log('Created input bar')
     }

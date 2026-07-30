@@ -1577,7 +1577,9 @@ function initInput() {
           inp.focus()
           return
         }
-        if (inputBarVisible) return
+        // Class, not the cached flag — a stale `true` here means a hidden bar
+        // that no keystroke can ever reveal.
+        if (syncInputBarVisible()) return
         if (currentTab === 'add' || currentTab === 'settings') return
         const input = document.getElementById('hs-mc-input')
         if (!input) return
@@ -1607,7 +1609,7 @@ function initInput() {
     document.addEventListener(
       'paste',
       (e) => {
-        if (inputBarVisible) return
+        if (syncInputBarVisible()) return
         if (currentTab === 'add') return
         const input = document.getElementById('hs-mc-input')
         if (!input) return
@@ -5426,10 +5428,6 @@ function insertCompletionWysiwyg(match) {
         // bare emote img.
         existingEmote.classList.remove('hs-input-overlay')
         stack.parentNode.insertBefore(existingEmote, stack.nextSibling)
-        // Insert a separator space so following typed text gets a word break
-        if (existingEmote.nextSibling?.textContent !== ' ') {
-          existingEmote.parentNode.insertBefore(document.createTextNode(' '), existingEmote.nextSibling)
-        }
         if (stack.children.length === 1) {
           const base = stack.firstElementChild
           stack.parentNode.insertBefore(base, stack)
@@ -5437,6 +5435,26 @@ function insertCompletionWysiwyg(match) {
         } else if (stack.children.length === 0) {
           stack.remove()
         }
+        // Re-separate BOTH sides of the freed chip, adding only what's missing.
+        // Left: the former base now sits flush against it, and touching chips
+        // are exactly what unwrapStuckChips rewrites on the next input (which
+        // yanks the caret back between them). Right: the trailing whitespace is
+        // the caret's home, and caretOnActiveCompletion only accepts a caret in
+        // the text node IMMEDIATELY after the chip — the old exact-nbsp compare
+        // saw the plain space the overlay path leaves, inserted a SECOND
+        // separator in front of it, and orphaned the caret one node too far
+        // right, so the next Tab tore the cycle down instead of advancing
+        // (overlay, overlay, overlay, then a non-overlay match: Tab and
+        // Shift+Tab both went dead).
+        if (isInlineChip(existingEmote.previousSibling)) {
+          existingEmote.parentNode.insertBefore(document.createTextNode('\u00A0'), existingEmote)
+        }
+        let tail = existingEmote.nextSibling
+        if (!(tail?.nodeType === Node.TEXT_NODE && /^\s/.test(tail.textContent || ''))) {
+          tail = document.createTextNode('\u00A0')
+          existingEmote.parentNode.insertBefore(tail, existingEmote.nextSibling)
+        }
+        placeCaretAfter(tail, 1)
       } else if (!stack && wantsOverlay) {
         // Cycle landed on an overlay match while the cycling img is standalone.
         // Find a preceding base — element chip or a raw emoji ending a

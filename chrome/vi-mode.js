@@ -56,6 +56,15 @@
   // multichat's hideInputBar consults this before hiding an empty composer
   window.__hsViChanging = () => changing
 
+  // multichat just auto-hid the composer (any path: empty-on-input, the
+  // post-send retry timer, the window-focus reconciler). Let go immediately —
+  // the focusout detach below is 150ms behind, and a printable key pressed in
+  // that gap is swallowed as a vi command on an invisible composer instead of
+  // reaching multichat's type-to-reveal handler.
+  window.__hsViDetachNow = (el) => {
+    if (!el || el === activeEl) detach()
+  }
+
   // Run the delete phase of a change command with hide-on-empty suppressed.
   function changeDelete(fn) {
     changing = true

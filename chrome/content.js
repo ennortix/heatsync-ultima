@@ -9583,6 +9583,13 @@
   // Apply 7TV paint gradient to a username element
   function applyPaintToElement(el, paint) {
     if (!paint) return
+    // Coexistence with 7TV, not an arms race: their paint renders free in our
+    // overlay, but it stands down for a saved heatsync paint — the user's own
+    // explicit choice. Not optional politeness: this sets INLINE style, which
+    // outranks the class-based hsp-<hash> rule, so without the check a 7TV
+    // batch resolving second silently erases a paint someone paid for.
+    // Mirrors client/chat/seventv-cosmetics.js on the website.
+    if (el?.classList) { for (const c of el.classList) if (c.startsWith('hsp-')) return }
     const fn = (paint.function || '').toLowerCase()
     if (fn === 'url' && paint.image_url) {
       const safe = safeUrl(paint.image_url)

@@ -327,6 +327,10 @@
 
   function applyPaintToElement(el, paint) {
     if (!paint) return
+    // 7TV paints stand down for a saved heatsync paint — inline style outranks
+    // the hsp-<hash> class rule, so without this a 7TV batch resolving second
+    // erases a paid paint. Same guard as chrome/content.js.
+    if (el?.classList) { for (const c of el.classList) if (c.startsWith('hsp-')) return }
     const fn = (paint.function || '').toLowerCase()
     if (fn === 'url' && paint.image_url) {
       if (!/^https:\/\//.test(paint.image_url)) return

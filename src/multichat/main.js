@@ -1069,9 +1069,22 @@
       return
     }
     usernameCache.add(name)
+    // _ucDisplay (input.js) mirrors usernameCache as bareLowerName → cased
+    // name, kept incremental here instead of rebuilt by scanning the whole
+    // cache on every autocomplete keystroke. A yt "@handle" and a twitch
+    // "handle" collide on the same bare key — last-added wins, matching the
+    // old full-rescan's insertion-order behavior.
+    _ucDisplay.set(name.toLowerCase().replace(/^@/, ''), name)
     if (usernameCache.size > USERNAME_CACHE_MAX) {
       const iter = usernameCache.values()
-      for (let i = 0; i < 500; i++) usernameCache.delete(iter.next().value)
+      for (let i = 0; i < 500; i++) {
+        const evicted = iter.next().value
+        usernameCache.delete(evicted)
+        const key = evicted.toLowerCase().replace(/^@/, '')
+        // Only clear the display entry if it still points at the evicted name —
+        // a newer, still-live name sharing the same bare key must survive.
+        if (_ucDisplay.get(key) === evicted) _ucDisplay.delete(key)
+      }
     }
   }
   // Username → color map for @mention coloring (LRU-bounded)
@@ -1914,12 +1927,6 @@
       get: () => pronounsEnabled,
       set: (v) => {
         pronounsEnabled = v
-      },
-    },
-    inlineSuggestEnabled: {
-      get: () => inlineSuggestEnabled,
-      set: (v) => {
-        inlineSuggestEnabled = v
       },
     },
     zebraEnabled: {
@@ -3126,10 +3133,6 @@
   // Pronouns (pronoundb.org, twitch-only) on the profile card + hover
   // tooltip (default on)
   let pronounsEnabled = true
-
-  // Trigger-less (frosty-style) emote suggestion popup while typing any bare
-  // word — no ':' needed (default on). Read in input.js checkBareWordSuggest.
-  let inlineSuggestEnabled = true
 
   // Zebra striping — alternate row backgrounds (default on)
   let zebraEnabled = true

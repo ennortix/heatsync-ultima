@@ -2590,22 +2590,6 @@ const SETTINGS = [
 
   // ── chat / input ──────────────────────────────────────────────────────
   {
-    // Frosty-style trigger-less emote suggestions: any bare 3+ char word pops
-    // a prefix-match preview of the Tab-cycle list above the input. Passive
-    // (Enter still sends, Tab still cycles) until arrow-navigated.
-    key: 'inlineEmoteSuggest',
-    basic: true, // day-one row — shows in the default (basic) settings view
-    type: 'bool',
-    default: true,
-    scope: 'sync',
-    category: 'chat',
-    section: 'input',
-    labelKey: 'mc_settings_inline_emote_suggest',
-    tipKey: 'mc_settings_inline_emote_suggest_desc',
-    control: 'pill',
-    runtimeVar: 'inlineSuggestEnabled',
-  },
-  {
     // Whether your inventory feeds tab-complete / inline suggestions. Off, a
     // name that lives only in your inventory stops being offered; names the
     // channel or globals also define still complete.
@@ -4997,9 +4981,14 @@ class UndoManager {
       this._suppress = false
       return
     }
-    const children = [...this.input.childNodes].map((n) => n.cloneNode(true))
+    // Cheap check first: compare the live DOM directly against the last
+    // snapshot (NodeList is array-like — _signatureMatch just needs
+    // .length + indexing, no clone required to read it). Only pay for the
+    // deep clone + cursor walk when the content actually changed.
+    const liveChildren = this.input.childNodes
+    if (this.index >= 0 && _signatureMatch(this.stack[this.index].children, liveChildren)) return
+    const children = [...liveChildren].map((n) => n.cloneNode(true))
     const cursorOffset = this._getCharOffset()
-    if (this.index >= 0 && _signatureMatch(this.stack[this.index].children, children)) return
     if (this.index < this.stack.length - 1) {
       this.stack.length = this.index + 1
     }
@@ -23265,15 +23254,31 @@ function _frecencyScore(entry, now) {
   return entry.n * 2 ** (-age / FRECENCY_HALF_LIFE_MS)
 }
 
+// findEmoteMatches calls loadEmoteFrecency() on every debounced keystroke —
+// re-reading + JSON.parse'ing localStorage and rebuilding the decayed Map
+// each time was pure waste when nothing changed since the last call. Cache
+// the built Map, keyed off the raw localStorage string itself (a cheap
+// getItem + === check) rather than a manual invalidation flag — self-heals
+// against ANY write to the key, not just the two functions below.
+let _frecencyCache = null // { raw, map }
+
 /** name → decayed score (>0 means "the user has actually inserted this"). */
 function loadEmoteFrecency() {
-  const raw = _loadFrecencyRaw()
+  let raw
+  try {
+    raw = localStorage.getItem(FRECENCY_KEY)
+  } catch (_) {
+    raw = null
+  }
+  if (_frecencyCache && _frecencyCache.raw === raw) return _frecencyCache.map
+  const parsed = _loadFrecencyRaw()
   const now = Date.now()
   const out = new Map()
-  for (const [name, entry] of Object.entries(raw)) {
+  for (const [name, entry] of Object.entries(parsed)) {
     const s = _frecencyScore(entry, now)
     if (s > 0) out.set(name, s)
   }
+  _frecencyCache = { raw, map: out }
   return out
 }
 
@@ -40038,6 +40043,12 @@ function _acMergeRemoteMatches(add, searchLower) {
   showCycleTooltip() // refresh the N/M denominator
 }
 
+// bareLowerName → original-cased username, for recent-chatter completion
+// (findEmoteMatches below). Maintained incrementally by main.js's
+// addUsername — the sole writer of usernameCache — instead of being rebuilt
+// by iterating the full (up to 5000-entry) cache on every keystroke.
+const _ucDisplay = new Map()
+
 // Colon-triggered dropdown state (":kap" — emotes + emoji, chatterino parity).
 // matches holds findEmoteMatches() results (type 'emote' | 'emoji'), already
 // ranked by the shared compareAcMatches comparator — same ranking Tab-cycle
@@ -40047,18 +40058,8 @@ const emojiAcState = {
   matches: [],
   index: 0,
   query: '',
-  // Trigger-less (frosty-style) mode: popup opened by a bare word, no ':'.
-  // Passive until arrow-navigated — Enter still sends, un-navigated Tab still
-  // runs the classic cycle (see the keydown branch).
-  bare: false,
-  navigated: false,
 }
 let _emojiAcDebounce = null
-// Escape on the bare-word popup remembers the dismissed query; the popup
-// stays hidden while the user keeps typing that same word (re-popping on
-// every keystroke after an explicit dismissal is the fastest way to make
-// someone turn the feature off). Cleared at the next word boundary.
-let _bareSuppress = ''
 // Cap the visible list — findEmoteMatches can return dozens of hits; the
 // dropdown scrolls (max-height in CSS) but there's no value in rendering
 // hundreds of offscreen rows.
@@ -40404,8 +40405,13 @@ function initInput() {
   }
 
   input.addEventListener('keydown', handleInputKeydown)
-  input.addEventListener('input', handleInputChange)
-  input.addEventListener('input', updateCharCount)
+  input.addEventListener('input', (e) => {
+    handleInputChange(e)
+    // handleInputChange keeps pendingMessage synced with the live DOM on every
+    // path (initial read + after each WYSIWYG mutation branch) — reuse it
+    // instead of updateCharCount re-serializing the whole input a 3rd time.
+    updateCharCount(pendingMessage)
+  })
   // Draft guard: ctrl+w (delete-word muscle memory) is a reserved browser
   // shortcut that closes the tab even with an input focused — pages can't
   // cancel the shortcut itself, but a beforeunload prompt while a draft is
@@ -42397,56 +42403,26 @@ function handleInputKeydownInner(e, input) {
   // off to acState so subsequent Tabs keep cycling the same ranked list —
   // see that function for why no separate "wire up cycling" code lives here.
   if (emojiAcState.active) {
-    // Bare-word mode starts at index -1 (no row highlighted — the popup is a
-    // passive preview); first ArrowDown/Up lands on the first/last row and
-    // flips it into navigated (engaged) mode.
     if (e.key === 'ArrowDown') {
       e.preventDefault()
-      emojiAcState.navigated = true
-      emojiAcState.index = emojiAcState.index < 0 ? 0 : (emojiAcState.index + 1) % emojiAcState.matches.length
+      emojiAcState.index = (emojiAcState.index + 1) % emojiAcState.matches.length
       showEmojiDropdown(emojiAcState.matches, emojiAcState.index)
       return
     }
     if (e.key === 'ArrowUp') {
       e.preventDefault()
-      emojiAcState.navigated = true
-      emojiAcState.index =
-        emojiAcState.index < 0
-          ? emojiAcState.matches.length - 1
-          : (emojiAcState.index - 1 + emojiAcState.matches.length) % emojiAcState.matches.length
+      emojiAcState.index = (emojiAcState.index - 1 + emojiAcState.matches.length) % emojiAcState.matches.length
       showEmojiDropdown(emojiAcState.matches, emojiAcState.index)
       return
     }
     if (e.key === 'Enter' || e.key === 'Tab') {
-      // Un-navigated bare popup swallows NOTHING: close it and fall through so
-      // Enter sends the message and Tab runs the classic cycle exactly as if
-      // the popup never existed. Once arrow-navigated (or in ':' mode, where
-      // typing ':' already declared intent), Enter/Tab accept the selection.
-      if (emojiAcState.bare && !emojiAcState.navigated) {
-        // Exact-match collect: the full emote name was typed while the passive
-        // popup previewed it, then sent. The word renders as an emote for the
-        // sender this session (live index) — without registering it here it
-        // never persists, so it painted as text for everyone else and after
-        // refresh. Registration only; insertion stays untouched, and
-        // autoAddInputEmotes still requires the word in the sent text.
-        if (e.key === 'Enter' && emojiAcState.query) {
-          const q = emojiAcState.query
-          const exact =
-            emojiAcState.matches.find((m) => m.name === q) ||
-            emojiAcState.matches.find((m) => m.name.toLowerCase() === q.toLowerCase())
-          if (exact) trackCompletionForAutoAdd(exact)
-        }
-        hideEmojiDropdown()
-      } else {
-        e.preventDefault()
-        insertEmojiFromDropdown(emojiAcState.matches[emojiAcState.index])
-        showCycleTooltip()
-        return
-      }
+      e.preventDefault()
+      insertEmojiFromDropdown(emojiAcState.matches[emojiAcState.index])
+      showCycleTooltip()
+      return
     }
     if (e.key === 'Escape') {
       e.preventDefault()
-      if (emojiAcState.bare) _bareSuppress = emojiAcState.query.toLowerCase()
       hideEmojiDropdown()
       return
     }
@@ -43108,8 +43084,10 @@ function handleInputChange(_e) {
   // Save pending message (persists across tab switches)
   pendingMessage = getInputText()
 
-  // Slash command autocomplete — synchronous, only matches "/word" at start
-  checkSlashAutocomplete()
+  // Slash command autocomplete — synchronous, only matches "/word" at start.
+  // Text just serialized above (pendingMessage) — nothing mutates the DOM
+  // between here and there, so reuse it instead of re-serializing.
+  checkSlashAutocomplete(pendingMessage)
 
   // Debounced colon (emote/emoji) + @-mention dropdown autocomplete
   if (_emojiAcDebounce) cleanup.clearTimeout(_emojiAcDebounce)
@@ -43554,10 +43532,10 @@ function tryOverlayOnZero(_input) {
   return true
 }
 
-function updateCharCount() {
+function updateCharCount(precomputedText) {
   const input = document.getElementById('hs-mc-input')
   if (!input) return
-  const text = getInputText()
+  const text = typeof precomputedText === 'string' ? precomputedText : getInputText()
   const len = text.length
   const over = len > 500
   input.classList.toggle('over-limit', over)
@@ -43967,15 +43945,16 @@ function _isBlockedAnyPlat(name) {
 // Merged autocomplete emote source: channel pools (tier 0) over the viewer's
 // set (tier 1) over globals (tier 2) — channel written LAST so a name owned AND
 // defined by the channel resolves to the channel image. findEmoteMatches runs
-// on EVERY debounced keystroke-word (bare-word inline suggest), and rebuilding
-// this merge — allocating two Maps across thousands of emotes each call — was
-// the dominant typing-lag cost on emote-heavy channels. Memoize it, keyed by a
-// cheap signature: active tab + the sizes of every source map. Any add/remove,
-// tab switch, or pool (re)hydration moves a size or the tab and busts the
-// cache; the only miss is a same-count in-place url swap, which leaves a stale
-// thumbnail (never a wrong insertion — names stay authoritative) until the next
-// size change.
-let _acMergeCache = null // { sig, acEmotes, tierByName }
+// on EVERY debounced keystroke-word, and rebuilding this merge — allocating
+// two Maps across thousands of emotes each call — was the dominant typing-lag
+// cost on emote-heavy channels. Memoize it, keyed by a cheap signature: active
+// tab + the sizes of every source map. Any add/remove, tab switch, or pool
+// (re)hydration moves a size or the tab and busts the cache; the only miss is
+// a same-count in-place url swap, which leaves a stale thumbnail (never a
+// wrong insertion — names stay authoritative) until the next size change.
+// lowerByName rides along so the scan in findEmoteMatches reads a precomputed
+// lowercase name instead of calling .toLowerCase() twice per entry.
+let _acMergeCache = null // { sig, acEmotes, tierByName, lowerByName }
 function _getMergedAcEmotes() {
   // activeTabEmotePools resolves the tab's twitch/kick slot names + yt handle —
   // pools are keyed by fetched owner name, and the raw tab id is NOT a pool key
@@ -43993,9 +43972,11 @@ function _getMergedAcEmotes() {
   if (_acMergeCache && _acMergeCache.sig === sig) return _acMergeCache
   const acEmotes = new Map()
   const tierByName = new Map()
+  const lowerByName = new Map()
   for (const [k, v] of emoteCache) {
     acEmotes.set(k, v)
     tierByName.set(k, 2)
+    lowerByName.set(k, k.toLowerCase())
   }
   // Off: names that exist ONLY in your inventory stop being offered. Names the
   // channel or a global pool also defines still complete — those are real words
@@ -44004,13 +43985,15 @@ function _getMergedAcEmotes() {
     for (const [k, v] of viewerPersonalEmotes) {
       acEmotes.set(k, v)
       tierByName.set(k, 1)
+      lowerByName.set(k, k.toLowerCase())
     }
   for (const acChCache of acPools)
     for (const [k, v] of acChCache) {
       acEmotes.set(k, v)
       tierByName.set(k, 0)
+      lowerByName.set(k, k.toLowerCase())
     }
-  _acMergeCache = { sig, acEmotes, tierByName }
+  _acMergeCache = { sig, acEmotes, tierByName, lowerByName }
   return _acMergeCache
 }
 
@@ -44094,7 +44077,7 @@ function findEmoteMatches(search) {
   // CHANNEL image — that's what actually renders in this channel. Channel-first is
   // the user-chosen order (reverses the older own-first call).
   if (!isUserSearch) {
-    const { acEmotes, tierByName } = _getMergedAcEmotes()
+    const { acEmotes, tierByName, lowerByName } = _getMergedAcEmotes()
     for (const [name, emote] of acEmotes) {
       // Only tab-complete heatsync emotes you own (can't send emotes not in your set)
       if (emote.source === 'heatsync' && emote.state !== 'owned') continue
@@ -44105,7 +44088,8 @@ function findEmoteMatches(search) {
       if (_hsAcEmoteBlocked(name, emote)) continue
       const sub = !!emote.subscription
       const tier = tierByName.get(name) ?? 2
-      if (name.toLowerCase().startsWith(searchLower)) {
+      const nameLower = lowerByName.get(name) ?? name.toLowerCase()
+      if (nameLower.startsWith(searchLower)) {
         matches.push({
           name,
           url: emote.url,
@@ -44116,7 +44100,7 @@ function findEmoteMatches(search) {
           sub,
           zeroWidth: !!emote.zeroWidth,
         })
-      } else if (name.toLowerCase().includes(searchLower)) {
+      } else if (nameLower.includes(searchLower)) {
         matches.push({
           name,
           url: emote.url,
@@ -44189,11 +44173,6 @@ function findEmoteMatches(search) {
   // stays untouched.
   const recentChatters = []
   if (!isUserSearch && !search.startsWith(':') && searchLower.length > 0 && typeof getRecencyMap === 'function') {
-    // Key display names by bare lower name — yt entries in usernameCache carry
-    // a leading '@' that recency keys (bare) would otherwise never hit.
-    const _ucDisplay = new Map()
-    if (typeof usernameCache !== 'undefined')
-      for (const u of usernameCache) if (u) _ucDisplay.set(u.toLowerCase().replace(/^@/, ''), u)
     for (const [userLower, rank] of getRecencyMap()) {
       if (!userLower.startsWith(searchLower)) continue
       recentChatters.push({
@@ -45089,11 +45068,10 @@ function hideAutocomplete() {
 // getTriggerContext is the only DOM-cursor logic (wysiwyg vs plain-text) —
 // everything mode-specific lives there once instead of twice.
 
-// Precompiled per (triggerChar,minLen) combo — the 3 call sites below are the
+// Precompiled per (triggerChar,minLen) combo — the 2 call sites below are the
 // only ones that exist, so building fresh RegExps per keystroke was pure waste.
 const _hsTriggerContextRe = {
   emojiColon: /:([a-z0-9_]{2,})$/i,
-  bareWord: /(?:^|\s)([a-z0-9_]{3,})$/i,
   mention: /@([a-z0-9_]{0,})$/i,
 }
 
@@ -45101,11 +45079,9 @@ function getTriggerContext(input, triggerChar, minLen) {
   const re =
     triggerChar === ':' && minLen === 2
       ? _hsTriggerContextRe.emojiColon
-      : triggerChar === '(?:^|\\s)' && minLen === 3
-        ? _hsTriggerContextRe.bareWord
-        : triggerChar === '@' && minLen === 0
-          ? _hsTriggerContextRe.mention
-          : new RegExp(`${triggerChar}([a-z0-9_]{${minLen},})$`, 'i')
+      : triggerChar === '@' && minLen === 0
+        ? _hsTriggerContextRe.mention
+        : new RegExp(`${triggerChar}([a-z0-9_]{${minLen},})$`, 'i')
   if (wysiwygEnabled) {
     const sel = window.getSelection()
     if (!sel?.rangeCount) return null
@@ -45124,14 +45100,6 @@ function getTriggerContext(input, triggerChar, minLen) {
 
 function getEmojiColonContext(input) {
   return getTriggerContext(input, ':', 2)
-}
-
-// Trigger-less (frosty-style) word context: any bare [a-z0-9_] word of 3+
-// chars at the caret. The '(?:^|\s)' "trigger" doubles as the guard — words
-// led by ':' or '@' (their own dropdowns) or glued to punctuation/chips never
-// match, because the char before the word must be whitespace or line start.
-function getBareWordContext(input) {
-  return getTriggerContext(input, '(?:^|\\s)', 3)
 }
 
 function getMentionContext(input) {
@@ -45189,8 +45157,6 @@ function hideEmojiDropdown() {
   emojiAcState.matches = []
   emojiAcState.index = 0
   emojiAcState.query = ''
-  emojiAcState.bare = false
-  emojiAcState.navigated = false
   const dd = document.getElementById('hs-mc-emoji-dropdown')
   if (dd) dd.style.display = 'none'
 }
@@ -45210,9 +45176,7 @@ function insertEmojiFromDropdown(match) {
   acState.index = emojiAcState.matches.indexOf(match)
   if (acState.index === -1) acState.index = 0
   acState.active = true
-  // Bare-word picks hand Tab-cycle the bare query — prefixing ':' would make
-  // the next Tab re-search emoji shortcodes instead of the word they typed.
-  acState.search = emojiAcState.bare ? emojiAcState.query : `:${emojiAcState.query}`
+  acState.search = `:${emojiAcState.query}`
   acState.remoteDone = false
   acState.remotePending = false
 
@@ -45226,7 +45190,7 @@ function checkEmojiAutocomplete() {
 
   const ctx = getEmojiColonContext(input)
   if (!ctx) {
-    checkBareWordSuggest(input)
+    if (emojiAcState.active) hideEmojiDropdown()
     return
   }
 
@@ -45241,50 +45205,10 @@ function checkEmojiAutocomplete() {
   }
 
   emojiAcState.active = true
-  emojiAcState.bare = false
-  emojiAcState.navigated = false
   emojiAcState.matches = matches
   emojiAcState.query = ctx.query
   emojiAcState.index = 0
   showEmojiDropdown(matches, 0)
-}
-
-// Trigger-less inline emote suggestions (frosty-style): a bare 3+ char word at
-// the caret previews the ranked Tab-cycle list in the same dropdown the ':'
-// search uses. PREFIX matches only — substring hits on everyday words would
-// pop this on half of everything typed (':' still searches substrings), and
-// filtering the shared sorted list (instead of re-ranking) keeps row 1 equal
-// to what an un-navigated Tab inserts, chatters-first ordering included.
-function checkBareWordSuggest(input) {
-  const off = typeof inlineSuggestEnabled !== 'undefined' && !inlineSuggestEnabled
-  const ctx = off ? null : getBareWordContext(input)
-  if (!ctx) {
-    _bareSuppress = ''
-    if (emojiAcState.active) hideEmojiDropdown()
-    return
-  }
-  // Escape dismissed this word — stay hidden while they keep typing it.
-  if (_bareSuppress && ctx.query.toLowerCase().startsWith(_bareSuppress)) {
-    if (emojiAcState.active) hideEmojiDropdown()
-    return
-  }
-  const matches = findEmoteMatches(ctx.query)
-    .filter((m) => m.priority === 0)
-    .slice(0, EMOJI_DROPDOWN_MAX)
-  if (matches.length === 0) {
-    if (emojiAcState.active) hideEmojiDropdown()
-    return
-  }
-
-  emojiAcState.active = true
-  emojiAcState.bare = true
-  emojiAcState.navigated = false
-  emojiAcState.matches = matches
-  emojiAcState.query = ctx.query
-  // -1 = no highlighted row: the popup is a passive preview until the user
-  // arrow-navigates into it (Enter/Tab stay untouched meanwhile).
-  emojiAcState.index = -1
-  showEmojiDropdown(matches, -1)
 }
 
 function showMentionDropdown(matches, selectedIndex) {
@@ -45497,8 +45421,11 @@ function matchSlashCommands(q) {
   return [...byCmd, ...viaAlias]
 }
 
-function checkSlashAutocomplete() {
-  const text = (typeof getInputText === 'function' ? getInputText() : '') || ''
+function checkSlashAutocomplete(precomputedText) {
+  const text =
+    typeof precomputedText === 'string'
+      ? precomputedText
+      : (typeof getInputText === 'function' ? getInputText() : '') || ''
   const m = text.match(/^\/([a-z?]*)$/i)
   if (!m) {
     hideSlashDropdown()
@@ -58562,9 +58489,22 @@ const STORAGE_KEY = 'heatsync_multichat'
       return
     }
     usernameCache.add(name)
+    // _ucDisplay (input.js) mirrors usernameCache as bareLowerName → cased
+    // name, kept incremental here instead of rebuilt by scanning the whole
+    // cache on every autocomplete keystroke. A yt "@handle" and a twitch
+    // "handle" collide on the same bare key — last-added wins, matching the
+    // old full-rescan's insertion-order behavior.
+    _ucDisplay.set(name.toLowerCase().replace(/^@/, ''), name)
     if (usernameCache.size > USERNAME_CACHE_MAX) {
       const iter = usernameCache.values()
-      for (let i = 0; i < 500; i++) usernameCache.delete(iter.next().value)
+      for (let i = 0; i < 500; i++) {
+        const evicted = iter.next().value
+        usernameCache.delete(evicted)
+        const key = evicted.toLowerCase().replace(/^@/, '')
+        // Only clear the display entry if it still points at the evicted name —
+        // a newer, still-live name sharing the same bare key must survive.
+        if (_ucDisplay.get(key) === evicted) _ucDisplay.delete(key)
+      }
     }
   }
   // Username → color map for @mention coloring (LRU-bounded)
@@ -59407,12 +59347,6 @@ const STORAGE_KEY = 'heatsync_multichat'
       get: () => pronounsEnabled,
       set: (v) => {
         pronounsEnabled = v
-      },
-    },
-    inlineSuggestEnabled: {
-      get: () => inlineSuggestEnabled,
-      set: (v) => {
-        inlineSuggestEnabled = v
       },
     },
     zebraEnabled: {
@@ -60619,10 +60553,6 @@ const STORAGE_KEY = 'heatsync_multichat'
   // Pronouns (pronoundb.org, twitch-only) on the profile card + hover
   // tooltip (default on)
   let pronounsEnabled = true
-
-  // Trigger-less (frosty-style) emote suggestion popup while typing any bare
-  // word — no ':' needed (default on). Read in input.js checkBareWordSuggest.
-  let inlineSuggestEnabled = true
 
   // Zebra striping — alternate row backgrounds (default on)
   let zebraEnabled = true

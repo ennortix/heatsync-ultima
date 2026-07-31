@@ -592,15 +592,31 @@ function _frecencyScore(entry, now) {
   return entry.n * 2 ** (-age / FRECENCY_HALF_LIFE_MS)
 }
 
+// findEmoteMatches calls loadEmoteFrecency() on every debounced keystroke —
+// re-reading + JSON.parse'ing localStorage and rebuilding the decayed Map
+// each time was pure waste when nothing changed since the last call. Cache
+// the built Map, keyed off the raw localStorage string itself (a cheap
+// getItem + === check) rather than a manual invalidation flag — self-heals
+// against ANY write to the key, not just the two functions below.
+let _frecencyCache = null // { raw, map }
+
 /** name → decayed score (>0 means "the user has actually inserted this"). */
 function loadEmoteFrecency() {
-  const raw = _loadFrecencyRaw()
+  let raw
+  try {
+    raw = localStorage.getItem(FRECENCY_KEY)
+  } catch (_) {
+    raw = null
+  }
+  if (_frecencyCache && _frecencyCache.raw === raw) return _frecencyCache.map
+  const parsed = _loadFrecencyRaw()
   const now = Date.now()
   const out = new Map()
-  for (const [name, entry] of Object.entries(raw)) {
+  for (const [name, entry] of Object.entries(parsed)) {
     const s = _frecencyScore(entry, now)
     if (s > 0) out.set(name, s)
   }
+  _frecencyCache = { raw, map: out }
   return out
 }
 

@@ -1197,12 +1197,6 @@
   "mc_settings_suggest_inventory_emotes_desc": {
     "message": "offer your inventory in tab-complete and typing suggestions. off leaves only channel and global emotes"
   },
-  "mc_settings_inline_emote_suggest": {
-    "message": "emote suggestions while typing"
-  },
-  "mc_settings_inline_emote_suggest_desc": {
-    "message": "preview matching emotes above the input for any word, no ':' needed — arrows to pick, esc to dismiss"
-  },
   "mc_settings_show_pronouns": {
     "message": "pronouns"
   },

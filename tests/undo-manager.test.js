@@ -356,6 +356,39 @@ describe('UndoManager — deduplication (signature match)', () => {
     m.capture()
     expect(m.stack.length).toBe(2)
   })
+
+  test('an identical capture never clones the live nodes (cheap signature check runs first)', async () => {
+    await loadModule()
+    const node = fakeTextNode('same')
+    let cloneCalls = 0
+    const realClone = node.cloneNode.bind(node)
+    node.cloneNode = (deep) => {
+      cloneCalls++
+      return realClone(deep)
+    }
+    const input = fakeInput([node])
+    const m = new UndoManager(input) // constructor capture() clones once (empty stack)
+    expect(cloneCalls).toBe(1)
+    m.capture() // no change — must skip the clone entirely
+    expect(cloneCalls).toBe(1)
+  })
+
+  test('a changed capture still clones (the skip is content-gated, not unconditional)', async () => {
+    await loadModule()
+    const input = fakeInput([fakeTextNode('a')])
+    const m = new UndoManager(input)
+    const nextNode = fakeTextNode('b')
+    let cloneCalls = 0
+    const realClone = nextNode.cloneNode.bind(nextNode)
+    nextNode.cloneNode = (deep) => {
+      cloneCalls++
+      return realClone(deep)
+    }
+    input._children = [nextNode]
+    m.capture()
+    expect(cloneCalls).toBe(1)
+    expect(m.stack.length).toBe(2)
+  })
 })
 
 describe('UndoManager — reset', () => {

@@ -22,9 +22,14 @@ export class UndoManager {
       this._suppress = false
       return
     }
-    const children = [...this.input.childNodes].map((n) => n.cloneNode(true))
+    // Cheap check first: compare the live DOM directly against the last
+    // snapshot (NodeList is array-like — _signatureMatch just needs
+    // .length + indexing, no clone required to read it). Only pay for the
+    // deep clone + cursor walk when the content actually changed.
+    const liveChildren = this.input.childNodes
+    if (this.index >= 0 && _signatureMatch(this.stack[this.index].children, liveChildren)) return
+    const children = [...liveChildren].map((n) => n.cloneNode(true))
     const cursorOffset = this._getCharOffset()
-    if (this.index >= 0 && _signatureMatch(this.stack[this.index].children, children)) return
     if (this.index < this.stack.length - 1) {
       this.stack.length = this.index + 1
     }

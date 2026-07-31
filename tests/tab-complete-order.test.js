@@ -208,6 +208,48 @@ describe('emote frecency store', () => {
     unbumpEmoteFrecency('KKona')
     expect(loadEmoteFrecency().get('KKona')).toBeGreaterThan(1.9)
   })
+
+  // findEmoteMatches calls loadEmoteFrecency() on every debounced keystroke —
+  // it's cached (keyed off the raw localStorage string) instead of re-reading
+  // + JSON.parsing + rebuilding the decayed Map every call.
+  describe('loadEmoteFrecency caching', () => {
+    test('repeated calls with no write between them return the same Map instance', () => {
+      bumpEmoteFrecency('KKona')
+      const a = loadEmoteFrecency()
+      const b = loadEmoteFrecency()
+      expect(a).toBe(b)
+    })
+
+    test('a bump invalidates the cache — the next read sees the new value', () => {
+      bumpEmoteFrecency('KKona')
+      const before = loadEmoteFrecency()
+      bumpEmoteFrecency('KKona')
+      const after = loadEmoteFrecency()
+      expect(after).not.toBe(before)
+      expect(after.get('KKona')).toBeGreaterThan(before.get('KKona'))
+    })
+
+    test('an unbump invalidates the cache too', () => {
+      bumpEmoteFrecency('KKona')
+      bumpEmoteFrecency('KKona')
+      const before = loadEmoteFrecency()
+      unbumpEmoteFrecency('KKona')
+      const after = loadEmoteFrecency()
+      expect(after).not.toBe(before)
+      expect(after.get('KKona')).toBeLessThan(before.get('KKona'))
+    })
+
+    test('a write to the store bypassing bump/unbump still invalidates (self-healing signature check)', () => {
+      bumpEmoteFrecency('KKona')
+      const before = loadEmoteFrecency()
+      const raw = JSON.parse(store.get('hs-mc-emote-frecency'))
+      raw.KKonaLand = { n: 99, t: Date.now() }
+      store.set('hs-mc-emote-frecency', JSON.stringify(raw))
+      const after = loadEmoteFrecency()
+      expect(after).not.toBe(before)
+      expect(after.get('KKonaLand')).toBeCloseTo(99, 0)
+    })
+  })
 })
 
 // ── native-chat hook (chrome/autocomplete-hook.js) parity guards ────────────

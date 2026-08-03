@@ -566,6 +566,29 @@ browser.alarms?.onAlarm?.addListener(async (alarm) => {
     await syncKickFollows()
     return
   }
+  if (alarm.name === 'hs-emote-refetch') {
+    // One-shot retry after a failed channel-emote fetch. Without this, a
+    // transient network flake during join left the channel with no 7TV set
+    // mapping — no EventAPI subscription AND invisible to the fallback poll
+    // (it iterates seventvEmoteSetIds) — a permanent live-emote blackout
+    // until the tab rejoined. Re-run the fetch for every active tab channel;
+    // fetchChannelOwnerEmotes is TTL-gated so fresh channels are a no-op.
+    try {
+      if (typeof fetchChannelOwnerEmotes !== 'function' || typeof tabChannels === 'undefined') return
+      const seen = new Set()
+      for (const entry of tabChannels.values()) {
+        const key = entry.channel
+        if (!key || seen.has(key)) continue
+        seen.add(key)
+        const { platform, channel } = splitChKey(key)
+        if (!channel) continue
+        fetchChannelOwnerEmotes(channel, null, platform).catch(() => {})
+      }
+    } catch (e) {
+      log('hs-emote-refetch error:', e?.message)
+    }
+    return
+  }
   if (alarm.name === 'keepalive') {
     // Just existing is enough to keep the worker alive. Also rides this 30s
     // tick for the yt innertube fallback tap's check — it has no timer of its
@@ -3727,7 +3750,10 @@ async function fetchChannelOwnerEmotes(channelName, channelId = null, platform =
     // If any provider had a transient failure, backdate fetchedAt so the next
     // channel join refetches within ~60s (regardless of empty/non-empty TTL).
     channelEmotesFetchedAt[key] = anyFailed ? Date.now() - CHANNEL_EMOTES_TTL + 60000 : Date.now()
-    if (anyFailed) log(' ⚠️ Channel emotes fetched with failures', failed, '— will retry in ~60s')
+    if (anyFailed) {
+      log(' ⚠️ Channel emotes fetched with failures', failed, '— will retry in ~90s')
+      scheduleEmoteRefetch()
+    }
     const channelKeys = Object.keys(channelEmotesMap).filter((k) => channelEmotesMap[k] !== 'loading')
     if (channelKeys.length > 20) {
       for (const old of channelKeys.slice(0, channelKeys.length - 20)) {
@@ -3794,10 +3820,20 @@ async function fetchChannelOwnerEmotes(channelName, channelId = null, platform =
       // Nothing to fall back to — clear the sentinel so the next join retries.
       delete channelEmotesMap[key]
     }
-    const failedSetId = seventvEmoteSetIds.get(key)
-    seventvEmoteSetIds.delete(key)
-    release7TVEmoteSet(failedSetId)
+    // Keep any existing 7TV set mapping + subscription: the set still exists
+    // server-side, so live pushes keep flowing against the stale list, and the
+    // retry alarm reconciles the set id on the next successful fetch. Deleting
+    // it here orphaned the channel from BOTH the EventAPI and the fallback
+    // poll (which iterates seventvEmoteSetIds) — a silent permanent blackout.
+    scheduleEmoteRefetch()
   }
+}
+
+// One-shot retry alarm for failed channel-emote fetches. chrome.alarms
+// survives SW eviction (a bare setTimeout dies with the worker). Re-arming on
+// every failure just pushes the retry out — fine, it stays one-shot.
+function scheduleEmoteRefetch() {
+  browser.alarms?.create?.('hs-emote-refetch', { delayInMinutes: 1.5 })
 }
 
 // Fetch BTTV global emotes

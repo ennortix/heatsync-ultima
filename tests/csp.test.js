@@ -62,6 +62,17 @@ for (const [name, csp] of [
   })
 }
 
+test('connect-src allows data: — notification icons load through SW fetch', () => {
+  // chrome.notifications downloads iconUrl via the service worker's fetch,
+  // which is subject to connect-src. toNotifIconDataUrl inlines pfps as
+  // data: URIs, so dropping data: here silently kills every pfp toast
+  // ("Unable to download all specified images"). data: is inert — it can't
+  // exfiltrate — so allowing it does not weaken the policy.
+  for (const csp of [chromeCsp, firefoxCsp]) {
+    expect(parseCsp(csp)['connect-src']).toContain('data:')
+  }
+})
+
 test('chrome: enforces Trusted Types for scripts', () => {
   expect(parseCsp(chromeCsp)['require-trusted-types-for']).toEqual(["'script'"])
 })

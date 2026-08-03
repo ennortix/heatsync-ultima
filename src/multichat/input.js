@@ -240,6 +240,7 @@ function retroFoldOwnEchoes() {
   const cutoff = Date.now() - SENT_DEDUP_WINDOW
   // Recent tail only — an echo that beat the broadcast is seconds old.
   const rows = Array.from(msgsEl.children).slice(-60)
+  const legs = []
   for (const div of rows) {
     const m = div._hsMsg
     if (!m || m.hidden || !m.text) continue
@@ -252,26 +253,36 @@ function retroFoldOwnEchoes() {
     const seen = entry.seenPlatforms || (entry.seenPlatforms = [])
     if (seen.includes(plat)) continue
     seen.push(plat)
-    if (!entry.rendered) {
-      // First painted leg survives as the [H] row.
-      entry.rendered = true
-      m.badgePlatform = m.badgePlatform || m.platform
-      m.platform = 'heatsync'
-      const pb = div.querySelector('.hs-mc-platform-badge')
-      if (pb) {
-        pb.classList.remove('hs-mc-pb-twitch', 'hs-mc-pb-kick', 'hs-mc-pb-yt')
-        pb.classList.add('hs-mc-pb-heatsync')
-        pb.style.color = HS_PLAT_COLORS.heatsync
-        pb.textContent = '[H]'
-      }
-    } else {
-      // A leg already renders this send — this one is the duplicate.
-      m.hidden = true
-      try {
-        _unindexMessageDiv(div)
-      } catch (_) {}
-      div.remove()
+    legs.push({ div, m })
+  }
+  if (!legs.length) return
+  // Survivor: prefer the TWITCH leg — its tmi-sent-ts orders consistently
+  // with the (twitch-dominant) stream and it painted with the full badge
+  // set. A kick echo often paints FIRST (it relays through this very ext)
+  // but bare and with a laggier timestamp, which strands the row rows-up in
+  // a busy chat since rows never move once placed.
+  const survivor = legs.find((l) => (l.m.platform || 'twitch') === 'twitch') || legs[0]
+  if (!entry.rendered) {
+    entry.rendered = true
+    const m = survivor.m
+    m.badgePlatform = m.badgePlatform || m.platform
+    m.platform = 'heatsync'
+    const pb = survivor.div.querySelector('.hs-mc-platform-badge')
+    if (pb) {
+      pb.classList.remove('hs-mc-pb-twitch', 'hs-mc-pb-kick', 'hs-mc-pb-yt')
+      pb.classList.add('hs-mc-pb-heatsync')
+      pb.style.color = HS_PLAT_COLORS.heatsync
+      pb.textContent = '[H]'
     }
+  }
+  for (const leg of legs) {
+    if (leg === survivor && leg.m.platform === 'heatsync') continue
+    // Every non-survivor leg is the dual-send duplicate.
+    leg.m.hidden = true
+    try {
+      _unindexMessageDiv(leg.div)
+    } catch (_) {}
+    leg.div.remove()
   }
 }
 

@@ -41,12 +41,15 @@ describe('live retro-fold', () => {
     expect(SOCIAL_SRC.slice(h, h + 300)).toContain('retroFoldOwnEchoes()')
   })
 
-  test('first painted leg is retagged [H], later legs are hidden + removed', () => {
+  test('twitch leg preferred as survivor, others hidden + removed', () => {
+    // Kick echoes paint first (they relay through this ext) but bare and with
+    // laggier timestamps — surviving them strands the [H] row rows-up.
+    expect(FOLD).toContain("legs.find((l) => (l.m.platform || 'twitch') === 'twitch')")
     expect(FOLD).toContain("m.platform = 'heatsync'")
     expect(FOLD).toContain('hs-mc-pb-heatsync')
-    expect(FOLD).toContain('m.hidden = true')
-    expect(FOLD).toContain('div.remove()')
-    expect(FOLD).toContain('_unindexMessageDiv(div)')
+    expect(FOLD).toContain('leg.m.hidden = true')
+    expect(FOLD).toContain('leg.div.remove()')
+    expect(FOLD).toContain('_unindexMessageDiv(leg.div)')
   })
 
   test('claims are per-platform and never re-claim [H]/system rows', () => {

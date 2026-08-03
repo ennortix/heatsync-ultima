@@ -2385,6 +2385,13 @@ const senderEmoteSets = new Map()
 // message (small API hit, big memory win). Heap growth on xqc dropped
 // from ~14 MB/sec to a fraction of that.
 const SENDER_EMOTE_LRU_MAX = 500
+// Per-sender name cap — the outer LRU bounds sender COUNT but a single
+// sender's inner Map was open-ended, the same one-level-down shape as the
+// 5000-sender regression above. Real 7TV+BTTV personal sets top out around
+// 100-150 names; 300 changes nothing for legit senders and bounds a
+// malformed/hostile batch payload. Insert-order eviction: oldest-known name
+// goes first, re-fetched on the sender's next message like outer eviction.
+const SENDER_EMOTE_NAMES_MAX = 300
 // Blobs persisted before the fetch path switched from merge to authoritative
 // replace can carry names the sender never/no-longer owns (merge-era bleed) —
 // loading them paints wrong emotes for a fetch round-trip on every boot.
@@ -2476,6 +2483,7 @@ function mergeSenderEmotes(senderKey, nameToEmote) {
       ) {
         inner.set(name, _carryEmoteInterval(prev, data))
         changed = true
+        if (inner.size > SENDER_EMOTE_NAMES_MAX) inner.delete(inner.keys().next().value)
       }
     }
   }
@@ -2609,6 +2617,7 @@ function replaceSenderEmotes(senderKey, nameToEmote) {
     ) {
       inner.set(name, _carryEmoteInterval(prev, data))
       changed = true
+      if (inner.size > SENDER_EMOTE_NAMES_MAX) inner.delete(inner.keys().next().value)
     }
   }
   if (changed) {
@@ -2956,6 +2965,11 @@ function _buildChannelEmoteCache(ch, emotes, platform) {
       hashToName.set(e.hash, e.name)
     }
   }
+  // Ceiling on the per-channel map — every other cache in this file has one,
+  // this (the authoritative path) trusted upstream response size. Real
+  // channels combine to a few hundred names; 2000 only ever bites a
+  // malformed/hostile payload. Oldest-inserted evicts first.
+  while (chCache.size > 2000) chCache.delete(chCache.keys().next().value)
   // Self-heal the stale-emote ghost registry: any name back in this channel's
   // live set was re-added (perhaps while we missed the event) — drop it so old
   // messages stop rendering ghosted. The render path also guards on the live
@@ -3203,8 +3217,11 @@ function scanDomForEmotes() {
   }
   const cache = channelEmoteCaches[ch]
 
-  // Cap per-channel to prevent unbounded growth
-  if (cache.size >= 5000) return
+  // Cap per-channel to prevent unbounded growth. 2300 = the authoritative
+  // path's 2000 ceiling + scan allowance; the old 5000 was a 25MB phantom
+  // worst-case across 20 channels for a path that only ever adds
+  // heatsync/unknown stragglers (twitch + 7tv/bttv/ffz excluded below).
+  if (cache.size >= 2300) return
 
   // Single combined selector — one DOM scan instead of 7 separate querySelectorAll calls
   const combinedSelector =
@@ -3212,7 +3229,7 @@ function scanDomForEmotes() {
 
   let found = 0
   for (const img of document.querySelectorAll(combinedSelector)) {
-    if (cache.size >= 5000) break
+    if (cache.size >= 2300) break
     const name = img.alt || img.getAttribute('data-emote-name')
     const url = img.src
     if (name && url && !cache.has(name) && !emoteCache.has(name)) {

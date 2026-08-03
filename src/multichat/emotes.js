@@ -874,10 +874,16 @@ function emoteImgHtml([name, emote]) {
   // that 7TV discovery lives in tab-complete and slot fill happens silently
   // via auto-add-on-send — every emote in the picker is equally pasteable.
   const state = isBlocked ? 'blocked' : emote.state || 'global'
-  const nsfwTag = emote.nsfw ? ' hs-state-nsfw' : ''
+  // Category tell (decision surface): own-inventory entries carry cwCats
+  // (server annotation, see hsOwnCwHiddenCat) — first category picks the
+  // border color. Global/channel entries only ever have the nsfw bool, so
+  // they fall back to the plain teal tell. Mirror of web's picker flagCat.
+  const flagCat = Array.isArray(emote.cwCats) && emote.cwCats[0]
+  const nsfwTag = emote.nsfw || flagCat ? ' hs-state-nsfw' : ''
+  const cwAttr = flagCat ? ` data-cw="${escapeHtml(flagCat)}"` : ''
   const wrapCls = (isBlocked ? 'hs-mc-picker-emote-wrap blocked' : 'hs-mc-picker-emote-wrap') + nsfwTag
   const safeName = escapeHtml(name)
-  return `<span class="${wrapCls}" data-name="${safeName}"><img src="${escapeHtml(emote.url)}" alt="${safeName}" title="${safeName} (${escapeHtml(emote.source)})" class="hs-mc-picker-emote hs-emote-${escapeHtml(emote.source)}" data-name="${safeName}" data-source="${escapeHtml(emote.source)}" data-state="${state}" loading="lazy"></span>`
+  return `<span class="${wrapCls}" data-name="${safeName}"${cwAttr}><img src="${escapeHtml(emote.url)}" alt="${safeName}" title="${safeName} (${escapeHtml(emote.source)})" class="hs-mc-picker-emote hs-emote-${escapeHtml(emote.source)}" data-name="${safeName}" data-source="${escapeHtml(emote.source)}" data-state="${state}" loading="lazy"></span>`
 }
 
 /**
@@ -1533,7 +1539,13 @@ function createInputEmoteImg(emoteName) {
   // Owned shadows global/channel — surface what the user actually controls.
   img.dataset.state = inventoryEmotes.has(emoteName) ? 'owned' : emote.state || 'global'
   img.classList.add(`hs-state-${img.dataset.state}`)
-  if (emote.nsfw) img.classList.add('hs-state-nsfw') // v1.6 cyan dashed
+  // Category tell follows the emote into the input chip (decision surface) —
+  // same cwCats source the picker cell reads, first category wins.
+  const _chipFlagCat = Array.isArray(emote.cwCats) && emote.cwCats[0]
+  if (emote.nsfw || _chipFlagCat) {
+    img.classList.add('hs-state-nsfw') // v1.6 cyan dashed
+    if (_chipFlagCat) img.dataset.cw = _chipFlagCat
+  }
   if (isOverlay) img.dataset.zeroWidth = '1'
   // Broken-image recovery — shared helper in input.js (cache-bust retry then
   // text fallback). Defined later in the bundle but function declarations
@@ -3555,8 +3567,17 @@ function hsChannelNsfwHidden(emote) {
 // emote (generic + kick [emote:id:name]) — no <img>, a labeled dashed box
 // marks the spot so the message reads as "emote hidden here". cwCat and
 // displayName must already be escapeHtml'd by the caller.
-function _hsCwBoxHtml(cwCat, displayName) {
-  return `<span class="hs-mc-emote-wrapper hs-mc-emote-cw" data-emote-name="${displayName}" data-cw="${cwCat}" data-state="cw" title="${displayName}">${cwCat}</span>`
+// boxW (optional): a previously-observed rendered box width for this same
+// emote URL (_hsEmoteBoxW — the cache the normal wrapper's wAttr already
+// reads). When known, the stub takes that exact footprint so a filter-pref
+// toggle causes zero layout shift; the height/min-width floor live in the
+// --sized CSS class. Mirrors the website's hs-emote-cw--sized, adapted to
+// the ext's measured-box cache since there's no server-sent natural size here.
+function _hsCwBoxHtml(cwCat, displayName, boxW) {
+  const sized = boxW > 0
+  const sizedClass = sized ? ' hs-mc-emote-cw--sized' : ''
+  const wAttr = sized ? ` style="width:${boxW}px"` : ''
+  return `<span class="hs-mc-emote-wrapper hs-mc-emote-cw${sizedClass}" data-emote-name="${displayName}" data-cw="${cwCat}" data-state="cw"${wAttr} title="${displayName}">${cwCat}</span>`
 }
 
 function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMentions = false, msgRefs = null) {
@@ -3847,7 +3868,7 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
         (hsChannelNsfwHidden(cached) ? 'sexual' : '')
       const kickCwCat = _kickCwRaw ? escapeHtml(_kickCwRaw) : ''
       const imgHtmlRaw = kickCwCat
-        ? _hsCwBoxHtml(kickCwCat, safeName)
+        ? _hsCwBoxHtml(kickCwCat, safeName, _boxW)
         : `<span class="hs-mc-emote-wrapper hs-state-${state}${nsfwClass}" data-emote-name="${safeName}" data-emote-url="${safeUrlAttr}" data-state="${state}" data-source="${safeProvider}"${ownerAttr}${invAttr}${safeHash ? ` data-emote-hash="${safeHash}"` : ''}${wAttr}><img src="${safeSrc}" alt="${safeName}" title="${titleAttr}" class="hs-mc-emote hs-emote-${state}"${osAttr} data-emote-name="${safeName}" data-state="${state}" data-source="${safeProvider}"${ownerAttr}${invAttr} loading="lazy" decoding="async"></span>`
       if (isOverlay && pendingStack) {
         const itemMods = pendingMods.slice()
@@ -4046,7 +4067,7 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
         (hsChannelNsfwHidden(emote) ? 'sexual' : '')
       const cwCat = _cwRaw ? escapeHtml(_cwRaw) : ''
       const imgHtmlRaw = cwCat
-        ? _hsCwBoxHtml(cwCat, displayName)
+        ? _hsCwBoxHtml(cwCat, displayName, _boxW)
         : `<span class="hs-mc-emote-wrapper hs-state-${state}${staleClass}${nsfwClass}" data-emote-name="${displayName}" data-emote-url="${imgSrc}" data-state="${state}" data-source="${source}"${ownerAttr}${invAttr}${safeHash ? ` data-emote-hash="${safeHash}"` : ''}${staleAttr}${wAttr}><img src="${staticSrc}" alt="${displayName}" title="${displayName}" class="hs-mc-emote hs-emote-${state}"${osAttr} data-emote-name="${displayName}" data-state="${state}" data-source="${source}"${ownerAttr}${invAttr} loading="lazy" decoding="async"></span>`
 
       // Build the new item — inline-glued suffix mod attaches to THIS emote

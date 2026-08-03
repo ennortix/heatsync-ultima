@@ -376,6 +376,20 @@
       border: 2px dashed #008080 !important;
       box-sizing: border-box !important;
     }
+    /* Per-category color coding on decision surfaces — teal above stays the
+       fallback when only the nsfw bool is known (no cwCats, e.g. global-pool
+       entries). data-cw rides the same element as hs-state-nsfw: the wrap
+       span for the picker, the img itself for the input chip. Mirror of
+       chat-side .hs-mc-emote-wrapper.hs-mc-emote-cw[data-cw] and web
+       .hs-pe-wrap > img.hs-state-nsfw[data-cw]. */
+    .hs-mc-picker-emote-wrap.hs-state-nsfw[data-cw="sexual"] > img,
+    img.hs-input-emote.hs-state-nsfw[data-cw="sexual"] { border-color: #ff00ff !important; }
+    .hs-mc-picker-emote-wrap.hs-state-nsfw[data-cw="gore"] > img,
+    img.hs-input-emote.hs-state-nsfw[data-cw="gore"]   { border-color: #ff0000 !important; }
+    .hs-mc-picker-emote-wrap.hs-state-nsfw[data-cw="drugs"] > img,
+    img.hs-input-emote.hs-state-nsfw[data-cw="drugs"]  { border-color: #00d700 !important; }
+    .hs-mc-picker-emote-wrap.hs-state-nsfw[data-cw="hate"] > img,
+    img.hs-input-emote.hs-state-nsfw[data-cw="hate"]   { border-color: #808080 !important; }
 
     /* Stale ghost: emote was in the channel set when the message posted but
        has since been removed. Dim + desaturate the cached IMG; muted-orange
@@ -442,6 +456,19 @@
     .hs-mc-emote-wrapper.hs-mc-emote-cw[data-cw="gore"]   { border-color: #ff0000; color: #ff0000; }
     .hs-mc-emote-wrapper.hs-mc-emote-cw[data-cw="drugs"]  { border-color: #00d700; color: #00d700; }
     .hs-mc-emote-wrapper.hs-mc-emote-cw[data-cw="hate"]   { border-color: #808080; color: #808080; }
+    /* Sized stub — when a prior sighting of this URL cached its rendered box
+       width (_hsEmoteBoxW, same cache the normal wrapper's wAttr reads), the
+       stub takes that exact footprint so toggling the filter pref shifts
+       zero layout. JS sets width inline; height mirrors the emote's own
+       max-height and min-width is a 16px floor so a 1-char category name
+       never collapses to nothing. Unknown width → plain box above, sized
+       by content like it always was. Mirror of web .hs-emote-cw--sized. */
+    .hs-mc-emote-wrapper.hs-mc-emote-cw--sized {
+      height: var(--hs-emote-size, 32px);
+      min-width: 16px;
+      padding: 0;
+      overflow: hidden;
+    }
     /* No hover plate / state fill — the box is informational, not clickable. */
     .hs-mc-emote-wrapper.hs-mc-emote-cw::before {
       display: none;

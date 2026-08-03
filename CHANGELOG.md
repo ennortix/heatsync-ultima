@@ -1,5 +1,10 @@
 # changelog
 
+## [1.7.42] — 2026-08-03
+
+### fixed
+- **`\` hides chat in this tab only** — hiding chat on one stream no longer hides it on every other open tab. the hidden state sticks to the tab (survives reload) and clears when you close it; an old globally-stuck hidden chat heals itself on first load.
+
 ## [1.7.39] — 2026-07-27
 
 ### fixed

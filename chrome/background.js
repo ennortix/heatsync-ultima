@@ -414,7 +414,11 @@ async function ensureAlarm(name, opts) {
     browser.alarms?.create?.(name, opts)
   }
 }
-ensureAlarm('keepalive', { periodInMinutes: 0.5 })
+// 'keepalive' + 'hs-ws-watchdog' (both 0.5min — each fire resets the SW idle
+// timer, so together they pin the SW alive FOREVER) are platform-tab-gated in
+// scheduleWsIdleCheck: cleared when no chat tabs exist so the SW can actually
+// idle-die and release its whole heap, re-created when a tab appears. Every
+// other alarm below has a period long enough for the SW to die between fires.
 // Random delayInMinutes is set once per client when the alarm is created and
 // persists for the alarm's lifetime — this offsets the *phase* of every
 // subsequent fire, so 30k clients don't all hit /api/* at the minute boundary.
@@ -435,7 +439,7 @@ ensureAlarm('refresh-followed-users', { delayInMinutes: 5 + Math.random(), perio
 // WS watchdog — survives SW eviction. setInterval timers inside onopen die
 // when the SW is terminated; this alarm wakes the SW and either reconnects,
 // kills a zombie, or sends a heartbeat. Each fire is 30s (chrome.alarms min).
-ensureAlarm('hs-ws-watchdog', { periodInMinutes: 0.5 })
+// Created/cleared by scheduleWsIdleCheck (platform-tab-gated, see above).
 // 7TV reconnect watchdog — the in-flight setTimeout backoff dies if the SW
 // is evicted mid-disconnect. This alarm wakes the SW every 2 min to resurrect
 // the 7TV WS if there are emote sets that should be subscribed.
@@ -4563,11 +4567,31 @@ function scheduleWsIdleCheck() {
           socket.close() // onclose still runs: clears heartbeat, sets state
         } catch {}
       }
+      // BG IRC reader rides its own 20s heartbeat — same SW-pinning rule as
+      // the sockets above, so it idle-closes with them. Buffers are already
+      // debounce-persisted to storage.local; reopen restores them.
+      if (BG_IRC.ws && !BG_IRC.idleClosed) {
+        log('BG IRC: no platform tabs — closing idle reader')
+        bgIrcIdleClose()
+      }
+      // With every socket down, only these two 30s alarms still pin the SW
+      // alive (each fire resets the idle timer). Clear them so the SW can
+      // die and release its heap; alarms persist outside the SW, so the
+      // else-branch below re-creates them when a platform tab returns.
+      browser.alarms?.clear?.('keepalive')?.catch?.(() => {})
+      browser.alarms?.clear?.('hs-ws-watchdog')?.catch?.(() => {})
     } else {
+      ensureAlarm('keepalive', { periodInMinutes: 0.5 })
+      ensureAlarm('hs-ws-watchdog', { periodInMinutes: 0.5 })
       if (seventvIdleClosed) ensure7TVConnection() // pending subs replay on open
       if (hsWsIdleClosed) {
         hsWsIdleClosed = false
         connectWebSocket().catch(() => {})
+      }
+      if (BG_IRC.idleClosed) {
+        bgIrcRestoreFromStorage()
+          .catch(() => {})
+          .then(() => bgIrcConnect())
       }
     }
   }, SEVENTV_IDLE_GRACE_MS)
@@ -4576,6 +4600,10 @@ browser.tabs.onRemoved.addListener(scheduleWsIdleCheck)
 browser.tabs.onUpdated.addListener((_tabId, changeInfo) => {
   if (changeInfo.url) scheduleWsIdleCheck()
 })
+// Boot: reconcile alarm + reader state against actual tab presence. Without
+// this, a SW woken by a non-tab event (alarm, notification click) after the
+// browser restarted with zero platform tabs would keep stale lifeline alarms.
+scheduleWsIdleCheck()
 
 function handle7TVEmoteSetUpdate(updateData) {
   // updateData.id is the emote set ID — look up which channel it belongs to
@@ -7305,6 +7333,7 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
           return
         }
         _automodWatchThrottle.set(broadcasterId, now)
+        if (_automodWatchThrottle.size > 500) _automodWatchThrottle.delete(_automodWatchThrottle.keys().next().value)
         const res = await fetchWithTimeout(`${API_URL}/api/mod/automod-watch`, {
           method: 'POST',
           credentials: 'omit', // Bearer-only → CSRF-exempt (matches every other heatsync.org mutation)
@@ -10888,6 +10917,7 @@ const BG_IRC = {
   channelTabs: new Map(), // channel -> Set<tabId>
   lastData: 0,
   destroyed: false,
+  idleClosed: false, // reader parked by scheduleWsIdleCheck (no platform tabs)
   reconnectTimer: null,
   reconnectAttempts: 0,
   heartbeatTimer: null,
@@ -11037,6 +11067,7 @@ function bgIrcPersistChannel(ch) {
 
 function bgIrcConnect() {
   if (BG_IRC.destroyed) return
+  BG_IRC.idleClosed = false // any explicit connect un-parks the reader
   if (BG_IRC.ws && BG_IRC.ws.readyState === WebSocket.CONNECTING) return
   bgIrcStopHeartbeat()
   if (BG_IRC.reconnectTimer) {
@@ -11134,6 +11165,31 @@ function bgIrcForceReconnect() {
     BG_IRC.ws = null
   }
   if (!BG_IRC.destroyed) bgIrcConnect()
+}
+
+// Park the reader when the last platform tab closes (scheduleWsIdleCheck).
+// Its 20s heartbeat otherwise extends the SW lifetime forever (Chrome 116+
+// WS-activity rule), pinning every BG buffer in RAM for a user who isn't on
+// any chat site. Buffers are already debounce-persisted per message, so the
+// reopen path (idle-check else-branch / bg_irc_join) loses nothing.
+function bgIrcIdleClose() {
+  BG_IRC.idleClosed = true
+  bgIrcStopHeartbeat()
+  if (BG_IRC.reconnectTimer) {
+    clearTimeout(BG_IRC.reconnectTimer)
+    BG_IRC.reconnectTimer = null
+  }
+  if (BG_IRC.connectTimeout) clearTimeout(BG_IRC.connectTimeout)
+  if (BG_IRC.ws) {
+    try {
+      BG_IRC.ws.onopen = null
+      BG_IRC.ws.onmessage = null
+      BG_IRC.ws.onerror = null
+      BG_IRC.ws.onclose = null
+      BG_IRC.ws.close()
+    } catch {}
+    BG_IRC.ws = null
+  }
 }
 
 function bgIrcStartHeartbeat() {
@@ -11893,6 +11949,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       try {
         if (!BG_IRC.storageRestored) await bgIrcRestoreFromStorage()
         bgIrcEnsureChannel(ch)
+        // Reader may be parked (SW booted with no platform tabs) — a join is
+        // live interest, connect now; onopen re-JOINs every known channel.
+        if (!BG_IRC.ws && !BG_IRC.reconnectTimer) bgIrcConnect()
         if (tabId) bgIrcRegisterTabInterest(tabId, ch)
         BG_IRC.liveTabs.add(tabId)
         sendResponse({ ok: true })
@@ -11936,8 +11995,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return false
 })
 
-// Boot — restore + connect on SW startup
+// Boot — restore + connect on SW startup, but ONLY when a platform tab
+// exists. This IIFE runs on EVERY SW wake (any alarm, any event); connecting
+// unconditionally gave the SW a permanent WS heartbeat → the whole heap
+// stayed pinned forever even for a user on zero chat sites. With no tabs the
+// reader stays parked; bg_irc_join / scheduleWsIdleCheck un-park it.
 ;(async () => {
+  let tabs = null
+  try {
+    tabs = await browser.tabs.query({ url: SEVENTV_PLATFORM_URLS })
+  } catch {} // query failed → fail open, connect as before
+  if (tabs && tabs.length === 0) {
+    BG_IRC.idleClosed = true
+    return
+  }
   await bgIrcRestoreFromStorage()
   bgIrcConnect()
 })()
@@ -12391,6 +12462,7 @@ async function bgYtFetchRecentArchive(channelId, hintUrl) {
   if (!channelId || channelId === 'global' || channelId === '__live_yt_auto__') return
   if (_ytRecentFetched.has(channelId)) return
   _ytRecentFetched.add(channelId)
+  if (_ytRecentFetched.size > 500) _ytRecentFetched.delete(_ytRecentFetched.values().next().value)
   const ucid = await resolveYtChannelId(channelId, hintUrl)
   if (!ucid) return
   const rows = await fetchRecentArchiveRows('youtube', ucid.toLowerCase(), 200)

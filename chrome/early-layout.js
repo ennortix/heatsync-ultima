@@ -36,7 +36,12 @@
     }
   }
   const tabPosition = readLS('tabPosition', 'top')
-  const chatPosition = readLS('chatPosition', 'right')
+  let chatPosition = readLS('chatPosition', 'right')
+  // Tab-local \ hide (sessionStorage, this browser tab only) overrides the
+  // synced position — reload of a hidden tab must not prepaint/flash chat.
+  try {
+    if (sessionStorage.getItem('hs-chat-hidden-local')) chatPosition = 'hidden'
+  } catch {}
   const chatWidth = parseInt(readLS('chatWidth', '340'), 10) || 340
   const chatHeight = parseInt(readLS('chatHeight', ''), 10) || null
   // YT chat-on-all-pages (ytChatOnNonLive, default ON). String() — readLS
@@ -125,7 +130,9 @@
     }
     return false
   }
-  const doPrepaint = isChatPage()
+  // Hidden chat (tab-local \ toggle, or legacy stored 'hidden') has nothing
+  // to smooth in — a prepaint bar would be a pure black flash.
+  const doPrepaint = chatPosition !== 'hidden' && isChatPage()
 
   // Mark documentElement so the pseudo-element rule applies — ONLY on chat
   // pages. <html> always exists at document_start so this paints before

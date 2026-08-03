@@ -61198,6 +61198,20 @@ const STORAGE_KEY = 'heatsync_multichat'
       applyTabsPosition()
     },
     chatPosition: (v, _def, _onLoad, isRemote) => {
+      if (chatHiddenLocal && v && v !== 'hidden') {
+        if (isRemote) {
+          // Another tab moved chat while THIS tab is \-hidden (tab-local).
+          // Adopt the new position as the restore point but stay hidden here.
+          chatPositionPrevious = v
+          chatPosition = 'hidden'
+          applyChatPosition()
+          return
+        }
+        // Explicit position pick in THIS tab (settings dropdown / C rotate)
+        // overrides the tab-local hide.
+        chatHiddenLocal = false
+        _saveChatHiddenLocal()
+      }
       applyChatPosition()
       // visible positions become the hide-toggle restore point (mirrors
       // toggleChatHidden's previous-tracking). remote changes update the
@@ -69735,6 +69749,27 @@ const STORAGE_KEY = 'heatsync_multichat'
       if (['right', 'bottom', 'left', 'top'].includes(chatPosition)) {
         chatPositionPrevious = chatPosition
       }
+      // Legacy heal: 'hidden' used to be persisted into the SYNCED setting, so
+      // one \ press hid chat in every tab forever. Hidden is tab-local now
+      // (sessionStorage) — migrate a stored 'hidden' into this tab's local
+      // flag and restore the synced value to the last visible position.
+      if (chatPosition === 'hidden') {
+        chatHiddenLocal = true
+        try { sessionStorage.setItem('hs-chat-hidden-local', '1') } catch (_) {}
+        // silent: heal the stored value only — the applier would treat this
+        // as an explicit local position pick and clear the tab-local flag.
+        setSetting('chatPosition', chatPositionPrevious, { silent: true })
+        chatPosition = 'hidden' // runtime stays hidden HERE; other tabs unhide
+      } else {
+        // Per-tab hide survives reload/SPA nav via sessionStorage (scoped to
+        // this browser tab by definition — exactly the ask).
+        try {
+          if (sessionStorage.getItem('hs-chat-hidden-local')) {
+            chatHiddenLocal = true
+            chatPosition = 'hidden'
+          }
+        } catch (_) {}
+      }
       // Load saved width + height BEFORE first applyChatPosition. Without this,
       // applyChatPosition runs with default chatHeight (35% innerHeight) and
       // positions the orange handle there. loadChatHeight then updates the
@@ -70437,23 +70472,42 @@ const STORAGE_KEY = 'heatsync_multichat'
 
   // ============================================
   // CHAT HIDE/SHOW TOGGLE — \ key + edge-pill.
-  // chatPositionPrevious survives across hide cycles so restore lands on the
-  // last-known visible position, not the default 'right'.
+  // TAB-LOCAL on purpose (viewer ask): hiding chat on one stream must not
+  // hide it on every other open tab. The hidden state lives in this page's
+  // runtime + sessionStorage (per browser tab, survives reload/SPA nav) and
+  // is NEVER written to the synced chatPosition setting. chatPositionPrevious
+  // still syncs so restore lands on the last-known visible position.
   // ============================================
   let chatPositionPrevious = 'right'
+  let chatHiddenLocal = false
+
+  function _saveChatHiddenLocal() {
+    try {
+      if (chatHiddenLocal) sessionStorage.setItem('hs-chat-hidden-local', '1')
+      else sessionStorage.removeItem('hs-chat-hidden-local')
+    } catch (_) {}
+  }
 
   function toggleChatHidden() {
     if (document.body.classList.contains('hs-popout')) return
     const visible = ['right', 'bottom', 'left', 'top']
     if (chatPosition === 'hidden') {
+      chatHiddenLocal = false
       chatPosition = visible.includes(chatPositionPrevious) ? chatPositionPrevious : 'right'
+      // The synced setting already holds a visible position — hide never
+      // writes it (and boot heals legacy stored-'hidden'). Local apply only.
+      applyChatPosition()
     } else {
-      if (visible.includes(chatPosition)) chatPositionPrevious = chatPosition
-      chatPosition = 'hidden'
+      if (visible.includes(chatPosition)) {
+        chatPositionPrevious = chatPosition
+        saveUiSetting('chatPositionPrevious', chatPositionPrevious)
+      }
+      chatHiddenLocal = true
+      chatPosition = 'hidden' // runtime only — the synced setting keeps the visible position
+      applyChatPosition()
     }
-    saveUiSetting('chatPositionPrevious', chatPositionPrevious)
-    setSetting('chatPosition', chatPosition)
-    log('[chat-toggle] →', chatPosition, 'prev:', chatPositionPrevious)
+    _saveChatHiddenLocal()
+    log('[chat-toggle] →', chatPosition, 'local-only:', chatHiddenLocal, 'prev:', chatPositionPrevious)
   }
 
   // Edge-pill: orange strip pinned to the edge where chat last lived. Click to

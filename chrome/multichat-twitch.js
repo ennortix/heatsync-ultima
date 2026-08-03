@@ -21389,8 +21389,8 @@ function scanExistingMentions() {
 
 // Raid windows: channel(lowercase) → ms timestamp until which incoming
 // first-time chatters are flagged as raiders. Opened by a raid USERNOTICE and
-// read in the PRIVMSG branch. A plain Map (one entry per recently-raided
-// channel) — stale entries are simply ignored once their timestamp passes.
+// read in the PRIVMSG branch. Expired entries are pruned on each new raid —
+// without that the map grows one entry per channel ever raided all session.
 const _raidWindows = new Map()
 const RAID_WINDOW_MS = 90 * 1000
 
@@ -21598,6 +21598,8 @@ function parseIrcLine(raw, channel) {
       if (rawMsgId === 'raid') {
         const uncChannel = channel || usernotice[1].toLowerCase()
         const uncTime = parseInt(tags['tmi-sent-ts'], 10) || parseInt(tags['rm-received-ts'], 10) || Date.now()
+        const nowMs = Date.now()
+        for (const [ch, until] of _raidWindows) if (until < nowMs) _raidWindows.delete(ch)
         _raidWindows.set(uncChannel, uncTime + RAID_WINDOW_MS)
       }
       const twitchEmotes = parseTwitchEmotesTag(tags.emotes, userText)

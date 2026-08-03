@@ -46,7 +46,8 @@ verified present in code on 2026-06-13:
 **emotes** — 5,000-slot server-side inventory; tab-complete + wysiwyg in native
 twitch/kick/yt inputs; auto-add-on-send (ext only); zero-width/overlay stacking;
 picker button beside native input (virtual-scroll grid, recent row, 7tv/bttv/ffz
-search); per-emote right-click block (menu/instant/off); content-warning
+search); per-emote right-click block/unblock (shift+right-click menu: block, remove
+from set, provider links, copy); content-warning
 category filters; animated/static toggle; size 1x/2x/4x.
 
 **native chat decoration** — 7tv/bttv/ffz emotes in twitch+kick chat; 7tv paints;

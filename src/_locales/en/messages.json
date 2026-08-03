@@ -1560,12 +1560,6 @@
   "mc_settings_sub_picker_button_desc": {
     "message": "the heatsync picker button beside the native chat input"
   },
-  "mc_settings_sub_right_click_block": {
-    "message": "right-click emote block"
-  },
-  "mc_settings_sub_right_click_block_desc": {
-    "message": "right-click any emote to instantly block it"
-  },
   "mc_settings_sub_native_takeover": {
     "message": "native chat takeover"
   },

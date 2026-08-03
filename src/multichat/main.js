@@ -2460,7 +2460,7 @@
   // ─── subsystem gates ────────────────────────────────────────────────────
   // isEnabled(id): live read — server health kill-list wins, then the
   // user's ui_settings.subsystems map (default ON). Live-tagged code paths
-  // (mentions, stream-stats, right-click-block) call this at use time.
+  // (mentions, stream-stats) call this at use time.
   // gateAtBoot(id): the init()-time snapshot — every init guard reads this
   // so a mid-init storage write can't half-apply a subsystem.
   let _gatesAtBoot = null

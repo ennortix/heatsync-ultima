@@ -5167,6 +5167,624 @@ function _signatureMatch(a, b) {
 {
 // === MULTICHAT MODULES (auto-bundled) ===
 
+// --- lib/paint-core.js ---
+/**
+ * SYNCED COPY of the heatsync monorepo's client/utils/paint-core.js — keep
+ * byte-close to the source of truth; mirror changes in both repos. Only
+ * bundling adaptations belong here, never a behavior fork.
+ *
+ * paint-core — tiny pure helpers shared by the paint compiler
+ * (paint-spec.js) and the scene compiler (scene-spec.js).
+ *
+ * Dependency-free and server-importable, same contract as paint-spec.js:
+ * no DOM, no fetch, nothing user-typed ever passes through unclamped.
+ * Split out so scene-spec.js never has to import paint-spec.js (which
+ * imports scene-spec.js — this module breaks the cycle).
+ */
+
+const HEX_RE = /^#[0-9a-fA-F]{6}$/
+
+const MIN_SPEED = 0.25
+const MAX_SPEED = 3
+
+// WCAG 2.3.1 flashing-content guard, stricter than the 3Hz threshold: any
+// effect that changes luminance must have a real-world animation period of
+// at least 1s AFTER the user's speed multiplier is applied.
+const MIN_LUMINANCE_PERIOD_S = 1
+
+function isPlainObject(v) {
+  return v !== null && typeof v === 'object' && !Array.isArray(v)
+}
+
+function isIntInRange(v, min, max) {
+  return typeof v === 'number' && Number.isFinite(v) && Number.isInteger(v) && v >= min && v <= max
+}
+
+function isNumInRange(v, min, max) {
+  return typeof v === 'number' && Number.isFinite(v) && v >= min && v <= max
+}
+
+function safeHex(color, fallback = '#e4e4e4') {
+  return typeof color === 'string' && HEX_RE.test(color) ? color.toLowerCase() : fallback
+}
+
+function safeSpeed(speed) {
+  const n = Number(speed)
+  return Number.isFinite(n) ? Math.min(MAX_SPEED, Math.max(MIN_SPEED, n)) : 1
+}
+
+/** Real-world period in seconds for a layer at the given speed, with the
+ * WCAG luminance floor applied when the layer changes luminance. */
+function periodSeconds(basePeriod, speed, luminance) {
+  let seconds = basePeriod / safeSpeed(speed)
+  if (luminance) seconds = Math.max(MIN_LUMINANCE_PERIOD_S, seconds)
+  return Math.round(seconds * 1000) / 1000
+}
+
+/** Phase-lock delay for a paint/scene animation. Elements carry `--hsp-t`
+ * (their mount wall-time in seconds — see paintPhaseNow in paint-spec.js),
+ * and mod() folds it onto this animation's full visual cycle, so every copy
+ * of the same name lands on the same frame regardless of when it mounted.
+ * `period` must be the FULL cycle: duration ×2 for alternate-direction
+ * animations (odd iterations run reversed — duration alone would sync half
+ * the copies mirror-phased). Elements without the var (or browsers without
+ * mod()) resolve to 0s — per-mount unsynced, never a broken paint. */
+function syncDelayCalc(period) {
+  const p = Math.round(period * 1000) / 1000
+  return `calc(-1 * mod(var(--hsp-t, 0s), ${p}s))`
+}
+
+/** FNV-1a 32-bit hash, base36-encoded. Sync + dependency-free — stable
+ * across processes/platforms, adequate for cosmetic CSS class/keyframe
+ * naming (collisions are a visual dedup nit, not a security concern). */
+function fnv1a(str) {
+  let h = 0x811c9dc5
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i)
+    h = Math.imul(h, 0x01000193)
+  }
+  return (h >>> 0).toString(36)
+}
+
+
+// --- lib/scene-spec.js ---
+/**
+ * SYNCED COPY of the heatsync monorepo's client/utils/scene-spec.js — keep
+ * byte-close to the source of truth; mirror changes in both repos. Only
+ * bundling adaptations belong here, never a behavior fork.
+ *
+ * Scene spec — the diorama layer of a username paint (spec v2).
+ *
+ * A scene turns the name into a three-deep composition, all inside the ONE
+ * element the renderer already paints (zero DOM changes, zero new classes):
+ *
+ *   ::before  backdrop — the scene plate: sky gradient + pixel silhouette
+ *             strip (inline SVG data-URI) + one slow ambient drift.
+ *             position:absolute; inset:-1px -4px; z-index:-1 — pure ink
+ *             overflow, so row height and layout NEVER move.
+ *   (text)    the existing v1 paint pipeline, untouched. When the plate is
+ *             present and the user has no glow/neon, a dark text rim is
+ *             added so the name always reads on any plate.
+ *   ::after   weather — particles in front of the text: rain, blood rain,
+ *             snow, fog, embers, glyph rain, storm. Tiled pixel SVG
+ *             patterns; parallax comes from two copies of the tile at
+ *             different scales advancing whole-tile multiples per loop
+ *             (seamless by construction, no @property needed).
+ *
+ * Same doctrine as paint-spec.js: authored as data, never CSS. Every color
+ * is regex-clamped hex, every number range-clamped, every id looked up in a
+ * fixed catalog — nothing user-typed is concatenated into the output.
+ * Animations phase-lock to `--hsp-t` exactly like paint effects, so every
+ * copy of a name shows the same frame. Compiled with opts.static (viewer
+ * static mode / SSR / reduced-motion) a scene renders its designed hero
+ * frame: the resting background positions ARE the composition.
+ *
+ * Pure-data module — no DOM, no fetch. Server-importable (paint-spec.js
+ * imports this for validation; shared with the builder UI for catalogs).
+ */
+
+
+// ── plate geometry (single source — mirrored nowhere) ──────────────────────
+const PLATE_INSET = '-1px -4px'
+const PSEUDO_BASE = `content:'';position:absolute;inset:${PLATE_INSET};pointer-events:none;`
+
+const DENSITIES = new Set([1, 2, 3])
+
+function svgUrl(svg) {
+  return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`
+}
+
+function svg(viewW, viewH, body) {
+  return `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 ${viewW} ${viewH}'>${body}</svg>`
+}
+
+// ── pixel silhouettes (blocky on purpose — crisp at 13px Cozette scale) ────
+
+const SIL = {
+  dunes: (c) => svgUrl(svg(96, 20,
+    `<path fill='${c}' d='M0 20v-8h6v-2h8v-2h10v2h8v2h10v4h6v-2h10v-4h8v-2h10v2h8v4h6v2h6v4z'/>`)),
+  graveyard: (c) => svgUrl(svg(140, 26,
+    `<path fill='${c}' d='M0 26v-2h140v2z` +
+    // fence run (pickets + rail)
+    ` M4 24v-7h2v7z M11 24v-7h2v7z M18 24v-7h2v7z M2 19h20v2H2z` +
+    // headstone (stepped arch)
+    ` M34 24v-6h2v-2h6v2h2v6z` +
+    // cross
+    ` M52 24v-8h-3v-2h3v-4h2v4h3v2h-3v8z` +
+    // monument (stepped obelisk)
+    ` M68 24v-2h-2v-2h2v-9h4v9h2v2h-2v2z` +
+    // bare tree (trunk + two arms)
+    ` M96 24v-10h-4v-2h4v-4h2v2h5v2h-5v12z` +
+    // second headstone
+    ` M116 24v-5h2v-2h5v2h2v5z` +
+    // fence run
+    ` M130 24v-7h2v7z M137 24v-7h2v7z M128 19h12v2h-12z'/>`)),
+  reef: (c) => svgUrl(svg(90, 14,
+    `<path fill='${c}' d='M0 14v-4h8v-2h10v2h10v2h10v-4h8v-2h8v2h8v4h10v-2h10v2h8v2z'/>`)),
+  pines: (c) => svgUrl(svg(84, 24,
+    `<path fill='${c}' d='M0 24v-3h84v3z` +
+    ` M8 21v-3H5v-4h3v-4h2v-3h2v3h2v4h3v4h-3v3z` +
+    ` M30 21v-2h-2v-4h2v-3h2v-3h2v3h2v3h2v4h-2v2z` +
+    ` M52 21v-3h-3v-4h3v-4h2v-4h2v4h2v4h3v4h-3v3z` +
+    ` M74 21v-2h-2v-3h2v-3h2v3h2v3h-2v2z'/>`)),
+}
+
+// ── weather tiles (pixel SVG, tiled + scrolled; drops stay inside bounds) ──
+
+function rainTile(c, density) {
+  if (density >= 3) return { w: 14, h: 20, url: svgUrl(svg(14, 20,
+    `<g fill='${c}' opacity='.6'>` +
+    `<rect x='2' y='1' width='1' height='5' transform='rotate(12 2.5 3.5)'/>` +
+    `<rect x='8' y='7' width='1' height='4' transform='rotate(12 8.5 9)'/>` +
+    `<rect x='5' y='13' width='1' height='5' transform='rotate(12 5.5 15.5)'/>` +
+    `<rect x='11' y='3' width='1' height='4' transform='rotate(12 11.5 5)'/></g>`)) }
+  if (density === 2) return { w: 16, h: 24, url: svgUrl(svg(16, 24,
+    `<g fill='${c}' opacity='.6'>` +
+    `<rect x='3' y='2' width='1' height='6' transform='rotate(12 3.5 5)'/>` +
+    `<rect x='10' y='12' width='1' height='5' transform='rotate(12 10.5 14.5)'/></g>`)) }
+  return { w: 20, h: 28, url: svgUrl(svg(20, 28,
+    `<g fill='${c}' opacity='.55'>` +
+    `<rect x='4' y='3' width='1' height='6' transform='rotate(12 4.5 6)'/>` +
+    `<rect x='13' y='16' width='1' height='4' transform='rotate(12 13.5 18)'/></g>`)) }
+}
+
+function snowTile(c, density) {
+  if (density >= 3) return { w: 14, h: 18, url: svgUrl(svg(14, 18,
+    `<g fill='${c}'><circle cx='3' cy='3' r='1' opacity='.9'/>` +
+    `<circle cx='10' cy='8' r='.7' opacity='.6'/>` +
+    `<circle cx='6' cy='13' r='1' opacity='.8'/>` +
+    `<circle cx='12' cy='15' r='.6' opacity='.5'/></g>`)) }
+  if (density === 2) return { w: 18, h: 22, url: svgUrl(svg(18, 22,
+    `<g fill='${c}'><circle cx='4' cy='5' r='1' opacity='.9'/>` +
+    `<circle cx='12' cy='14' r='.7' opacity='.6'/>` +
+    `<circle cx='8' cy='19' r='.6' opacity='.5'/></g>`)) }
+  return { w: 24, h: 28, url: svgUrl(svg(24, 28,
+    `<g fill='${c}'><circle cx='6' cy='6' r='1' opacity='.85'/>` +
+    `<circle cx='16' cy='18' r='.7' opacity='.55'/></g>`)) }
+}
+
+function emberTile(c1, c2, density) {
+  if (density >= 3) return { w: 14, h: 20, url: svgUrl(svg(14, 20,
+    `<g><rect x='3' y='15' width='1' height='2' fill='${c1}' opacity='.9'/>` +
+    `<rect x='9' y='9' width='1' height='1' fill='${c2}' opacity='.8'/>` +
+    `<rect x='6' y='4' width='1' height='1' fill='${c1}' opacity='.5'/>` +
+    `<rect x='12' y='17' width='1' height='1' fill='${c2}' opacity='.7'/></g>`)) }
+  if (density === 2) return { w: 16, h: 24, url: svgUrl(svg(16, 24,
+    `<g><rect x='4' y='18' width='1' height='2' fill='${c1}' opacity='.9'/>` +
+    `<rect x='11' y='8' width='1' height='1' fill='${c2}' opacity='.7'/></g>`)) }
+  return { w: 20, h: 28, url: svgUrl(svg(20, 28,
+    `<g><rect x='5' y='21' width='1' height='2' fill='${c1}' opacity='.85'/>` +
+    `<rect x='14' y='9' width='1' height='1' fill='${c2}' opacity='.6'/></g>`)) }
+}
+
+function glyphTile(c, density) {
+  const col = (x, ys, head) =>
+    ys.map(([y, h]) => `<rect x='${x}' y='${y}' width='1' height='${h}' fill='${c}' opacity='.28'/>`).join('') +
+    `<rect x='${x}' y='${head}' width='1' height='4' fill='${c}' opacity='.95'/>`
+  if (density >= 3) return { w: 12, h: 22, url: svgUrl(svg(12, 22,
+    col(2, [[1, 3], [6, 2], [10, 3]], 15) + col(8, [[3, 2], [8, 3], [13, 2]], 17))) }
+  if (density === 2) return { w: 14, h: 22, url: svgUrl(svg(14, 22,
+    col(3, [[1, 3], [6, 2], [10, 3]], 15) + col(10, [[4, 2], [9, 3]], 16))) }
+  return { w: 18, h: 24, url: svgUrl(svg(18, 24, col(5, [[2, 3], [8, 2], [13, 3]], 18))) }
+}
+
+// ── backdrop catalog ────────────────────────────────────────────────────────
+//
+// Each build() returns { decls, keyframes } for the ::before pseudo.
+// `decls` carries background layers + sizes + the RESTING positions (the
+// hero frame); keyframes animate background-position lists only, so
+// opts.static = simply omitting the animation. Backgrounds never escape the
+// pseudo's box — no clipping needed, no overflow, no layout impact.
+// Every plate is deliberately mid-to-dark so the shared dark text rim
+// (see buildSceneCss) guarantees legibility on all of them.
+
+const BACKDROPS = {
+  dawn: {
+    label: 'desert dawn', luminance: false, basePeriod: 16,
+    variants: [
+      { name: 'ember', sky: 'linear-gradient(0deg,#ff8700 0%,#b34700 22%,#6e3a52 55%,#3a2f55 82%,#23233f 100%)', haze: '#ffd7af', bloom: '#ffaf5f', sil: '#140a02' },
+      { name: 'rose', sky: 'linear-gradient(0deg,#ff5f87 0%,#a03562 26%,#5f2d55 60%,#2e2345 100%)', haze: '#ffc7d7', bloom: '#ff87af', sil: '#170812' },
+      { name: 'gold', sky: 'linear-gradient(0deg,#ffd700 0%,#af7800 24%,#5f4a3a 58%,#39304a 100%)', haze: '#fff3b0', bloom: '#ffe75f', sil: '#141002' },
+    ],
+    build(v, animName) {
+      const layers =
+        `${SIL.dunes(v.sil)} repeat-x 0 100%/auto 42%,` +
+        `linear-gradient(90deg,transparent 0%,${v.haze}38 35%,${v.haze}55 50%,${v.haze}38 65%,transparent 100%) no-repeat 50% 78%/220% 58%,` +
+        `radial-gradient(90% 90% at 50% 108%,${v.bloom}66 0%,${v.bloom}22 40%,transparent 70%) no-repeat 0 0/100% 100%,` +
+        `${v.sky} no-repeat 0 0/100% 100%`
+      const kf = `@keyframes ${animName}{from{background-position:0 100%,200% 78%,0 0,0 0;}to{background-position:0 100%,-100% 78%,0 0,0 0;}}`
+      return { decls: `background:${layers};`, keyframes: kf }
+    },
+  },
+
+  graveyard: {
+    label: 'graveyard', luminance: false, basePeriod: 22,
+    variants: [
+      { name: 'ash', sky: 'linear-gradient(0deg,#26262a 0%,#3a3a42 45%,#2e2e36 75%,#222228 100%)', sil: '#08080a' },
+      { name: 'blood', sky: 'linear-gradient(0deg,#2a1f22 0%,#4a2f33 45%,#38262c 75%,#241d20 100%)', sil: '#0a0608' },
+      { name: 'moonlit', sky: 'linear-gradient(0deg,#1c2230 0%,#2e3a52 45%,#26304a 75%,#1a2030 100%)', sil: '#060810' },
+    ],
+    build(v, animName) {
+      const layers =
+        `${SIL.graveyard(v.sil)} repeat-x 0 100%/auto 52%,` +
+        `radial-gradient(50% 80% at 30% 20%,#ffffff0a 0%,transparent 60%) no-repeat 20% 0/180% 100%,` +
+        `radial-gradient(60% 90% at 70% 15%,#00000038 0%,transparent 65%) no-repeat 80% 0/200% 100%,` +
+        `${v.sky} no-repeat 0 0/100% 100%`
+      const kf = `@keyframes ${animName}{from{background-position:0 100%,-80% 0,180% 0,0 0;}to{background-position:0 100%,180% 0,-100% 0,0 0;}}`
+      return { decls: `background:${layers};`, keyframes: kf }
+    },
+  },
+
+  abyss: {
+    label: 'abyss', luminance: false, basePeriod: 18,
+    variants: [
+      { name: 'blue', sky: 'linear-gradient(180deg,#00344e 0%,#001d2e 45%,#000a12 100%)', ray: '#00d7ff', sil: '#010508' },
+      { name: 'teal', sky: 'linear-gradient(180deg,#00443b 0%,#00251f 45%,#000d0a 100%)', ray: '#00ffd7', sil: '#010806' },
+      { name: 'void', sky: 'linear-gradient(180deg,#1e0f38 0%,#100822 45%,#05030e 100%)', ray: '#875fff', sil: '#040208' },
+    ],
+    build(v, animName) {
+      const layers =
+        `${SIL.reef(v.sil)} repeat-x 0 100%/auto 26%,` +
+        `linear-gradient(104deg,transparent 30%,${v.ray}14 42%,transparent 50%,${v.ray}0e 62%,transparent 72%) no-repeat 50% 0/260% 100%,` +
+        `radial-gradient(80% 60% at 50% -10%,${v.ray}20 0%,transparent 60%) no-repeat 0 0/100% 100%,` +
+        `${v.sky} no-repeat 0 0/100% 100%`
+      const kf = `@keyframes ${animName}{from{background-position:0 100%,-90% 0,0 0,0 0;}to{background-position:0 100%,190% 0,0 0,0 0;}}`
+      return { decls: `background:${layers};`, keyframes: kf }
+    },
+  },
+
+  nightfall: {
+    label: 'nightfall', luminance: false, basePeriod: 20,
+    variants: [
+      { name: 'aurora', sky: 'linear-gradient(0deg,#0a0a16 0%,#12122a 55%,#0a0a18 100%)', a1: '#00ff87', a2: '#00d7ff', sil: '#04040a' },
+      { name: 'magenta', sky: 'linear-gradient(0deg,#120a16 0%,#1c122a 55%,#100a18 100%)', a1: '#ff40af', a2: '#875fff', sil: '#08040a' },
+      { name: 'ice', sky: 'linear-gradient(0deg,#0a0e16 0%,#101a2a 55%,#0a0e18 100%)', a1: '#87d7ff', a2: '#d7ffff', sil: '#04060c' },
+    ],
+    build(v, animName) {
+      const layers =
+        `${SIL.pines(v.sil)} repeat-x 0 100%/auto 46%,` +
+        `linear-gradient(100deg,transparent 15%,${v.a1}30 35%,${v.a2}2e 50%,${v.a1}24 62%,transparent 82%) no-repeat 50% 0/240% 90%,` +
+        `radial-gradient(circle,#ffffffcc 0 .5px,transparent 1px) 0 0/17px 13px,` +
+        `radial-gradient(circle,#ffffff66 0 .5px,transparent 1px) 5px 7px/23px 19px,` +
+        `${v.sky} no-repeat 0 0/100% 100%`
+      const kf = `@keyframes ${animName}{from{background-position:0 100%,-90% 0,0 0,5px 7px,0 0;}to{background-position:0 100%,190% 0,0 0,5px 7px,0 0;}}`
+      return { decls: `background:${layers};`, keyframes: kf }
+    },
+  },
+
+  terminal: {
+    label: 'terminal', luminance: false, basePeriod: 9,
+    variants: [
+      { name: 'phosphor', ph: '#00ff5f', plate: 'linear-gradient(#0c0c0c,#060606)' },
+      { name: 'amber', ph: '#ffb000', plate: 'linear-gradient(#0e0a04,#070502)' },
+      { name: 'paper', ph: '#c0c0c0', plate: 'linear-gradient(#101010,#0a0a0a)' },
+    ],
+    build(v, animName) {
+      const layers =
+        `linear-gradient(0deg,transparent 38%,${v.ph}16 50%,transparent 62%) no-repeat 0 0/100% 300%,` +
+        `repeating-linear-gradient(0deg,${v.ph}0d 0 1px,transparent 1px 3px) 0 0/100% auto,` +
+        `${v.plate} no-repeat 0 0/100% 100%`
+      const kf = `@keyframes ${animName}{from{background-position:0 0,0 0,0 0;}to{background-position:0 100%,0 0,0 0;}}`
+      return { decls: `background:${layers};`, keyframes: kf }
+    },
+  },
+
+  furnace: {
+    label: 'furnace', luminance: true, basePeriod: 5,
+    variants: [
+      { name: 'coal', glow: '#ff3700', plate: 'linear-gradient(0deg,#1c0300 0%,#0d0202 55%,#050505 100%)' },
+      { name: 'ion', glow: '#00afff', plate: 'linear-gradient(0deg,#001030 0%,#020818 55%,#040404 100%)' },
+      { name: 'hex', glow: '#af5fff', plate: 'linear-gradient(0deg,#14001c 0%,#0a0212 55%,#050505 100%)' },
+    ],
+    build(v, animName, hash) {
+      // Registered <color> custom prop so the underglow's alpha itself
+      // interpolates (background-position can't express a breathe). The var
+      // is hash-namespaced like conic's angle prop — no cross-user collision.
+      const cv = `--hsb-${hash}`
+      const layers =
+        `radial-gradient(120% 90% at 50% 115%,var(${cv}) 0%,transparent 65%) no-repeat 0 0/100% 100%,` +
+        `${v.plate} no-repeat 0 0/100% 100%`
+      const kf = `@property ${cv}{syntax:"<color>";initial-value:${v.glow}66;inherits:false;}` +
+        `@keyframes ${animName}{from{${cv}:${v.glow}55;}to{${cv}:${v.glow}a8;}}`
+      return { decls: `background:${layers};`, keyframes: kf, alternate: true }
+    },
+  },
+}
+
+// ── weather catalog ─────────────────────────────────────────────────────────
+//
+// Each build() returns { decls, keyframes, extraAnim? } for the ::after
+// pseudo. Falling/rising weathers are two copies of one pixel tile at 1x and
+// 1.4x, advancing exactly one own-tile-height per loop — different distances
+// in the same duration = parallax, seamless by construction. Sway returns to
+// x=0 at 100% so the loop never jumps.
+
+const WEATHERS = {
+  rain: {
+    label: 'rain', luminance: false, basePeriod: 0.9,
+    variants: [
+      { name: 'silver', c: '#9db4c9' },
+      { name: 'blood', c: '#d70000' },
+      { name: 'acid', c: '#87ff00' },
+    ],
+    build(v, density, animName) {
+      const t = rainTile(v.c, density)
+      const decls = `background:${t.url} 0 0/${t.w}px ${t.h}px,${t.url} 0 0/${Math.round(t.w * 1.4)}px ${Math.round(t.h * 1.4)}px;`
+      const kf = `@keyframes ${animName}{from{background-position:0 0,0 0;}to{background-position:0 ${t.h}px,0 ${Math.round(t.h * 1.4)}px;}}`
+      return { decls, keyframes: kf }
+    },
+  },
+
+  snow: {
+    label: 'snow', luminance: false, basePeriod: 4.5,
+    variants: [
+      { name: 'white', c: '#ffffff' },
+      { name: 'ash', c: '#9e9e9e' },
+      { name: 'gold', c: '#ffd75f' },
+    ],
+    build(v, density, animName) {
+      const t = snowTile(v.c, density)
+      const h2 = Math.round(t.h * 1.4)
+      const decls = `background:${t.url} 0 0/${t.w}px ${t.h}px,${t.url} 0 0/${Math.round(t.w * 1.4)}px ${h2}px;`
+      const kf = `@keyframes ${animName}{0%{background-position:0 0,0 0;}50%{background-position:2px ${Math.round(t.h / 2)}px,-3px ${Math.round(h2 / 2)}px;}100%{background-position:0 ${t.h}px,0 ${h2}px;}}`
+      return { decls, keyframes: kf }
+    },
+  },
+
+  fog: {
+    // behindText: fog is an ambient volume, not particles — in front it
+    // washes the name out on bright plates (dawn). Painted between the
+    // plate and the text instead: ::after with z-index:-1 still paints
+    // above ::before (tree order breaks the tie inside the negative band).
+    label: 'fog', luminance: false, basePeriod: 16, behindText: true,
+    variants: [
+      { name: 'sunglow', c: '#ffd7af' },
+      { name: 'mist', c: '#c0c8d0' },
+      { name: 'miasma', c: '#87ff5f' },
+    ],
+    build(v, density, animName) {
+      const a = density >= 3 ? ['4d', '30'] : density === 2 ? ['38', '24'] : ['26', '18']
+      const decls =
+        `background:radial-gradient(55% 130% at 50% 60%,${v.c}${a[0]} 0%,${v.c}${a[1]} 45%,transparent 72%) no-repeat 30% 40%/160% 100%,` +
+        `radial-gradient(65% 150% at 50% 40%,${v.c}${a[1]} 0%,transparent 70%) no-repeat 70% 70%/200% 100%;`
+      const kf = `@keyframes ${animName}{from{background-position:-60% 40%,160% 70%;}to{background-position:160% 40%,-60% 70%;}}`
+      return { decls, keyframes: kf, alternate: true }
+    },
+  },
+
+  embers: {
+    label: 'embers', luminance: false, basePeriod: 3.2,
+    variants: [
+      { name: 'fire', c1: '#ff8700', c2: '#ffd700' },
+      { name: 'ion', c1: '#00d7ff', c2: '#87ffff' },
+      { name: 'rose', c1: '#ff40af', c2: '#ff87d7' },
+    ],
+    build(v, density, animName) {
+      const t = emberTile(v.c1, v.c2, density)
+      const h2 = Math.round(t.h * 1.4)
+      const decls = `background:${t.url} 0 0/${t.w}px ${t.h}px,${t.url} 0 0/${Math.round(t.w * 1.4)}px ${h2}px;`
+      const kf = `@keyframes ${animName}{0%{background-position:0 0,0 0;}50%{background-position:2px -${Math.round(t.h / 2)}px,-2px -${Math.round(h2 / 2)}px;}100%{background-position:0 -${t.h}px,0 -${h2}px;}}`
+      return { decls, keyframes: kf }
+    },
+  },
+
+  glyphs: {
+    label: 'glyph rain', luminance: false, basePeriod: 2.6,
+    variants: [
+      { name: 'green', c: '#00ff87' },
+      { name: 'amber', c: '#ffb000' },
+      { name: 'cyan', c: '#00e5ff' },
+    ],
+    build(v, density, animName) {
+      const t = glyphTile(v.c, density)
+      const h2 = Math.round(t.h * 1.5)
+      const decls = `background:${t.url} 0 0/${t.w}px ${t.h}px,${t.url} 7px 0/${Math.round(t.w * 1.5)}px ${h2}px;`
+      const kf = `@keyframes ${animName}{from{background-position:0 0,7px 0;}to{background-position:0 ${t.h}px,7px ${h2}px;}}`
+      return { decls, keyframes: kf }
+    },
+  },
+
+  storm: {
+    label: 'storm', luminance: true, basePeriod: 7,
+    variants: [
+      { name: 'silver', c: '#9db4c9' },
+      { name: 'blood', c: '#d70000' },
+      { name: 'acid', c: '#87ff00' },
+    ],
+    build(v, density, animName, hash, speed) {
+      // Rain layers + a lightning wash carried by a registered <color> var —
+      // a separate animation on a separate property, so it comma-lists next
+      // to the rain's background-position loop without clobbering it. Two
+      // pops inside a ~120ms window every cycle: far under the 3-flash/s
+      // WCAG line even at max speed (period floor is basePeriod/MAX_SPEED,
+      // luminance-clamped in buildSceneCss).
+      const t = rainTile(v.c, density)
+      const cv = `--hsw-${hash}`
+      const rainPeriod = periodSeconds(WEATHERS.rain.basePeriod, speed, false)
+      const rainName = `${animName}r`
+      const decls =
+        `background:linear-gradient(var(${cv}),var(${cv})) no-repeat 0 0/100% 100%,` +
+        `${t.url} 0 0/${t.w}px ${t.h}px,${t.url} 0 0/${Math.round(t.w * 1.4)}px ${Math.round(t.h * 1.4)}px;`
+      const kf =
+        `@property ${cv}{syntax:"<color>";initial-value:#e8f4ff00;inherits:false;}` +
+        `@keyframes ${animName}{0%,82%,100%{${cv}:#e8f4ff00;}84%{${cv}:#e8f4ff4d;}86%{${cv}:#e8f4ff10;}88.5%{${cv}:#e8f4ff38;}91%{${cv}:#e8f4ff00;}}` +
+        `@keyframes ${rainName}{from{background-position:0 0,0 0,0 0;}to{background-position:0 0,0 ${t.h}px,0 ${Math.round(t.h * 1.4)}px;}}`
+      return { decls, keyframes: kf, extraAnim: { name: rainName, period: rainPeriod, timing: 'linear' } }
+    },
+  },
+}
+
+const BACKDROP_IDS = new Set(Object.keys(BACKDROPS))
+const WEATHER_IDS = new Set(Object.keys(WEATHERS))
+
+// ── validation (called from validatePaintSpec — pushes into its errors) ────
+
+function validateSceneSpec(scene, errors) {
+  if (!isPlainObject(scene)) {
+    errors.push('scene must be null or an object')
+    return
+  }
+  const backdrop = scene.backdrop ?? null
+  const weather = scene.weather ?? null
+  if (backdrop === null && weather === null) {
+    errors.push('scene must include a backdrop or weather (or be null)')
+    return
+  }
+  if (weather !== null && backdrop === null) {
+    // A particle layer over the bare row background has no contrast ground —
+    // the plate IS what guarantees the composition reads on any theme.
+    errors.push('scene.weather requires a scene.backdrop')
+  }
+  if (backdrop !== null) {
+    if (!isPlainObject(backdrop) || !BACKDROP_IDS.has(backdrop.id)) {
+      errors.push(`scene.backdrop.id unknown: ${JSON.stringify(backdrop?.id)}`)
+    } else {
+      if (!isIntInRange(backdrop.variant ?? 0, 0, BACKDROPS[backdrop.id].variants.length - 1)) {
+        errors.push('scene.backdrop.variant out of range')
+      }
+      if (backdrop.speed !== undefined && !isNumInRange(backdrop.speed, MIN_SPEED, MAX_SPEED)) {
+        errors.push(`scene.backdrop.speed must be a number ${MIN_SPEED}-${MAX_SPEED}`)
+      }
+    }
+  }
+  if (weather !== null) {
+    if (!isPlainObject(weather) || !WEATHER_IDS.has(weather.id)) {
+      errors.push(`scene.weather.id unknown: ${JSON.stringify(weather?.id)}`)
+    } else {
+      if (!isIntInRange(weather.variant ?? 0, 0, WEATHERS[weather.id].variants.length - 1)) {
+        errors.push('scene.weather.variant out of range')
+      }
+      if (weather.density !== undefined && !DENSITIES.has(weather.density)) {
+        errors.push('scene.weather.density must be 1, 2 or 3')
+      }
+      if (weather.speed !== undefined && !isNumInRange(weather.speed, MIN_SPEED, MAX_SPEED)) {
+        errors.push(`scene.weather.speed must be a number ${MIN_SPEED}-${MAX_SPEED}`)
+      }
+    }
+  }
+}
+
+/** Deterministic scene block for hashPaintSpec's normalized form. */
+function normalizeSceneForHash(scene) {
+  if (!isPlainObject(scene)) return null
+  return {
+    backdrop: isPlainObject(scene.backdrop)
+      ? { id: scene.backdrop.id, variant: scene.backdrop.variant ?? 0, speed: scene.backdrop.speed ?? 1 }
+      : null,
+    weather: isPlainObject(scene.weather)
+      ? { id: scene.weather.id, variant: scene.weather.variant ?? 0, density: scene.weather.density ?? 2, speed: scene.weather.speed ?? 1 }
+      : null,
+  }
+}
+
+// ── compiler ────────────────────────────────────────────────────────────────
+
+/**
+ * Compile a scene block to CSS scoped under `selector`. Same defense-in-depth
+ * contract as compilePaintCss: assumes validation passed, but unknown ids are
+ * silently skipped and every number re-clamped — an unvalidated spec cannot
+ * inject anything (no user string ever reaches the output; colors/tiles come
+ * exclusively from the catalog).
+ * @param {object} scene
+ * @param {string} selector
+ * @param {string} hash - hashPaintSpec(spec) of the OWNING spec
+ * @param {{ static?: boolean }} [opts] - static drops all animation; the
+ *   resting positions are each scene's designed hero frame.
+ * @returns {string} css
+ */
+function buildSceneCss(scene, selector, hash, opts = {}) {
+  if (!isPlainObject(scene) || typeof selector !== 'string' || !selector) return ''
+  const backdrop = isPlainObject(scene.backdrop) && BACKDROP_IDS.has(scene.backdrop.id) ? scene.backdrop : null
+  const weather = isPlainObject(scene.weather) && WEATHER_IDS.has(scene.weather.id) ? scene.weather : null
+  if (!backdrop && !weather) return ''
+
+  // The plate needs the element to anchor absolutely-positioned pseudos and
+  // to fence ::before's z-index:-1 inside its own stacking context (so the
+  // backdrop can sit behind the text but never behind the chat row).
+  let css = `${selector}{position:relative;isolation:isolate;}`
+
+  if (backdrop) {
+    const meta = BACKDROPS[backdrop.id]
+    const variant = meta.variants[isIntInRange(backdrop.variant ?? 0, 0, meta.variants.length - 1) ? (backdrop.variant ?? 0) : 0]
+    const animName = `hss_${hash}_b`
+    const built = meta.build(variant, animName, hash)
+    css += `${selector}::before{${PSEUDO_BASE}z-index:-1;${built.decls}`
+    if (!opts.static) {
+      const period = periodSeconds(meta.basePeriod, backdrop.speed ?? 1, meta.luminance)
+      const dir = built.alternate ? ' alternate' : ''
+      css += `animation:${animName} ${period}s ${built.alternate ? 'ease-in-out' : 'linear'} infinite${dir};`
+      css += `animation-delay:${syncDelayCalc(built.alternate ? period * 2 : period)};`
+    }
+    css += '}'
+    if (!opts.static) css += built.keyframes
+  }
+
+  if (weather) {
+    const meta = WEATHERS[weather.id]
+    const variant = meta.variants[isIntInRange(weather.variant ?? 0, 0, meta.variants.length - 1) ? (weather.variant ?? 0) : 0]
+    const density = DENSITIES.has(weather.density) ? weather.density : 2
+    const speed = safeSpeed(weather.speed ?? 1)
+    const animName = `hss_${hash}_w`
+    const built = meta.build(variant, density, animName, hash, speed)
+    css += `${selector}::after{${PSEUDO_BASE}z-index:${meta.behindText ? -1 : 1};${built.decls}`
+    if (!opts.static) {
+      const period = periodSeconds(meta.basePeriod, speed, meta.luminance)
+      const dir = built.alternate ? ' alternate' : ''
+      const anims = [`${animName} ${period}s ${built.alternate ? 'ease-in-out' : 'linear'} infinite${dir}`]
+      const delays = [syncDelayCalc(built.alternate ? period * 2 : period)]
+      if (built.extraAnim) {
+        anims.push(`${built.extraAnim.name} ${built.extraAnim.period}s ${built.extraAnim.timing} infinite`)
+        delays.push(syncDelayCalc(built.extraAnim.period))
+      }
+      css += `animation:${anims.join(',')};animation-delay:${delays.join(',')};`
+    }
+    css += '}'
+    if (!opts.static) css += built.keyframes
+  }
+
+  return css
+}
+
+/** True if this scene block should add the legibility rim (the caller skips
+ * it when the user's own glow/neon already halos the text). */
+function sceneHasBackdrop(scene) {
+  return isPlainObject(scene) && isPlainObject(scene.backdrop) && BACKDROP_IDS.has(scene.backdrop.id)
+}
+
+/** Dark text rim — uniform across all plates (every backdrop is designed
+ * mid-to-dark specifically so ONE rim rule guarantees legibility). */
+const SCENE_RIM_CSS = 'text-shadow:0 1px 1px #000d,0 0 2px #000a;'
+
+// ── builder-UI metadata (labels + variant names only — no CSS leaks out) ───
+
+const SCENE_BACKDROPS_META = Object.fromEntries(
+  Object.entries(BACKDROPS).map(([id, m]) => [id, { label: m.label, variants: m.variants.map(v => v.name) }]))
+
+const SCENE_WEATHERS_META = Object.fromEntries(
+  Object.entries(WEATHERS).map(([id, m]) => [id, { label: m.label, variants: m.variants.map(v => v.name) }]))
+
+
+
 // --- lib/paint-spec.js ---
 /**
  * Paint spec — structured JSON schema + compiler for animated username paints.
@@ -5227,21 +5845,26 @@ function _signatureMatch(a, b) {
  * effect off reverts to the user's base).
  */
 
+
+
 // ── enums ──────────────────────────────────────────────────────────────────
 
 const BASE_TYPES = new Set(['solid', 'linear', 'conic'])
-const HEX_RE = /^#[0-9a-fA-F]{6}$/
 const GLOW_STRENGTHS = new Set([1, 2])
 
-const MIN_SPEED = 0.25
-const MAX_SPEED = 3
 const MAX_EFFECTS = 3
 const MIN_STOPS = 1
 const MAX_STOPS = 8
-// WCAG 2.3.1 flashing-content guard, stricter than the 3Hz threshold: any
-// effect that changes luminance must have a real-world animation period of
-// at least 1s AFTER the user's speed multiplier is applied.
-const MIN_LUMINANCE_PERIOD_S = 1
+
+// ── plus tier caps (single source — server save gate + builder UI) ────────
+// Free = a single solid color (base.type 'solid', no glow, ZERO effect
+// layers); plus = gradients + glow + up to MAX_EFFECTS animated layers.
+// Gradient paints are a paid perk elsewhere (7tv sells them) — heatsync
+// competes paid-vs-paid, never free-trumps. Rendering is never gated
+// anywhere — these caps only apply to SAVING.
+const FREE_MAX_EFFECTS = 0
+const PLUS_MAX_EFFECTS = MAX_EFFECTS
+// (WCAG luminance-period guard lives in paint-core.js — MIN_LUMINANCE_PERIOD_S.)
 
 /**
  * Effect metadata table — the single source of truth for slot assignment,
@@ -5256,132 +5879,32 @@ const MIN_LUMINANCE_PERIOD_S = 1
  */
 const EFFECTS = {
   // ── paint slot — mutually exclusive, at most 1 ──────────────────────────
-  pan: { slot: 'paint', luminance: false, basePeriod: 5, letterSplit: false, label: 'gradient pan' },
-  conic: { slot: 'paint', luminance: false, basePeriod: 6, letterSplit: false, label: 'conic sweep' },
-  hue: { slot: 'paint', luminance: true, basePeriod: 8, letterSplit: false, label: 'hue cycle' },
-  glint: { slot: 'paint', luminance: false, basePeriod: 3.4, letterSplit: false, label: 'shimmer glint' },
+  pan:    { slot: 'paint', luminance: false, basePeriod: 5,   letterSplit: false, label: 'gradient pan' },
+  conic:  { slot: 'paint', luminance: false, basePeriod: 6,   letterSplit: false, label: 'conic sweep' },
+  hue:    { slot: 'paint', luminance: true,  basePeriod: 8,   letterSplit: false, label: 'hue cycle' },
+  glint:  { slot: 'paint', luminance: false, basePeriod: 3.4, letterSplit: false, label: 'shimmer glint' },
   chrome: { slot: 'paint', luminance: false, basePeriod: 4.5, letterSplit: false, label: 'liquid chrome' },
-  gold: { slot: 'paint', luminance: false, basePeriod: 5, letterSplit: false, label: 'gold foil' },
-  fire: { slot: 'paint', luminance: false, basePeriod: 1.8, letterSplit: false, label: 'fire' },
+  gold:   { slot: 'paint', luminance: false, basePeriod: 5,   letterSplit: false, label: 'gold foil' },
+  fire:   { slot: 'paint', luminance: false, basePeriod: 1.8, letterSplit: false, label: 'fire' },
   matrix: { slot: 'paint', luminance: false, basePeriod: 3.2, letterSplit: false, label: 'matrix rain' },
-  holo: { slot: 'paint', luminance: false, basePeriod: 2.8, letterSplit: false, label: 'hologram' },
-  reveal: { slot: 'paint', luminance: false, basePeriod: 3, letterSplit: false, label: 'mask reveal' },
+  holo:   { slot: 'paint', luminance: false, basePeriod: 2.8, letterSplit: false, label: 'hologram' },
+  reveal: { slot: 'paint', luminance: false, basePeriod: 3,   letterSplit: false, label: 'mask reveal' },
 
   // ── motion/glow slot — up to 2, distinct sig required ───────────────────
-  wave: {
-    slot: 'motion',
-    luminance: false,
-    basePeriod: 1.6,
-    letterSplit: true,
-    label: 'letter wave',
-    sig: 'letter:transform',
-  },
-  ripple: {
-    slot: 'motion',
-    luminance: true,
-    basePeriod: 2.4,
-    letterSplit: true,
-    label: 'rainbow ripple',
-    sig: 'letter:filter',
-  },
-  coin: {
-    slot: 'motion',
-    luminance: false,
-    basePeriod: 5,
-    letterSplit: false,
-    label: 'coin spin',
-    sig: 'self:transform',
-  },
-  heli: {
-    slot: 'motion',
-    luminance: false,
-    basePeriod: 2.2,
-    letterSplit: false,
-    label: 'helicopter',
-    sig: 'self:transform',
-  },
-  float: {
-    slot: 'motion',
-    luminance: false,
-    basePeriod: 5.5,
-    letterSplit: false,
-    label: 'zero-g float',
-    sig: 'self:transform',
-  },
-  heart: {
-    slot: 'motion',
-    luminance: false,
-    basePeriod: 1.3,
-    letterSplit: false,
-    label: 'heartbeat',
-    sig: 'self:transform',
-  },
-  wobble: {
-    slot: 'motion',
-    luminance: false,
-    basePeriod: 2.8,
-    letterSplit: false,
-    label: 'wobble stretch',
-    sig: 'self:transform',
-  },
-  swing: {
-    slot: 'motion',
-    luminance: false,
-    basePeriod: 2.6,
-    letterSplit: false,
-    label: 'pendulum',
-    sig: 'self:transform',
-  },
-  tumble: {
-    slot: 'motion',
-    luminance: false,
-    basePeriod: 3.4,
-    letterSplit: true,
-    label: 'letter tumble',
-    sig: 'letter:transform',
-  },
-  neon: {
-    slot: 'motion',
-    luminance: true,
-    basePeriod: 2.6,
-    letterSplit: false,
-    label: 'neon breathe',
-    sig: 'self:shadow',
-  },
+  wave:   { slot: 'motion', luminance: false, basePeriod: 1.6, letterSplit: true,  label: 'letter wave',   sig: 'letter:transform' },
+  ripple: { slot: 'motion', luminance: true,  basePeriod: 2.4, letterSplit: true,  label: 'rainbow ripple', sig: 'letter:filter' },
+  coin:   { slot: 'motion', luminance: false, basePeriod: 5,   letterSplit: false, label: 'coin spin',     sig: 'self:transform' },
+  heli:   { slot: 'motion', luminance: false, basePeriod: 2.2, letterSplit: false, label: 'helicopter',    sig: 'self:transform' },
+  float:  { slot: 'motion', luminance: false, basePeriod: 5.5, letterSplit: false, label: 'zero-g float',  sig: 'self:transform' },
+  heart:  { slot: 'motion', luminance: false, basePeriod: 1.3, letterSplit: false, label: 'heartbeat',     sig: 'self:transform' },
+  wobble: { slot: 'motion', luminance: false, basePeriod: 2.8, letterSplit: false, label: 'wobble stretch', sig: 'self:transform' },
+  swing:  { slot: 'motion', luminance: false, basePeriod: 2.6, letterSplit: false, label: 'pendulum',      sig: 'self:transform' },
+  tumble: { slot: 'motion', luminance: false, basePeriod: 3.4, letterSplit: true,  label: 'letter tumble', sig: 'letter:transform' },
+  neon:   { slot: 'motion', luminance: true,  basePeriod: 2.6, letterSplit: false, label: 'neon breathe',  sig: 'self:shadow' },
 }
 
 const EFFECT_IDS = new Set(Object.keys(EFFECTS))
-const LETTER_SPLIT_IDS = new Set(
-  Object.entries(EFFECTS)
-    .filter(([, m]) => m.letterSplit)
-    .map(([id]) => id),
-)
-
-// ── small pure helpers ───────────────────────────────────────────────────
-
-function isPlainObject(v) {
-  return v !== null && typeof v === 'object' && !Array.isArray(v)
-}
-
-function isIntInRange(v, min, max) {
-  return typeof v === 'number' && Number.isFinite(v) && Number.isInteger(v) && v >= min && v <= max
-}
-
-function isNumInRange(v, min, max) {
-  return typeof v === 'number' && Number.isFinite(v) && v >= min && v <= max
-}
-
-/** FNV-1a 32-bit hash, base36-encoded. Sync + dependency-free — stable
- * across processes/platforms, adequate for cosmetic CSS class/keyframe
- * naming (collisions are a visual dedup nit, not a security concern). */
-function fnv1a(str) {
-  let h = 0x811c9dc5
-  for (let i = 0; i < str.length; i++) {
-    h ^= str.charCodeAt(i)
-    h = Math.imul(h, 0x01000193)
-  }
-  return (h >>> 0).toString(36)
-}
+const LETTER_SPLIT_IDS = new Set(Object.entries(EFFECTS).filter(([, m]) => m.letterSplit).map(([id]) => id))
 
 /** Stable short hash of a spec — same spec (same key order irrelevant,
  * we JSON.stringify a normalized/sorted form) → same hash. */
@@ -5396,10 +5919,11 @@ function normalizeForHash(spec) {
     base: spec?.base && {
       type: spec.base.type,
       angle: spec.base.angle,
-      stops: Array.isArray(spec.base.stops) ? spec.base.stops.map((s) => ({ color: s?.color, pos: s?.pos })) : [],
+      stops: Array.isArray(spec.base.stops) ? spec.base.stops.map(s => ({ color: s?.color, pos: s?.pos })) : [],
     },
-    effects: Array.isArray(spec?.effects) ? spec.effects.map((e) => ({ id: e?.id, speed: e?.speed })) : [],
+    effects: Array.isArray(spec?.effects) ? spec.effects.map(e => ({ id: e?.id, speed: e?.speed })) : [],
     glow: spec?.glow ? { color: spec.glow.color, strength: spec.glow.strength } : null,
+    scene: normalizeSceneForHash(spec?.scene),
   }
 }
 
@@ -5408,16 +5932,31 @@ function normalizeForHash(spec) {
 /**
  * Validate a paint spec against v1 schema + safety rules.
  * @param {*} spec
+ * @param {{ maxEffects?: number }} [opts] — optional tier cap on effect-layer
+ *   count (defaults to the structural MAX_EFFECTS). Threaded from the server
+ *   save gate (0 free / 3 plus) and the builder so both share one cap check.
  * @returns {{ ok: boolean, errors: string[] }}
  */
-function validatePaintSpec(spec) {
+function validatePaintSpec(spec, opts = {}) {
   const errors = []
+  const maxEffects = Number.isInteger(opts.maxEffects) && opts.maxEffects >= 0
+    ? Math.min(opts.maxEffects, MAX_EFFECTS)
+    : MAX_EFFECTS
 
   if (!isPlainObject(spec)) {
     return { ok: false, errors: ['spec must be an object'] }
   }
-  if (spec.v !== 1) {
-    errors.push('v must be exactly 1')
+  if (spec.v !== 1 && spec.v !== 2) {
+    errors.push('v must be 1 or 2')
+  }
+
+  // ── scene (v2 diorama block — see scene-spec.js) ──
+  if (spec.scene !== null && spec.scene !== undefined) {
+    if (spec.v !== 2) {
+      errors.push('scene requires v: 2')
+    } else {
+      validateSceneSpec(spec.scene, errors)
+    }
   }
 
   // ── base ──
@@ -5451,8 +5990,10 @@ function validatePaintSpec(spec) {
   // ── effects ──
   if (!Array.isArray(spec.effects)) {
     errors.push('effects must be an array')
-  } else if (spec.effects.length > MAX_EFFECTS) {
-    errors.push(`effects must have at most ${MAX_EFFECTS} entries`)
+  } else if (spec.effects.length > maxEffects) {
+    errors.push(maxEffects === 0
+      ? 'effects require plus — free paints are static (0 effect layers)'
+      : `effects must have at most ${maxEffects} ${maxEffects === 1 ? 'entry' : 'entries'}`)
   } else {
     const seenIds = new Set()
     let paintCount = 0
@@ -5486,19 +6027,14 @@ function validatePaintSpec(spec) {
       } else {
         motionCount++
         if (motionSigs.has(meta.sig)) {
-          errors.push(
-            `effects: "${e.id}" conflicts with another selected effect animating the same property (${meta.sig}) — pick effects with different motion targets`,
-          )
+          errors.push(`effects: "${e.id}" conflicts with another selected effect animating the same property (${meta.sig}) — pick effects with different motion targets`)
         }
         motionSigs.add(meta.sig)
       }
     })
 
     if (structurallyValid) {
-      if (paintCount > 1)
-        errors.push(
-          'at most 1 paint-slot effect allowed (pan/conic/hue/glint/chrome/gold/fire/matrix/holo/reveal are mutually exclusive)',
-        )
+      if (paintCount > 1) errors.push('at most 1 paint-slot effect allowed (pan/conic/hue/glint/chrome/gold/fire/matrix/holo/reveal are mutually exclusive)')
       if (motionCount > 2) errors.push('at most 2 motion-slot effects allowed')
     }
   }
@@ -5520,17 +6056,106 @@ function validatePaintSpec(spec) {
   return { ok: errors.length === 0, errors }
 }
 
-/** True if the spec's effects include any per-letter effect (wave/ripple/tumble). */
+/** True if the spec needs per-letter span markup: any per-letter effect
+ * (wave/ripple/tumble), OR a scene under a clip-text fill. The latter is a
+ * paint-order constraint, not a style choice: the plate pseudos carry
+ * z-index:-1, and negative-z children paint ABOVE the element's own
+ * background — which with background-clip:text IS the text fill. Spans
+ * paint in the inline-content phase, above the pseudos, so splitting is
+ * what keeps a gradient/effect fill visible over its own scene. */
 function paintNeedsLetterSplit(spec) {
-  if (!spec || !Array.isArray(spec.effects)) return false
-  return spec.effects.some((e) => LETTER_SPLIT_IDS.has(e?.id))
+  if (!spec) return false
+  if (Array.isArray(spec.effects) && spec.effects.some(e => LETTER_SPLIT_IDS.has(e?.id))) return true
+  if (spec.v === 2 && isPlainObject(spec.scene)) {
+    const hasPaintEffect = Array.isArray(spec.effects) &&
+      spec.effects.some(e => EFFECTS[e?.id]?.slot === 'paint')
+    return hasPaintEffect || spec.base?.type !== 'solid'
+  }
+  return false
+}
+
+// ── letter-split helpers (pure — shared by client renderer + server SSR) ───
+//
+// Lives here (not chat/paint-cosmetics.js) specifically so server routes can
+// import it for free alongside compilePaintCss/paintNeedsLetterSplit — this
+// module is already server-shippable (see paint.ts's import), paint-cosmetics.js
+// is not (DOM/settingsManager/fetch). paint-cosmetics.js re-exports both names
+// so the existing client import path keeps working unchanged.
+
+/** Minimal text-node HTML escape — matches what `div.textContent = x;
+ * div.innerHTML` produces for plain text (only &, <, > need escaping outside
+ * an attribute). Deliberately NOT the DOM-based escapeHtml in utils/helpers.js
+ * (that one requires `document`), so this module stays dependency-free and
+ * importable from server code. */
+function escapeTextChar(ch) {
+  return ch === '&' ? '&amp;' : ch === '<' ? '&lt;' : ch === '>' ? '&gt;' : ch
+}
+
+function escapeTextHtml(s) {
+  return String(s ?? '').replace(/[&<>]/g, escapeTextChar)
+}
+
+/**
+ * Compute per-letter span data for a username: `{ mid, letters: [{ch, i}] }`.
+ * mid = (length-1)/2, i = index. Pure — produces data only, no DOM.
+ * @param {string} text
+ */
+function computeLetterSpans(text) {
+  const chars = [...String(text ?? '')]
+  return {
+    mid: (chars.length - 1) / 2,
+    letters: chars.map((ch, i) => ({ ch, i })),
+  }
+}
+
+/**
+ * Build the innerHTML for a letter-split username: one <span> per glyph
+ * with --i and --mid custom properties, matching computeLetterSpans().
+ * Takes raw (unescaped) text — each glyph is HTML-escaped individually.
+ * @param {string} rawText
+ */
+function splitLettersHtml(rawText) {
+  const { mid, letters } = computeLetterSpans(rawText)
+  return letters.map(({ ch, i }) => `<span style="--i:${i};--mid:${mid}">${escapeTextHtml(ch)}</span>`).join('')
+}
+
+// ── id-space safety (paint lookup key guard) ────────────────────────────────
+
+/**
+ * Resolve `id` to the users.id-space key safe to use as a paint lookup
+ * against `/api/paints` — or `null` if this platform has no safe lookup.
+ *
+ * Paints are keyed by users.id. Twitch signup writes the Twitch numeric user
+ * id AS the users.id PK, so a Twitch id IS that id space by construction —
+ * same for heatsync-native accounts, so both resolve to themselves unchanged.
+ * Kick ids are ALSO bare numerics, and Kick's id range (~1-50M) sits entirely
+ * inside Twitch's (~1-1.5B) — so an un-namespaced Kick id can numerically
+ * collide with an unrelated Twitch user's id and pull back THEIR paint onto
+ * the wrong person (see heatsync_userid_collision_kick_twitch). Kick-origin
+ * users.id rows are namespaced `kick_<id>` (migrations/200_kick_id_namespace.sql),
+ * so a Kick id resolves to that namespaced form instead. YouTube channel ids
+ * (`UC...`) aren't numeric so can't collide today, but are gated the same
+ * way — an explicit platform allow-list, not a shape-guess — so a future
+ * numeric-ish YouTube id can't slip through unnoticed either.
+ *
+ * Only 'twitch', 'heatsync' and 'kick' resolve today. A future YouTube paint
+ * feature must mint its own namespaced id and teach this function about it —
+ * never pass the raw platform id through.
+ * @param {unknown} id
+ * @param {unknown} platform
+ * @returns {string|null}
+ */
+function isPaintLookupSafeId(id, platform) {
+  if (typeof id !== 'string' || id.length === 0) return null
+  if (platform === 'twitch' || platform === 'heatsync') return id
+  if (platform === 'kick') return `kick_${id}`
+  // youtube: id = the author's UC… channel id (innertube authorExternalChannelId);
+  // users.id for yt accounts is yt_<UCid> (google oauth mint, 4ecd0256)
+  if (platform === 'youtube' && /^UC[A-Za-z0-9_-]{22}$/.test(id)) return `yt_${id}`
+  return null
 }
 
 // ── compiler ─────────────────────────────────────────────────────────────
-
-function safeHex(color) {
-  return HEX_RE.test(color) ? color.toLowerCase() : '#e4e4e4'
-}
 
 function safeAngle(angle) {
   const n = Math.round(Number(angle))
@@ -5542,16 +6167,11 @@ function safePos(pos) {
   return Number.isFinite(n) ? Math.min(100, Math.max(0, n)) : 0
 }
 
-function safeSpeed(speed) {
-  const n = Number(speed)
-  return Number.isFinite(n) ? Math.min(MAX_SPEED, Math.max(MIN_SPEED, n)) : 1
-}
-
 function sortedStops(base) {
   const stops = Array.isArray(base?.stops) ? base.stops : []
   return stops
-    .filter((s) => isPlainObject(s) && HEX_RE.test(s?.color) && isIntInRange(s.pos, 0, 100))
-    .map((s) => ({ color: safeHex(s.color), pos: safePos(s.pos) }))
+    .filter(s => isPlainObject(s) && HEX_RE.test(s?.color) && isIntInRange(s.pos, 0, 100))
+    .map(s => ({ color: safeHex(s.color), pos: safePos(s.pos) }))
     .sort((a, b) => a.pos - b.pos)
 }
 
@@ -5559,34 +6179,36 @@ function sortedStops(base) {
  * luminance floor applied when the effect changes luminance. */
 function effectDuration(effectId, speed) {
   const meta = EFFECTS[effectId]
-  const spd = safeSpeed(speed)
-  let seconds = meta.basePeriod / spd
-  if (meta.luminance) seconds = Math.max(MIN_LUMINANCE_PERIOD_S, seconds)
-  return Math.round(seconds * 1000) / 1000
-}
-
-/** Phase-lock delay for a paint animation. Elements carry `--hsp-t` (their
- * mount wall-time in seconds — see paintPhaseNow), and mod() folds it onto
- * this animation's full visual cycle, so every copy of the same name lands on
- * the same frame regardless of when it mounted. `period` must be the FULL
- * cycle: duration ×2 for alternate-direction animations (odd iterations run
- * reversed — duration alone would sync half the copies mirror-phased).
- * Elements without the var (or browsers without mod()) resolve to 0s — the
- * old per-mount unsynced behavior, never a broken paint. */
-function syncDelayCalc(period) {
-  const p = Math.round(period * 1000) / 1000
-  return `calc(-1 * mod(var(--hsp-t, 0s), ${p}s))`
+  return periodSeconds(meta.basePeriod, speed, meta.luminance)
 }
 
 /** Inline stamp for `--hsp-t`: the element's mount wall-time in seconds.
- * Callers put it in the username element's style so syncDelayCalc can
+ * Renderers put it in the username element's style so syncDelayCalc can
  * phase-lock every instance of a paint to the shared wall clock. */
+/** Class prefix of a compiled heatsync paint — `hsp-<hash>`, see chat/paint-cosmetics.js. */
+const PAINT_CLASS_PREFIX = 'hsp-'
+
+/**
+ * Is this element already wearing a heatsync paint?
+ *
+ * The precedence rule every other name cosmetic obeys: a saved heatsync paint
+ * is the user's explicit (paid) choice on a heatsync surface, so it owns the
+ * fill — the picked name colour stands down (applyNameColorToVisible) and so
+ * does a 7TV paint (chat/seventv-cosmetics.js). With no heatsync paint saved,
+ * a 7TV paint renders free, so a 7TV subscription keeps its value in here.
+ * @param {Element} el
+ */
+function hasHeatsyncPaint(el) {
+  for (const c of el.classList) if (c.startsWith(PAINT_CLASS_PREFIX)) return true
+  return false
+}
+
 function paintPhaseNow() {
   return `${(Date.now() / 1000).toFixed(3)}s`
 }
 
 function gradientStopsCss(stops) {
-  return stops.map((s) => `${s.color} ${s.pos}%`).join(', ')
+  return stops.map(s => `${s.color} ${s.pos}%`).join(', ')
 }
 
 /** Build the CSS for the resting `base` paint. Returns { decl, isClipText }. */
@@ -5596,10 +6218,9 @@ function buildBaseCss(base, stops) {
     return { decl: `color:${color};`, isClipText: false, cssImage: `linear-gradient(${color}, ${color})` }
   }
   const angle = safeAngle(base.angle)
-  const image =
-    base.type === 'linear'
-      ? `linear-gradient(${angle}deg, ${gradientStopsCss(stops)})`
-      : `conic-gradient(from ${angle}deg, ${gradientStopsCss(stops)})`
+  const image = base.type === 'linear'
+    ? `linear-gradient(${angle}deg, ${gradientStopsCss(stops)})`
+    : `conic-gradient(from ${angle}deg, ${gradientStopsCss(stops)})`
   return {
     decl: `background:${image};-webkit-background-clip:text;background-clip:text;color:transparent;`,
     isClipText: true,
@@ -5611,8 +6232,7 @@ function buildBaseCss(base, stops) {
 
 const THEMED_PAINT = {
   chrome: {
-    gradient:
-      'linear-gradient(100deg, #6b7280, #e5e7eb 20%, #4b5563 38%, #f3f4f6 52%, #374151 70%, #d1d5db 88%, #6b7280)',
+    gradient: 'linear-gradient(100deg, #6b7280, #e5e7eb 20%, #4b5563 38%, #f3f4f6 52%, #374151 70%, #d1d5db 88%, #6b7280)',
     size: '220% 100%',
     timing: 'ease-in-out',
     direction: 'alternate',
@@ -5632,8 +6252,7 @@ const THEMED_PAINT = {
     size: '100% 300%',
     timing: 'ease-in-out',
     direction: 'alternate',
-    keyframes: (name) =>
-      `@keyframes ${name}{from{background-position:0 100%;transform:skewX(0);}to{background-position:0 40%;transform:skewX(-1.5deg);}}`,
+    keyframes: (name) => `@keyframes ${name}{from{background-position:0 100%;transform:skewX(0);}to{background-position:0 40%;transform:skewX(-1.5deg);}}`,
   },
   matrix: {
     gradient: 'repeating-linear-gradient(0deg, #003300 0 6px, #00d700 6px 9px, #00ff87 9px 10px)',
@@ -5666,12 +6285,7 @@ function buildPaintEffectCss(effectId, speed, base, stops, hash) {
     const t = THEMED_PAINT[effectId]
     const decls = `background:${t.gradient};background-size:${t.size};-webkit-background-clip:text;background-clip:text;color:transparent;`
     const sync = syncDelayCalc(t.direction === 'alternate' ? duration * 2 : duration)
-    return {
-      decls,
-      animShorthand: `${animName} ${duration}s ${t.timing} infinite ${t.direction}`,
-      sync,
-      keyframes: t.keyframes(animName),
-    }
+    return { decls, animShorthand: `${animName} ${duration}s ${t.timing} infinite ${t.direction}`, sync, keyframes: t.keyframes(animName) }
   }
 
   if (effectId === 'pan') {
@@ -5683,12 +6297,7 @@ function buildPaintEffectCss(effectId, speed, base, stops, hash) {
     const image = `linear-gradient(${angle}deg, ${gradientStopsCss(wrapStops)})`
     const decls = `background:${image};background-size:300% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;`
     const kf = `@keyframes ${animName}{to{background-position:300% 0;}}`
-    return {
-      decls,
-      animShorthand: `${animName} ${duration}s linear infinite`,
-      sync: syncDelayCalc(duration),
-      keyframes: kf,
-    }
+    return { decls, animShorthand: `${animName} ${duration}s linear infinite`, sync: syncDelayCalc(duration), keyframes: kf }
   }
 
   if (effectId === 'conic') {
@@ -5699,15 +6308,9 @@ function buildPaintEffectCss(effectId, speed, base, stops, hash) {
     const wrapStops = stops.length ? [...stops, { color: stops[0].color, pos: 100 }] : stops
     const image = `conic-gradient(from calc(${angle}deg + var(${angleVar})), ${gradientStopsCss(wrapStops)})`
     const decls = `background:${image};-webkit-background-clip:text;background-clip:text;color:transparent;`
-    const kf =
-      `@property ${angleVar}{syntax:"<angle>";initial-value:0deg;inherits:false;}` +
+    const kf = `@property ${angleVar}{syntax:"<angle>";initial-value:0deg;inherits:false;}` +
       `@keyframes ${animName}{to{${angleVar}:360deg;}}`
-    return {
-      decls,
-      animShorthand: `${animName} ${duration}s linear infinite`,
-      sync: syncDelayCalc(duration),
-      keyframes: kf,
-    }
+    return { decls, animShorthand: `${animName} ${duration}s linear infinite`, sync: syncDelayCalc(duration), keyframes: kf }
   }
 
   if (effectId === 'hue') {
@@ -5715,12 +6318,7 @@ function buildPaintEffectCss(effectId, speed, base, stops, hash) {
     // of how base painted the text.
     const baseCss = buildBaseCss(base, stops)
     const kf = `@keyframes ${animName}{to{filter:hue-rotate(360deg);}}`
-    return {
-      decls: baseCss.decl,
-      animShorthand: `${animName} ${duration}s linear infinite`,
-      sync: syncDelayCalc(duration),
-      keyframes: kf,
-    }
+    return { decls: baseCss.decl, animShorthand: `${animName} ${duration}s linear infinite`, sync: syncDelayCalc(duration), keyframes: kf }
   }
 
   if (effectId === 'glint') {
@@ -5728,12 +6326,7 @@ function buildPaintEffectCss(effectId, speed, base, stops, hash) {
     const image = `linear-gradient(115deg, transparent 38%, #ffffffcc 50%, transparent 62%) no-repeat, ${baseCss.cssImage}`
     const decls = `background:${image};background-size:250% 100%, 100% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;`
     const kf = `@keyframes ${animName}{0%{background-position:210% 0, 0 0;}100%{background-position:-110% 0, 0 0;}}`
-    return {
-      decls,
-      animShorthand: `${animName} ${duration}s ease-in-out infinite`,
-      sync: syncDelayCalc(duration),
-      keyframes: kf,
-    }
+    return { decls, animShorthand: `${animName} ${duration}s ease-in-out infinite`, sync: syncDelayCalc(duration), keyframes: kf }
   }
 
   if (effectId === 'reveal') {
@@ -5741,12 +6334,7 @@ function buildPaintEffectCss(effectId, speed, base, stops, hash) {
     const mask = 'linear-gradient(90deg, #000 30%, #0003 50%, #000 70%)'
     const decls = `${baseCss.decl}-webkit-mask-image:${mask};mask-image:${mask};-webkit-mask-size:300% 100%;mask-size:300% 100%;`
     const kf = `@keyframes ${animName}{from{-webkit-mask-position:130% 0;mask-position:130% 0;}to{-webkit-mask-position:-130% 0;mask-position:-130% 0;}}`
-    return {
-      decls,
-      animShorthand: `${animName} ${duration}s linear infinite`,
-      sync: syncDelayCalc(duration),
-      keyframes: kf,
-    }
+    return { decls, animShorthand: `${animName} ${duration}s linear infinite`, sync: syncDelayCalc(duration), keyframes: kf }
   }
 
   return null
@@ -5842,11 +6430,8 @@ function buildMotionEffectCss(effectId, speed, selector, hash, glow) {
     case 'neon': {
       const color = glow && HEX_RE.test(glow.color) ? safeHex(glow.color) : '#ff40af'
       const scale = glow && glow.strength === 2 ? 1.6 : 1
-      const r1 = Math.round(4 * scale),
-        r2 = Math.round(11 * scale)
-      const r1b = Math.round(6 * scale),
-        r2b = Math.round(22 * scale),
-        r3b = Math.round(40 * scale)
+      const r1 = Math.round(4 * scale), r2 = Math.round(11 * scale)
+      const r1b = Math.round(6 * scale), r2b = Math.round(22 * scale), r3b = Math.round(40 * scale)
       const rule = `${selector}{animation:${animName} ${duration}s ease-in-out infinite;animation-delay:${syncDelayCalc(duration)};}`
       const kf = `@keyframes ${animName}{0%,100%{text-shadow:0 0 ${r1}px ${color}80, 0 0 ${r2}px ${color}40;}50%{text-shadow:0 0 ${r1b}px ${color}cc, 0 0 ${r2b}px ${color}88, 0 0 ${r3b}px ${color}44;}}`
       return rule + kf
@@ -5873,6 +6458,13 @@ function buildGlowCss(glow, selector) {
  * @param {object} spec
  * @param {string} selector
  * @param {object} [opts]
+ * @param {string} [opts.hash] - precomputed hashPaintSpec(spec), to avoid
+ *   recomputing it when the caller already has it.
+ * @param {boolean} [opts.static] - drop every effect layer (paint + motion),
+ *   keeping only the resting base gradient + glow. Zero @keyframes/animation
+ *   in the output — the viewer's "static" name-paint mode. Letter-split
+ *   markup (if the raw spec calls for it) is left to the caller; it renders
+ *   inert without the motion keyframes that would normally animate it.
  * @returns {string} css
  */
 function compilePaintCss(spec, selector, opts = {}) {
@@ -5880,11 +6472,11 @@ function compilePaintCss(spec, selector, opts = {}) {
   const hash = opts.hash || hashPaintSpec(spec)
   const base = isPlainObject(spec.base) ? spec.base : { type: 'solid', angle: 0, stops: [{ color: '#e4e4e4', pos: 0 }] }
   const stops = sortedStops(base)
-  const effects = Array.isArray(spec.effects)
-    ? spec.effects.filter((e) => isPlainObject(e) && EFFECT_IDS.has(e.id))
-    : []
-  const paintEffect = effects.find((e) => EFFECTS[e.id].slot === 'paint')
-  const motionEffects = effects.filter((e) => EFFECTS[e.id].slot === 'motion')
+  const effects = opts.static
+    ? []
+    : (Array.isArray(spec.effects) ? spec.effects.filter(e => isPlainObject(e) && EFFECT_IDS.has(e.id)) : [])
+  const paintEffect = effects.find(e => EFFECTS[e.id].slot === 'paint')
+  const motionEffects = effects.filter(e => EFFECTS[e.id].slot === 'motion')
   const needsLetterSplit = paintNeedsLetterSplit(spec)
 
   // Chrome cannot paint a parent's background-clip:text into TRANSFORMED
@@ -5893,7 +6485,6 @@ function compilePaintCss(spec, selector, opts = {}) {
   // (letters render transparent over nothing; only a hover background
   // clipped into the glyphs reveals them). When the name is letter-split,
   // ALL clip-text painting must live on the spans themselves.
-  // Mirrors the monorepo compiler fix (client/utils/paint-spec.js).
   const paintTarget = needsLetterSplit ? `${selector} span` : selector
   const baseCss = paintEffect ? null : buildBaseCss(base, stops)
 
@@ -5955,9 +6546,26 @@ function compilePaintCss(spec, selector, opts = {}) {
   // Static glow — skip if neon is active and sourced the same color (neon's
   // own keyframes already carry a shadow on every frame); otherwise layer
   // the constant shadow on so it doesn't require an active effect to show.
-  const hasNeon = motionEffects.some((e) => e.id === 'neon')
+  const hasNeon = motionEffects.some(e => e.id === 'neon')
   if (spec.glow && !hasNeon) {
     css += buildGlowCss(spec.glow, selector)
+  }
+
+  // ── scene (v2 diorama — backdrop ::before / weather ::after) ──
+  // Rides the exact same class/style-tag/--hsp-t pipeline as effects; static
+  // mode renders each scene's designed hero frame. When a plate is present,
+  // a uniform dark text rim keeps the name readable on every plate — but
+  // ONLY for solid-color fills: with background-clip:text the fill IS the
+  // element's background, and text-shadow paints in FRONT of it (real CSS
+  // paint order), so a rim would smother any gradient/effect-filled name.
+  // Gradient names get their separation from the plates themselves (all
+  // designed mid-to-dark) — and glow/neon carry their own halo either way.
+  if (spec.v === 2 && isPlainObject(spec.scene)) {
+    css += buildSceneCss(spec.scene, selector, hash, { static: !!opts.static })
+    const clipTextFill = !!paintEffect || base.type !== 'solid'
+    if (sceneHasBackdrop(spec.scene) && !clipTextFill && !spec.glow && !hasNeon) {
+      css += `${selector}{${SCENE_RIM_CSS}}`
+    }
   }
 
   return css
@@ -50555,7 +51163,7 @@ function ensureHsPaintSheet() {
     // syncDelayCalc) would otherwise freeze each copy at a different
     // mid-cycle pose — zeroing it pins every paused paint at frame 0.
     hsPaintSheetEl.textContent =
-      '@media (prefers-reduced-motion: reduce){[class*="hsp-"],[class*="hsp-"] *{animation-play-state:paused !important;animation-delay:0s !important;}}' +
+      '@media (prefers-reduced-motion: reduce){[class*="hsp-"],[class*="hsp-"] *,[class*="hsp-"]::before,[class*="hsp-"]::after{animation-play-state:paused !important;animation-delay:0s !important;}}' +
       // Hover freeze: pause the paint animation and swap to a plain white/black
       // chip so the name stays fully readable while the pointer is over it.
       // background-clip goes back to border-box (was `text`, see compilePaintCss)
@@ -50572,7 +51180,13 @@ function ensureHsPaintSheet() {
       // flatten: a gradient/clip-text paint left un-flattened would render
       // invisible against the selected row's white bg (background:#fff would
       // clip straight through transparent gradient text).
-      '[class*="hsp-"]:hover,[class*="hsp-"]:hover span,[class*="hsp-"].hsp-hover,[class*="hsp-"].hsp-hover span,.hs-mc-row-selected [class*="hsp-"],.hs-mc-row-selected [class*="hsp-"] span{animation-play-state:paused !important;background:#fff !important;-webkit-background-clip:border-box !important;background-clip:border-box !important;color:#000 !important;transform:none !important;}'
+      '[class*="hsp-"]:hover,[class*="hsp-"]:hover span,[class*="hsp-"].hsp-hover,[class*="hsp-"].hsp-hover span,.hs-mc-row-selected [class*="hsp-"],.hs-mc-row-selected [class*="hsp-"] span{animation-play-state:paused !important;background:#fff !important;-webkit-background-clip:border-box !important;background-clip:border-box !important;color:#000 !important;transform:none !important;text-shadow:none !important;}' +
+      // Scene plates (v2 ::before/::after dioramas) must vanish entirely on
+      // hover/selection — the element's white background paints UNDER a
+      // negative-z pseudo, so pausing alone would leave the plate covering
+      // the white. text-shadow:none above also drops the scene rim (black
+      // smears on white). Same trigger set as the flatten rule.
+      '[class*="hsp-"]:hover::before,[class*="hsp-"]:hover::after,[class*="hsp-"].hsp-hover::before,[class*="hsp-"].hsp-hover::after,.hs-mc-row-selected [class*="hsp-"]::before,.hs-mc-row-selected [class*="hsp-"]::after{content:none !important;}'
     const tracked =
       typeof cleanup !== 'undefined' && cleanup.trackNode ? cleanup.trackNode(hsPaintSheetEl) : hsPaintSheetEl
     document.head.appendChild(tracked)

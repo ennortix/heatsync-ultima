@@ -219,9 +219,12 @@ function checkScopeCollisions() {
     'browser-api.js',
     'modifiers.js',
     'undo-manager.js',
-    // paint-spec.js isn't part of readLib()'s universal bundle (only the
-    // multichat overlay embeds it — see readMultichatModules), but it lands
-    // in the same outer scope as the lib files there, so it's checked here too.
+    // paint-spec.js (+ its synced-copy imports paint-core.js/scene-spec.js)
+    // isn't part of readLib()'s universal bundle (only the multichat overlay
+    // embeds them — see readMultichatModules), but they land in the same
+    // outer scope as the lib files there, so they're checked here too.
+    'paint-core.js',
+    'scene-spec.js',
     'paint-spec.js',
   ]
   const libDir = join(__dirname, 'src', 'lib')
@@ -581,6 +584,11 @@ function stripExports(content) {
     .replace(/^export\s+default\s+\w+\s*;?\s*$/gm, '')
     .replace(/^export\s*\{[^}]*\}\s*;?\s*$/gm, '')
     .replace(/^export\s+(const|let|var|function|class)\s+/gm, '$1 ')
+    // Relative imports between synced-copy modules (paint-spec.js imports
+    // paint-core.js/scene-spec.js) — the bundle concatenates those files
+    // into one scope in dependency order, so the import lines just go.
+    // Multi-line `import { a,\n b } from './x.js'` included.
+    .replace(/^import\s*\{[\s\S]*?\}\s*from\s*['"]\.\/[^'"]+['"];?\s*$/gm, '')
 }
 
 // Read lib files
@@ -681,9 +689,15 @@ function readMultichatModules(platform) {
   // rather than added to readLib()'s universal file list, which would bloat
   // every content script (autocomplete-hook, chat-injector, ...) with a
   // module none of them use.
-  const paintSpecPath = join(SRC_DIR, 'lib', 'paint-spec.js')
-  if (existsSync(paintSpecPath)) {
-    combined += `\n// --- lib/paint-spec.js ---\n${stripExports(readFileSync(paintSpecPath, 'utf8'))}\n`
+  // Dependency order matters: paint-core (shared helpers) → scene-spec
+  // (scene catalog/compiler) → paint-spec (validator/compiler, imports both).
+  // stripExports drops the relative import lines; concatenation puts all
+  // three in one scope, same shape the site gets from real ESM.
+  for (const mod of ['paint-core.js', 'scene-spec.js', 'paint-spec.js']) {
+    const p = join(SRC_DIR, 'lib', mod)
+    if (existsSync(p)) {
+      combined += `\n// --- lib/${mod} ---\n${stripExports(readFileSync(p, 'utf8'))}\n`
+    }
   }
 
   // Plus-tenure token helpers (src/lib/plus-tenure.js) — same reasoning as

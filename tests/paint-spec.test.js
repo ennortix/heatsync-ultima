@@ -36,8 +36,9 @@ describe('validatePaintSpec — schema clamps', () => {
     expect(validatePaintSpec(undefined).ok).toBe(false)
   })
 
-  test('rejects v !== 1', () => {
-    expect(validatePaintSpec(baseSpec({ v: 2 })).ok).toBe(false)
+  test('rejects unknown versions (1 and 2 valid — 2 adds the scene block)', () => {
+    expect(validatePaintSpec(baseSpec({ v: 2 })).ok).toBe(true)
+    expect(validatePaintSpec(baseSpec({ v: 3 })).ok).toBe(false)
     expect(validatePaintSpec(baseSpec({ v: '1' })).ok).toBe(false)
   })
 

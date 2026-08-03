@@ -214,7 +214,7 @@ function ensureHsPaintSheet() {
     // syncDelayCalc) would otherwise freeze each copy at a different
     // mid-cycle pose — zeroing it pins every paused paint at frame 0.
     hsPaintSheetEl.textContent =
-      '@media (prefers-reduced-motion: reduce){[class*="hsp-"],[class*="hsp-"] *{animation-play-state:paused !important;animation-delay:0s !important;}}' +
+      '@media (prefers-reduced-motion: reduce){[class*="hsp-"],[class*="hsp-"] *,[class*="hsp-"]::before,[class*="hsp-"]::after{animation-play-state:paused !important;animation-delay:0s !important;}}' +
       // Hover freeze: pause the paint animation and swap to a plain white/black
       // chip so the name stays fully readable while the pointer is over it.
       // background-clip goes back to border-box (was `text`, see compilePaintCss)
@@ -231,7 +231,13 @@ function ensureHsPaintSheet() {
       // flatten: a gradient/clip-text paint left un-flattened would render
       // invisible against the selected row's white bg (background:#fff would
       // clip straight through transparent gradient text).
-      '[class*="hsp-"]:hover,[class*="hsp-"]:hover span,[class*="hsp-"].hsp-hover,[class*="hsp-"].hsp-hover span,.hs-mc-row-selected [class*="hsp-"],.hs-mc-row-selected [class*="hsp-"] span{animation-play-state:paused !important;background:#fff !important;-webkit-background-clip:border-box !important;background-clip:border-box !important;color:#000 !important;transform:none !important;}'
+      '[class*="hsp-"]:hover,[class*="hsp-"]:hover span,[class*="hsp-"].hsp-hover,[class*="hsp-"].hsp-hover span,.hs-mc-row-selected [class*="hsp-"],.hs-mc-row-selected [class*="hsp-"] span{animation-play-state:paused !important;background:#fff !important;-webkit-background-clip:border-box !important;background-clip:border-box !important;color:#000 !important;transform:none !important;text-shadow:none !important;}' +
+      // Scene plates (v2 ::before/::after dioramas) must vanish entirely on
+      // hover/selection — the element's white background paints UNDER a
+      // negative-z pseudo, so pausing alone would leave the plate covering
+      // the white. text-shadow:none above also drops the scene rim (black
+      // smears on white). Same trigger set as the flatten rule.
+      '[class*="hsp-"]:hover::before,[class*="hsp-"]:hover::after,[class*="hsp-"].hsp-hover::before,[class*="hsp-"].hsp-hover::after,.hs-mc-row-selected [class*="hsp-"]::before,.hs-mc-row-selected [class*="hsp-"]::after{content:none !important;}'
     const tracked =
       typeof cleanup !== 'undefined' && cleanup.trackNode ? cleanup.trackNode(hsPaintSheetEl) : hsPaintSheetEl
     document.head.appendChild(tracked)

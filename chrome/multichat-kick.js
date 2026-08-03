@@ -69640,7 +69640,9 @@ const STORAGE_KEY = 'heatsync_multichat'
       // flag and restore the synced value to the last visible position.
       if (chatPosition === 'hidden') {
         chatHiddenLocal = true
-        try { sessionStorage.setItem('hs-chat-hidden-local', '1') } catch (_) {}
+        try {
+          sessionStorage.setItem('hs-chat-hidden-local', '1')
+        } catch (_) {}
         // silent: heal the stored value only — the applier would treat this
         // as an explicit local position pick and clear the tab-local flag.
         setSetting('chatPosition', chatPositionPrevious, { silent: true })

@@ -3222,12 +3222,11 @@
   // Input bar auto-hide — hidden when empty, shown on first keystroke
   let autoHideInput = false
   let inputBarVisible = true
-  // Rapid-fire guard: sendMessage clears the composer (→ empty), so any blur
-  // during the async echo/send would otherwise let the empty-bar auto-hide
-  // collapse it to display:none — which blurs the focused input and kills the
-  // "type, Enter, type, Enter" flow. keepComposerOpen() suppresses auto-hide
-  // for a short window after an explicit send; every auto-hide path funnels
-  // through canAutoHideInput(), so this one gate covers all of them.
+  // Rapid-fire guard: keepComposerOpen() suppresses auto-hide for a short
+  // window (Tab-reveal, sticky-focus sends on non-auto-hide setups) so a
+  // transient blur can't collapse the bar mid-flow. Auto-hide sends do NOT
+  // route through this — settleComposerAfterSend() zeroes the window and
+  // hides instantly on Enter; type-to-reveal covers the next keystroke.
   let _keepComposerOpenUntil = 0
   function keepComposerOpen(ms) {
     _keepComposerOpenUntil = performance.now() + (ms || 500)

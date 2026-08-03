@@ -46721,7 +46721,7 @@ async function handleSlashCommand(text, input) {
     // Same containment as /w: stay put on success, surface whispers on failure.
     if (ok) showToast(t('mc_whisper_sent', [whisperUsers.get(target)?.displayName || '']), 'success')
     else if (currentTab !== 'whispers') switchTab('whispers')
-    armComposerStickyFocus(input)
+    settleComposerAfterSend(input)
     return true
   }
 
@@ -47259,7 +47259,7 @@ async function handleSlashCommand(text, input) {
           'success',
         )
       }
-      armComposerStickyFocus(input)
+      settleComposerAfterSend(input)
     } else if (r?.unconfirmed) {
       // A client-side timeout — the highlight may already have posted and
       // charged. Do NOT clear the input (so a resend is one keystroke away) and
@@ -47270,7 +47270,7 @@ async function handleSlashCommand(text, input) {
         t('mc_input_highlight_unconfirmed') || 'highlight didn’t confirm — resend is safe, bits charge once',
         'warn',
       )
-      armComposerStickyFocus(input)
+      settleComposerAfterSend(input)
     } else {
       showToast(
         t('mc_input_highlight_failed', [r?.error || 'unknown']) || `highlight failed: ${r?.error || 'unknown'}`,
@@ -48198,6 +48198,24 @@ function armComposerStickyFocus(input) {
   cleanup.setTimeout(reassertComposerFocus, 120)
 }
 
+// Post-send composer settle — the ONE tail every send path ends with.
+// Auto-hide users mean "done" by Enter: hide the bar NOW. Routing the hide
+// through the sticky window deferred it ~1s behind the retry timer — a visible
+// lag on every send. Rapid-fire survives the hide: the type-to-reveal handler
+// reveals on the next printable key and types it. When a guard keeps the bar
+// up anyway (picker open, unconfirmed send left text in place), or auto-hide
+// is off, fall through to the sticky-focus window so the visible composer
+// never drops the cursor.
+function settleComposerAfterSend(input) {
+  if (autoHideEligible()) {
+    _keepComposerOpenUntil = 0
+    _composerStickyUntil = 0
+    hideInputBar()
+    if (!syncInputBarVisible()) return
+  }
+  armComposerStickyFocus(input)
+}
+
 async function sendMessage() {
   const input = document.getElementById('hs-mc-input')
   if (!input) return
@@ -48469,36 +48487,18 @@ async function sendMessage() {
   const ytText = ytReplyText(restText, replyAuthor)
   clearReplyState()
 
-  // Clear input immediately — and KEEP focus. Hiding the bar here (03-25 →
-  // 07-14 behavior) blurred the composer on every send, so rapid-fire chatting
-  // meant retyping into a dead cursor. Auto-hide still works: the input's blur
-  // handler hides the empty bar 200ms after the user actually clicks away.
-  //
-  // The composer is now empty, so a transient blur during the async echo/send
-  // (host-page focus churn, own-echo render) could arm the empty-bar auto-hide
-  // and collapse it to display:none — silently blurring this input. keepComposerOpen()
-  // suppresses auto-hide for the rapid-fire window; the deferred re-focus below
-  // survives any blur that lands AFTER this synchronous focus() call.
+  // Clear input immediately, then settle: auto-hide users get the instant
+  // hide (Enter = done), everyone else keeps focus through the sticky-focus
+  // window so rapid-fire chatting never retypes into a dead cursor.
   if (wysiwygEnabled) input.textContent = ''
   else input.value = ''
   pendingMessage = ''
   updateCharCount()
-  // Open the sticky-focus window: the composer's blur handler reasserts focus
-  // for as long as this is open, so a blur at ANY latency in the send tail
-  // (network echo + own-echo DOM rebuild, often past a few hundred ms) can't
-  // drop the cursor. Refreshed on every send, so continuous rapid-fire —
-  // "type, Enter, type, Enter" — stays locked to the composer.
-  armComposerStickyFocus(input)
-  // Queue the empty-bar auto-hide, same as clearInput() does for every other
-  // path that empties the composer. The send tail clears input.value directly
-  // instead of going through clearInput, so it never armed one — auto-hide
-  // here rested entirely on "the user eventually clicks away and blurs". A
-  // keyboard-first flow (vi mode especially) never blurs, and the sticky-focus
-  // window above actively reasserts focus, so the empty bar sat on screen
-  // until an explicit Escape. hideInputBar() is a no-op while the rapid-fire
-  // window is open and re-runs every guard when it expires, so this doesn't
-  // yank the composer out from under "type, Enter, type, Enter".
-  cleanup.setTimeout(() => hideInputBar(), 0)
+  // Settle the composer: auto-hide → instant hide, otherwise open the
+  // sticky-focus window so a blur at ANY latency in the send tail (network
+  // echo + own-echo DOM rebuild, often past a few hundred ms) can't drop the
+  // cursor on the visible composer.
+  settleComposerAfterSend(input)
 
   // --- Kick send path (single, dual, or triple including YT) ---
   if (sendToKick) {
@@ -61678,12 +61678,11 @@ const STORAGE_KEY = 'heatsync_multichat'
   // Input bar auto-hide — hidden when empty, shown on first keystroke
   let autoHideInput = false
   let inputBarVisible = true
-  // Rapid-fire guard: sendMessage clears the composer (→ empty), so any blur
-  // during the async echo/send would otherwise let the empty-bar auto-hide
-  // collapse it to display:none — which blurs the focused input and kills the
-  // "type, Enter, type, Enter" flow. keepComposerOpen() suppresses auto-hide
-  // for a short window after an explicit send; every auto-hide path funnels
-  // through canAutoHideInput(), so this one gate covers all of them.
+  // Rapid-fire guard: keepComposerOpen() suppresses auto-hide for a short
+  // window (Tab-reveal, sticky-focus sends on non-auto-hide setups) so a
+  // transient blur can't collapse the bar mid-flow. Auto-hide sends do NOT
+  // route through this — settleComposerAfterSend() zeroes the window and
+  // hides instantly on Enter; type-to-reveal covers the next keystroke.
   let _keepComposerOpenUntil = 0
   function keepComposerOpen(ms) {
     _keepComposerOpenUntil = performance.now() + (ms || 500)

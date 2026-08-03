@@ -205,40 +205,62 @@ describe('showInputBar', () => {
 })
 
 /**
- * The send path must arm the empty-bar auto-hide itself.
+ * The send path must settle the composer itself — and for auto-hide users the
+ * settle must be an INSTANT hide.
  *
- * Regression anchor (2026-07-30, vi mode): "the input bar is still not auto
- * hiding when the input box is empty". Every other path that empties the
- * composer goes through clearInput(), which queues a hideInputBar(). The send
- * tail clears input.value/textContent DIRECTLY and never armed one — it leaned
- * on "the input's blur handler hides the empty bar 200ms after the user
- * actually clicks away". A keyboard-first flow never clicks away, and
- * armComposerStickyFocus actively reasserts focus for the rapid-fire window,
- * so after a send the empty bar sat there until an explicit Escape.
+ * Regression anchors:
+ * - 2026-07-30 (vi mode): "the input bar is still not auto hiding when the
+ *   input box is empty" — the send tail cleared input.value directly and never
+ *   armed a hide, so the empty bar sat until an explicit Escape.
+ * - 2026-08-02: routing the post-send hide through the sticky window deferred
+ *   it ~1s behind the retry timer — a visible lag on every Enter. Auto-hide
+ *   sends now zero the windows and hide synchronously; type-to-reveal covers
+ *   the next keystroke, so rapid-fire survives.
  */
 import { readFileSync as _readFileSync } from 'node:fs'
 import { join as _join } from 'node:path'
 
-describe('send path arms the empty-bar auto-hide', () => {
+describe('send path settles the composer', () => {
   const SRC = _readFileSync(_join(import.meta.dir, '..', 'src', 'multichat', 'input.js'), 'utf8')
   const sendStart = SRC.indexOf('async function sendMessage()')
   const sendTail = SRC.slice(sendStart, SRC.indexOf('--- Kick send path', sendStart))
+  const settle = SRC.slice(
+    SRC.indexOf('function settleComposerAfterSend('),
+    SRC.indexOf('async function sendMessage()'),
+  )
 
-  test('sendMessage queues hideInputBar after clearing the composer', () => {
+  test('sendMessage settles the composer after clearing it', () => {
     expect(sendStart).toBeGreaterThan(-1)
-    expect(sendTail).toContain('setTimeout(() => hideInputBar(), 0)')
-    // Must come after the sticky-focus window is armed — hideInputBar reads
-    // that window to decide between hiding now and retrying when it expires.
-    const stickyAt = sendTail.indexOf('armComposerStickyFocus(input)')
-    const hideAt = sendTail.indexOf('setTimeout(() => hideInputBar(), 0)')
-    expect(stickyAt).toBeGreaterThan(-1)
-    expect(hideAt).toBeGreaterThan(stickyAt)
+    const clearAt = sendTail.indexOf('pendingMessage = ')
+    const settleAt = sendTail.indexOf('settleComposerAfterSend(input)')
+    expect(clearAt).toBeGreaterThan(-1)
+    expect(settleAt).toBeGreaterThan(clearAt)
   })
 
-  test('the hide is deferred, not synchronous — a sync hide lands mid-send', () => {
-    // A bare hideInputBar() in the tail would fire before the send paths that
-    // arm keepComposerOpen, yanking the composer out from under the send.
-    expect(sendTail).not.toMatch(/^\s*hideInputBar\(\)$/m)
+  test('auto-hide settle is instant: windows zeroed, hideInputBar synchronous', () => {
+    // The old shape — arm sticky, queue the hide — parked the hide behind the
+    // ~1s keep-open retry timer. The settle must zero both windows FIRST so
+    // hideInputBar cannot defer, then hide with no setTimeout in between.
+    expect(settle).toContain('_keepComposerOpenUntil = 0')
+    expect(settle).toContain('_composerStickyUntil = 0')
+    const zeroAt = settle.indexOf('_keepComposerOpenUntil = 0')
+    const hideAt = settle.indexOf('hideInputBar()')
+    expect(zeroAt).toBeGreaterThan(-1)
+    expect(hideAt).toBeGreaterThan(zeroAt)
+    expect(settle).not.toContain('setTimeout')
+  })
+
+  test('non-auto-hide (or guard-kept bar) still gets the sticky-focus window', () => {
+    // When the bar stays visible — auto-hide off, picker open, unconfirmed
+    // send left text in place — the cursor must not drop mid-rapid-fire.
+    expect(settle).toContain('armComposerStickyFocus(input)')
+    // The instant-hide branch returns only when the bar actually hid; a
+    // guard-blocked hide falls through to sticky focus.
+    expect(settle).toContain('if (!syncInputBarVisible()) return')
+  })
+
+  test('sendMessage no longer arms sticky focus directly (settle owns it)', () => {
+    expect(sendTail).not.toContain('armComposerStickyFocus(input)')
   })
 
   test('clearInput still queues its own hide for every non-send path', () => {

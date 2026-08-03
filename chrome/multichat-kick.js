@@ -21774,7 +21774,8 @@ function parseTags(tagStr) {
       tags[part] = ''
       continue
     }
-    tags[part.slice(0, eq)] = part.slice(eq + 1) || ''
+    // flatStr: values land on long-lived message objects — see above
+    tags[part.slice(0, eq)] = flatStr(part.slice(eq + 1)) || ''
   }
   return tags
 }
@@ -21842,7 +21843,7 @@ function parseIrcLine(raw, channel) {
     if (privmsg) {
       const displayName = tags['display-name'] || 'anonymous'
       // /me sends as \x01ACTION text\x01
-      let text = privmsg[2]
+      let text = flatStr(privmsg[2])
       let isAction = false
       if (text.charCodeAt(0) === 1 && text.startsWith('\x01ACTION ')) {
         text = text.slice(8, text.endsWith('\x01') ? -1 : undefined)
@@ -21854,7 +21855,7 @@ function parseIrcLine(raw, channel) {
       // Anchored at line start (optional @tags, then the IRC prefix) so a message
       // body containing ":x!y@" can never be captured instead of the real prefix.
       const _loginM = raw.match(/^(?:@[^ ]+ )?:([a-zA-Z0-9_]+)![a-zA-Z0-9_]+@/)
-      const login = _loginM ? _loginM[1].toLowerCase() : displayName.toLowerCase()
+      const login = flatStr(_loginM ? _loginM[1].toLowerCase() : displayName.toLowerCase())
       const msg = {
         user: displayName,
         login,
@@ -21862,7 +21863,7 @@ function parseIrcLine(raw, channel) {
         text: text,
         color: sanitizeColor(tags.color || '#fff'),
         badges: tags.badges || '',
-        channel: channel || privmsg[1].toLowerCase(),
+        channel: channel || flatStr(privmsg[1].toLowerCase()),
         time: parseInt(tags['tmi-sent-ts'], 10) || parseInt(tags['rm-received-ts'], 10) || Date.now(),
         id: tags.id || '',
         replyTo: tags['reply-parent-display-name']
@@ -21938,10 +21939,10 @@ function parseIrcLine(raw, channel) {
       // Promote to its own msgId so renderers + dedupe can distinguish.
       const msgId = rawMsgId === 'viewermilestone' && category === 'watch-streak' ? 'watchstreak' : rawMsgId
       const streakCount = msgId === 'watchstreak' ? parseInt(tags['msg-param-value'], 10) || 0 : 0
-      const userText = usernotice[2] || ''
+      const userText = flatStr(usernotice[2]) || ''
       // Open a raid window so the incoming wave's first messages get flagged.
       if (rawMsgId === 'raid') {
-        const uncChannel = channel || usernotice[1].toLowerCase()
+        const uncChannel = channel || flatStr(usernotice[1].toLowerCase())
         const uncTime = parseInt(tags['tmi-sent-ts'], 10) || parseInt(tags['rm-received-ts'], 10) || Date.now()
         const nowMs = Date.now()
         for (const [ch, until] of _raidWindows) if (until < nowMs) _raidWindows.delete(ch)
@@ -21954,7 +21955,7 @@ function parseIrcLine(raw, channel) {
         systemMsg: ircTagUnescape(tags['system-msg'] || ''),
         color: sanitizeColor(tags.color || '#fff'),
         badges: tags.badges || '',
-        channel: channel || usernotice[1].toLowerCase(),
+        channel: channel || flatStr(usernotice[1].toLowerCase()),
         time: parseInt(tags['tmi-sent-ts'], 10) || parseInt(tags['rm-received-ts'], 10) || Date.now(),
         type: 'usernotice',
         msgId,
@@ -21980,7 +21981,7 @@ function parseIrcLine(raw, channel) {
     // (also used by clearchatToNotice=true from recent-messages API)
     const notice = raw.match(/NOTICE #([^ ]+) :(.+)$/)
     if (notice) {
-      const ch = channel || notice[1].toLowerCase()
+      const ch = channel || flatStr(notice[1].toLowerCase())
       const time = parseInt(tags['tmi-sent-ts'], 10) || parseInt(tags['rm-received-ts'], 10) || Date.now()
       const noticeType = tags['msg-id'] || ''
       // Deterministic ID when server doesn't provide one — same notice from live IRC
@@ -21990,13 +21991,13 @@ function parseIrcLine(raw, channel) {
         type: 'notice',
         noticeType,
         user: 'system',
-        text: notice[2],
+        text: flatStr(notice[2]),
         color: '#808080',
         badges: '',
         channel: ch,
         time,
         id: tags.id || detId,
-        systemMsg: notice[2],
+        systemMsg: flatStr(notice[2]),
       }
     }
 
@@ -22036,14 +22037,14 @@ function parseIrcLine(raw, channel) {
     // (timeout/ban of a user)
     const clearchat = raw.match(/CLEARCHAT #([^ ]+)(?: :(.+))?$/)
     if (clearchat) {
-      const target = clearchat[2] || ''
+      const target = flatStr(clearchat[2]) || ''
       const duration = tags['ban-duration']
       const text = target
         ? duration
           ? `${target} timed out for ${duration}s`
           : `${target} was permanently banned`
         : t('mc_irc_chat_cleared')
-      const ch = channel || clearchat[1].toLowerCase()
+      const ch = channel || flatStr(clearchat[1].toLowerCase())
       const time = parseInt(tags['tmi-sent-ts'], 10) || parseInt(tags['rm-received-ts'], 10) || Date.now()
       // Deterministic ID — dedupes live CLEARCHAT vs robotty NOTICE replay of same event.
       const detId = `clearchat-${ch}-${target}-${duration || 'perma'}-${time}`
@@ -22076,7 +22077,7 @@ function parseIrcLine(raw, channel) {
         text: t('mc_irc_msg_deleted', [tags.login || 'unknown']),
         color: '#808080',
         badges: '',
-        channel: channel || clearmsg[1].toLowerCase(),
+        channel: channel || flatStr(clearmsg[1].toLowerCase()),
         time: parseInt(tags['tmi-sent-ts'], 10) || parseInt(tags['rm-received-ts'], 10) || Date.now(),
         id: targetMsgId || `clearmsg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         systemMsg: t('mc_irc_msg_deleted', [tags.login || 'unknown']),
@@ -22092,7 +22093,7 @@ function parseIrcLine(raw, channel) {
         type: 'whisper',
         user: tags['display-name'] || 'anonymous',
         userId: tags['user-id'],
-        text: whisper[1],
+        text: flatStr(whisper[1]),
         color: sanitizeColor(tags.color || '#fff'),
         badges: tags.badges || '',
         time: parseInt(tags['tmi-sent-ts'], 10) || parseInt(tags['rm-received-ts'], 10) || Date.now(),
@@ -22104,6 +22105,18 @@ function parseIrcLine(raw, channel) {
   } catch (_) {
     return null
   }
+}
+
+// V8 represents substrings/regex captures over ~13 chars as SlicedString —
+// a pointer into the PARENT string, which stays fully alive for GC purposes.
+// Message fields built that way pin the entire raw IRC line (300-1000B of tag
+// soup) in the 3000-msg buffers for the field's whole lifetime. Concat+slice
+// forces a flat copy that drops the parent reference. Measured on the real
+// parser: 1282 → 947 B/msg retained (-26%, ~1MB per full buffer). Lives HERE
+// (after parseIrcLine, before CircularBuffer) so send-reject-inline-row's
+// source-carve of parseTags+parseIrcLine picks it up via hoisting.
+function flatStr(s) {
+  return s && s.length > 12 ? (' ' + s).slice(1) : s
 }
 
 // ============================================
@@ -26400,6 +26413,13 @@ const senderEmoteSets = new Map()
 // message (small API hit, big memory win). Heap growth on xqc dropped
 // from ~14 MB/sec to a fraction of that.
 const SENDER_EMOTE_LRU_MAX = 500
+// Per-sender name cap — the outer LRU bounds sender COUNT but a single
+// sender's inner Map was open-ended, the same one-level-down shape as the
+// 5000-sender regression above. Real 7TV+BTTV personal sets top out around
+// 100-150 names; 300 changes nothing for legit senders and bounds a
+// malformed/hostile batch payload. Insert-order eviction: oldest-known name
+// goes first, re-fetched on the sender's next message like outer eviction.
+const SENDER_EMOTE_NAMES_MAX = 300
 // Blobs persisted before the fetch path switched from merge to authoritative
 // replace can carry names the sender never/no-longer owns (merge-era bleed) —
 // loading them paints wrong emotes for a fetch round-trip on every boot.
@@ -26491,6 +26511,7 @@ function mergeSenderEmotes(senderKey, nameToEmote) {
       ) {
         inner.set(name, _carryEmoteInterval(prev, data))
         changed = true
+        if (inner.size > SENDER_EMOTE_NAMES_MAX) inner.delete(inner.keys().next().value)
       }
     }
   }
@@ -26624,6 +26645,7 @@ function replaceSenderEmotes(senderKey, nameToEmote) {
     ) {
       inner.set(name, _carryEmoteInterval(prev, data))
       changed = true
+      if (inner.size > SENDER_EMOTE_NAMES_MAX) inner.delete(inner.keys().next().value)
     }
   }
   if (changed) {
@@ -26971,6 +26993,11 @@ function _buildChannelEmoteCache(ch, emotes, platform) {
       hashToName.set(e.hash, e.name)
     }
   }
+  // Ceiling on the per-channel map — every other cache in this file has one,
+  // this (the authoritative path) trusted upstream response size. Real
+  // channels combine to a few hundred names; 2000 only ever bites a
+  // malformed/hostile payload. Oldest-inserted evicts first.
+  while (chCache.size > 2000) chCache.delete(chCache.keys().next().value)
   // Self-heal the stale-emote ghost registry: any name back in this channel's
   // live set was re-added (perhaps while we missed the event) — drop it so old
   // messages stop rendering ghosted. The render path also guards on the live
@@ -27218,8 +27245,11 @@ function scanDomForEmotes() {
   }
   const cache = channelEmoteCaches[ch]
 
-  // Cap per-channel to prevent unbounded growth
-  if (cache.size >= 5000) return
+  // Cap per-channel to prevent unbounded growth. 2300 = the authoritative
+  // path's 2000 ceiling + scan allowance; the old 5000 was a 25MB phantom
+  // worst-case across 20 channels for a path that only ever adds
+  // heatsync/unknown stragglers (twitch + 7tv/bttv/ffz excluded below).
+  if (cache.size >= 2300) return
 
   // Single combined selector — one DOM scan instead of 7 separate querySelectorAll calls
   const combinedSelector =
@@ -27227,7 +27257,7 @@ function scanDomForEmotes() {
 
   let found = 0
   for (const img of document.querySelectorAll(combinedSelector)) {
-    if (cache.size >= 5000) break
+    if (cache.size >= 2300) break
     const name = img.alt || img.getAttribute('data-emote-name')
     const url = img.src
     if (name && url && !cache.has(name) && !emoteCache.has(name)) {

@@ -3552,7 +3552,6 @@ const SETTINGS = [
       'emote-render': true,
       'tab-complete': true,
       'picker-button': true,
-      'right-click-block': true,
       'native-takeover': true,
       'kick-native-tap': true,
       'yt-innertube-tap': true,
@@ -3654,14 +3653,6 @@ const SETTINGS = [
         applies: 'reload',
         labelKey: 'mc_settings_sub_picker_button',
         tipKey: 'mc_settings_sub_picker_button_desc',
-      },
-      {
-        value: 'right-click-block',
-        default: true,
-        color: '#fff',
-        applies: 'live',
-        labelKey: 'mc_settings_sub_right_click_block',
-        tipKey: 'mc_settings_sub_right_click_block_desc',
       },
       {
         value: 'native-takeover',
@@ -3826,8 +3817,7 @@ const SETTINGS_PRESETS = [
         'emote-render': true,
         'tab-complete': true,
         'picker-button': true,
-        'right-click-block': true,
-        'native-takeover': true,
+          'native-takeover': true,
         'kick-native-tap': true,
         'yt-innertube-tap': true,
         'automod-queue': true,
@@ -3879,8 +3869,7 @@ const SETTINGS_PRESETS = [
         'emote-render': true,
         'tab-complete': true,
         'picker-button': true,
-        'right-click-block': true,
-        'native-takeover': true,
+          'native-takeover': true,
         'kick-native-tap': true,
         'yt-innertube-tap': true,
         'automod-queue': true,
@@ -42276,9 +42265,22 @@ function initInput() {
     return null
   }
 
-  function openEmoteCtxMenu(x, y, { emoteName, emoteUrl }) {
+  function openEmoteCtxMenu(x, y, { emoteName, emoteUrl, state, source, targetEl }) {
     const hi = getHighResUrl(emoteUrl)
     const items = []
+    // Block/unblock + remove-from-set live here so the shift menu is the
+    // complete per-emote surface. Plain right-click is the block/unblock fast
+    // path; removal is menu-only — it mutates your set server-side and lost
+    // its fast-path slot when right-click became always-block.
+    if (state === 'blocked') {
+      items.push({ label: 'unblock', fn: () => unblockEmote(emoteName) })
+    } else {
+      items.push({ label: 'block', fn: () => blockEmote(emoteName, emoteUrl, source) })
+      if (state === 'owned' && inventoryEmotes.has(emoteName)) {
+        items.push({ label: 'remove from set', fn: () => removeEmoteFromInventory(emoteName, targetEl) })
+      }
+    }
+    items.push('sep')
     let m
     if ((m = emoteUrl.match(/cdn\.7tv\.app\/emote\/([^/]+)/))) {
       items.push({
@@ -42400,7 +42402,9 @@ function initInput() {
         e.stopPropagation()
 
         if (e.shiftKey) {
-          openEmoteCtxMenu(e.clientX, e.clientY, emoteInfo)
+          // targetEl: remove-from-set needs the clicked element so the
+          // picker-tile cleanup path can find and drop the right tile.
+          openEmoteCtxMenu(e.clientX, e.clientY, { ...emoteInfo, targetEl: e.target })
           return
         }
 
@@ -42409,17 +42413,17 @@ function initInput() {
         // Race-guard against rapid clicking
         if (pendingEmoteOps.has(emoteName)) return
 
-        // 3-state right-click: blocked → unblock; owned (your HS inventory) →
-        // remove from set; everything else → block. Remove is gated to genuine
-        // inventory emotes (state==='owned' AND inventoryEmotes.has) so Twitch
-        // subs, channel emotes, follower/bits and third-party copies can NEVER be
-        // removed from a chat-flow right-click — only blocked. Removal is reversible
-        // (30-day recovery) and the name falls back to the next emote of that name
-        // (channel/global) or plain text, mirroring heatsync.org.
+        // 2-state right-click: blocked → unblock, everything else → block —
+        // including your own inventory emotes. Block is NOT an inventory
+        // mutation (caches + server user_emotes row preserved; unblock returns
+        // the emote to "in set"), so one gesture = one meaning with nothing
+        // destructive on the common path. The old 3rd branch routed owned
+        // emotes to remove-from-inventory, which silently mutated the set
+        // server-side and made blocking an owned emote take two right-clicks
+        // (or zero, when the removed name stopped resolving). Removal lives in
+        // the shift menu now (openEmoteCtxMenu).
         if (state === 'blocked') {
           unblockEmote(emoteName)
-        } else if (state === 'owned' && inventoryEmotes.has(emoteName)) {
-          removeEmoteFromInventory(emoteName, e.target)
         } else {
           blockEmote(emoteName, emoteUrl, source)
         }
@@ -61334,7 +61338,7 @@ const STORAGE_KEY = 'heatsync_multichat'
   // ─── subsystem gates ────────────────────────────────────────────────────
   // isEnabled(id): live read — server health kill-list wins, then the
   // user's ui_settings.subsystems map (default ON). Live-tagged code paths
-  // (mentions, stream-stats, right-click-block) call this at use time.
+  // (mentions, stream-stats) call this at use time.
   // gateAtBoot(id): the init()-time snapshot — every init guard reads this
   // so a mid-init storage write can't half-apply a subsystem.
   let _gatesAtBoot = null

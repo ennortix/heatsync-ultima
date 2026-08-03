@@ -5427,10 +5427,27 @@ function flushMessageQueue() {
   }
 }
 
+// WS lifecycle breadcrumb — last 30 events persisted to storage.local so a
+// dead/misauthed socket is DIAGNOSABLE after the fact (the SW console is
+// unreachable in the field; storage is readable from any surface). Sub-100B
+// events, debounced writes — silent-failure playbook, not scaffolding.
+const _wsDebug = []
+let _wsDebugTimer = null
+function wsDebugNote(evt, extra) {
+  _wsDebug.push(`${new Date().toISOString().slice(11, 19)} ${evt}${extra ? ` ${extra}` : ''}`)
+  while (_wsDebug.length > 30) _wsDebug.shift()
+  if (_wsDebugTimer) return
+  _wsDebugTimer = setTimeout(() => {
+    _wsDebugTimer = null
+    browser.storage.local.set({ hs_ws_debug: _wsDebug.slice() }).catch(() => {})
+  }, 2000)
+}
+
 async function connectWebSocket() {
   // Explicit connect intent ends the idle state — only the automatic
   // revival paths (watchdog alarm, scheduleReconnect, online) honor it.
   hsWsIdleClosed = false
+  wsDebugNote('connect', `auth:${!!authToken}`)
   // If already connecting, wait for that attempt
   if (wsState === WS_STATE.CONNECTING && connectionPromise) {
     log(' Connection in progress, waiting...')
@@ -5661,6 +5678,7 @@ async function connectWebSocket() {
           heartbeatInterval = null
         }
         log(' ⚠️ WebSocket disconnected:', event.code, event.reason)
+        wsDebugNote('close', String(event.code))
         // Detach handlers from the closing socket so its closure releases
         const closing = event?.target
         if (closing) {
@@ -5746,6 +5764,7 @@ function handleWSMessage(msg) {
     switch (msg.type) {
       case 'authenticated':
         log(' ✅ Authenticated, userId:', msg.userId)
+        wsDebugNote('authed', msg.userId ? 'user' : 'anon')
         isAuthenticated = true
         wsState = WS_STATE.AUTHENTICATED
         // Flush any queued messages now that we're authenticated
@@ -6242,11 +6261,15 @@ function handleWSMessage(msg) {
         // User sent a chat message from the heatsync.org chat-tile on a
         // different device — fan out to all tabs so multichat can tag the
         // upcoming platform-relay echo with [H] instead of [T]/[K].
+        wsDebugNote('origin_bcast', (msg.text || '').slice(0, 24))
         broadcastToTabs({
           type: 'chat_origin_broadcast',
           text: msg.text,
           channel: msg.channel,
           origin: msg.origin || 'heatsync',
+          // sendId: server stamps it since 25646584 (site-side fold); carried
+          // through so the multichat fold can key on it instead of bare text.
+          sendId: msg.sendId || '',
           ts: msg.ts || Date.now(),
         })
         break

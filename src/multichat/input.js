@@ -111,7 +111,9 @@ function trackSentMessage(text, hostOverride, synthId, echoes, reply) {
     // own echo stream and must account independently — a leaked counter would
     // make another tab suppress its FIRST (only rendered) copy of the message.
     chrome.storage.local.set({
-      [RECENT_SENT_KEY]: _recentSentMessages.map(({ suppressed, seenPlatforms, rendered, ...rest }) => rest),
+      [RECENT_SENT_KEY]: _recentSentMessages.map(
+        ({ suppressed, seenPlatforms, rendered, hydratedPlatforms, ...rest }) => rest,
+      ),
     })
   } catch (_) {}
 }
@@ -216,6 +218,82 @@ function isSentEcho(msgText, msgPlatform) {
     if (entry.rendered) return true
     entry.rendered = true
     return false
+  }
+  return false
+}
+
+// Retro-fold: fold own-send platform echoes that RENDERED BEFORE the
+// cross-device origin_broadcast arrived. isSentEcho only folds echoes that
+// arrive AFTER the entry exists — but a kick send from another device relays
+// through THIS extension, so the local pusher echo often beats the phone's
+// origin_tag round-trip and paints as a bare [K] row that isSentEcho never
+// saw. Called right after trackSentMessage stores a broadcast entry: the
+// earliest already-painted leg is retagged [H] and claims its platform; any
+// later leg is the dual-send duplicate — DOM row removed + msg.hidden (the
+// share-claim fold idiom) so buffer rebuilds don't resurrect it. Mirrors the
+// site's reconcile scan (heatsync 25646584).
+function retroFoldOwnEchoes() {
+  const entry = _recentSentMessages[_recentSentMessages.length - 1]
+  if (!entry || entry.host !== 'heatsync') return
+  const msgsEl = document.getElementById('hs-mc-messages')
+  if (!msgsEl) return
+  const cutoff = Date.now() - SENT_DEDUP_WINDOW
+  // Recent tail only — an echo that beat the broadcast is seconds old.
+  const rows = Array.from(msgsEl.children).slice(-60)
+  for (const div of rows) {
+    const m = div._hsMsg
+    if (!m || m.hidden || !m.text) continue
+    if ((m.time || 0) < cutoff) continue
+    // Already-[H] rows were claimed at ingest (or by an earlier send's fold) —
+    // never re-claim them, and never fold system rows.
+    if (m.platform === 'heatsync' || m.type) continue
+    if (!_echoTextMatches(entry, m.text)) continue
+    const plat = _echoPlatformKey(m.platform || 'twitch')
+    const seen = entry.seenPlatforms || (entry.seenPlatforms = [])
+    if (seen.includes(plat)) continue
+    seen.push(plat)
+    if (!entry.rendered) {
+      // First painted leg survives as the [H] row.
+      entry.rendered = true
+      m.badgePlatform = m.badgePlatform || m.platform
+      m.platform = 'heatsync'
+      const pb = div.querySelector('.hs-mc-platform-badge')
+      if (pb) {
+        pb.classList.remove('hs-mc-pb-twitch', 'hs-mc-pb-kick', 'hs-mc-pb-yt')
+        pb.classList.add('hs-mc-pb-heatsync')
+        pb.style.color = HS_PLAT_COLORS.heatsync
+        pb.textContent = '[H]'
+      }
+    } else {
+      // A leg already renders this send — this one is the duplicate.
+      m.hidden = true
+      try {
+        _unindexMessageDiv(div)
+      } catch (_) {}
+      div.remove()
+    }
+  }
+}
+
+// Hydration twin of isSentEcho — folds the OTHER platform legs of one
+// cross-device simulcast send when BG buffers replay history. isSentEcho's
+// 10s window is anchored to NOW (live races only); replayed legs are
+// minutes-to-hours old, so this matches the MESSAGE's own timestamp against
+// the entry's send time instead. Same contract: first leg per entry renders,
+// every other platform's leg folds. `hydratedPlatforms` is per-tab session
+// bookkeeping — stripped before persist like seenPlatforms/rendered, so each
+// tab accounts its own replay independently. Returns true → caller hides.
+function claimHydratedEcho(msgText, msgPlatform, msgTime) {
+  if (!msgTime) return false
+  const platform = _echoPlatformKey(msgPlatform)
+  for (let i = 0; i < _recentSentMessages.length; i++) {
+    const entry = _recentSentMessages[i]
+    if (Math.abs((entry.time || 0) - msgTime) > SENT_DEDUP_WINDOW) continue
+    if (!_echoTextMatches(entry, msgText)) continue
+    const seen = entry.hydratedPlatforms || (entry.hydratedPlatforms = [])
+    if (seen.includes(platform)) continue
+    seen.push(platform)
+    return seen.length > 1 // first leg renders; later platforms fold
   }
   return false
 }

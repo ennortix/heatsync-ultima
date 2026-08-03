@@ -767,6 +767,9 @@ function listenForSocialEvents() {
       // fans this out to other extension tabs automatically.
       try {
         trackSentMessage(msg.text, 'heatsync')
+        // Fold legs that BEAT this broadcast to the tab (kick echo relays
+        // through this very extension, so it usually wins the race).
+        retroFoldOwnEchoes()
       } catch (_) {}
       return
     }

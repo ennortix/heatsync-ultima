@@ -776,6 +776,8 @@ class IRC extends ChatClient {
           try {
             const sentHost = peekSentHost(m.text)
             if (sentHost) {
+              // Cross-device simulcast replay: only ONE leg per send renders.
+              if (claimHydratedEcho(m.text, 'twitch', m.time)) m.hidden = true
               m.badgePlatform = 'twitch'
               m.platform = sentHost === 'yt' ? 'youtube' : sentHost
             }
@@ -892,6 +894,8 @@ class IRC extends ChatClient {
           try {
             const sentHost = peekSentHost(m.text)
             if (sentHost) {
+              // Cross-device simulcast replay: only ONE leg per send renders.
+              if (claimHydratedEcho(m.text, 'twitch', m.time)) m.hidden = true
               m.badgePlatform = 'twitch'
               m.platform = sentHost === 'yt' ? 'youtube' : sentHost
             }
@@ -1445,6 +1449,8 @@ class KickChat extends ChatClient {
           try {
             const sentHost = peekSentHost(m.text)
             if (sentHost) {
+              // Cross-device simulcast replay: only ONE leg per send renders.
+              if (claimHydratedEcho(m.text, 'kick', m.time)) m.hidden = true
               m.badgePlatform = 'kick'
               m.platform = sentHost === 'yt' ? 'youtube' : sentHost
             }
@@ -1624,6 +1630,8 @@ class KickChat extends ChatClient {
           try {
             const sentHost = peekSentHost(m.text)
             if (sentHost) {
+              // Cross-device simulcast replay: only ONE leg per send renders.
+              if (claimHydratedEcho(m.text, 'kick', m.time)) m.hidden = true
               m.badgePlatform = 'kick'
               m.platform = sentHost === 'yt' ? 'youtube' : sentHost
             }

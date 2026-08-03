@@ -580,15 +580,17 @@ const ASSETS = ['icon-16.png', 'icon-48.png', 'icon-96.png', 'icon-128.png', 'ic
 
 // Strip ES module syntax from bundled files
 function stripExports(content) {
-  return content
-    .replace(/^export\s+default\s+\w+\s*;?\s*$/gm, '')
-    .replace(/^export\s*\{[^}]*\}\s*;?\s*$/gm, '')
-    .replace(/^export\s+(const|let|var|function|class)\s+/gm, '$1 ')
-    // Relative imports between synced-copy modules (paint-spec.js imports
-    // paint-core.js/scene-spec.js) — the bundle concatenates those files
-    // into one scope in dependency order, so the import lines just go.
-    // Multi-line `import { a,\n b } from './x.js'` included.
-    .replace(/^import\s*\{[\s\S]*?\}\s*from\s*['"]\.\/[^'"]+['"];?\s*$/gm, '')
+  return (
+    content
+      .replace(/^export\s+default\s+\w+\s*;?\s*$/gm, '')
+      .replace(/^export\s*\{[^}]*\}\s*;?\s*$/gm, '')
+      .replace(/^export\s+(const|let|var|function|class)\s+/gm, '$1 ')
+      // Relative imports between synced-copy modules (paint-spec.js imports
+      // paint-core.js/scene-spec.js) — the bundle concatenates those files
+      // into one scope in dependency order, so the import lines just go.
+      // Multi-line `import { a,\n b } from './x.js'` included.
+      .replace(/^import\s*\{[\s\S]*?\}\s*from\s*['"]\.\/[^'"]+['"];?\s*$/gm, '')
+  )
 }
 
 // Read lib files

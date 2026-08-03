@@ -5301,91 +5301,261 @@ function svg(viewW, viewH, body) {
 // ── pixel silhouettes (blocky on purpose — crisp at 13px Cozette scale) ────
 
 const SIL = {
-  dunes: (c) => svgUrl(svg(96, 20,
-    `<path fill='${c}' d='M0 20v-8h6v-2h8v-2h10v2h8v2h10v4h6v-2h10v-4h8v-2h10v2h8v4h6v2h6v4z'/>`)),
-  graveyard: (c) => svgUrl(svg(140, 26,
-    `<path fill='${c}' d='M0 26v-2h140v2z` +
-    // fence run (pickets + rail)
-    ` M4 24v-7h2v7z M11 24v-7h2v7z M18 24v-7h2v7z M2 19h20v2H2z` +
-    // headstone (stepped arch)
-    ` M34 24v-6h2v-2h6v2h2v6z` +
-    // cross
-    ` M52 24v-8h-3v-2h3v-4h2v4h3v2h-3v8z` +
-    // monument (stepped obelisk)
-    ` M68 24v-2h-2v-2h2v-9h4v9h2v2h-2v2z` +
-    // bare tree (trunk + two arms)
-    ` M96 24v-10h-4v-2h4v-4h2v2h5v2h-5v12z` +
-    // second headstone
-    ` M116 24v-5h2v-2h5v2h2v5z` +
-    // fence run
-    ` M130 24v-7h2v7z M137 24v-7h2v7z M128 19h12v2h-12z'/>`)),
-  reef: (c) => svgUrl(svg(90, 14,
-    `<path fill='${c}' d='M0 14v-4h8v-2h10v2h10v2h10v-4h8v-2h8v2h8v4h10v-2h10v2h8v2z'/>`)),
-  pines: (c) => svgUrl(svg(84, 24,
-    `<path fill='${c}' d='M0 24v-3h84v3z` +
-    ` M8 21v-3H5v-4h3v-4h2v-3h2v3h2v4h3v4h-3v3z` +
-    ` M30 21v-2h-2v-4h2v-3h2v-3h2v3h2v3h2v4h-2v2z` +
-    ` M52 21v-3h-3v-4h3v-4h2v-4h2v4h2v4h3v4h-3v3z` +
-    ` M74 21v-2h-2v-3h2v-3h2v3h2v3h-2v2z'/>`)),
+  dunes: (c) =>
+    svgUrl(svg(96, 20, `<path fill='${c}' d='M0 20v-8h6v-2h8v-2h10v2h8v2h10v4h6v-2h10v-4h8v-2h10v2h8v4h6v2h6v4z'/>`)),
+  graveyard: (c) =>
+    svgUrl(
+      svg(
+        140,
+        26,
+        `<path fill='${c}' d='M0 26v-2h140v2z` +
+          // fence run (pickets + rail)
+          ` M4 24v-7h2v7z M11 24v-7h2v7z M18 24v-7h2v7z M2 19h20v2H2z` +
+          // headstone (stepped arch)
+          ` M34 24v-6h2v-2h6v2h2v6z` +
+          // cross
+          ` M52 24v-8h-3v-2h3v-4h2v4h3v2h-3v8z` +
+          // monument (stepped obelisk)
+          ` M68 24v-2h-2v-2h2v-9h4v9h2v2h-2v2z` +
+          // bare tree (trunk + two arms)
+          ` M96 24v-10h-4v-2h4v-4h2v2h5v2h-5v12z` +
+          // second headstone
+          ` M116 24v-5h2v-2h5v2h2v5z` +
+          // fence run
+          ` M130 24v-7h2v7z M137 24v-7h2v7z M128 19h12v2h-12z'/>`,
+      ),
+    ),
+  reef: (c) =>
+    svgUrl(svg(90, 14, `<path fill='${c}' d='M0 14v-4h8v-2h10v2h10v2h10v-4h8v-2h8v2h8v4h10v-2h10v2h8v2z'/>`)),
+  pines: (c) =>
+    svgUrl(
+      svg(
+        84,
+        24,
+        `<path fill='${c}' d='M0 24v-3h84v3z` +
+          ` M8 21v-3H5v-4h3v-4h2v-3h2v3h2v4h3v4h-3v3z` +
+          ` M30 21v-2h-2v-4h2v-3h2v-3h2v3h2v3h2v4h-2v2z` +
+          ` M52 21v-3h-3v-4h3v-4h2v-4h2v4h2v4h3v4h-3v3z` +
+          ` M74 21v-2h-2v-3h2v-3h2v3h2v3h-2v2z'/>`,
+      ),
+    ),
 }
 
 // ── weather tiles (pixel SVG, tiled + scrolled; drops stay inside bounds) ──
 
 function rainTile(c, density) {
-  if (density >= 3) return { w: 14, h: 20, url: svgUrl(svg(14, 20,
-    `<g fill='${c}' opacity='.6'>` +
-    `<rect x='2' y='1' width='1' height='5' transform='rotate(12 2.5 3.5)'/>` +
-    `<rect x='8' y='7' width='1' height='4' transform='rotate(12 8.5 9)'/>` +
-    `<rect x='5' y='13' width='1' height='5' transform='rotate(12 5.5 15.5)'/>` +
-    `<rect x='11' y='3' width='1' height='4' transform='rotate(12 11.5 5)'/></g>`)) }
-  if (density === 2) return { w: 16, h: 24, url: svgUrl(svg(16, 24,
-    `<g fill='${c}' opacity='.6'>` +
-    `<rect x='3' y='2' width='1' height='6' transform='rotate(12 3.5 5)'/>` +
-    `<rect x='10' y='12' width='1' height='5' transform='rotate(12 10.5 14.5)'/></g>`)) }
-  return { w: 20, h: 28, url: svgUrl(svg(20, 28,
-    `<g fill='${c}' opacity='.55'>` +
-    `<rect x='4' y='3' width='1' height='6' transform='rotate(12 4.5 6)'/>` +
-    `<rect x='13' y='16' width='1' height='4' transform='rotate(12 13.5 18)'/></g>`)) }
+  if (density >= 3)
+    return {
+      w: 14,
+      h: 20,
+      url: svgUrl(
+        svg(
+          14,
+          20,
+          `<g fill='${c}' opacity='.6'>` +
+            `<rect x='2' y='1' width='1' height='5' transform='rotate(12 2.5 3.5)'/>` +
+            `<rect x='8' y='7' width='1' height='4' transform='rotate(12 8.5 9)'/>` +
+            `<rect x='5' y='13' width='1' height='5' transform='rotate(12 5.5 15.5)'/>` +
+            `<rect x='11' y='3' width='1' height='4' transform='rotate(12 11.5 5)'/></g>`,
+        ),
+      ),
+    }
+  if (density === 2)
+    return {
+      w: 16,
+      h: 24,
+      url: svgUrl(
+        svg(
+          16,
+          24,
+          `<g fill='${c}' opacity='.6'>` +
+            `<rect x='3' y='2' width='1' height='6' transform='rotate(12 3.5 5)'/>` +
+            `<rect x='10' y='12' width='1' height='5' transform='rotate(12 10.5 14.5)'/></g>`,
+        ),
+      ),
+    }
+  return {
+    w: 20,
+    h: 28,
+    url: svgUrl(
+      svg(
+        20,
+        28,
+        `<g fill='${c}' opacity='.55'>` +
+          `<rect x='4' y='3' width='1' height='6' transform='rotate(12 4.5 6)'/>` +
+          `<rect x='13' y='16' width='1' height='4' transform='rotate(12 13.5 18)'/></g>`,
+      ),
+    ),
+  }
 }
 
 function snowTile(c, density) {
-  if (density >= 3) return { w: 14, h: 18, url: svgUrl(svg(14, 18,
-    `<g fill='${c}'><circle cx='3' cy='3' r='1' opacity='.9'/>` +
-    `<circle cx='10' cy='8' r='.7' opacity='.6'/>` +
-    `<circle cx='6' cy='13' r='1' opacity='.8'/>` +
-    `<circle cx='12' cy='15' r='.6' opacity='.5'/></g>`)) }
-  if (density === 2) return { w: 18, h: 22, url: svgUrl(svg(18, 22,
-    `<g fill='${c}'><circle cx='4' cy='5' r='1' opacity='.9'/>` +
-    `<circle cx='12' cy='14' r='.7' opacity='.6'/>` +
-    `<circle cx='8' cy='19' r='.6' opacity='.5'/></g>`)) }
-  return { w: 24, h: 28, url: svgUrl(svg(24, 28,
-    `<g fill='${c}'><circle cx='6' cy='6' r='1' opacity='.85'/>` +
-    `<circle cx='16' cy='18' r='.7' opacity='.55'/></g>`)) }
+  if (density >= 3)
+    return {
+      w: 14,
+      h: 18,
+      url: svgUrl(
+        svg(
+          14,
+          18,
+          `<g fill='${c}'><circle cx='3' cy='3' r='1' opacity='.9'/>` +
+            `<circle cx='10' cy='8' r='.7' opacity='.6'/>` +
+            `<circle cx='6' cy='13' r='1' opacity='.8'/>` +
+            `<circle cx='12' cy='15' r='.6' opacity='.5'/></g>`,
+        ),
+      ),
+    }
+  if (density === 2)
+    return {
+      w: 18,
+      h: 22,
+      url: svgUrl(
+        svg(
+          18,
+          22,
+          `<g fill='${c}'><circle cx='4' cy='5' r='1' opacity='.9'/>` +
+            `<circle cx='12' cy='14' r='.7' opacity='.6'/>` +
+            `<circle cx='8' cy='19' r='.6' opacity='.5'/></g>`,
+        ),
+      ),
+    }
+  return {
+    w: 24,
+    h: 28,
+    url: svgUrl(
+      svg(
+        24,
+        28,
+        `<g fill='${c}'><circle cx='6' cy='6' r='1' opacity='.85'/>` +
+          `<circle cx='16' cy='18' r='.7' opacity='.55'/></g>`,
+      ),
+    ),
+  }
 }
 
 function emberTile(c1, c2, density) {
-  if (density >= 3) return { w: 14, h: 20, url: svgUrl(svg(14, 20,
-    `<g><rect x='3' y='15' width='1' height='2' fill='${c1}' opacity='.9'/>` +
-    `<rect x='9' y='9' width='1' height='1' fill='${c2}' opacity='.8'/>` +
-    `<rect x='6' y='4' width='1' height='1' fill='${c1}' opacity='.5'/>` +
-    `<rect x='12' y='17' width='1' height='1' fill='${c2}' opacity='.7'/></g>`)) }
-  if (density === 2) return { w: 16, h: 24, url: svgUrl(svg(16, 24,
-    `<g><rect x='4' y='18' width='1' height='2' fill='${c1}' opacity='.9'/>` +
-    `<rect x='11' y='8' width='1' height='1' fill='${c2}' opacity='.7'/></g>`)) }
-  return { w: 20, h: 28, url: svgUrl(svg(20, 28,
-    `<g><rect x='5' y='21' width='1' height='2' fill='${c1}' opacity='.85'/>` +
-    `<rect x='14' y='9' width='1' height='1' fill='${c2}' opacity='.6'/></g>`)) }
+  if (density >= 3)
+    return {
+      w: 14,
+      h: 20,
+      url: svgUrl(
+        svg(
+          14,
+          20,
+          `<g><rect x='3' y='15' width='1' height='2' fill='${c1}' opacity='.9'/>` +
+            `<rect x='9' y='9' width='1' height='1' fill='${c2}' opacity='.8'/>` +
+            `<rect x='6' y='4' width='1' height='1' fill='${c1}' opacity='.5'/>` +
+            `<rect x='12' y='17' width='1' height='1' fill='${c2}' opacity='.7'/></g>`,
+        ),
+      ),
+    }
+  if (density === 2)
+    return {
+      w: 16,
+      h: 24,
+      url: svgUrl(
+        svg(
+          16,
+          24,
+          `<g><rect x='4' y='18' width='1' height='2' fill='${c1}' opacity='.9'/>` +
+            `<rect x='11' y='8' width='1' height='1' fill='${c2}' opacity='.7'/></g>`,
+        ),
+      ),
+    }
+  return {
+    w: 20,
+    h: 28,
+    url: svgUrl(
+      svg(
+        20,
+        28,
+        `<g><rect x='5' y='21' width='1' height='2' fill='${c1}' opacity='.85'/>` +
+          `<rect x='14' y='9' width='1' height='1' fill='${c2}' opacity='.6'/></g>`,
+      ),
+    ),
+  }
 }
 
 function glyphTile(c, density) {
   const col = (x, ys, head) =>
     ys.map(([y, h]) => `<rect x='${x}' y='${y}' width='1' height='${h}' fill='${c}' opacity='.28'/>`).join('') +
     `<rect x='${x}' y='${head}' width='1' height='4' fill='${c}' opacity='.95'/>`
-  if (density >= 3) return { w: 12, h: 22, url: svgUrl(svg(12, 22,
-    col(2, [[1, 3], [6, 2], [10, 3]], 15) + col(8, [[3, 2], [8, 3], [13, 2]], 17))) }
-  if (density === 2) return { w: 14, h: 22, url: svgUrl(svg(14, 22,
-    col(3, [[1, 3], [6, 2], [10, 3]], 15) + col(10, [[4, 2], [9, 3]], 16))) }
-  return { w: 18, h: 24, url: svgUrl(svg(18, 24, col(5, [[2, 3], [8, 2], [13, 3]], 18))) }
+  if (density >= 3)
+    return {
+      w: 12,
+      h: 22,
+      url: svgUrl(
+        svg(
+          12,
+          22,
+          col(
+            2,
+            [
+              [1, 3],
+              [6, 2],
+              [10, 3],
+            ],
+            15,
+          ) +
+            col(
+              8,
+              [
+                [3, 2],
+                [8, 3],
+                [13, 2],
+              ],
+              17,
+            ),
+        ),
+      ),
+    }
+  if (density === 2)
+    return {
+      w: 14,
+      h: 22,
+      url: svgUrl(
+        svg(
+          14,
+          22,
+          col(
+            3,
+            [
+              [1, 3],
+              [6, 2],
+              [10, 3],
+            ],
+            15,
+          ) +
+            col(
+              10,
+              [
+                [4, 2],
+                [9, 3],
+              ],
+              16,
+            ),
+        ),
+      ),
+    }
+  return {
+    w: 18,
+    h: 24,
+    url: svgUrl(
+      svg(
+        18,
+        24,
+        col(
+          5,
+          [
+            [2, 3],
+            [8, 2],
+            [13, 3],
+          ],
+          18,
+        ),
+      ),
+    ),
+  }
 }
 
 // ── backdrop catalog ────────────────────────────────────────────────────────
@@ -5400,11 +5570,31 @@ function glyphTile(c, density) {
 
 const BACKDROPS = {
   dawn: {
-    label: 'desert dawn', luminance: false, basePeriod: 16,
+    label: 'desert dawn',
+    luminance: false,
+    basePeriod: 16,
     variants: [
-      { name: 'ember', sky: 'linear-gradient(0deg,#ff8700 0%,#b34700 22%,#6e3a52 55%,#3a2f55 82%,#23233f 100%)', haze: '#ffd7af', bloom: '#ffaf5f', sil: '#140a02' },
-      { name: 'rose', sky: 'linear-gradient(0deg,#ff5f87 0%,#a03562 26%,#5f2d55 60%,#2e2345 100%)', haze: '#ffc7d7', bloom: '#ff87af', sil: '#170812' },
-      { name: 'gold', sky: 'linear-gradient(0deg,#ffd700 0%,#af7800 24%,#5f4a3a 58%,#39304a 100%)', haze: '#fff3b0', bloom: '#ffe75f', sil: '#141002' },
+      {
+        name: 'ember',
+        sky: 'linear-gradient(0deg,#ff8700 0%,#b34700 22%,#6e3a52 55%,#3a2f55 82%,#23233f 100%)',
+        haze: '#ffd7af',
+        bloom: '#ffaf5f',
+        sil: '#140a02',
+      },
+      {
+        name: 'rose',
+        sky: 'linear-gradient(0deg,#ff5f87 0%,#a03562 26%,#5f2d55 60%,#2e2345 100%)',
+        haze: '#ffc7d7',
+        bloom: '#ff87af',
+        sil: '#170812',
+      },
+      {
+        name: 'gold',
+        sky: 'linear-gradient(0deg,#ffd700 0%,#af7800 24%,#5f4a3a 58%,#39304a 100%)',
+        haze: '#fff3b0',
+        bloom: '#ffe75f',
+        sil: '#141002',
+      },
     ],
     build(v, animName) {
       const layers =
@@ -5418,7 +5608,9 @@ const BACKDROPS = {
   },
 
   graveyard: {
-    label: 'graveyard', luminance: false, basePeriod: 22,
+    label: 'graveyard',
+    luminance: false,
+    basePeriod: 22,
     variants: [
       { name: 'ash', sky: 'linear-gradient(0deg,#26262a 0%,#3a3a42 45%,#2e2e36 75%,#222228 100%)', sil: '#08080a' },
       { name: 'blood', sky: 'linear-gradient(0deg,#2a1f22 0%,#4a2f33 45%,#38262c 75%,#241d20 100%)', sil: '#0a0608' },
@@ -5436,11 +5628,28 @@ const BACKDROPS = {
   },
 
   abyss: {
-    label: 'abyss', luminance: false, basePeriod: 18,
+    label: 'abyss',
+    luminance: false,
+    basePeriod: 18,
     variants: [
-      { name: 'blue', sky: 'linear-gradient(180deg,#00344e 0%,#001d2e 45%,#000a12 100%)', ray: '#00d7ff', sil: '#010508' },
-      { name: 'teal', sky: 'linear-gradient(180deg,#00443b 0%,#00251f 45%,#000d0a 100%)', ray: '#00ffd7', sil: '#010806' },
-      { name: 'void', sky: 'linear-gradient(180deg,#1e0f38 0%,#100822 45%,#05030e 100%)', ray: '#875fff', sil: '#040208' },
+      {
+        name: 'blue',
+        sky: 'linear-gradient(180deg,#00344e 0%,#001d2e 45%,#000a12 100%)',
+        ray: '#00d7ff',
+        sil: '#010508',
+      },
+      {
+        name: 'teal',
+        sky: 'linear-gradient(180deg,#00443b 0%,#00251f 45%,#000d0a 100%)',
+        ray: '#00ffd7',
+        sil: '#010806',
+      },
+      {
+        name: 'void',
+        sky: 'linear-gradient(180deg,#1e0f38 0%,#100822 45%,#05030e 100%)',
+        ray: '#875fff',
+        sil: '#040208',
+      },
     ],
     build(v, animName) {
       const layers =
@@ -5454,11 +5663,31 @@ const BACKDROPS = {
   },
 
   nightfall: {
-    label: 'nightfall', luminance: false, basePeriod: 20,
+    label: 'nightfall',
+    luminance: false,
+    basePeriod: 20,
     variants: [
-      { name: 'aurora', sky: 'linear-gradient(0deg,#0a0a16 0%,#12122a 55%,#0a0a18 100%)', a1: '#00ff87', a2: '#00d7ff', sil: '#04040a' },
-      { name: 'magenta', sky: 'linear-gradient(0deg,#120a16 0%,#1c122a 55%,#100a18 100%)', a1: '#ff40af', a2: '#875fff', sil: '#08040a' },
-      { name: 'ice', sky: 'linear-gradient(0deg,#0a0e16 0%,#101a2a 55%,#0a0e18 100%)', a1: '#87d7ff', a2: '#d7ffff', sil: '#04060c' },
+      {
+        name: 'aurora',
+        sky: 'linear-gradient(0deg,#0a0a16 0%,#12122a 55%,#0a0a18 100%)',
+        a1: '#00ff87',
+        a2: '#00d7ff',
+        sil: '#04040a',
+      },
+      {
+        name: 'magenta',
+        sky: 'linear-gradient(0deg,#120a16 0%,#1c122a 55%,#100a18 100%)',
+        a1: '#ff40af',
+        a2: '#875fff',
+        sil: '#08040a',
+      },
+      {
+        name: 'ice',
+        sky: 'linear-gradient(0deg,#0a0e16 0%,#101a2a 55%,#0a0e18 100%)',
+        a1: '#87d7ff',
+        a2: '#d7ffff',
+        sil: '#04060c',
+      },
     ],
     build(v, animName) {
       const layers =
@@ -5473,7 +5702,9 @@ const BACKDROPS = {
   },
 
   terminal: {
-    label: 'terminal', luminance: false, basePeriod: 9,
+    label: 'terminal',
+    luminance: false,
+    basePeriod: 9,
     variants: [
       { name: 'phosphor', ph: '#00ff5f', plate: 'linear-gradient(#0c0c0c,#060606)' },
       { name: 'amber', ph: '#ffb000', plate: 'linear-gradient(#0e0a04,#070502)' },
@@ -5490,7 +5721,9 @@ const BACKDROPS = {
   },
 
   furnace: {
-    label: 'furnace', luminance: true, basePeriod: 5,
+    label: 'furnace',
+    luminance: true,
+    basePeriod: 5,
     variants: [
       { name: 'coal', glow: '#ff3700', plate: 'linear-gradient(0deg,#1c0300 0%,#0d0202 55%,#050505 100%)' },
       { name: 'ion', glow: '#00afff', plate: 'linear-gradient(0deg,#001030 0%,#020818 55%,#040404 100%)' },
@@ -5504,7 +5737,8 @@ const BACKDROPS = {
       const layers =
         `radial-gradient(120% 90% at 50% 115%,var(${cv}) 0%,transparent 65%) no-repeat 0 0/100% 100%,` +
         `${v.plate} no-repeat 0 0/100% 100%`
-      const kf = `@property ${cv}{syntax:"<color>";initial-value:${v.glow}66;inherits:false;}` +
+      const kf =
+        `@property ${cv}{syntax:"<color>";initial-value:${v.glow}66;inherits:false;}` +
         `@keyframes ${animName}{from{${cv}:${v.glow}55;}to{${cv}:${v.glow}a8;}}`
       return { decls: `background:${layers};`, keyframes: kf, alternate: true }
     },
@@ -5521,7 +5755,9 @@ const BACKDROPS = {
 
 const WEATHERS = {
   rain: {
-    label: 'rain', luminance: false, basePeriod: 0.9,
+    label: 'rain',
+    luminance: false,
+    basePeriod: 0.9,
     variants: [
       { name: 'silver', c: '#9db4c9' },
       { name: 'blood', c: '#d70000' },
@@ -5536,7 +5772,9 @@ const WEATHERS = {
   },
 
   snow: {
-    label: 'snow', luminance: false, basePeriod: 4.5,
+    label: 'snow',
+    luminance: false,
+    basePeriod: 4.5,
     variants: [
       { name: 'white', c: '#ffffff' },
       { name: 'ash', c: '#9e9e9e' },
@@ -5556,7 +5794,10 @@ const WEATHERS = {
     // washes the name out on bright plates (dawn). Painted between the
     // plate and the text instead: ::after with z-index:-1 still paints
     // above ::before (tree order breaks the tie inside the negative band).
-    label: 'fog', luminance: false, basePeriod: 16, behindText: true,
+    label: 'fog',
+    luminance: false,
+    basePeriod: 16,
+    behindText: true,
     variants: [
       { name: 'sunglow', c: '#ffd7af' },
       { name: 'mist', c: '#c0c8d0' },
@@ -5573,7 +5814,9 @@ const WEATHERS = {
   },
 
   embers: {
-    label: 'embers', luminance: false, basePeriod: 3.2,
+    label: 'embers',
+    luminance: false,
+    basePeriod: 3.2,
     variants: [
       { name: 'fire', c1: '#ff8700', c2: '#ffd700' },
       { name: 'ion', c1: '#00d7ff', c2: '#87ffff' },
@@ -5589,7 +5832,9 @@ const WEATHERS = {
   },
 
   glyphs: {
-    label: 'glyph rain', luminance: false, basePeriod: 2.6,
+    label: 'glyph rain',
+    luminance: false,
+    basePeriod: 2.6,
     variants: [
       { name: 'green', c: '#00ff87' },
       { name: 'amber', c: '#ffb000' },
@@ -5605,7 +5850,9 @@ const WEATHERS = {
   },
 
   storm: {
-    label: 'storm', luminance: true, basePeriod: 7,
+    label: 'storm',
+    luminance: true,
+    basePeriod: 7,
     variants: [
       { name: 'silver', c: '#9db4c9' },
       { name: 'blood', c: '#d70000' },
@@ -5692,7 +5939,12 @@ function normalizeSceneForHash(scene) {
       ? { id: scene.backdrop.id, variant: scene.backdrop.variant ?? 0, speed: scene.backdrop.speed ?? 1 }
       : null,
     weather: isPlainObject(scene.weather)
-      ? { id: scene.weather.id, variant: scene.weather.variant ?? 0, density: scene.weather.density ?? 2, speed: scene.weather.speed ?? 1 }
+      ? {
+          id: scene.weather.id,
+          variant: scene.weather.variant ?? 0,
+          density: scene.weather.density ?? 2,
+          speed: scene.weather.speed ?? 1,
+        }
       : null,
   }
 }
@@ -5725,7 +5977,8 @@ function buildSceneCss(scene, selector, hash, opts = {}) {
 
   if (backdrop) {
     const meta = BACKDROPS[backdrop.id]
-    const variant = meta.variants[isIntInRange(backdrop.variant ?? 0, 0, meta.variants.length - 1) ? (backdrop.variant ?? 0) : 0]
+    const variant =
+      meta.variants[isIntInRange(backdrop.variant ?? 0, 0, meta.variants.length - 1) ? (backdrop.variant ?? 0) : 0]
     const animName = `hss_${hash}_b`
     const built = meta.build(variant, animName, hash)
     css += `${selector}::before{${PSEUDO_BASE}z-index:-1;${built.decls}`
@@ -5741,7 +5994,8 @@ function buildSceneCss(scene, selector, hash, opts = {}) {
 
   if (weather) {
     const meta = WEATHERS[weather.id]
-    const variant = meta.variants[isIntInRange(weather.variant ?? 0, 0, meta.variants.length - 1) ? (weather.variant ?? 0) : 0]
+    const variant =
+      meta.variants[isIntInRange(weather.variant ?? 0, 0, meta.variants.length - 1) ? (weather.variant ?? 0) : 0]
     const density = DENSITIES.has(weather.density) ? weather.density : 2
     const speed = safeSpeed(weather.speed ?? 1)
     const animName = `hss_${hash}_w`
@@ -5778,10 +6032,12 @@ const SCENE_RIM_CSS = 'text-shadow:0 1px 1px #000d,0 0 2px #000a;'
 // ── builder-UI metadata (labels + variant names only — no CSS leaks out) ───
 
 const SCENE_BACKDROPS_META = Object.fromEntries(
-  Object.entries(BACKDROPS).map(([id, m]) => [id, { label: m.label, variants: m.variants.map(v => v.name) }]))
+  Object.entries(BACKDROPS).map(([id, m]) => [id, { label: m.label, variants: m.variants.map((v) => v.name) }]),
+)
 
 const SCENE_WEATHERS_META = Object.fromEntries(
-  Object.entries(WEATHERS).map(([id, m]) => [id, { label: m.label, variants: m.variants.map(v => v.name) }]))
+  Object.entries(WEATHERS).map(([id, m]) => [id, { label: m.label, variants: m.variants.map((v) => v.name) }]),
+)
 
 
 
@@ -5879,32 +6135,106 @@ const PLUS_MAX_EFFECTS = MAX_EFFECTS
  */
 const EFFECTS = {
   // ── paint slot — mutually exclusive, at most 1 ──────────────────────────
-  pan:    { slot: 'paint', luminance: false, basePeriod: 5,   letterSplit: false, label: 'gradient pan' },
-  conic:  { slot: 'paint', luminance: false, basePeriod: 6,   letterSplit: false, label: 'conic sweep' },
-  hue:    { slot: 'paint', luminance: true,  basePeriod: 8,   letterSplit: false, label: 'hue cycle' },
-  glint:  { slot: 'paint', luminance: false, basePeriod: 3.4, letterSplit: false, label: 'shimmer glint' },
+  pan: { slot: 'paint', luminance: false, basePeriod: 5, letterSplit: false, label: 'gradient pan' },
+  conic: { slot: 'paint', luminance: false, basePeriod: 6, letterSplit: false, label: 'conic sweep' },
+  hue: { slot: 'paint', luminance: true, basePeriod: 8, letterSplit: false, label: 'hue cycle' },
+  glint: { slot: 'paint', luminance: false, basePeriod: 3.4, letterSplit: false, label: 'shimmer glint' },
   chrome: { slot: 'paint', luminance: false, basePeriod: 4.5, letterSplit: false, label: 'liquid chrome' },
-  gold:   { slot: 'paint', luminance: false, basePeriod: 5,   letterSplit: false, label: 'gold foil' },
-  fire:   { slot: 'paint', luminance: false, basePeriod: 1.8, letterSplit: false, label: 'fire' },
+  gold: { slot: 'paint', luminance: false, basePeriod: 5, letterSplit: false, label: 'gold foil' },
+  fire: { slot: 'paint', luminance: false, basePeriod: 1.8, letterSplit: false, label: 'fire' },
   matrix: { slot: 'paint', luminance: false, basePeriod: 3.2, letterSplit: false, label: 'matrix rain' },
-  holo:   { slot: 'paint', luminance: false, basePeriod: 2.8, letterSplit: false, label: 'hologram' },
-  reveal: { slot: 'paint', luminance: false, basePeriod: 3,   letterSplit: false, label: 'mask reveal' },
+  holo: { slot: 'paint', luminance: false, basePeriod: 2.8, letterSplit: false, label: 'hologram' },
+  reveal: { slot: 'paint', luminance: false, basePeriod: 3, letterSplit: false, label: 'mask reveal' },
 
   // ── motion/glow slot — up to 2, distinct sig required ───────────────────
-  wave:   { slot: 'motion', luminance: false, basePeriod: 1.6, letterSplit: true,  label: 'letter wave',   sig: 'letter:transform' },
-  ripple: { slot: 'motion', luminance: true,  basePeriod: 2.4, letterSplit: true,  label: 'rainbow ripple', sig: 'letter:filter' },
-  coin:   { slot: 'motion', luminance: false, basePeriod: 5,   letterSplit: false, label: 'coin spin',     sig: 'self:transform' },
-  heli:   { slot: 'motion', luminance: false, basePeriod: 2.2, letterSplit: false, label: 'helicopter',    sig: 'self:transform' },
-  float:  { slot: 'motion', luminance: false, basePeriod: 5.5, letterSplit: false, label: 'zero-g float',  sig: 'self:transform' },
-  heart:  { slot: 'motion', luminance: false, basePeriod: 1.3, letterSplit: false, label: 'heartbeat',     sig: 'self:transform' },
-  wobble: { slot: 'motion', luminance: false, basePeriod: 2.8, letterSplit: false, label: 'wobble stretch', sig: 'self:transform' },
-  swing:  { slot: 'motion', luminance: false, basePeriod: 2.6, letterSplit: false, label: 'pendulum',      sig: 'self:transform' },
-  tumble: { slot: 'motion', luminance: false, basePeriod: 3.4, letterSplit: true,  label: 'letter tumble', sig: 'letter:transform' },
-  neon:   { slot: 'motion', luminance: true,  basePeriod: 2.6, letterSplit: false, label: 'neon breathe',  sig: 'self:shadow' },
+  wave: {
+    slot: 'motion',
+    luminance: false,
+    basePeriod: 1.6,
+    letterSplit: true,
+    label: 'letter wave',
+    sig: 'letter:transform',
+  },
+  ripple: {
+    slot: 'motion',
+    luminance: true,
+    basePeriod: 2.4,
+    letterSplit: true,
+    label: 'rainbow ripple',
+    sig: 'letter:filter',
+  },
+  coin: {
+    slot: 'motion',
+    luminance: false,
+    basePeriod: 5,
+    letterSplit: false,
+    label: 'coin spin',
+    sig: 'self:transform',
+  },
+  heli: {
+    slot: 'motion',
+    luminance: false,
+    basePeriod: 2.2,
+    letterSplit: false,
+    label: 'helicopter',
+    sig: 'self:transform',
+  },
+  float: {
+    slot: 'motion',
+    luminance: false,
+    basePeriod: 5.5,
+    letterSplit: false,
+    label: 'zero-g float',
+    sig: 'self:transform',
+  },
+  heart: {
+    slot: 'motion',
+    luminance: false,
+    basePeriod: 1.3,
+    letterSplit: false,
+    label: 'heartbeat',
+    sig: 'self:transform',
+  },
+  wobble: {
+    slot: 'motion',
+    luminance: false,
+    basePeriod: 2.8,
+    letterSplit: false,
+    label: 'wobble stretch',
+    sig: 'self:transform',
+  },
+  swing: {
+    slot: 'motion',
+    luminance: false,
+    basePeriod: 2.6,
+    letterSplit: false,
+    label: 'pendulum',
+    sig: 'self:transform',
+  },
+  tumble: {
+    slot: 'motion',
+    luminance: false,
+    basePeriod: 3.4,
+    letterSplit: true,
+    label: 'letter tumble',
+    sig: 'letter:transform',
+  },
+  neon: {
+    slot: 'motion',
+    luminance: true,
+    basePeriod: 2.6,
+    letterSplit: false,
+    label: 'neon breathe',
+    sig: 'self:shadow',
+  },
 }
 
 const EFFECT_IDS = new Set(Object.keys(EFFECTS))
-const LETTER_SPLIT_IDS = new Set(Object.entries(EFFECTS).filter(([, m]) => m.letterSplit).map(([id]) => id))
+const LETTER_SPLIT_IDS = new Set(
+  Object.entries(EFFECTS)
+    .filter(([, m]) => m.letterSplit)
+    .map(([id]) => id),
+)
 
 /** Stable short hash of a spec — same spec (same key order irrelevant,
  * we JSON.stringify a normalized/sorted form) → same hash. */
@@ -5919,9 +6249,9 @@ function normalizeForHash(spec) {
     base: spec?.base && {
       type: spec.base.type,
       angle: spec.base.angle,
-      stops: Array.isArray(spec.base.stops) ? spec.base.stops.map(s => ({ color: s?.color, pos: s?.pos })) : [],
+      stops: Array.isArray(spec.base.stops) ? spec.base.stops.map((s) => ({ color: s?.color, pos: s?.pos })) : [],
     },
-    effects: Array.isArray(spec?.effects) ? spec.effects.map(e => ({ id: e?.id, speed: e?.speed })) : [],
+    effects: Array.isArray(spec?.effects) ? spec.effects.map((e) => ({ id: e?.id, speed: e?.speed })) : [],
     glow: spec?.glow ? { color: spec.glow.color, strength: spec.glow.strength } : null,
     scene: normalizeSceneForHash(spec?.scene),
   }
@@ -5939,9 +6269,8 @@ function normalizeForHash(spec) {
  */
 function validatePaintSpec(spec, opts = {}) {
   const errors = []
-  const maxEffects = Number.isInteger(opts.maxEffects) && opts.maxEffects >= 0
-    ? Math.min(opts.maxEffects, MAX_EFFECTS)
-    : MAX_EFFECTS
+  const maxEffects =
+    Number.isInteger(opts.maxEffects) && opts.maxEffects >= 0 ? Math.min(opts.maxEffects, MAX_EFFECTS) : MAX_EFFECTS
 
   if (!isPlainObject(spec)) {
     return { ok: false, errors: ['spec must be an object'] }
@@ -5991,9 +6320,11 @@ function validatePaintSpec(spec, opts = {}) {
   if (!Array.isArray(spec.effects)) {
     errors.push('effects must be an array')
   } else if (spec.effects.length > maxEffects) {
-    errors.push(maxEffects === 0
-      ? 'effects require plus — free paints are static (0 effect layers)'
-      : `effects must have at most ${maxEffects} ${maxEffects === 1 ? 'entry' : 'entries'}`)
+    errors.push(
+      maxEffects === 0
+        ? 'effects require plus — free paints are static (0 effect layers)'
+        : `effects must have at most ${maxEffects} ${maxEffects === 1 ? 'entry' : 'entries'}`,
+    )
   } else {
     const seenIds = new Set()
     let paintCount = 0
@@ -6027,14 +6358,19 @@ function validatePaintSpec(spec, opts = {}) {
       } else {
         motionCount++
         if (motionSigs.has(meta.sig)) {
-          errors.push(`effects: "${e.id}" conflicts with another selected effect animating the same property (${meta.sig}) — pick effects with different motion targets`)
+          errors.push(
+            `effects: "${e.id}" conflicts with another selected effect animating the same property (${meta.sig}) — pick effects with different motion targets`,
+          )
         }
         motionSigs.add(meta.sig)
       }
     })
 
     if (structurallyValid) {
-      if (paintCount > 1) errors.push('at most 1 paint-slot effect allowed (pan/conic/hue/glint/chrome/gold/fire/matrix/holo/reveal are mutually exclusive)')
+      if (paintCount > 1)
+        errors.push(
+          'at most 1 paint-slot effect allowed (pan/conic/hue/glint/chrome/gold/fire/matrix/holo/reveal are mutually exclusive)',
+        )
       if (motionCount > 2) errors.push('at most 2 motion-slot effects allowed')
     }
   }
@@ -6065,10 +6401,9 @@ function validatePaintSpec(spec, opts = {}) {
  * what keeps a gradient/effect fill visible over its own scene. */
 function paintNeedsLetterSplit(spec) {
   if (!spec) return false
-  if (Array.isArray(spec.effects) && spec.effects.some(e => LETTER_SPLIT_IDS.has(e?.id))) return true
+  if (Array.isArray(spec.effects) && spec.effects.some((e) => LETTER_SPLIT_IDS.has(e?.id))) return true
   if (spec.v === 2 && isPlainObject(spec.scene)) {
-    const hasPaintEffect = Array.isArray(spec.effects) &&
-      spec.effects.some(e => EFFECTS[e?.id]?.slot === 'paint')
+    const hasPaintEffect = Array.isArray(spec.effects) && spec.effects.some((e) => EFFECTS[e?.id]?.slot === 'paint')
     return hasPaintEffect || spec.base?.type !== 'solid'
   }
   return false
@@ -6170,8 +6505,8 @@ function safePos(pos) {
 function sortedStops(base) {
   const stops = Array.isArray(base?.stops) ? base.stops : []
   return stops
-    .filter(s => isPlainObject(s) && HEX_RE.test(s?.color) && isIntInRange(s.pos, 0, 100))
-    .map(s => ({ color: safeHex(s.color), pos: safePos(s.pos) }))
+    .filter((s) => isPlainObject(s) && HEX_RE.test(s?.color) && isIntInRange(s.pos, 0, 100))
+    .map((s) => ({ color: safeHex(s.color), pos: safePos(s.pos) }))
     .sort((a, b) => a.pos - b.pos)
 }
 
@@ -6208,7 +6543,7 @@ function paintPhaseNow() {
 }
 
 function gradientStopsCss(stops) {
-  return stops.map(s => `${s.color} ${s.pos}%`).join(', ')
+  return stops.map((s) => `${s.color} ${s.pos}%`).join(', ')
 }
 
 /** Build the CSS for the resting `base` paint. Returns { decl, isClipText }. */
@@ -6218,9 +6553,10 @@ function buildBaseCss(base, stops) {
     return { decl: `color:${color};`, isClipText: false, cssImage: `linear-gradient(${color}, ${color})` }
   }
   const angle = safeAngle(base.angle)
-  const image = base.type === 'linear'
-    ? `linear-gradient(${angle}deg, ${gradientStopsCss(stops)})`
-    : `conic-gradient(from ${angle}deg, ${gradientStopsCss(stops)})`
+  const image =
+    base.type === 'linear'
+      ? `linear-gradient(${angle}deg, ${gradientStopsCss(stops)})`
+      : `conic-gradient(from ${angle}deg, ${gradientStopsCss(stops)})`
   return {
     decl: `background:${image};-webkit-background-clip:text;background-clip:text;color:transparent;`,
     isClipText: true,
@@ -6232,7 +6568,8 @@ function buildBaseCss(base, stops) {
 
 const THEMED_PAINT = {
   chrome: {
-    gradient: 'linear-gradient(100deg, #6b7280, #e5e7eb 20%, #4b5563 38%, #f3f4f6 52%, #374151 70%, #d1d5db 88%, #6b7280)',
+    gradient:
+      'linear-gradient(100deg, #6b7280, #e5e7eb 20%, #4b5563 38%, #f3f4f6 52%, #374151 70%, #d1d5db 88%, #6b7280)',
     size: '220% 100%',
     timing: 'ease-in-out',
     direction: 'alternate',
@@ -6252,7 +6589,8 @@ const THEMED_PAINT = {
     size: '100% 300%',
     timing: 'ease-in-out',
     direction: 'alternate',
-    keyframes: (name) => `@keyframes ${name}{from{background-position:0 100%;transform:skewX(0);}to{background-position:0 40%;transform:skewX(-1.5deg);}}`,
+    keyframes: (name) =>
+      `@keyframes ${name}{from{background-position:0 100%;transform:skewX(0);}to{background-position:0 40%;transform:skewX(-1.5deg);}}`,
   },
   matrix: {
     gradient: 'repeating-linear-gradient(0deg, #003300 0 6px, #00d700 6px 9px, #00ff87 9px 10px)',
@@ -6285,7 +6623,12 @@ function buildPaintEffectCss(effectId, speed, base, stops, hash) {
     const t = THEMED_PAINT[effectId]
     const decls = `background:${t.gradient};background-size:${t.size};-webkit-background-clip:text;background-clip:text;color:transparent;`
     const sync = syncDelayCalc(t.direction === 'alternate' ? duration * 2 : duration)
-    return { decls, animShorthand: `${animName} ${duration}s ${t.timing} infinite ${t.direction}`, sync, keyframes: t.keyframes(animName) }
+    return {
+      decls,
+      animShorthand: `${animName} ${duration}s ${t.timing} infinite ${t.direction}`,
+      sync,
+      keyframes: t.keyframes(animName),
+    }
   }
 
   if (effectId === 'pan') {
@@ -6297,7 +6640,12 @@ function buildPaintEffectCss(effectId, speed, base, stops, hash) {
     const image = `linear-gradient(${angle}deg, ${gradientStopsCss(wrapStops)})`
     const decls = `background:${image};background-size:300% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;`
     const kf = `@keyframes ${animName}{to{background-position:300% 0;}}`
-    return { decls, animShorthand: `${animName} ${duration}s linear infinite`, sync: syncDelayCalc(duration), keyframes: kf }
+    return {
+      decls,
+      animShorthand: `${animName} ${duration}s linear infinite`,
+      sync: syncDelayCalc(duration),
+      keyframes: kf,
+    }
   }
 
   if (effectId === 'conic') {
@@ -6308,9 +6656,15 @@ function buildPaintEffectCss(effectId, speed, base, stops, hash) {
     const wrapStops = stops.length ? [...stops, { color: stops[0].color, pos: 100 }] : stops
     const image = `conic-gradient(from calc(${angle}deg + var(${angleVar})), ${gradientStopsCss(wrapStops)})`
     const decls = `background:${image};-webkit-background-clip:text;background-clip:text;color:transparent;`
-    const kf = `@property ${angleVar}{syntax:"<angle>";initial-value:0deg;inherits:false;}` +
+    const kf =
+      `@property ${angleVar}{syntax:"<angle>";initial-value:0deg;inherits:false;}` +
       `@keyframes ${animName}{to{${angleVar}:360deg;}}`
-    return { decls, animShorthand: `${animName} ${duration}s linear infinite`, sync: syncDelayCalc(duration), keyframes: kf }
+    return {
+      decls,
+      animShorthand: `${animName} ${duration}s linear infinite`,
+      sync: syncDelayCalc(duration),
+      keyframes: kf,
+    }
   }
 
   if (effectId === 'hue') {
@@ -6318,7 +6672,12 @@ function buildPaintEffectCss(effectId, speed, base, stops, hash) {
     // of how base painted the text.
     const baseCss = buildBaseCss(base, stops)
     const kf = `@keyframes ${animName}{to{filter:hue-rotate(360deg);}}`
-    return { decls: baseCss.decl, animShorthand: `${animName} ${duration}s linear infinite`, sync: syncDelayCalc(duration), keyframes: kf }
+    return {
+      decls: baseCss.decl,
+      animShorthand: `${animName} ${duration}s linear infinite`,
+      sync: syncDelayCalc(duration),
+      keyframes: kf,
+    }
   }
 
   if (effectId === 'glint') {
@@ -6326,7 +6685,12 @@ function buildPaintEffectCss(effectId, speed, base, stops, hash) {
     const image = `linear-gradient(115deg, transparent 38%, #ffffffcc 50%, transparent 62%) no-repeat, ${baseCss.cssImage}`
     const decls = `background:${image};background-size:250% 100%, 100% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;`
     const kf = `@keyframes ${animName}{0%{background-position:210% 0, 0 0;}100%{background-position:-110% 0, 0 0;}}`
-    return { decls, animShorthand: `${animName} ${duration}s ease-in-out infinite`, sync: syncDelayCalc(duration), keyframes: kf }
+    return {
+      decls,
+      animShorthand: `${animName} ${duration}s ease-in-out infinite`,
+      sync: syncDelayCalc(duration),
+      keyframes: kf,
+    }
   }
 
   if (effectId === 'reveal') {
@@ -6334,7 +6698,12 @@ function buildPaintEffectCss(effectId, speed, base, stops, hash) {
     const mask = 'linear-gradient(90deg, #000 30%, #0003 50%, #000 70%)'
     const decls = `${baseCss.decl}-webkit-mask-image:${mask};mask-image:${mask};-webkit-mask-size:300% 100%;mask-size:300% 100%;`
     const kf = `@keyframes ${animName}{from{-webkit-mask-position:130% 0;mask-position:130% 0;}to{-webkit-mask-position:-130% 0;mask-position:-130% 0;}}`
-    return { decls, animShorthand: `${animName} ${duration}s linear infinite`, sync: syncDelayCalc(duration), keyframes: kf }
+    return {
+      decls,
+      animShorthand: `${animName} ${duration}s linear infinite`,
+      sync: syncDelayCalc(duration),
+      keyframes: kf,
+    }
   }
 
   return null
@@ -6430,8 +6799,11 @@ function buildMotionEffectCss(effectId, speed, selector, hash, glow) {
     case 'neon': {
       const color = glow && HEX_RE.test(glow.color) ? safeHex(glow.color) : '#ff40af'
       const scale = glow && glow.strength === 2 ? 1.6 : 1
-      const r1 = Math.round(4 * scale), r2 = Math.round(11 * scale)
-      const r1b = Math.round(6 * scale), r2b = Math.round(22 * scale), r3b = Math.round(40 * scale)
+      const r1 = Math.round(4 * scale),
+        r2 = Math.round(11 * scale)
+      const r1b = Math.round(6 * scale),
+        r2b = Math.round(22 * scale),
+        r3b = Math.round(40 * scale)
       const rule = `${selector}{animation:${animName} ${duration}s ease-in-out infinite;animation-delay:${syncDelayCalc(duration)};}`
       const kf = `@keyframes ${animName}{0%,100%{text-shadow:0 0 ${r1}px ${color}80, 0 0 ${r2}px ${color}40;}50%{text-shadow:0 0 ${r1b}px ${color}cc, 0 0 ${r2b}px ${color}88, 0 0 ${r3b}px ${color}44;}}`
       return rule + kf
@@ -6474,9 +6846,11 @@ function compilePaintCss(spec, selector, opts = {}) {
   const stops = sortedStops(base)
   const effects = opts.static
     ? []
-    : (Array.isArray(spec.effects) ? spec.effects.filter(e => isPlainObject(e) && EFFECT_IDS.has(e.id)) : [])
-  const paintEffect = effects.find(e => EFFECTS[e.id].slot === 'paint')
-  const motionEffects = effects.filter(e => EFFECTS[e.id].slot === 'motion')
+    : Array.isArray(spec.effects)
+      ? spec.effects.filter((e) => isPlainObject(e) && EFFECT_IDS.has(e.id))
+      : []
+  const paintEffect = effects.find((e) => EFFECTS[e.id].slot === 'paint')
+  const motionEffects = effects.filter((e) => EFFECTS[e.id].slot === 'motion')
   const needsLetterSplit = paintNeedsLetterSplit(spec)
 
   // Chrome cannot paint a parent's background-clip:text into TRANSFORMED
@@ -6546,7 +6920,7 @@ function compilePaintCss(spec, selector, opts = {}) {
   // Static glow — skip if neon is active and sourced the same color (neon's
   // own keyframes already carry a shadow on every frame); otherwise layer
   // the constant shadow on so it doesn't require an active effect to show.
-  const hasNeon = motionEffects.some(e => e.id === 'neon')
+  const hasNeon = motionEffects.some((e) => e.id === 'neon')
   if (spec.glow && !hasNeon) {
     css += buildGlowCss(spec.glow, selector)
   }

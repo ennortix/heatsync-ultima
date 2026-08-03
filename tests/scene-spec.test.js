@@ -16,7 +16,10 @@ function v2Spec(scene, overrides = {}) {
   }
 }
 
-const DAWN_FOG = { backdrop: { id: 'dawn', variant: 0, speed: 1 }, weather: { id: 'fog', variant: 0, density: 2, speed: 1 } }
+const DAWN_FOG = {
+  backdrop: { id: 'dawn', variant: 0, speed: 1 },
+  weather: { id: 'fog', variant: 0, density: 2, speed: 1 },
+}
 
 describe('scene paints v2 — ext synced copy', () => {
   test('accepts and compiles the dawn+fog scene (plate + weather pseudos)', () => {
@@ -36,9 +39,20 @@ describe('scene paints v2 — ext synced copy', () => {
 
   test('scene + clip-text fill forces letter-split (paint-order rule)', () => {
     expect(paintNeedsLetterSplit(v2Spec(DAWN_FOG))).toBe(false)
-    expect(paintNeedsLetterSplit(v2Spec(DAWN_FOG, {
-      base: { type: 'linear', angle: 90, stops: [{ color: '#ffd700', pos: 0 }, { color: '#ff8700', pos: 100 }] },
-    }))).toBe(true)
+    expect(
+      paintNeedsLetterSplit(
+        v2Spec(DAWN_FOG, {
+          base: {
+            type: 'linear',
+            angle: 90,
+            stops: [
+              { color: '#ffd700', pos: 0 },
+              { color: '#ff8700', pos: 100 },
+            ],
+          },
+        }),
+      ),
+    ).toBe(true)
   })
 
   test('static mode = hero frame, zero animation', () => {

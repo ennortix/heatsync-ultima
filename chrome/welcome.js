@@ -27,12 +27,15 @@ function t(k) {
 ;(async () => {
   const cta = document.querySelector('.cta[data-when="out"]')
   try {
-    const res = await fetch('https://heatsync.org/api/live/top?limit=10')
+    const res = await fetch('https://heatsync.org/api/live/top?limit=50')
     if (!res.ok) throw new Error('live/top not ok')
     const { streams } = await res.json()
-    const s = (streams || []).find(
+    const usable = (streams || []).filter(
       (x) => (x?.platform === 'twitch' || x?.platform === 'kick') && /^[a-zA-Z0-9_]{2,32}$/.test(x?.username || ''),
     )
+    // Prefer a simulcaster (≥2 platforms) so the first click demos the
+    // multichat weave, not just emotes; hottest single-platform otherwise.
+    const s = usable.find((x) => Object.keys(x?.platformUsernames || {}).length >= 2) || usable[0]
     if (!s) throw new Error('no live streams')
     if (!cta) return
     cta.href = s.platform === 'kick' ? `https://kick.com/${s.username}` : `https://www.twitch.tv/${s.username}`

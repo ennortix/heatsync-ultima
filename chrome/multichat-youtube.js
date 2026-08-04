@@ -23694,7 +23694,7 @@ const mcPickerSources = (() => {
       }
     }
   } catch (_) {}
-  return new Set(['7tv', 'bttv', 'ffz', 'hs'])
+  return new Set(['7tv', 'ffz', 'hs'])
 })()
 function mcSaveSources() {
   try {
@@ -23703,7 +23703,9 @@ function mcSaveSources() {
 }
 // Remote search providers, in one place so the fetch/render loops can't drift.
 // 'hs' is the native HeatSync emote directory (heatsync.org/api/emote-search).
-const MC_REMOTE_SOURCES = ['7tv', 'bttv', 'ffz', 'hs']
+// No 'bttv': their shared-search API went auth-only (403, 2026-08). Cached
+// endpoints still serve already-added bttv emotes; there's just no search.
+const MC_REMOTE_SOURCES = ['7tv', 'ffz', 'hs']
 function mcHasExternalSource() {
   return MC_REMOTE_SOURCES.some((s) => mcPickerSources.has(s))
 }
@@ -23908,25 +23910,6 @@ async function mcSearch7tvApi(q, signal, opts) {
   }))
 }
 
-async function mcSearchBttvApi(q, signal, opts) {
-  const page = opts && Number.isFinite(opts.page) ? opts.page : 1
-  const offset = (page - 1) * MC_PAGE_SIZE.bttv
-  const r = await fetch(
-    `https://api.betterttv.net/3/emotes/shared/search?query=${encodeURIComponent(q)}&offset=${offset}&limit=${MC_PAGE_SIZE.bttv}`,
-    { signal },
-  )
-  if (!r.ok) throw new Error(`bttv ${r.status}`)
-  const items = await r.json()
-  if (!Array.isArray(items)) return []
-  return items.map((e) => ({
-    name: e.code,
-    url: `https://cdn.betterttv.net/emote/${e.id}/1x.${e.imageType || 'webp'}`,
-    provider: 'bttv',
-    id: e.id,
-    animated: !!e.animated,
-  }))
-}
-
 async function mcSearchFfzApi(q, signal, opts) {
   const page = opts && Number.isFinite(opts.page) ? opts.page : 1
   const r = await fetch(
@@ -23982,7 +23965,6 @@ async function mcSearchHsApi(q, signal, opts) {
 // loop below picks it up — no scattered ternaries to update.
 const MC_PROVIDER_FETCHERS = {
   '7tv': mcSearch7tvApi,
-  bttv: mcSearchBttvApi,
   ffz: mcSearchFfzApi,
   hs: mcSearchHsApi,
 }

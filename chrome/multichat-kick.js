@@ -9805,6 +9805,15 @@ function injectStyles() {
       background: #fff !important;
       color: #000 !important;
     }
+    /* POPOUT exception: the popout boots locked to the live tab with a channel
+       override ("live · <channel>"), so there the live tab IS the selected
+       content — grey left the bar with no visible selection at all. Scoped to
+       .hs-popout so the in-page grey doctrine above is untouched. */
+    .hs-popout #hs-mc-tabbar .hs-mc-tab[data-tab="live"].active {
+      background: #fff !important;
+      color: #000 !important;
+      border-color: #fff !important;
+    }
     /* Horizontal mode: 3 real flex sections at the top level of #hs-mc-tabbar.
        Section sizes to its content (flex 0 1 auto) so pf+util pack tight to
        the last channel tab — no gap when few tabs. Section can shrink + tabs

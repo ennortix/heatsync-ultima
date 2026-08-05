@@ -411,18 +411,33 @@ async function uploadChromeZip(token, zipPath) {
   }
 }
 
+// CWS needs a beat between "upload accepted" and "publishable" — publishing
+// immediately after the PUT answers 400 with an empty body (hit on the 1.7.43
+// release; the identical call succeeded a minute later). Retry rather than
+// failing a release that only needed to wait, and print the raw body when it
+// really is broken — an empty "400 — " told us nothing.
 async function publishChromeItem(token) {
-  const res = await fetch(`https://www.googleapis.com/chromewebstore/v1.1/items/${CWS_ITEM_ID}/publish`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'x-goog-api-version': '2', 'Content-Length': '0' },
-  })
-  const data = await res.json()
-  const statuses = data.status || []
-  if (!statuses.includes('OK')) {
-    throw new Error(
-      `chrome publish failed: ${statuses.join(',') || res.status} — ${(data.statusDetail || []).join('; ')}`,
-    )
+  const ATTEMPTS = 5
+  const WAIT_MS = 8000
+  let lastErr = ''
+  for (let i = 1; i <= ATTEMPTS; i++) {
+    const res = await fetch(`https://www.googleapis.com/chromewebstore/v1.1/items/${CWS_ITEM_ID}/publish`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'x-goog-api-version': '2', 'Content-Length': '0' },
+    })
+    const raw = await res.text()
+    let data = {}
+    try {
+      data = JSON.parse(raw)
+    } catch {}
+    if ((data.status || []).includes('OK')) return
+    lastErr = `${(data.status || []).join(',') || res.status} — ${(data.statusDetail || []).join('; ') || raw.trim() || '(empty body)'}`
+    if (i < ATTEMPTS) {
+      console.log(`  chrome: publish not ready (${lastErr}); retrying in ${WAIT_MS / 1000}s [${i}/${ATTEMPTS - 1}]`)
+      await new Promise((r) => setTimeout(r, WAIT_MS))
+    }
   }
+  throw new Error(`chrome publish failed after ${ATTEMPTS} attempts: ${lastErr}`)
 }
 
 async function doChrome(zipPath, creds, willPublish) {

@@ -133,28 +133,24 @@
       color: #000 !important;
     }
     .hs-mc-tab.has-stream-event.active {
+      /* explicit bg: .has-stream-event's #000 bg is declared LATER than
+         .active's #fff at equal specificity, so without this the combo
+         painted black-on-black */
+      background: #fff !important;
       color: #000 !important;
     }
-    /* "live" tab stays muted grey by default — never the white *active*
-       highlight (so it never looks like the selected content tab). But it
-       DOES take the normal white-bg/black-text on hover like every other
-       tab/button (per request). #id prefix wins over all .class rules, so
-       the grey default also holds through .active. */
+    /* "live" tab idles muted grey, but SELECTED means the white active
+       highlight — everywhere, in-page and popout alike (the old in-page
+       grey-through-.active doctrine left the current tab reading unselected).
+       Hover matches every other tab/button: white bg, black text. */
     #hs-mc-tabbar .hs-mc-tab[data-tab="live"] {
       background: #000 !important;
       color: #aaa !important;
       border-color: #808080 !important;
       font-weight: 400 !important;
     }
-    #hs-mc-tabbar .hs-mc-tab[data-tab="live"]:hover {
-      background: #fff !important;
-      color: #000 !important;
-    }
-    /* POPOUT exception: the popout boots locked to the live tab with a channel
-       override ("live · <channel>"), so there the live tab IS the selected
-       content — grey left the bar with no visible selection at all. Scoped to
-       .hs-popout so the in-page grey doctrine above is untouched. */
-    .hs-popout #hs-mc-tabbar .hs-mc-tab[data-tab="live"].active {
+    #hs-mc-tabbar .hs-mc-tab[data-tab="live"]:hover,
+    #hs-mc-tabbar .hs-mc-tab[data-tab="live"].active {
       background: #fff !important;
       color: #000 !important;
       border-color: #fff !important;

@@ -1,5 +1,14 @@
 # changelog
 
+## [1.7.43] — 2026-08-05
+
+### fixed
+- **a connecting chat says so** — a channel you just opened showed "no messages yet" while it was still wiring up, which read as a dead extension for the first 15-25 seconds. it now says "connecting…" until chat actually lands, and only says "no messages yet" once it's connected and the channel really is quiet.
+- **dark pages stay dark** — twitch, kick and youtube no longer get double-inverted by chrome's auto-dark, and the overlay shields itself per element, so strips and dark emotes stop painting white.
+- **the selected live tab looks selected** — the active tab takes the white highlight in-page and in the popout, instead of reading as unselected grey.
+- **simulcast folds to one row** — a stream running on twitch and kick at once collapses into a single `[H]` row, including legs that arrive out of order or replay at hydration.
+- **emote picker search** — dropped bttv results; their search api went auth-only and returned nothing.
+
 ## [1.7.42] — 2026-08-03
 
 ### fixed

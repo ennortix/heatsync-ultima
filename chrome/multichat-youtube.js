@@ -58702,6 +58702,20 @@ const STORAGE_KEY = 'heatsync_multichat'
   // paints a tab that isn't in the bar.
   let currentTab = 'live'
   let prevTab = 'live'
+  // Tabs whose chat legs are still joining. A fresh install lands on a channel
+  // and the first messages take ~15-25s (bg irc join + history hydration), and
+  // an empty panel saying "no messages yet" for that long reads as broken —
+  // the exact silence a new installer judges the extension on. Counter, not a
+  // flag: one tab can join twitch + kick + youtube legs.
+  const _tabJoining = new Map() // tabId -> outstanding leg count
+  // When a tab's last leg settled. A settled join is NOT the same as chat
+  // arriving — irc.join resolves once history is requested, and the first
+  // messages land seconds later — so the copy holds "connecting…" for a short
+  // grace after settle. Also covers the window before any mark exists: marks
+  // land in startNetwork's idle slice, well after the panel's first paint.
+  const _tabSettledAt = new Map()
+  const JOIN_STALL_MS = 30000
+  const CONNECT_GRACE_MS = 5000
   let liveChannel = null // override channel for live tab (null = use URL channel)
   let livePlatformMap = {} // per-URL-channel platform overrides: { [urlCh]: { twitch, kick, youtube } }
   let liveChannelSet = new Set() // live per the direct /live-status poll (lowercase names)
@@ -58709,6 +58723,81 @@ const STORAGE_KEY = 'heatsync_multichat'
   // beside the poll set, so isChannelLive() below can never touch it in its
   // temporal dead zone. null = no snapshot seen yet (distinct from "none live").
   let _swLiveSet = null
+
+  /* Does this tab have any chat leg to connect at all? A tab with none (no
+   * channel on the page, a link-only entry) is genuinely empty, not connecting. */
+  function tabHasChatLegs(id) {
+    try {
+      if (id === 'live') return !!getCurrentChannel() || !!getLiveChannel()
+      const ch = config?.channels?.find((c) => c?.id === id)
+      return !!(ch?.twitch || ch?.kick || ch?.youtube)
+    } catch {
+      return false
+    }
+  }
+
+  /* Is this tab still wiring up its chat? True while legs are in flight, while
+   * a tab with legs has never settled one, and for CONNECT_GRACE_MS after the
+   * last settle (join resolves before the first messages hydrate). */
+  function isTabConnecting(id) {
+    const k = String(id)
+    if (_tabJoining.get(k)) return true
+    if (!tabHasChatLegs(id)) return false
+    const settledAt = _tabSettledAt.get(k)
+    if (!settledAt) return true
+    return Date.now() - settledAt < CONNECT_GRACE_MS
+  }
+
+  /* Mark a tab as joining while `p` (an irc/kick join promise) is outstanding,
+   * so its empty state can say "connecting…" instead of "no messages yet".
+   * Settles on resolve AND reject — a failed join must not strand the tab on
+   * "connecting…" forever (irc.join already toasts its own give-up), and
+   * JOIN_STALL_MS covers a promise that never settles at all. */
+  function trackJoin(tabId, p) {
+    if (!tabId) return p
+    const id = String(tabId)
+    _tabJoining.set(id, (_tabJoining.get(id) || 0) + 1)
+    // Repaint on mark, not just on settle: the panel paints before startNetwork's
+    // idle-slice issues the joins, so a visible empty tab has already rendered
+    // "no messages yet" by the time we get here.
+    if (currentTab === id) {
+      try {
+        renderMessages(id)
+      } catch {}
+    }
+    let settled = false
+    const settle = () => {
+      if (settled) return
+      settled = true
+      _tabSettledAt.set(id, Date.now())
+      const left = (_tabJoining.get(id) || 1) - 1
+      if (left > 0) _tabJoining.set(id, left)
+      else _tabJoining.delete(id)
+      // Only the visible tab needs a repaint; a background tab re-renders on
+      // its next switchTab anyway.
+      if (currentTab === id) {
+        try {
+          renderMessages(id)
+        } catch {}
+      }
+      // Repaint once the grace expires so a genuinely silent channel stops
+      // claiming "connecting…" — a dead channel must read as dead.
+      setTimeout(() => {
+        if (currentTab === id && !_tabJoining.get(id)) {
+          try {
+            renderMessages(id)
+          } catch {}
+        }
+      }, CONNECT_GRACE_MS + 50)
+    }
+    setTimeout(settle, JOIN_STALL_MS)
+    try {
+      Promise.resolve(p).then(settle, settle)
+    } catch {
+      settle()
+    }
+    return p
+  }
 
   /* Is this lowercase channel name live, per EITHER source?
    *
@@ -62085,7 +62174,12 @@ const STORAGE_KEY = 'heatsync_multichat'
       </div>
       <div id="hs-mc-multistream-banner" hidden></div>
       <div id="hs-mc-messages">
-        <div class="hs-mc-empty">${t('mc_no_messages')}</div>
+        <!-- Skeleton state, painted before any join has even been issued —
+             so it must be "connecting…", not "no messages yet". renderMessages
+             owns the swap: it prints "no messages yet" only once _tabJoining
+             says every leg has settled. This static string is the one a fresh
+             install actually stares at while the panel wires up. -->
+        <div class="hs-mc-empty">${t('mc_connecting')}</div>
       </div>
       <button id="hs-mc-new-msgs" style="display:none"></button>
     `
@@ -67832,6 +67926,10 @@ const STORAGE_KEY = 'heatsync_multichat'
         } catch (_) {}
         empty.appendChild(line)
         empty.appendChild(btn)
+      } else if (isTabConnecting(id)) {
+        // Not wired up yet — say so rather than claiming an empty chat we
+        // haven't actually connected to.
+        empty.textContent = t('mc_connecting')
       } else {
         empty.textContent = t('mc_no_messages')
       }
@@ -68716,13 +68814,13 @@ const STORAGE_KEY = 'heatsync_multichat'
 
       if (entry.twitch) {
         try {
-          irc?.join?.(entry.twitch)
+          trackJoin(entry.id, irc?.join?.(entry.twitch))
         } catch {}
         safeSendMessage({ type: 'join_channel', platform: 'twitch', channel: entry.twitch })
       }
       if (entry.kick) {
         try {
-          kickChat?.join?.(entry.kick)
+          trackJoin(entry.id, kickChat?.join?.(entry.kick))
         } catch {}
       }
       if (entry.youtube) {
@@ -68756,7 +68854,7 @@ const STORAGE_KEY = 'heatsync_multichat'
         entry.twitch = twitchName
         mutated = true
         try {
-          irc?.join?.(twitchName)
+          trackJoin(entry.id, irc?.join?.(twitchName))
         } catch {}
         safeSendMessage({ type: 'join_channel', platform: 'twitch', channel: twitchName })
       }
@@ -68764,7 +68862,7 @@ const STORAGE_KEY = 'heatsync_multichat'
         entry.kick = kickName
         mutated = true
         try {
-          kickChat?.join?.(kickName)
+          trackJoin(entry.id, kickChat?.join?.(kickName))
         } catch {}
       }
       if (!entry.youtube && ytUrl) {
@@ -72339,12 +72437,12 @@ const STORAGE_KEY = 'heatsync_multichat'
         // identity guessing.
         const ytUrl = platNames.youtube || null
 
-        if (gTwitch && twitchCh) irc.join(twitchCh)
-        if (gKick && kickCh) kickChat.join(kickCh)
+        if (gTwitch && twitchCh) trackJoin('live', irc.join(twitchCh))
+        if (gKick && kickCh) trackJoin('live', kickChat.join(kickCh))
         // Also join the URL channel name if different (for native platform
         // messages) — twitch/kick hosts only (urlChFallback is '' on yt).
-        if (gTwitch && urlChFallback && twitchCh !== urlChFallback) irc.join(urlChFallback)
-        if (gKick && urlChFallback && kickCh !== urlChFallback) kickChat.join(urlChFallback)
+        if (gTwitch && urlChFallback && twitchCh !== urlChFallback) trackJoin('live', irc.join(urlChFallback))
+        if (gKick && urlChFallback && kickCh !== urlChFallback) trackJoin('live', kickChat.join(urlChFallback))
 
         // Subscribe YouTube. On a YT watch/live URL getCurrentChannel returns the
         // 11-char videoId — feeding that to `@${id}/live` produces a bogus
@@ -72419,11 +72517,11 @@ const STORAGE_KEY = 'heatsync_multichat'
               // awaits bg_irc_history (up to 4s) and a stalled history fetch would
               // delay the BG channel-emotes fetch indefinitely. Kick off both
               // independently; emote fetch only needs the channel name.
-              irc.join(twitchName)
+              trackJoin(ch.id, irc.join(twitchName))
               safeSendMessage({ type: 'join_channel', platform: 'twitch', channel: twitchName })
             }
             if (gKick && kickName) {
-              kickChat.join(kickName)
+              trackJoin(ch.id, kickChat.join(kickName))
             }
             // YouTube subscription is owned by loadConfig() (line ~6071) so this
             // loop only handles irc/kick — duplicate yt subs were idempotent but

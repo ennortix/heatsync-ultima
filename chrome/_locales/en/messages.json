@@ -465,6 +465,10 @@
   "mc_resume": {
     "message": "resume"
   },
+  "mc_connecting": {
+    "message": "connecting…",
+    "description": "empty-tab state while a channel's chat legs are still joining"
+  },
   "mc_no_messages": {
     "message": "no messages yet"
   },

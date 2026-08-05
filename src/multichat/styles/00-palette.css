@@ -55,3 +55,21 @@
       --hs-muted: #aaa;
       --hs-border: #808080;
     }
+    /* Chromium auto-dark (WebContentsForceDark / android "darken websites")
+       classifies per ELEMENT — the page-level color-scheme meta injected at
+       boot doesn't reliably opt out nodes (late meta → overlay strips painted
+       inverted-to-light and small dark transparent emote imgs inverted to
+       white). Blink skips force-dark for any element whose computed
+       color-scheme is dark, and the property inherits — so stamping every
+       hs- root (tooltips, menus, pickers, banners all mount at body level)
+       shields the whole overlay regardless of host theme or meta timing.
+       Verified live: inverted strips + white emotes reverted instantly when
+       this rule was applied. */
+    /* html/body excluded — they carry hs- state classes (hs-font-bitmap,
+       hs-platform-*, hs-tabs-*) and matching them would force the entire
+       HOST page out of auto-darkening. */
+    [id^="hs-"]:not(html):not(body),
+    [class^="hs-"]:not(html):not(body),
+    [class*=" hs-"]:not(html):not(body) {
+      color-scheme: dark;
+    }

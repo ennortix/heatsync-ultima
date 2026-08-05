@@ -211,6 +211,8 @@
 
     /* highlight the native-btn when active */
     #hs-mc-native-btn.active {
-      color: #fff !important;
+      background: #fff !important;
+      color: #000 !important;
+      border-color: #fff !important;
     }
 

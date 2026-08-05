@@ -9568,6 +9568,24 @@ function injectStyles() {
       --hs-muted: #aaa;
       --hs-border: #808080;
     }
+    /* Chromium auto-dark (WebContentsForceDark / android "darken websites")
+       classifies per ELEMENT — the page-level color-scheme meta injected at
+       boot doesn't reliably opt out nodes (late meta → overlay strips painted
+       inverted-to-light and small dark transparent emote imgs inverted to
+       white). Blink skips force-dark for any element whose computed
+       color-scheme is dark, and the property inherits — so stamping every
+       hs- root (tooltips, menus, pickers, banners all mount at body level)
+       shields the whole overlay regardless of host theme or meta timing.
+       Verified live: inverted strips + white emotes reverted instantly when
+       this rule was applied. */
+    /* html/body excluded — they carry hs- state classes (hs-font-bitmap,
+       hs-platform-*, hs-tabs-*) and matching them would force the entire
+       HOST page out of auto-darkening. */
+    [id^="hs-"]:not(html):not(body),
+    [class^="hs-"]:not(html):not(body),
+    [class*=" hs-"]:not(html):not(body) {
+      color-scheme: dark;
+    }
 
     /* Resize-bar tokens — one source of truth for every orange drag-bar.
        4px visible line; ::before extends the grab zone by --hs-resize-grab
@@ -10663,7 +10681,9 @@ function injectStyles() {
 
     /* highlight the native-btn when active */
     #hs-mc-native-btn.active {
-      color: #fff !important;
+      background: #fff !important;
+      color: #000 !important;
+      border-color: #fff !important;
     }
 
     /* === NOTIF LAYERS (HsNotifs) ===
@@ -14823,21 +14843,12 @@ img.hs-fx-zero { margin-left: -4px; }
       color: #000 !important;
     }
     #hs-mc-emote-picker .hs-mc-picker-tab.active {
-      color: #fff !important;
-      background: transparent !important;
+      background: #fff !important;
+      color: #000 !important;
     }
     #hs-mc-emote-picker .hs-mc-picker-tab.active:hover {
       background: #fff !important;
       color: #000 !important;
-    }
-    #hs-mc-emote-picker .hs-mc-picker-tab.active::after {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      height: 2px;
-      background: #fff;
     }
     .hs-mc-tab-content {
       flex: 1 1 0 !important;

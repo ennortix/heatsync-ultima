@@ -260,21 +260,12 @@
       color: #000 !important;
     }
     #hs-mc-emote-picker .hs-mc-picker-tab.active {
-      color: #fff !important;
-      background: transparent !important;
+      background: #fff !important;
+      color: #000 !important;
     }
     #hs-mc-emote-picker .hs-mc-picker-tab.active:hover {
       background: #fff !important;
       color: #000 !important;
-    }
-    #hs-mc-emote-picker .hs-mc-picker-tab.active::after {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      height: 2px;
-      background: #fff;
     }
     .hs-mc-tab-content {
       flex: 1 1 0 !important;

@@ -17211,6 +17211,22 @@ img.hs-fx-zero { margin-left: -4px; }
       color: #aaa;
       word-break: break-all;
     }
+    /* white plate on hover AND active, same as every other hs surface. The
+       PLAYABLE cards already take it (08-message-rows.css .hs-mc-playable);
+       this is the link fallback, which is just as clickable and was the one
+       card left reading as inert. Every child carries its own colour, so each
+       one has to be inverted explicitly or it stays grey-on-white. */
+    .hs-feed-link-card:is(:hover, :active) {
+      background: #fff;
+      border-color: #fff;
+    }
+    .hs-feed-link-card:is(:hover, :active) :is(
+      .hs-feed-link-card-link,
+      .hs-feed-link-card-icon,
+      .hs-feed-link-card-url
+    ) {
+      color: #000;
+    }
     .hs-feed-media-deleted {
       padding: 6px 8px;
       background: #1a1a1a;
@@ -17251,7 +17267,30 @@ img.hs-fx-zero { margin-left: -4px; }
       white-space: normal;
     }
     .hs-feed-embed-rich-card * { white-space: normal; }
-    .hs-feed-embed-rich-card:hover { border-color: #808080; }
+    /* Was a grey border nudge, which is not the doctrine and read as inert next
+       to a playable card sitting right above it in the same chat. A resolved
+       card with no transport is still a link you click, so it takes the plate
+       too. Playable ones are handled by .hs-mc-playable on the PARENT
+       (08-message-rows.css) — that wins on hover anyway, and both land on the
+       same #fff/#000, so the two rules can't disagree. */
+    .hs-feed-embed-rich-card:is(:hover, :active) {
+      background: #fff;
+      color: #000;
+      border-color: #fff;
+    }
+    .hs-feed-embed-rich-card:is(:hover, :active) :is(
+      .hs-feed-embed-rich-platform,
+      .hs-feed-embed-rich-title,
+      .hs-feed-embed-rich-author
+    ) {
+      color: #000;
+    }
+    /* The placeholder's fill is white-on-black; on the plate that's white-on-
+       white and the tile vanishes. Flip it to a black wash. */
+    .hs-feed-embed-rich-card:is(:hover, :active) .hs-feed-embed-rich-thumb-placeholder {
+      background: rgba(0,0,0,0.08);
+      color: #000;
+    }
     .hs-feed-embed-rich-thumb,
     .hs-feed-embed-rich-thumb-placeholder {
       width: 64px;

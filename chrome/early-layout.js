@@ -52,6 +52,10 @@
   // popout prepaint would be a permanent black screen over the native chat.
   const isPopout =
     (platform === 'twitch' && /^\/(popout|embed)\/[a-zA-Z0-9_]+\/chat/.test(location.pathname)) ||
+    // kick's own popout — same regex main.js uses; without this hs-popout only
+    // lands after the bundle's get_health round-trip, so a cold SW shows the
+    // docked 340px column flash in a chat-sized window.
+    (platform === 'kick' && /^\/popout\/[a-zA-Z0-9_-]+\/chat/.test(location.pathname)) ||
     // /live_chat only — NOT /live_chat_replay (yt's native VOD-chat popout;
     // the panel never takes it over, so a full-window prepaint there is a
     // pure black flash on top of the replay)

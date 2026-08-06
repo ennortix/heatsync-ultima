@@ -417,14 +417,28 @@ async function ensureAlarm(name, opts) {
 // 'keepalive' + 'hs-ws-watchdog' (both 0.5min — each fire resets the SW idle
 // timer, so together they pin the SW alive FOREVER) are platform-tab-gated in
 // scheduleWsIdleCheck: cleared when no chat tabs exist so the SW can actually
-// idle-die and release its whole heap, re-created when a tab appears. Every
-// other alarm below has a period long enough for the SW to die between fires.
+// idle-die and release its whole heap, re-created when a tab appears.
 // Random delayInMinutes is set once per client when the alarm is created and
 // persists for the alarm's lifetime — this offsets the *phase* of every
 // subsequent fire, so 30k clients don't all hit /api/* at the minute boundary.
+//
+// TAB_GATED_ALARMS: alarms that only serve open platform tabs. Each period is
+// individually long enough for the SW to die between fires, but STAGGERED
+// together they wake it faster than the 30s idle timeout — measured in real
+// Chrome: with zero tabs the SW never died across 4min of sampling until
+// these were cleared. Gated with the lifelines in scheduleWsIdleCheck.
+// live-poll / refresh-followed-users / hs-health-poll / hs-kick-follow-sync
+// stay unconditional: they power tab-less features (went-live notifications,
+// kill-switch recovery, follow mirror).
+const TAB_GATED_ALARMS = {
+  'refresh-emote-inventory': () => ({ delayInMinutes: 1 + Math.random(), periodInMinutes: 1 }),
+  'prune-expired-mutes': () => ({ periodInMinutes: 1 }),
+  'hs-7tv-watchdog': () => ({ periodInMinutes: 2 }),
+  'hs-yt-bridge-sweep': () => ({ periodInMinutes: 5 }),
+}
 ensureAlarm('refresh-global-emotes', { delayInMinutes: 1440 + Math.random() * 60, periodInMinutes: 1440 })
-ensureAlarm('refresh-emote-inventory', { delayInMinutes: 1 + Math.random(), periodInMinutes: 1 })
-ensureAlarm('prune-expired-mutes', { periodInMinutes: 1 })
+ensureAlarm('refresh-emote-inventory', TAB_GATED_ALARMS['refresh-emote-inventory']())
+ensureAlarm('prune-expired-mutes', TAB_GATED_ALARMS['prune-expired-mutes']())
 // Twitch rides the WS follow:stream:* push (near-instant) + the
 // follow:live:snapshot on connect, so the poll is a pure reconcile belt there.
 // But Kick/YouTube have NO push path — the poll is still their ONLY live
@@ -443,12 +457,12 @@ ensureAlarm('refresh-followed-users', { delayInMinutes: 5 + Math.random(), perio
 // 7TV reconnect watchdog — the in-flight setTimeout backoff dies if the SW
 // is evicted mid-disconnect. This alarm wakes the SW every 2 min to resurrect
 // the 7TV WS if there are emote sets that should be subscribed.
-ensureAlarm('hs-7tv-watchdog', { periodInMinutes: 2 })
+ensureAlarm('hs-7tv-watchdog', TAB_GATED_ALARMS['hs-7tv-watchdog']())
 // Server kill-switch poll — recovers from a broken release without forcing a
 // CWS update push. delayInMinutes jitter spreads 30k clients' first hit.
 ensureAlarm('hs-health-poll', { delayInMinutes: 0.25 + Math.random() * 0.5, periodInMinutes: 5 })
 // Reap idle yt send-bridge tabs (see sweepYtBridgeTabs).
-ensureAlarm('hs-yt-bridge-sweep', { periodInMinutes: 5 })
+ensureAlarm('hs-yt-bridge-sweep', TAB_GATED_ALARMS['hs-yt-bridge-sweep']())
 // Kick follow mirror — hourly, matching the server's twitch resync latch. See
 // syncKickFollows(): Kick is the one platform the SERVER can never sync, so the
 // mirror has to run here. Jittered so 30k clients don't sync on the same tick.
@@ -4574,15 +4588,22 @@ function scheduleWsIdleCheck() {
         log('BG IRC: no platform tabs — closing idle reader')
         bgIrcIdleClose()
       }
-      // With every socket down, only these two 30s alarms still pin the SW
-      // alive (each fire resets the idle timer). Clear them so the SW can
-      // die and release its heap; alarms persist outside the SW, so the
+      // With every socket down, the 30s lifelines pin the SW alive on their
+      // own, and the staggered tab-serving alarms (TAB_GATED_ALARMS) fire
+      // <30s apart COMBINED — either set alone keeps the heap resident
+      // forever. Clear both; alarms persist outside the SW, so the
       // else-branch below re-creates them when a platform tab returns.
       browser.alarms?.clear?.('keepalive')?.catch?.(() => {})
       browser.alarms?.clear?.('hs-ws-watchdog')?.catch?.(() => {})
+      for (const name of Object.keys(TAB_GATED_ALARMS)) {
+        browser.alarms?.clear?.(name)?.catch?.(() => {})
+      }
     } else {
       ensureAlarm('keepalive', { periodInMinutes: 0.5 })
       ensureAlarm('hs-ws-watchdog', { periodInMinutes: 0.5 })
+      for (const [name, opts] of Object.entries(TAB_GATED_ALARMS)) {
+        ensureAlarm(name, opts())
+      }
       if (seventvIdleClosed) ensure7TVConnection() // pending subs replay on open
       if (hsWsIdleClosed) {
         hsWsIdleClosed = false

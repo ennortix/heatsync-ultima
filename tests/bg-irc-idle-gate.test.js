@@ -47,6 +47,31 @@ describe('scheduleWsIdleCheck gates the SW lifelines on platform tabs', () => {
     expect(IDLE_CHECK).toContain('bgIrcConnect()')
   })
 
+  // The lifelines alone weren't the whole story: the tab-serving periodic
+  // alarms (1-2min periods) fire <30s apart COMBINED, which kept the SW
+  // permanently resident with zero tabs (measured in real Chrome, 08-04).
+  test('zero-tabs branch clears the tab-gated periodic alarms; tabs-present re-arms them', () => {
+    expect(IDLE_CHECK).toContain('Object.keys(TAB_GATED_ALARMS)')
+    expect(IDLE_CHECK).toContain('Object.entries(TAB_GATED_ALARMS)')
+  })
+
+  test('TAB_GATED_ALARMS covers the sub-idle-period offenders, never the tab-less features', () => {
+    const defStart = BG_SRC.indexOf('const TAB_GATED_ALARMS = {')
+    expect(defStart).toBeGreaterThan(-1)
+    // Entries are arrow functions containing '}' — carve to the alarm
+    // registration that follows the object literal, not the first brace.
+    const defEnd = BG_SRC.indexOf("ensureAlarm('refresh-global-emotes'", defStart)
+    expect(defEnd).toBeGreaterThan(defStart)
+    const DEF = BG_SRC.slice(defStart, defEnd)
+    for (const name of ['refresh-emote-inventory', 'prune-expired-mutes', 'hs-7tv-watchdog', 'hs-yt-bridge-sweep']) {
+      expect(DEF).toContain(`'${name}'`)
+    }
+    // went-live notifications + kill-switch recovery must keep running tab-less
+    for (const name of ['live-poll', 'refresh-followed-users', 'hs-health-poll', 'hs-kick-follow-sync']) {
+      expect(DEF).not.toContain(`'${name}'`)
+    }
+  })
+
   test('boot reconciles state even when woken by a non-tab event', () => {
     // A bare top-level call after the listeners — the alarm-woken SW with no
     // platform tabs must still tear its lifelines down.

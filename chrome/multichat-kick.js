@@ -17426,7 +17426,7 @@ img.hs-fx-zero { margin-left: -4px; }
        elsewhere in this file handle the offset; applying margin-right
        here too would carve 340px off the wrong side and shrink main
        (e.g., chat-left → empty right gutter, video clipped). */
-    body:has(.hs-native-hidden#channel-chatroom):not(.hs-chat-left):not(.hs-chat-top):not(.hs-chat-bottom):not(.hs-chat-hidden) main {
+    body:has(.hs-native-hidden#channel-chatroom):not(.hs-popout):not(.hs-chat-left):not(.hs-chat-top):not(.hs-chat-bottom):not(.hs-chat-hidden) main {
       margin-right: var(--hs-kick-chat-width, 340px) !important;
       transition: none !important;
     }
@@ -17512,6 +17512,23 @@ img.hs-fx-zero { margin-left: -4px; }
       height: 100% !important;
       max-height: none !important;
       border-right: 1px solid #fff;
+    }
+
+    /* Pop-out window: no kick top nav and no docked 340px column — the
+       native-visible strip rules above assume both (top offset + right-pinned
+       width). Chat IS the window there; pin the strip to the window edges.
+       Same specificity trap as the fill-window rule: these are (0,2,2)+,
+       placed after every variant so source order settles the ties. */
+    body.hs-popout #channel-chatroom:not(.hs-native-hidden) ~ #hs-mc-container {
+      top: 0 !important;
+    }
+    body.hs-popout.hs-tabs-top #channel-chatroom:not(.hs-native-hidden) ~ #hs-mc-container,
+    body.hs-popout.hs-tabs-bottom #channel-chatroom:not(.hs-native-hidden) ~ #hs-mc-container {
+      left: 0 !important;
+      width: auto !important;
+    }
+    body.hs-popout.hs-tabs-left #channel-chatroom:not(.hs-native-hidden) ~ #hs-mc-container {
+      left: 0 !important;
     }
 
     /* Kick resize handle — always visible. Visual/hover/grab shared above. */
@@ -64394,6 +64411,15 @@ const STORAGE_KEY = 'heatsync_multichat'
       if (chatRoom) {
         parent = chatRoom.parentElement
         chatRoom.after(container)
+        // Same teardown contract as the body-mount branches: without it,
+        // disabling/reloading the extension strands a zombie panel in kick's DOM.
+        mcSignal.addEventListener(
+          'abort',
+          () => {
+            if (container?.isConnected) container.remove()
+          },
+          { once: true },
+        )
       } else {
         // No #channel-chatroom on this Kick URL (browse, settings, search,
         // categories, …) — body-mount as a position:fixed overlay via the
@@ -64418,6 +64444,13 @@ const STORAGE_KEY = 'heatsync_multichat'
       if (chatShell) {
         parent = chatShell
         parent.appendChild(container)
+        mcSignal.addEventListener(
+          'abort',
+          () => {
+            if (container?.isConnected) container.remove()
+          },
+          { once: true },
+        )
       } else {
         parent = document.body
         parent.appendChild(container)

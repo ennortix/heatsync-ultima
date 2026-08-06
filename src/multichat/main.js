@@ -5391,6 +5391,15 @@
       if (chatRoom) {
         parent = chatRoom.parentElement
         chatRoom.after(container)
+        // Same teardown contract as the body-mount branches: without it,
+        // disabling/reloading the extension strands a zombie panel in kick's DOM.
+        mcSignal.addEventListener(
+          'abort',
+          () => {
+            if (container?.isConnected) container.remove()
+          },
+          { once: true },
+        )
       } else {
         // No #channel-chatroom on this Kick URL (browse, settings, search,
         // categories, …) — body-mount as a position:fixed overlay via the
@@ -5415,6 +5424,13 @@
       if (chatShell) {
         parent = chatShell
         parent.appendChild(container)
+        mcSignal.addEventListener(
+          'abort',
+          () => {
+            if (container?.isConnected) container.remove()
+          },
+          { once: true },
+        )
       } else {
         parent = document.body
         parent.appendChild(container)

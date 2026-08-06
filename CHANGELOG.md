@@ -1,5 +1,12 @@
 # changelog
 
+## [1.7.44] — 2026-08-06
+
+### fixed
+- **the extension lets go of its memory again** — with no twitch, kick or youtube tab open, four background timers still woke it every few seconds, so it never shut down and held its whole heap for as long as the browser was running. it now goes fully idle with no stream open and wakes back up the moment you open one.
+- **kick's own chat popout** — it briefly drew the docked side-column in a chat-sized window before settling, and the tab strip sat in the wrong place. chat now fills the popout from the first frame.
+- **no leftover panel when you disable the extension** — turning it off on kick or twitch left a dead heatsync panel sitting in the page until you reloaded.
+
 ## [1.7.43] — 2026-08-05
 
 ### fixed

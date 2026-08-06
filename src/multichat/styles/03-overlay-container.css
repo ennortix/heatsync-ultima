@@ -214,7 +214,12 @@
       flex-shrink: 0;
     }
 
-    /* New messages button - floats above messages */
+    /* New messages button - floats above messages.
+       Yellow, not brand orange: the doctrine reserves #ff8700 for brand
+       (logo/heat/focus/admin/cta) and gives #ffff00 the mention / search-hit /
+       jump-target role. "▼ N new" is a jump target — unseen content asking to
+       be jumped to — so it takes the mention token rather than a fourth
+       identical yellow of its own. */
     #hs-mc-new-msgs {
       position: absolute;
       bottom: 12px;
@@ -223,7 +228,7 @@
       display: none;
       align-items: center;
       gap: 4px;
-      background: var(--hs-brand);
+      background: var(--hs-mention);
       color: #000;
       border: none;
       border-radius: 0;

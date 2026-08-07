@@ -139,3 +139,76 @@ describe('hsModClassify contract the sweep relies on', () => {
     expect(hsModClassify('w!').kind).toBe('modifier')
   })
 })
+
+/**
+ * The Tab handler's gate on whether the sweep runs at all.
+ *
+ * Regression: "Kappa w! and tab the w! onto the kappa — used to work". The gate
+ * was `getCurrentWord(input).length < 2`, added so Tab on a completable word
+ * means "complete THIS word" instead of letting the sweep hijack the press. But
+ * `w!` is exactly 2 chars, so the caret word fell on the completion side — and
+ * findEmoteMatches refuses modifier tokens outright, so Tab became a dead key.
+ * Every longer unambiguous form was swallowed the same way, `ffzLeave` included.
+ *
+ * A word that classifies as a modifier is never a completable emote name, so
+ * letting it through costs no completion intent.
+ */
+describe('Tab gate — unambiguous modifiers run the sweep at any length', () => {
+  // Mirrors the condition in input.js's Tab handler.
+  const gateOpens = (word) => word.length < 2 || hsModClassify(word, { allowPrefix: false }).kind === 'modifier'
+
+  test('the reported case: w! opens the gate', () => {
+    expect(gateOpens('w!')).toBe(true)
+  })
+
+  test('every bang form and ffz effect emote opens it', () => {
+    for (const tok of [
+      'w!',
+      'h!',
+      'v!',
+      'z!',
+      'c!',
+      'l!',
+      'r!',
+      'p!',
+      's!',
+      'x!',
+      'y!',
+      'ffzX',
+      'ffzY',
+      'ffzW',
+      'ffzCursed',
+      'ffzHyper',
+      'ffzRainbow',
+      'ffzBounce',
+      'ffzJam',
+      'ffzSlide',
+      'ffzLeave',
+      'ffzArrive',
+      'ffzSpin',
+    ]) {
+      expect(gateOpens(tok)).toBe(true)
+    }
+  })
+
+  test('chains and c!#hex open it too', () => {
+    expect(gateOpens('w!h!')).toBe(true)
+    expect(gateOpens('c!#ff8700')).toBe(true)
+  })
+
+  test('the bare-letter gesture still opens it (length rule)', () => {
+    expect(gateOpens('w')).toBe(true)
+    expect(gateOpens('Z')).toBe(true)
+  })
+
+  test('completable emote names still WIN the press', () => {
+    for (const w of ['Kappa', 'PogChamp', 'emopl', 'wi', 'ffz']) expect(gateOpens(w)).toBe(false)
+  })
+
+  test('input.js actually uses this condition', () => {
+    expect(INPUT_SRC).toMatch(
+      /const _tabWordIsMod = hsModClassify\(_tabWord, \{ allowPrefix: false \}\)\.kind === 'modifier'/,
+    )
+    expect(INPUT_SRC).toContain('if (!acState.active && (_tabWord.length < 2 || _tabWordIsMod)) {')
+  })
+})

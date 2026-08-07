@@ -44223,7 +44223,17 @@ function handleInputKeydownInner(e, input) {
     // a stray modifier-lookalike token elsewhere in the input (a literal "Z"
     // between two emotes) and return, so the completion never ran and the
     // token silently vanished.
-    if (!acState.active && getCurrentWord(input).length < 2) {
+    // ...unless the caret word IS an unambiguous modifier. "Kappa w!" + Tab did
+    // nothing: `w!` is 2 chars, so the completion-intent guard below took the
+    // press — and emote completion refuses modifier tokens outright (see
+    // findEmoteMatches), so Tab became a no-op and the sweep never ran. Same for
+    // every longer form the guard swallowed whole: `z!`, `c!#ff8700`, chains like
+    // `w!h!`, and every ffz* effect emote (`Kappa ffzLeave` + Tab). A word that
+    // classifies as a modifier is never a completable emote name, so there's no
+    // intent to lose here.
+    const _tabWord = getCurrentWord(input)
+    const _tabWordIsMod = hsModClassify(_tabWord, { allowPrefix: false }).kind === 'modifier'
+    if (!acState.active && (_tabWord.length < 2 || _tabWordIsMod)) {
       if (scanAndApplyModifiersInInput(input)) return
       // Tab also commits a pending "<emote>0" / "<emoji>0" overlay (parity with
       // the live typing path) — overlay onto the left, drop the trailing 0.

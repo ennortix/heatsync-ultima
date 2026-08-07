@@ -2535,6 +2535,12 @@ const SETTINGS = [
     control: 'sizebtns',
     runtimeVar: 'emoteAnimationMode',
     apply: 'emoteAnimation',
+    // Needed for the boot pass: the applier stamps data-hs-emote-anim on <html>,
+    // which is what gates the hs-fx-* modifier animations in CSS. Without it the
+    // attribute only appeared after the user touched the setting, so 'hover' and
+    // 'never' silently behaved like 'always' on every fresh load. The applier
+    // early-returns on the load pass, so no rerender is triggered here.
+    applyOnLoad: true,
     // pre-1.7.16 installs stored a bool under this key — map, never drop
     coerce: (v) => (typeof v === 'boolean' ? (v ? 'always' : 'never') : v),
     options: [

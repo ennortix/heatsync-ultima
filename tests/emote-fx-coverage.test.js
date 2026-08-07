@@ -111,6 +111,16 @@ describe('animated effects are gated on animateEmotes, not the OS motion flag', 
     expect(CSS).toMatch(/html\[data-hs-emote-anim="hover"\] \.hs-mc-msg:hover img[^{]*\{[^}]*running/)
   })
 
+  test('the schema runs the applier on the boot pass', () => {
+    // Without applyOnLoad the attribute only appeared after the user touched the
+    // setting, so hover/never silently behaved like always on a fresh load.
+    const SCHEMA = readFileSync(join(ROOT, 'src', 'lib', 'settings-schema.js'), 'utf8')
+    const entry = SCHEMA.slice(SCHEMA.indexOf("key: 'animateEmotes'"))
+    const body = entry.slice(0, entry.indexOf('\n  },'))
+    expect(body).toContain("apply: 'emoteAnimation'")
+    expect(body).toContain('applyOnLoad: true')
+  })
+
   test('main.js stamps the mode on <html> (including on load)', () => {
     const apply = MAIN_JS.slice(MAIN_JS.indexOf('emoteAnimation: ('))
     const body = apply.slice(0, apply.indexOf('\n    },'))

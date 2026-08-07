@@ -1580,7 +1580,6 @@ function initInput() {
       const picker = document.getElementById('hs-mc-emote-picker')
       if (picker?.classList.contains('visible')) {
         picker.classList.remove('visible')
-        adjustOverlayForPicker(false)
         hideInputBar()
         if (_pickerCloseHandler) {
           document.removeEventListener('click', _pickerCloseHandler)

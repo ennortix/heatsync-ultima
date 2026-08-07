@@ -195,14 +195,19 @@
       border-color: #fff !important;
     }
 
-    /* Emote picker panel — full-width section above inputbar */
+    /* Emote picker panel — covers the whole chat body (tab bar + composer stay
+       visible). top/height are measured onto it by syncPickerBox() so it lands
+       on exactly the message list's box in every tab position, popout and
+       platform; these values are only the pre-measure fallback. It used to be a
+       fixed min(400px,60vh) panel that the message list shrank to make room for,
+       which left a useless sliver of chat above a picker that still scrolled. */
     #hs-mc-emote-picker {
       display: none;
       position: absolute;
       left: 0;
       right: 0;
+      top: 0;
       bottom: 0;
-      height: min(400px, 60vh);
       /* Minimum width to fit all three provider chips (7tv/bttv/ffz) side by
          side without overflow. ~34+40+34px chips + 2×3px gap + 16px padding
          + some search input = 210px floor. Without this the chips at ~115px

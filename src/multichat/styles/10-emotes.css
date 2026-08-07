@@ -759,7 +759,19 @@ img.hs-fx-leave { animation: hs-fx-leave 3s linear infinite; }
 
 img.hs-fx-zero { margin-left: -4px; }
 
-@media (prefers-reduced-motion: reduce) { img[class*="hs-fx-"] { animation: none !important; } }
+/* Emote effects follow the animateEmotes setting, NOT prefers-reduced-motion.
+   A modifier is CONTENT the sender chose — same class of motion as an animated
+   gif emote, which heatsync has never gated on the OS flag — and there is
+   already a first-party control for emote motion. Gating on the media query
+   meant a browser run with --force-prefers-reduced-motion silently killed every
+   animated modifier (ffzLeave/ffzSpin/ffzJam/p!/s!… "did nothing") while the
+   static ones kept working, with no setting that could turn them back on.
+   never → off entirely; hover → chat rows animate only under the pointer,
+   mirroring the gif hover-swap in main.js. Composer/picker chips are outside
+   .hs-mc-msg so they keep animating in hover mode (they're what you're editing). */
+html[data-hs-emote-anim="never"] img[class*="hs-fx-"] { animation: none !important; }
+html[data-hs-emote-anim="hover"] .hs-mc-msg img[class*="hs-fx-"] { animation-play-state: paused !important; }
+html[data-hs-emote-anim="hover"] .hs-mc-msg:hover img[class*="hs-fx-"] { animation-play-state: running !important; }
 
     /* Composition tooltip — base + overlays + ordered effects. Colours are set
        inline per piece (provider brand / c!#hex tint); these rules only carry

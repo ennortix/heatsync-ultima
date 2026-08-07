@@ -13363,7 +13363,19 @@ img.hs-fx-leave { animation: hs-fx-leave 3s linear infinite; }
 
 img.hs-fx-zero { margin-left: -4px; }
 
-@media (prefers-reduced-motion: reduce) { img[class*="hs-fx-"] { animation: none !important; } }
+/* Emote effects follow the animateEmotes setting, NOT prefers-reduced-motion.
+   A modifier is CONTENT the sender chose — same class of motion as an animated
+   gif emote, which heatsync has never gated on the OS flag — and there is
+   already a first-party control for emote motion. Gating on the media query
+   meant a browser run with --force-prefers-reduced-motion silently killed every
+   animated modifier (ffzLeave/ffzSpin/ffzJam/p!/s!… "did nothing") while the
+   static ones kept working, with no setting that could turn them back on.
+   never → off entirely; hover → chat rows animate only under the pointer,
+   mirroring the gif hover-swap in main.js. Composer/picker chips are outside
+   .hs-mc-msg so they keep animating in hover mode (they're what you're editing). */
+html[data-hs-emote-anim="never"] img[class*="hs-fx-"] { animation: none !important; }
+html[data-hs-emote-anim="hover"] .hs-mc-msg img[class*="hs-fx-"] { animation-play-state: paused !important; }
+html[data-hs-emote-anim="hover"] .hs-mc-msg:hover img[class*="hs-fx-"] { animation-play-state: running !important; }
 
     /* Composition tooltip — base + overlays + ordered effects. Colours are set
        inline per piece (provider brand / c!#hex tint); these rules only carry
@@ -14434,14 +14446,19 @@ img.hs-fx-zero { margin-left: -4px; }
       border-color: #fff !important;
     }
 
-    /* Emote picker panel — full-width section above inputbar */
+    /* Emote picker panel — covers the whole chat body (tab bar + composer stay
+       visible). top/height are measured onto it by syncPickerBox() so it lands
+       on exactly the message list's box in every tab position, popout and
+       platform; these values are only the pre-measure fallback. It used to be a
+       fixed min(400px,60vh) panel that the message list shrank to make room for,
+       which left a useless sliver of chat above a picker that still scrolled. */
     #hs-mc-emote-picker {
       display: none;
       position: absolute;
       left: 0;
       right: 0;
+      top: 0;
       bottom: 0;
-      height: min(400px, 60vh);
       /* Minimum width to fit all three provider chips (7tv/bttv/ffz) side by
          side without overflow. ~34+40+34px chips + 2×3px gap + 16px padding
          + some search input = 210px floor. Without this the chips at ~115px
@@ -24726,7 +24743,6 @@ function showEmotePicker(tab = null) {
     pickerTab = tab
   } else if (picker.classList.contains('visible')) {
     picker.classList.remove('visible')
-    adjustOverlayForPicker(false)
     hideInputBar()
     return
   }
@@ -24740,10 +24756,7 @@ function showEmotePicker(tab = null) {
   if (!isPrebuild && pickerCacheKey() === _pickerBuiltKey && picker.firstChild) {
     syncPickerTabDisplay(picker)
     picker.classList.add('visible')
-    const bar = document.getElementById('hs-mc-inputbar')
-    const barHeight = bar && inputBarVisible ? bar.offsetHeight : 0
-    picker.style.bottom = `${barHeight}px`
-    adjustOverlayForPicker(true)
+    syncPickerBox()
     // Now that the picker has layout, fill any chunks the IntersectionObserver
     // never got to (first open in a hidden/occluded tab — IO doesn't fire there).
     renderVisibleChunks(picker)
@@ -25010,11 +25023,7 @@ function showEmotePicker(tab = null) {
   if (isPrebuild) return
 
   picker.classList.add('visible')
-  // Position picker flush above input bar (or at bottom if hidden)
-  const bar = document.getElementById('hs-mc-inputbar')
-  const barHeight = bar && inputBarVisible ? bar.offsetHeight : 0
-  picker.style.bottom = `${barHeight}px`
-  adjustOverlayForPicker(true)
+  syncPickerBox()
   // Picker now has layout — force-fill the visible chunks so a first open in a
   // hidden/occluded tab (where the IntersectionObserver never fires) isn't blank.
   renderVisibleChunks(picker)
@@ -25037,7 +25046,6 @@ function attachPickerCloseHandler(picker) {
       }
       if (!picker.contains(e.target) && !e.target.closest('#hs-mc-emote-btn')) {
         picker.classList.remove('visible')
-        adjustOverlayForPicker(false)
         hideInputBar()
         stopPredictionPoll()
         document.removeEventListener('click', _pickerCloseHandler)
@@ -25054,7 +25062,6 @@ function attachPickerCloseHandler(picker) {
         return
       }
       picker.classList.remove('visible')
-      adjustOverlayForPicker(false)
       hideInputBar()
       stopPredictionPoll()
       document.removeEventListener('keydown', _pickerEscHandler)
@@ -25067,18 +25074,33 @@ function attachPickerCloseHandler(picker) {
   }, 0)
 }
 
-/** Adjust overlay bottom to make room for picker panel */
-function adjustOverlayForPicker(open) {
+/** Size the open picker to exactly the message list's box.
+ *
+ * The picker used to be a fixed `min(400px, 60vh)` panel that the message list
+ * shrank to make room for — on a tall chat that left a useless one-inch strip of
+ * messages above a picker that still had to scroll. It now covers the whole chat
+ * body instead: same top/height as #hs-mc-overlay, so the tab bar and the
+ * composer stay visible and nothing has to reserve space for it.
+ *
+ * Mirroring the overlay's measured box (rather than per-layout top/bottom math)
+ * is what makes this correct for every tab position, popout, and platform at
+ * once — the overlay's box is already the answer to "where does chat live".
+ */
+function syncPickerBox() {
+  const picker = document.getElementById('hs-mc-emote-picker')
+  if (!picker?.classList.contains('visible')) return
   const overlay = document.getElementById('hs-mc-overlay')
-  if (!overlay) return
-  // For vertical tabs (left/right), CSS handles overlay positioning — don't override
-  if (tabPosition === 'left' || tabPosition === 'right') return
-  const hasBottomTabs = tabPosition === 'bottom'
-  // Always reserve input bar space to prevent layout shift when it shows/hides
-  const barBase = hasBottomTabs ? 90 : 52
-  const pickerEl = document.getElementById('hs-mc-emote-picker')
-  const pickerHeight = open && pickerEl ? pickerEl.offsetHeight : 0
-  overlay.style.bottom = `${barBase + pickerHeight}px`
+  // No laid-out overlay (chat hidden, pre-mount) — leave the CSS box alone
+  // rather than pinning height:0 and rendering an invisible picker.
+  if (!overlay?.offsetHeight) return
+  // offsetTop/offsetHeight are both relative to #hs-mc-container, which is the
+  // picker's offsetParent too — no coordinate conversion, no reflow of others.
+  picker.style.top = `${overlay.offsetTop}px`
+  picker.style.height = `${overlay.offsetHeight}px`
+  // !important: the per-tab-position layout rules pin `bottom` (some of them
+  // with !important, which outranks a plain inline value), and top+height+bottom
+  // together would over-constrain the box.
+  picker.style.setProperty('bottom', 'auto', 'important')
 }
 
 // Blocked emotes: stored by HASH (matches background.js/server)
@@ -27042,22 +27064,12 @@ cleanup.persistInterval(cleanup.setIntervalIfVisible(scanDomForEmotes, 10000))
 const HS_MC_MODS = HS_MOD_TOKENS
 const HS_MC_C_RE = HS_MOD_C_HEX_RE
 // Static list — hoisted out of the per-word inline-suffix peel so it isn't
-// reallocated for every non-resolved word on the message hot path.
-const HS_INLINE_MOD_SUFFIXES = [
-  'ffzCursed',
-  'ffzWide',
-  'ffzTall',
-  'ffzX',
-  'ffzY',
-  'w!',
-  'h!',
-  'v!',
-  'l!',
-  'c!',
-  'z!',
-  'x!',
-  'y!',
-]
+// reallocated for every non-resolved word on the message hot path. DERIVED from
+// HS_MOD_TOKENS, never hand-listed: the hand-written version had drifted and was
+// missing r!/p!/s!/ffzW and every animated ffz* token, so "KappaffzLeave" (space
+// eaten by an upstream send pipeline) resolved to nothing. Longest-first so a
+// long token wins over any shorter one that ends the same way.
+const HS_INLINE_MOD_SUFFIXES = Object.keys(HS_MOD_TOKENS).sort((a, b) => b.length - a.length)
 function _hsMcHexToHue(h) {
   return hsModHexToHue(h)
 }
@@ -41856,7 +41868,6 @@ function initInput() {
       const picker = document.getElementById('hs-mc-emote-picker')
       if (picker?.classList.contains('visible')) {
         picker.classList.remove('visible')
-        adjustOverlayForPicker(false)
         hideInputBar()
         if (_pickerCloseHandler) {
           document.removeEventListener('click', _pickerCloseHandler)
@@ -60881,7 +60892,6 @@ const STORAGE_KEY = 'heatsync_multichat'
     },
     autoHide: (v) => {
       const bar = document.getElementById('hs-mc-inputbar')
-      const pickerOpen = document.getElementById('hs-mc-emote-picker')?.classList.contains('visible') || false
       // Honor the pop-out override — never actually hide there even if the
       // setting is switched on (canAutoHideInput would keep it off anyway).
       // Switching auto-hide OFF still can't conjure a composer on a tab that
@@ -60893,7 +60903,9 @@ const STORAGE_KEY = 'heatsync_multichat'
         if (bar) bar.classList.remove('hs-hidden')
         inputBarVisible = true
       }
-      adjustOverlayForPicker(pickerOpen)
+      // The composer just changed height — the open picker mirrors the message
+      // list's box, so re-measure rather than leaving it short or overhanging.
+      syncPickerBox()
     },
     autoClaim: (v) => {
       if (v) startAutoClaimPoller()
@@ -60990,7 +61002,10 @@ const STORAGE_KEY = 'heatsync_multichat'
     },
     // rendered html is cached per message — a src change needs a cache
     // flush before the re-render or old animated imgs survive the toggle
-    emoteAnimation: (_v, _def, onLoad) => {
+    emoteAnimation: (v, _def, onLoad) => {
+      // Drives the hs-fx-* animation gate in 10-emotes.css (never → off,
+      // hover → row-hover only). Set on load too, before the early return.
+      document.documentElement.dataset.hsEmoteAnim = v || 'always'
       if (onLoad) return
       clearRenderedHtmlCache()
       renderMessages(currentTab)
@@ -62148,10 +62163,9 @@ const STORAGE_KEY = 'heatsync_multichat'
     if (bar) bar.classList.remove('hs-hidden')
     const overlay = document.getElementById('hs-mc-overlay')
     if (overlay) overlay.style.bottom = ''
-    const picker = document.getElementById('hs-mc-emote-picker')
-    adjustOverlayForPicker(picker?.classList.contains('visible') || false)
     // ResizeObserver doesn't fire on display:none → :flex; recompute anchors
-    // so the docked Twitch callout follows the inputbar.
+    // so the docked Twitch callout follows the inputbar. (Also re-mirrors an
+    // open picker onto the message list's new box — see syncPickerBox.)
     _updateMcLayout?.()
   }
 
@@ -65063,6 +65077,11 @@ const STORAGE_KEY = 'heatsync_multichat'
           activeChannels: getActiveViewedChannels(),
         })
       } catch (_) {}
+
+      // An open picker mirrors the message list's box exactly — re-measure it
+      // here, the one place that knows the chat body just moved (tab bar grew a
+      // row, composer shown/hidden, tab position rotated).
+      syncPickerBox()
     }
 
     if (tabBarElement && overlayElement && !resizeObserver) {

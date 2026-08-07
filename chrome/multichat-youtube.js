@@ -28324,6 +28324,51 @@ function hsTtRenderComposition(nameEl, pieces, mods) {
   }
 }
 
+/**
+ * Park a popover last in <body> — the DOM-order tiebreak that puts it above
+ * other max-int siblings — without re-parenting it when it is already there.
+ *
+ * Moving a connected node is never free: it invalidates style and layout for
+ * the document, and Twitch/Kick/YouTube documents are not small. The show*
+ * paths run on mouseover, which re-fires whenever chat rebuilds the row under
+ * a stationary cursor, so on a busy channel the unconditional append was doing
+ * that repeatedly per second for no change in outcome.
+ *
+ * Counted when hs_tip_debug is set (see hsTipStats) so the cost is measurable
+ * rather than argued about.
+ */
+function hsAppendLastIfNeeded(node) {
+  if (node.parentNode === document.body && document.body.lastElementChild === node) {
+    hsTipStats.appendSkipped++
+    return
+  }
+  hsTipStats.appendMoved++
+  document.body.appendChild(cleanup.trackNode(node))
+}
+
+/**
+ * Hover-path counters. Free when unused (four integer bumps); `hs_tip_debug` in
+ * localStorage additionally installs a longtask observer, so a report of "the
+ * whole machine stutters while I hover" can be answered with numbers instead of
+ * a third theory. Read it with `window.__hsTipStats` from the page console.
+ */
+const hsTipStats = { emoteShow: 0, userShow: 0, appendMoved: 0, appendSkipped: 0, longTasks: 0, longestMs: 0 }
+try {
+  if (typeof window !== 'undefined') {
+    window.__hsTipStats = hsTipStats
+    if (localStorage.getItem('hs_tip_debug')) {
+      new PerformanceObserver((list) => {
+        for (const entry of list.getEntries()) {
+          hsTipStats.longTasks++
+          if (entry.duration > hsTipStats.longestMs) hsTipStats.longestMs = Math.round(entry.duration)
+        }
+      }).observe({ entryTypes: ['longtask'] })
+    }
+  }
+} catch (_) {
+  /* no window (tests) or longtask unsupported — counters still work */
+}
+
 /** Ordered effect tokens stamped on a wrapper by _hsMcApplyMods. */
 function hsTtModsOf(el) {
   const raw = el?.dataset?.hsMods || el?.closest?.('[data-hs-mods]')?.dataset?.hsMods || ''
@@ -28335,10 +28380,15 @@ function showEmoteTooltip(e, emoteName, emoteUrl, state, source, hoveredImg, own
   // defeat the chat-side hiding (and hsOrigSrc exists precisely to recover the
   // hidden url). Name + "blocked" label still show; the image slot stays empty.
   if (state === 'blocked') emoteUrl = HS_TRANSPARENT_PX
+  hsTipStats.emoteShow++
   const tooltip = ensureEmoteTooltip()
   // Re-append to body so DOM order tiebreaks above other max-int siblings
-  // (reply-stack overlay sits at the same z-index).
-  document.body.appendChild(cleanup.trackNode(tooltip))
+  // (reply-stack overlay sits at the same z-index). Only when it isn't already
+  // last: chat rebuilds rows constantly, so the cursor sitting still still
+  // re-fires mouseover, and re-parenting a live node dirties style+layout for
+  // the whole document every time. Being last child is the entire point of the
+  // move, so when that already holds there is nothing to do.
+  hsAppendLastIfNeeded(tooltip)
   const img = tooltip.querySelector('img')
   const stackBox = tooltip.querySelector('.tooltip-stack')
   const nameEl = tooltip.querySelector('.tooltip-name')
@@ -29302,10 +29352,10 @@ function getTooltipChannelContext(userPlatform) {
 // NOTE: innerHTML usage is XSS-safe — all user content goes through escapeHtml() in renderProfileCard
 // (escapeHtml converts &, <, >, ", ' to HTML entities before any innerHTML assignment)
 async function showUserTooltip(targetEl, username, color, platform) {
+  hsTipStats.userShow++
   const tooltip = ensureUserTooltip()
-  // Re-append to body so DOM order tiebreaks above other max-int siblings
-  // (reply-stack overlay sits at the same z-index).
-  document.body.appendChild(cleanup.trackNode(tooltip))
+  // Re-append only when it isn't already last — see hsAppendLastIfNeeded.
+  hsAppendLastIfNeeded(tooltip)
   const gen = ++_profileGen
   _userTooltipTarget = targetEl
 

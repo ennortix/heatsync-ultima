@@ -42,6 +42,16 @@ function isMention(msg) {
   // title-flash, mentions buffer AND the tab indicator in one place (every
   // mention surface routes through isMention).
   if (typeof isUserBlocked === 'function' && isUserBlocked(msg.user, msg.platform)) return false
+
+  // Someone hit "reply" on YOUR message. Twitch and Kick carry that in the
+  // reply tags and leave the text alone, so a plain "yeah agreed" reply used to
+  // score false here — no sound, no notification, no mentions-tab entry, no tab
+  // badge — while the row visibly rendered "↳ replying to you". Only YouTube
+  // worked, and only because it has no reply API so the @name gets prepended
+  // into the text by hand. Structural check, so every platform behaves alike.
+  const repliedTo = msg.replyTo?.user?.toLowerCase()
+  if (repliedTo && targets.includes(repliedTo)) return true
+
   const text = msg.text.toLowerCase()
   for (const t of targets) {
     if (text.includes(`@${t}`)) return true
@@ -383,7 +393,12 @@ function scanExistingMentions() {
       // Skip own messages
       if (targets.includes(username.toLowerCase())) return
       // Skip blocked users — they don't get to seed the mentions buffer either.
-      if (typeof isUserBlocked === 'function' && isUserBlocked(username)) return
+      // Pass the platform like the live path does: a block scoped to one
+      // platform only matches when it's supplied, so omitting it let a blocked
+      // user's backlog message through on page load that live chat suppressed.
+      // Which selector the row matched IS the platform — this scan covers both.
+      const rowPlatform = msgEl.matches('[data-a-target="chat-line-message"]') ? 'twitch' : 'kick'
+      if (typeof isUserBlocked === 'function' && isUserBlocked(username, rowPlatform)) return
 
       mentionsBuffer.push({
         user: username,

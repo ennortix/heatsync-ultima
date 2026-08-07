@@ -11682,12 +11682,14 @@ function injectStyles() {
       color: #aaa;
       font-weight: 600;
     }
-    /* Dark blood-red — saturated enough to read as "you got mentioned" but
-       dark enough to let full-color Twitch usernames render on top without
-       the bg drowning them. Mirrors heatsync.org messages.css. */
+    /* xterm 88 — saturated enough to read as "you got mentioned" but dark
+       enough to let full-color Twitch usernames render on top without the bg
+       drowning them. This is the same pair as heatsync.org's --mention-bg /
+       --mention-bg-alt; the comment used to claim that while the hexes on both
+       sides were three different reds. */
     .hs-mc-msg.mention,
     .hs-feed-msg.mention {
-      background: #5c1212;
+      background: #870000;
     }
     /* Zebra striping for consecutive mentions — leverages the existing
        neighbor-flip .hs-mc-zebra cadence so adjacent mention rows alternate
@@ -11695,7 +11697,7 @@ function injectStyles() {
        the mention semantic while distinguishing rows. */
     .hs-mc-msg.mention.hs-mc-zebra,
     .hs-feed-msg.mention.hs-mc-zebra {
-      background: #380b0b;
+      background: #5f0000;
     }
     /* Row base color white for non-colored text (gray timestamps, plain
        message body) — inline user colors override naturally. No star-cascade
@@ -21162,6 +21164,16 @@ function isMention(msg) {
   // title-flash, mentions buffer AND the tab indicator in one place (every
   // mention surface routes through isMention).
   if (typeof isUserBlocked === 'function' && isUserBlocked(msg.user, msg.platform)) return false
+
+  // Someone hit "reply" on YOUR message. Twitch and Kick carry that in the
+  // reply tags and leave the text alone, so a plain "yeah agreed" reply used to
+  // score false here — no sound, no notification, no mentions-tab entry, no tab
+  // badge — while the row visibly rendered "↳ replying to you". Only YouTube
+  // worked, and only because it has no reply API so the @name gets prepended
+  // into the text by hand. Structural check, so every platform behaves alike.
+  const repliedTo = msg.replyTo?.user?.toLowerCase()
+  if (repliedTo && targets.includes(repliedTo)) return true
+
   const text = msg.text.toLowerCase()
   for (const t of targets) {
     if (text.includes(`@${t}`)) return true
@@ -21503,7 +21515,12 @@ function scanExistingMentions() {
       // Skip own messages
       if (targets.includes(username.toLowerCase())) return
       // Skip blocked users — they don't get to seed the mentions buffer either.
-      if (typeof isUserBlocked === 'function' && isUserBlocked(username)) return
+      // Pass the platform like the live path does: a block scoped to one
+      // platform only matches when it's supplied, so omitting it let a blocked
+      // user's backlog message through on page load that live chat suppressed.
+      // Which selector the row matched IS the platform — this scan covers both.
+      const rowPlatform = msgEl.matches('[data-a-target="chat-line-message"]') ? 'twitch' : 'kick'
+      if (typeof isUserBlocked === 'function' && isUserBlocked(username, rowPlatform)) return
 
       mentionsBuffer.push({
         user: username,

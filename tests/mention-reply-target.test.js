@@ -57,40 +57,28 @@ const isMention = makeMatcher({ username: 'mellen', aliases: ['mellenkick'] })
 
 describe('isMention — reply targeting', () => {
   test('a twitch reply to you counts even with no @ in the text', () => {
-    expect(
-      isMention({ user: 'someone', text: 'yeah agreed', replyTo: { user: 'mellen' } }),
-    ).toBe(true)
+    expect(isMention({ user: 'someone', text: 'yeah agreed', replyTo: { user: 'mellen' } })).toBe(true)
   })
 
   test('a reply to a linked platform handle counts', () => {
-    expect(
-      isMention({ user: 'someone', text: 'nice', replyTo: { user: 'MellenKick' } }),
-    ).toBe(true)
+    expect(isMention({ user: 'someone', text: 'nice', replyTo: { user: 'MellenKick' } })).toBe(true)
   })
 
   test('reply-target matching is case-insensitive', () => {
-    expect(
-      isMention({ user: 'someone', text: 'ok', replyTo: { user: 'MELLEN' } }),
-    ).toBe(true)
+    expect(isMention({ user: 'someone', text: 'ok', replyTo: { user: 'MELLEN' } })).toBe(true)
   })
 
   test('a reply to somebody else is not a mention', () => {
-    expect(
-      isMention({ user: 'someone', text: 'yeah agreed', replyTo: { user: 'thirdparty' } }),
-    ).toBe(false)
+    expect(isMention({ user: 'someone', text: 'yeah agreed', replyTo: { user: 'thirdparty' } })).toBe(false)
   })
 
   test('your own reply to yourself never pings you', () => {
-    expect(
-      isMention({ user: 'mellen', text: 'adding to this', replyTo: { user: 'mellen' } }),
-    ).toBe(false)
+    expect(isMention({ user: 'mellen', text: 'adding to this', replyTo: { user: 'mellen' } })).toBe(false)
   })
 
   test('a blocked user replying to you still cannot ping you', () => {
     const m = makeMatcher({ username: 'mellen', blocked: ['troll'] })
-    expect(
-      m({ user: 'troll', text: 'hi', platform: 'twitch', replyTo: { user: 'mellen' } }),
-    ).toBe(false)
+    expect(m({ user: 'troll', text: 'hi', platform: 'twitch', replyTo: { user: 'mellen' } })).toBe(false)
   })
 
   test('the subsystem toggle still kills reply mentions', () => {

@@ -21,7 +21,9 @@
     signal.addEventListener('abort', () => {
       _timers.intervals.forEach(clearInterval)
       _timers.timeouts.forEach(clearTimeout)
-      _timers.observers.forEach((o) => o.disconnect())
+      _timers.observers.forEach((o) => {
+        o.disconnect()
+      })
       _pendingRafs.forEach(cancelAnimationFrame)
       _pendingRafs.clear()
       if (opts.onAbort) opts.onAbort()

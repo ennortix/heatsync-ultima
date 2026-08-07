@@ -422,6 +422,7 @@
       } catch (_e) {}
 
       // Intercept response to cache data
+      // biome-ignore lint/complexity/noArguments: transparent monkeypatch forward. `arguments` passes through every argument the host actually called with, including any we don't model, and keeps the wrapper's arity — rest params would change fn.length, which host code can branch on.
       const promise = origFetch.apply(this, arguments)
       promise
         .then((resp) => {
@@ -477,6 +478,7 @@
 
     // Capture integrity token from Twitch's own /integrity calls
     if (url?.includes('gql.twitch.tv/integrity')) {
+      // biome-ignore lint/complexity/noArguments: transparent monkeypatch forward. `arguments` passes through every argument the host actually called with, including any we don't model, and keeps the wrapper's arity — rest params would change fn.length, which host code can branch on.
       const promise = origFetch.apply(this, arguments)
       promise
         .then((resp) => {
@@ -504,6 +506,7 @@
       return promise
     }
 
+    // biome-ignore lint/complexity/noArguments: transparent monkeypatch forward. `arguments` passes through every argument the host actually called with, including any we don't model, and keeps the wrapper's arity — rest params would change fn.length, which host code can branch on.
     return origFetch.apply(this, arguments)
   }
   safeOverride(window, 'fetch', hsFetch)

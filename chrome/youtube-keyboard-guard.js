@@ -32,6 +32,7 @@
     if (w) return w
     w = function (e) {
       if (e && KEY_EVENTS.has(e.type) && inOurInput(e.target)) return
+      // biome-ignore lint/complexity/noArguments: transparent monkeypatch forward. `arguments` passes through every argument the host actually called with, including any we don't model, and keeps the wrapper's arity — rest params would change fn.length, which host code can branch on.
       return fn.apply(this, arguments)
     }
     wrapMap.set(fn, w)
@@ -45,6 +46,7 @@
     if (KEY_EVENTS.has(type) && typeof fn === 'function') {
       return origAdd.call(this, type, wrap(fn), opts)
     }
+    // biome-ignore lint/complexity/noArguments: transparent monkeypatch forward. `arguments` passes through every argument the host actually called with, including any we don't model, and keeps the wrapper's arity — rest params would change fn.length, which host code can branch on.
     return origAdd.apply(this, arguments)
   }
 
@@ -53,6 +55,7 @@
       const w = wrapMap.get(fn)
       if (w) return origRemove.call(this, type, w, opts)
     }
+    // biome-ignore lint/complexity/noArguments: transparent monkeypatch forward. `arguments` passes through every argument the host actually called with, including any we don't model, and keeps the wrapper's arity — rest params would change fn.length, which host code can branch on.
     return origRemove.apply(this, arguments)
   }
 
@@ -68,6 +71,7 @@
     v.pause = function () {
       const ae = document.activeElement
       if (ae && (ae.id === 'hs-mc-input' || (ae.closest && ae.closest('#hs-mc-input')))) return
+      // biome-ignore lint/complexity/noArguments: transparent monkeypatch forward. `arguments` passes through every argument the host actually called with, including any we don't model, and keeps the wrapper's arity — rest params would change fn.length, which host code can branch on.
       return origPause.apply(this, arguments)
     }
   }

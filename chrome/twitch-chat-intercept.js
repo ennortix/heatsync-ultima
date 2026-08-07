@@ -147,6 +147,7 @@
           return
         }
       } catch (_) {}
+      // biome-ignore lint/complexity/noArguments: transparent monkeypatch forward. `arguments` passes through every argument the host actually called with, including any we don't model, and keeps the wrapper's arity — rest params would change fn.length, which host code can branch on.
       return orig.apply(this, arguments)
     }
     api.__hsHooked = true

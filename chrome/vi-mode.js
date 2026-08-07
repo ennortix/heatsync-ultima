@@ -84,8 +84,11 @@
   function getTextNodes(el) {
     const nodes = []
     const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT)
-    let node
-    while ((node = walker.nextNode())) nodes.push(node)
+    let node = walker.nextNode()
+    while (node) {
+      nodes.push(node)
+      node = walker.nextNode()
+    }
     return nodes
   }
 
@@ -164,7 +167,9 @@
         // back to a re-renderable text form ("TriHard ApuApustaja0").
         const imgs = e.node.querySelectorAll('img')
         const parts = []
-        imgs.forEach((img) => parts.push(img.alt || ''))
+        imgs.forEach((img) => {
+          parts.push(img.alt || '')
+        })
         result += parts.join(' ') || e.node.textContent || ''
       }
       vPos = eEnd
@@ -522,7 +527,10 @@
   function syncCursor(el) {
     if (!el) return
     // Clear atom cursor highlights
-    if (isCE(el)) el.querySelectorAll('.hs-vi-cursor').forEach((n) => n.classList.remove('hs-vi-cursor'))
+    if (isCE(el))
+      el.querySelectorAll('.hs-vi-cursor').forEach((n) => {
+        n.classList.remove('hs-vi-cursor')
+      })
     const len = getLen(el)
     if (mode === 'normal') {
       cursor = Math.max(0, Math.min(cursor, Math.max(0, len - 1)))

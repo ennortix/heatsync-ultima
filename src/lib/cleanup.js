@@ -68,7 +68,8 @@
       } finally {
         const d = performance.now() - t
         if (d > 50) {
-          ;(window.__hsPerfLog ||= []).push({ kind, ms, dur: Math.round(d), at: Math.round(t), src })
+          window.__hsPerfLog ||= []
+          window.__hsPerfLog.push({ kind, ms, dur: Math.round(d), at: Math.round(t), src })
           if (window.__hsPerfLog.length > 200) window.__hsPerfLog.shift()
         }
       }

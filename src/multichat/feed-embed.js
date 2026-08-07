@@ -389,11 +389,20 @@ function extractFeedEmbed(content) {
 // message text — so the holder's insertAdjacentHTML in main.js stays XSS-safe.
 const _CHAT_URL_RE = /https?:\/\/[^\s<>"']+/i
 
-function extractChatEmbed(text) {
+function extractChatEmbed(text, opts) {
   if (!text || typeof text !== 'string') return ''
   const m = text.match(_CHAT_URL_RE)
-  if (!m) return ''
-  return chatEmbedForUrl(m[0])
+  const html = m ? chatEmbedForUrl(m[0]) : ''
+  if (html) return html
+  // Host-less youtube refs ("watch?v=Gz0fAz9n_Os") — chat drops the domain
+  // constantly because platforms throttle links for non-subs, and linkifyPartialLinks
+  // already turns these into anchors. Without this they were link-only: you had
+  // to leave chat to watch. Falls through only when no real URL produced a card,
+  // so an explicit link in the same message still wins. Rides the same
+  // partialLinksEnabled toggle — off means "don't guess at bare fragments".
+  if (opts?.partialLinks === false) return ''
+  const partial = typeof firstPartialYtUrl === 'function' ? firstPartialYtUrl(text) : ''
+  return partial ? chatEmbedForUrl(partial) : ''
 }
 
 function chatEmbedForUrl(rawUrl) {

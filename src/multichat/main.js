@@ -7969,7 +7969,7 @@
       m.type !== 'notice' &&
       typeof extractChatEmbed === 'function'
     ) {
-      const embedHtml = extractChatEmbed(m.text)
+      const embedHtml = extractChatEmbed(m.text, { partialLinks: linksEnabled && partialLinksEnabled })
       if (embedHtml) {
         const holder = document.createElement('div')
         holder.className = 'hs-mc-media-wrap'

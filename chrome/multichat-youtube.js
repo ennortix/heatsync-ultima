@@ -1861,6 +1861,29 @@ function linkifyPartialLinks(html) {
   return outsideTags(out, BARE_HOST_RE, (m0) => anchor(`https://${m0.toLowerCase()}`, m0))
 }
 
+/** First bare youtube fragment in RAW message text as a canonical watch URL.
+ *
+ * linkifyPartialLinks turns "watch?v=Gz0fAz9n_Os" into an anchor, but the chat
+ * embed extractor only ever looked for `https?://…`, so a host-less ref got a
+ * link and no thumbnail card — you had to leave chat to watch it. Same regex,
+ * so a fragment that linkifies is exactly a fragment that embeds.
+ *
+ * Takes raw text (not the escaped html linkifyPartialLinks sees); PARTIAL_YT_RE
+ * accepts both `&` and `&amp;` in the query tail, so it reads either.
+ */
+function firstPartialYtUrl(text) {
+  if (!text || typeof text !== 'string') return ''
+  PARTIAL_YT_RE.lastIndex = 0
+  const m = PARTIAL_YT_RE.exec(text)
+  PARTIAL_YT_RE.lastIndex = 0
+  if (!m) return ''
+  // Always the canonical watch form: shorts/live/embed/v all name the same video
+  // id, and watch?v= is the one shape every embed builder already parses. The
+  // query tail is dropped — it only carries playback params the builders
+  // re-derive, and keeping it would widen the sanitize surface on the id.
+  return `https://www.youtube.com/watch?v=${m[2]}`
+}
+
 // ============================================
 // CROSS-PLATFORM MESSAGE ORDERING
 // ============================================
@@ -1926,6 +1949,7 @@ const utils = {
 
   // Links
   linkifyPartialLinks,
+  firstPartialYtUrl,
   defangedToHost,
   outsideTags,
 
@@ -34594,11 +34618,20 @@ function extractFeedEmbed(content) {
 // message text — so the holder's insertAdjacentHTML in main.js stays XSS-safe.
 const _CHAT_URL_RE = /https?:\/\/[^\s<>"']+/i
 
-function extractChatEmbed(text) {
+function extractChatEmbed(text, opts) {
   if (!text || typeof text !== 'string') return ''
   const m = text.match(_CHAT_URL_RE)
-  if (!m) return ''
-  return chatEmbedForUrl(m[0])
+  const html = m ? chatEmbedForUrl(m[0]) : ''
+  if (html) return html
+  // Host-less youtube refs ("watch?v=Gz0fAz9n_Os") — chat drops the domain
+  // constantly because platforms throttle links for non-subs, and linkifyPartialLinks
+  // already turns these into anchors. Without this they were link-only: you had
+  // to leave chat to watch. Falls through only when no real URL produced a card,
+  // so an explicit link in the same message still wins. Rides the same
+  // partialLinksEnabled toggle — off means "don't guess at bare fragments".
+  if (opts?.partialLinks === false) return ''
+  const partial = typeof firstPartialYtUrl === 'function' ? firstPartialYtUrl(text) : ''
+  return partial ? chatEmbedForUrl(partial) : ''
 }
 
 function chatEmbedForUrl(rawUrl) {
@@ -66655,7 +66688,7 @@ const STORAGE_KEY = 'heatsync_multichat'
       m.type !== 'notice' &&
       typeof extractChatEmbed === 'function'
     ) {
-      const embedHtml = extractChatEmbed(m.text)
+      const embedHtml = extractChatEmbed(m.text, { partialLinks: linksEnabled && partialLinksEnabled })
       if (embedHtml) {
         const holder = document.createElement('div')
         holder.className = 'hs-mc-media-wrap'

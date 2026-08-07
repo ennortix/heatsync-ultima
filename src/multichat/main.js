@@ -11210,6 +11210,10 @@
     // is collapsed to its strip (handled in the nativeVisible reader); leave the
     // rest to Twitch.
     if (typeof getSetting === 'function' && getSetting('nativeVisible')) return
+    // The guard already caught this page's player collapsing under our
+    // geometry and handed layout back to the platform. Re-asserting here would
+    // walk straight back into the race it just bailed out of.
+    if (typeof playerGuardDisengaged === 'function' && playerGuardDisengaged()) return
     const isRight = chatPosition === 'right'
     const w = `${chatWidth}px`
     const h = `${chatHeight}px`
@@ -11627,6 +11631,14 @@
     // own chat-width JS on resize), we re-apply on the same hooks the
     // platform uses: window.resize + chat-width persistence. No observer
     // here — observers on style attrs loop on our own writes.
+
+    // Watch what our geometry actually did to the player. Idempotent, and it
+    // only ever acts when the player has ended up unusable — see
+    // player-guard.js for why this watches the outcome instead of adding
+    // another !important to the race.
+    try {
+      installPlayerGuard()
+    } catch (_) {}
   }
 
   function rotateChatPosition() {

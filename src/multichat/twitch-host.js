@@ -270,6 +270,11 @@ function softTwitchNav(prevLiveCh) {
   // Mark body for the entire transition window so the CSS guard hides any
   // native chat-shell children that paint during Twitch's teardown/remount.
   document.body.classList.add('hs-mc-navigating')
+  // A player-geometry bail-out is scoped to the page it happened on: the new
+  // channel gets a fresh player and deserves our layout back.
+  try {
+    resetPlayerGuard()
+  } catch (_) {}
   // Step 1 — detach from doomed chat-shell ahead of twitch's teardown.
   if (container?.parentElement && container.parentElement !== document.body) {
     document.body.appendChild(container)

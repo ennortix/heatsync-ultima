@@ -634,6 +634,7 @@ const MULTICHAT_MODULES = [
   'live-search.js',
   'automod.js',
   'stream-stats.js',
+  'player-guard.js',
   'mentions.js',
   'irc.js',
   'native-tap.js',

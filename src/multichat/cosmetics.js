@@ -119,7 +119,7 @@ function findYtChannelIdForUser(key) {
   const fromPaintUid = (puid) => (typeof puid === 'string' && puid.startsWith('yt_') ? puid.slice(3) : null)
   const container = document.getElementById('hs-mc-messages')
   if (container) {
-    const sel = `.hs-mc-msg .hs-mc-user[data-platform="yt"][data-username="${CSS.escape(`@${key}`)}"], .hs-mc-msg .hs-mc-user[data-platform="yt"][data-username="${CSS.escape(key)}"]`
+    const sel = `.hs-mc-msg .hs-mc-user:not(.hs-mc-mention)[data-platform="yt"][data-username="${CSS.escape(`@${key}`)}"], .hs-mc-msg .hs-mc-user:not(.hs-mc-mention)[data-platform="yt"][data-username="${CSS.escape(key)}"]`
     for (const userEl of container.querySelectorAll(sel)) {
       const found = fromPaintUid(userEl.closest('.hs-mc-msg')?.dataset.hsPaintUid)
       if (found) return found
@@ -198,7 +198,7 @@ async function flushYtNameLookups() {
         // user so updateCosmeticsInPlace can find them once cosmetics resolve.
         const container = document.getElementById('hs-mc-messages')
         if (container) {
-          const sel = `.hs-mc-msg .hs-mc-user[data-platform="yt"][data-username="${CSS.escape(`@${key}`)}"], .hs-mc-msg .hs-mc-user[data-platform="yt"][data-username="${CSS.escape(key)}"]`
+          const sel = `.hs-mc-msg .hs-mc-user:not(.hs-mc-mention)[data-platform="yt"][data-username="${CSS.escape(`@${key}`)}"], .hs-mc-msg .hs-mc-user:not(.hs-mc-mention)[data-platform="yt"][data-username="${CSS.escape(key)}"]`
           for (const userEl of container.querySelectorAll(sel)) {
             const div = userEl.closest('.hs-mc-msg')
             if (div && !div.dataset.uid) div.dataset.uid = tidStr
@@ -384,7 +384,7 @@ async function flushKickNameLookups() {
     // in-place repaint find the right rows.
     const container = document.getElementById('hs-mc-messages')
     if (container) {
-      const sel = `.hs-mc-msg .hs-mc-user[data-platform="kick"][data-username="${CSS.escape(key)}"]`
+      const sel = `.hs-mc-msg .hs-mc-user:not(.hs-mc-mention)[data-platform="kick"][data-username="${CSS.escape(key)}"]`
       for (const userEl of container.querySelectorAll(sel)) {
         const div = userEl.closest('.hs-mc-msg')
         if (!div) continue

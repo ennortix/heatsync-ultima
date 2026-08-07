@@ -36855,7 +36855,7 @@ function listenForSocialEvents() {
             // query the anchor and walk up — mirrors main.js's YT user lookup.
             msgsEl
               .querySelectorAll(
-                '.hs-mc-msg .hs-mc-user[data-platform="yt"], .hs-mc-msg .hs-mc-user[data-platform="youtube"]',
+                '.hs-mc-msg .hs-mc-user:not(.hs-mc-mention)[data-platform="yt"], .hs-mc-msg .hs-mc-user:not(.hs-mc-mention)[data-platform="youtube"]',
               )
               .forEach((a) => {
                 if (a.dataset.username === u) a.closest('.hs-mc-msg')?.classList.add('hs-mc-msg-cleared')
@@ -52661,7 +52661,7 @@ function findYtChannelIdForUser(key) {
   const fromPaintUid = (puid) => (typeof puid === 'string' && puid.startsWith('yt_') ? puid.slice(3) : null)
   const container = document.getElementById('hs-mc-messages')
   if (container) {
-    const sel = `.hs-mc-msg .hs-mc-user[data-platform="yt"][data-username="${CSS.escape(`@${key}`)}"], .hs-mc-msg .hs-mc-user[data-platform="yt"][data-username="${CSS.escape(key)}"]`
+    const sel = `.hs-mc-msg .hs-mc-user:not(.hs-mc-mention)[data-platform="yt"][data-username="${CSS.escape(`@${key}`)}"], .hs-mc-msg .hs-mc-user:not(.hs-mc-mention)[data-platform="yt"][data-username="${CSS.escape(key)}"]`
     for (const userEl of container.querySelectorAll(sel)) {
       const found = fromPaintUid(userEl.closest('.hs-mc-msg')?.dataset.hsPaintUid)
       if (found) return found
@@ -52740,7 +52740,7 @@ async function flushYtNameLookups() {
         // user so updateCosmeticsInPlace can find them once cosmetics resolve.
         const container = document.getElementById('hs-mc-messages')
         if (container) {
-          const sel = `.hs-mc-msg .hs-mc-user[data-platform="yt"][data-username="${CSS.escape(`@${key}`)}"], .hs-mc-msg .hs-mc-user[data-platform="yt"][data-username="${CSS.escape(key)}"]`
+          const sel = `.hs-mc-msg .hs-mc-user:not(.hs-mc-mention)[data-platform="yt"][data-username="${CSS.escape(`@${key}`)}"], .hs-mc-msg .hs-mc-user:not(.hs-mc-mention)[data-platform="yt"][data-username="${CSS.escape(key)}"]`
           for (const userEl of container.querySelectorAll(sel)) {
             const div = userEl.closest('.hs-mc-msg')
             if (div && !div.dataset.uid) div.dataset.uid = tidStr
@@ -52926,7 +52926,7 @@ async function flushKickNameLookups() {
     // in-place repaint find the right rows.
     const container = document.getElementById('hs-mc-messages')
     if (container) {
-      const sel = `.hs-mc-msg .hs-mc-user[data-platform="kick"][data-username="${CSS.escape(key)}"]`
+      const sel = `.hs-mc-msg .hs-mc-user:not(.hs-mc-mention)[data-platform="kick"][data-username="${CSS.escape(key)}"]`
       for (const userEl of container.querySelectorAll(sel)) {
         const div = userEl.closest('.hs-mc-msg')
         if (!div) continue
@@ -67307,7 +67307,15 @@ const STORAGE_KEY = 'heatsync_multichat'
         // sender-identity mark (shown beside the sender before the colon),
         // not part of a name typed inside message content. The sender's own
         // name and the reply-context header still carry it.
-        return `${lead}<a href="https://heatsync.org/user/${encodeURIComponent(lower)}" target="_blank" rel="noopener noreferrer" class="${mentionCls}" data-username="${safeLower}"${uidAttr}${splitAttr} style="${style}">${inner}</a>`
+        // data-platform is what the hover card reads to disambiguate a name
+        // that exists on more than one platform. Without it the tooltip called
+        // /api/profile/<name> with no platform and the server picked whichever
+        // identity it liked — hovering @nl_kripp in twitch chat could answer
+        // with a youtube shadow user, and the card then rendered thin because
+        // followage/banner/pronouns all key off the twitch id it never got.
+        // Use the same platform the uid lookup two blocks up already uses, so
+        // the mention's identity and its hover card agree by construction.
+        return `${lead}<a href="https://heatsync.org/user/${encodeURIComponent(lower)}" target="_blank" rel="noopener noreferrer" class="${mentionCls}" data-username="${safeLower}" data-platform="${escapeHtml(platform)}"${uidAttr}${splitAttr} style="${style}">${inner}</a>`
       },
     )
   }

@@ -1115,7 +1115,7 @@ function listenForSocialEvents() {
             // query the anchor and walk up — mirrors main.js's YT user lookup.
             msgsEl
               .querySelectorAll(
-                '.hs-mc-msg .hs-mc-user[data-platform="yt"], .hs-mc-msg .hs-mc-user[data-platform="youtube"]',
+                '.hs-mc-msg .hs-mc-user:not(.hs-mc-mention)[data-platform="yt"], .hs-mc-msg .hs-mc-user:not(.hs-mc-mention)[data-platform="youtube"]',
               )
               .forEach((a) => {
                 if (a.dataset.username === u) a.closest('.hs-mc-msg')?.classList.add('hs-mc-msg-cleared')

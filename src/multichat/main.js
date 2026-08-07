@@ -8193,7 +8193,15 @@
         // sender-identity mark (shown beside the sender before the colon),
         // not part of a name typed inside message content. The sender's own
         // name and the reply-context header still carry it.
-        return `${lead}<a href="https://heatsync.org/user/${encodeURIComponent(lower)}" target="_blank" rel="noopener noreferrer" class="${mentionCls}" data-username="${safeLower}"${uidAttr}${splitAttr} style="${style}">${inner}</a>`
+        // data-platform is what the hover card reads to disambiguate a name
+        // that exists on more than one platform. Without it the tooltip called
+        // /api/profile/<name> with no platform and the server picked whichever
+        // identity it liked — hovering @nl_kripp in twitch chat could answer
+        // with a youtube shadow user, and the card then rendered thin because
+        // followage/banner/pronouns all key off the twitch id it never got.
+        // Use the same platform the uid lookup two blocks up already uses, so
+        // the mention's identity and its hover card agree by construction.
+        return `${lead}<a href="https://heatsync.org/user/${encodeURIComponent(lower)}" target="_blank" rel="noopener noreferrer" class="${mentionCls}" data-username="${safeLower}" data-platform="${escapeHtml(platform)}"${uidAttr}${splitAttr} style="${style}">${inner}</a>`
       },
     )
   }

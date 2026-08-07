@@ -2206,7 +2206,6 @@
     },
     autoHide: (v) => {
       const bar = document.getElementById('hs-mc-inputbar')
-      const pickerOpen = document.getElementById('hs-mc-emote-picker')?.classList.contains('visible') || false
       // Honor the pop-out override — never actually hide there even if the
       // setting is switched on (canAutoHideInput would keep it off anyway).
       // Switching auto-hide OFF still can't conjure a composer on a tab that
@@ -2218,7 +2217,9 @@
         if (bar) bar.classList.remove('hs-hidden')
         inputBarVisible = true
       }
-      adjustOverlayForPicker(pickerOpen)
+      // The composer just changed height — the open picker mirrors the message
+      // list's box, so re-measure rather than leaving it short or overhanging.
+      syncPickerBox()
     },
     autoClaim: (v) => {
       if (v) startAutoClaimPoller()
@@ -2315,7 +2316,10 @@
     },
     // rendered html is cached per message — a src change needs a cache
     // flush before the re-render or old animated imgs survive the toggle
-    emoteAnimation: (_v, _def, onLoad) => {
+    emoteAnimation: (v, _def, onLoad) => {
+      // Drives the hs-fx-* animation gate in 10-emotes.css (never → off,
+      // hover → row-hover only). Set on load too, before the early return.
+      document.documentElement.dataset.hsEmoteAnim = v || 'always'
       if (onLoad) return
       clearRenderedHtmlCache()
       renderMessages(currentTab)
@@ -3473,10 +3477,9 @@
     if (bar) bar.classList.remove('hs-hidden')
     const overlay = document.getElementById('hs-mc-overlay')
     if (overlay) overlay.style.bottom = ''
-    const picker = document.getElementById('hs-mc-emote-picker')
-    adjustOverlayForPicker(picker?.classList.contains('visible') || false)
     // ResizeObserver doesn't fire on display:none → :flex; recompute anchors
-    // so the docked Twitch callout follows the inputbar.
+    // so the docked Twitch callout follows the inputbar. (Also re-mirrors an
+    // open picker onto the message list's new box — see syncPickerBox.)
     _updateMcLayout?.()
   }
 
@@ -6388,6 +6391,11 @@
           activeChannels: getActiveViewedChannels(),
         })
       } catch (_) {}
+
+      // An open picker mirrors the message list's box exactly — re-measure it
+      // here, the one place that knows the chat body just moved (tab bar grew a
+      // row, composer shown/hidden, tab position rotated).
+      syncPickerBox()
     }
 
     if (tabBarElement && overlayElement && !resizeObserver) {
@@ -7961,7 +7969,7 @@
       m.type !== 'notice' &&
       typeof extractChatEmbed === 'function'
     ) {
-      const embedHtml = extractChatEmbed(m.text)
+      const embedHtml = extractChatEmbed(m.text, { partialLinks: linksEnabled && partialLinksEnabled })
       if (embedHtml) {
         const holder = document.createElement('div')
         holder.className = 'hs-mc-media-wrap'

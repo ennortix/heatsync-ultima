@@ -840,6 +840,29 @@ function linkifyPartialLinks(html) {
   return outsideTags(out, BARE_HOST_RE, (m0) => anchor(`https://${m0.toLowerCase()}`, m0))
 }
 
+/** First bare youtube fragment in RAW message text as a canonical watch URL.
+ *
+ * linkifyPartialLinks turns "watch?v=Gz0fAz9n_Os" into an anchor, but the chat
+ * embed extractor only ever looked for `https?://…`, so a host-less ref got a
+ * link and no thumbnail card — you had to leave chat to watch it. Same regex,
+ * so a fragment that linkifies is exactly a fragment that embeds.
+ *
+ * Takes raw text (not the escaped html linkifyPartialLinks sees); PARTIAL_YT_RE
+ * accepts both `&` and `&amp;` in the query tail, so it reads either.
+ */
+function firstPartialYtUrl(text) {
+  if (!text || typeof text !== 'string') return ''
+  PARTIAL_YT_RE.lastIndex = 0
+  const m = PARTIAL_YT_RE.exec(text)
+  PARTIAL_YT_RE.lastIndex = 0
+  if (!m) return ''
+  // Always the canonical watch form: shorts/live/embed/v all name the same video
+  // id, and watch?v= is the one shape every embed builder already parses. The
+  // query tail is dropped — it only carries playback params the builders
+  // re-derive, and keeping it would widen the sanitize surface on the id.
+  return `https://www.youtube.com/watch?v=${m[2]}`
+}
+
 // ============================================
 // CROSS-PLATFORM MESSAGE ORDERING
 // ============================================
@@ -905,6 +928,7 @@ const utils = {
 
   // Links
   linkifyPartialLinks,
+  firstPartialYtUrl,
   defangedToHost,
   outsideTags,
 
@@ -985,6 +1009,7 @@ export {
   estimateSettingSize,
   findComponent,
   findOrdInsertIndex,
+  firstPartialYtUrl,
   getFiber,
   identityYtLiveUrl,
   isLargeKeySyncEligible,

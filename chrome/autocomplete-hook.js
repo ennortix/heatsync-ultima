@@ -1091,25 +1091,14 @@
         const hsEmotes = getHeatsyncEmotes()
         const searchLower = search.toLowerCase()
 
-        // FFZ modifier tokens MUST NOT autocomplete — they're not emotes.
+        // BTTV/FFZ modifier tokens MUST NOT autocomplete — they're not emotes.
         // (Otherwise typing "w!" + Tab inserts a random emote whose name
         // contains "w" + "!", breaking the modifier-on-previous-emote flow.)
-        const HS_MODIFIER_TOKENS = new Set([
-          'w!',
-          'h!',
-          'v!',
-          'l!',
-          'c!',
-          'z!',
-          'x!',
-          'y!',
-          'ffzX',
-          'ffzY',
-          'ffzWide',
-          'ffzTall',
-          'ffzCursed',
-        ])
-        if (HS_MODIFIER_TOKENS.has(search) || /^c!#?[0-9a-fA-F]{3,6}$/.test(search)) {
+        // Asks the shared classifier rather than a local list: the local list
+        // had drifted and was missing r!/p!/s!/ffzW and every animated ffz*
+        // token, so those still hit the fuzzy matcher. Also covers c!#hex and
+        // chained forms ("w!h!") for free.
+        if (hsModClassify(search, { allowPrefix: false }).kind === 'modifier') {
           log(' [heatsync-autocomplete] modifier token, suppressing match:', search)
           // One-shot per modifier per session — don't spam if user keeps tabbing
           if (!window.__hsModifierToastSeen) window.__hsModifierToastSeen = new Set()

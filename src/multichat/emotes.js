@@ -942,7 +942,6 @@ function showEmotePicker(tab = null) {
     pickerTab = tab
   } else if (picker.classList.contains('visible')) {
     picker.classList.remove('visible')
-    adjustOverlayForPicker(false)
     hideInputBar()
     return
   }
@@ -956,10 +955,7 @@ function showEmotePicker(tab = null) {
   if (!isPrebuild && pickerCacheKey() === _pickerBuiltKey && picker.firstChild) {
     syncPickerTabDisplay(picker)
     picker.classList.add('visible')
-    const bar = document.getElementById('hs-mc-inputbar')
-    const barHeight = bar && inputBarVisible ? bar.offsetHeight : 0
-    picker.style.bottom = `${barHeight}px`
-    adjustOverlayForPicker(true)
+    syncPickerBox()
     // Now that the picker has layout, fill any chunks the IntersectionObserver
     // never got to (first open in a hidden/occluded tab — IO doesn't fire there).
     renderVisibleChunks(picker)
@@ -1226,11 +1222,7 @@ function showEmotePicker(tab = null) {
   if (isPrebuild) return
 
   picker.classList.add('visible')
-  // Position picker flush above input bar (or at bottom if hidden)
-  const bar = document.getElementById('hs-mc-inputbar')
-  const barHeight = bar && inputBarVisible ? bar.offsetHeight : 0
-  picker.style.bottom = `${barHeight}px`
-  adjustOverlayForPicker(true)
+  syncPickerBox()
   // Picker now has layout — force-fill the visible chunks so a first open in a
   // hidden/occluded tab (where the IntersectionObserver never fires) isn't blank.
   renderVisibleChunks(picker)
@@ -1253,7 +1245,6 @@ function attachPickerCloseHandler(picker) {
       }
       if (!picker.contains(e.target) && !e.target.closest('#hs-mc-emote-btn')) {
         picker.classList.remove('visible')
-        adjustOverlayForPicker(false)
         hideInputBar()
         stopPredictionPoll()
         document.removeEventListener('click', _pickerCloseHandler)
@@ -1270,7 +1261,6 @@ function attachPickerCloseHandler(picker) {
         return
       }
       picker.classList.remove('visible')
-      adjustOverlayForPicker(false)
       hideInputBar()
       stopPredictionPoll()
       document.removeEventListener('keydown', _pickerEscHandler)
@@ -1283,18 +1273,33 @@ function attachPickerCloseHandler(picker) {
   }, 0)
 }
 
-/** Adjust overlay bottom to make room for picker panel */
-function adjustOverlayForPicker(open) {
+/** Size the open picker to exactly the message list's box.
+ *
+ * The picker used to be a fixed `min(400px, 60vh)` panel that the message list
+ * shrank to make room for — on a tall chat that left a useless one-inch strip of
+ * messages above a picker that still had to scroll. It now covers the whole chat
+ * body instead: same top/height as #hs-mc-overlay, so the tab bar and the
+ * composer stay visible and nothing has to reserve space for it.
+ *
+ * Mirroring the overlay's measured box (rather than per-layout top/bottom math)
+ * is what makes this correct for every tab position, popout, and platform at
+ * once — the overlay's box is already the answer to "where does chat live".
+ */
+function syncPickerBox() {
+  const picker = document.getElementById('hs-mc-emote-picker')
+  if (!picker?.classList.contains('visible')) return
   const overlay = document.getElementById('hs-mc-overlay')
-  if (!overlay) return
-  // For vertical tabs (left/right), CSS handles overlay positioning — don't override
-  if (tabPosition === 'left' || tabPosition === 'right') return
-  const hasBottomTabs = tabPosition === 'bottom'
-  // Always reserve input bar space to prevent layout shift when it shows/hides
-  const barBase = hasBottomTabs ? 90 : 52
-  const pickerEl = document.getElementById('hs-mc-emote-picker')
-  const pickerHeight = open && pickerEl ? pickerEl.offsetHeight : 0
-  overlay.style.bottom = `${barBase + pickerHeight}px`
+  // No laid-out overlay (chat hidden, pre-mount) — leave the CSS box alone
+  // rather than pinning height:0 and rendering an invisible picker.
+  if (!overlay?.offsetHeight) return
+  // offsetTop/offsetHeight are both relative to #hs-mc-container, which is the
+  // picker's offsetParent too — no coordinate conversion, no reflow of others.
+  picker.style.top = `${overlay.offsetTop}px`
+  picker.style.height = `${overlay.offsetHeight}px`
+  // !important: the per-tab-position layout rules pin `bottom` (some of them
+  // with !important, which outranks a plain inline value), and top+height+bottom
+  // together would over-constrain the box.
+  picker.style.setProperty('bottom', 'auto', 'important')
 }
 
 // Blocked emotes: stored by HASH (matches background.js/server)
@@ -3258,22 +3263,12 @@ cleanup.persistInterval(cleanup.setIntervalIfVisible(scanDomForEmotes, 10000))
 const HS_MC_MODS = HS_MOD_TOKENS
 const HS_MC_C_RE = HS_MOD_C_HEX_RE
 // Static list — hoisted out of the per-word inline-suffix peel so it isn't
-// reallocated for every non-resolved word on the message hot path.
-const HS_INLINE_MOD_SUFFIXES = [
-  'ffzCursed',
-  'ffzWide',
-  'ffzTall',
-  'ffzX',
-  'ffzY',
-  'w!',
-  'h!',
-  'v!',
-  'l!',
-  'c!',
-  'z!',
-  'x!',
-  'y!',
-]
+// reallocated for every non-resolved word on the message hot path. DERIVED from
+// HS_MOD_TOKENS, never hand-listed: the hand-written version had drifted and was
+// missing r!/p!/s!/ffzW and every animated ffz* token, so "KappaffzLeave" (space
+// eaten by an upstream send pipeline) resolved to nothing. Longest-first so a
+// long token wins over any shorter one that ends the same way.
+const HS_INLINE_MOD_SUFFIXES = Object.keys(HS_MOD_TOKENS).sort((a, b) => b.length - a.length)
 function _hsMcHexToHue(h) {
   return hsModHexToHue(h)
 }

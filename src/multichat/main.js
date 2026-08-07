@@ -5679,12 +5679,12 @@
         return false
       }
 
-      // Token path: optimistic synthetic + instant exit, GQL in the
-      // background. Any failure rescues the typed text into plain chat —
-      // the user's words must never silently vanish.
-      try {
-        _injectShareSynthetic(claim, user, months, text || '')
-      } catch (_) {}
+      // Token path: instant exit, GQL in the background. Any failure rescues
+      // the typed text into plain chat — the user's words must never silently
+      // vanish. The optimistic synthetic is NOT re-injected here: step 1 above
+      // already ran unconditionally, and _injectShareSynthetic stamps a fresh
+      // Date.now() id and pushes a new row every call, so doing it twice put
+      // two identical celebrations in the sharer's own view.
       _exitResubShareMode(claim, false)
       ;(async () => {
         try {

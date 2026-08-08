@@ -70154,7 +70154,23 @@ const STORAGE_KEY = 'heatsync_multichat'
       const chatShell = document.querySelector(`.chat-shell, ${CONFIG.SELECTORS.TWITCH_CHAT_SHELL}`)
       if (chatShell) {
         const r = chatShell.getBoundingClientRect()
-        if (r.right > window.innerWidth + 1 || r.width === 0) {
+        // A zero-width chat shell is NOT proof of the layout bug above — it is
+        // also the normal state when the right column is collapsed, and when
+        // WE hid the native chat ourselves (hs-native-hidden). Treating those
+        // as "broken" was self-inflicted: hiding native chat zeroed the shell,
+        // this branch then forced hs-twitch-no-channel, which squeezes the
+        // layout AND early-returns the player guard (player-guard.js), so
+        // twitch demoted the video into .persistent-player — the stream turned
+        // into a white rectangle at the bottom of the page. That is the
+        // "ext breaks the stream / white screen" report.
+        //
+        // Only the genuine off-screen overflow still counts on its own; a bare
+        // width===0 counts only when nothing we or the user did explains it.
+        const selfHidden = chatShell.classList.contains('hs-native-hidden')
+        const collapsed = !!document.querySelector('.right-column--collapsed, [class*="right-column--collapsed"]')
+        const overflowsOffScreen = r.right > window.innerWidth + 1
+        const unexplainedZeroWidth = r.width === 0 && !selfHidden && !collapsed
+        if (overflowsOffScreen || unexplainedZeroWidth) {
           noChannel = true
           const c = document.getElementById('hs-mc-container')
           if (c && c.parentElement !== document.body) document.body.appendChild(c)

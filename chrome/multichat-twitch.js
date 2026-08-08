@@ -22270,7 +22270,21 @@ class IRC extends ChatClient {
     if (!msg) return
     // dedupe plain chat by (channel, id) — same id is legit across channels
     // in shared-chat sessions; BG IRC vs native tap is the real dupe source
-    if (!msg.type && msg.id && this._seenId(`${msg.channel}:${msg.id}`)) return
+    if (!msg.type && msg.id && this._seenId(`${msg.channel}:${msg.id}`)) {
+      // A duplicate is not always redundant. The same message arrives twice —
+      // once over IRC (carries reply-parent tags) and once from the native DOM
+      // tap (best-effort reply extraction off an undocumented twitch internal
+      // shape that "drifts across twitch builds"). Whichever lands FIRST claims
+      // the id and the other copy was dropped whole, so when the tap won, the
+      // reply context was gone: no "replying to" bar, and — since a native
+      // reply to you became a mention — no red either.
+      //
+      // Don't re-render the message; just hand the missing piece upward. The
+      // repair that already existed for this only covered messages YOU sent
+      // (gated on sentHost), never someone else's reply to you.
+      if (msg.replyTo?.user) this.emit('reply-ctx', msg)
+      return
+    }
     if (!msg.type && !msg.fromNativeTap && !msg.isHistory && msg.channel) {
       // rolling window of recent non-tap deliveries — the tap defers only to
       // HEALTHY flow (3+ msgs in 10s), not to a starved trickle where a
@@ -73540,6 +73554,30 @@ const STORAGE_KEY = 'heatsync_multichat'
     }
 
     // Handle incoming IRC messages
+    // Late reply context: the losing transport's copy of an already-rendered
+    // message carried the reply-parent tags the winner lacked. Patch it in
+    // rather than lose the "replying to" bar (and, because a native reply to
+    // you counts as a mention, the red with it).
+    irc.on('reply-ctx', (msg) => {
+      try {
+        const buf = irc.getMessages?.(msg.channel)
+        if (!buf) return
+        const iter = Array.isArray(buf) ? buf : typeof buf.values === 'function' ? buf.values() : null
+        if (!iter) return
+        for (const m of iter) {
+          if (m?.id !== msg.id) continue
+          if (m.replyTo?.user) return // the winner already had it — nothing to do
+          m.replyTo = msg.replyTo
+          // The renderer recomputes isMention(m) every render, so clearing the
+          // cached html restores the reply bar AND the red in one step — no
+          // separate mention flag to set (there is none to set).
+          m._renderedHtml = null
+          scheduleRenderMessages()
+          return
+        }
+      } catch (_) {}
+    })
+
     irc.on('message', (msg) => {
       // Share-claim dedupe: a real resub/milestone USERNOTICE from Twitch
       // matches a pending Share click. Pre-injection → cancel synthetic.

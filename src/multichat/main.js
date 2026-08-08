@@ -14063,6 +14063,30 @@
     }
 
     // Handle incoming IRC messages
+    // Late reply context: the losing transport's copy of an already-rendered
+    // message carried the reply-parent tags the winner lacked. Patch it in
+    // rather than lose the "replying to" bar (and, because a native reply to
+    // you counts as a mention, the red with it).
+    irc.on('reply-ctx', (msg) => {
+      try {
+        const buf = irc.getMessages?.(msg.channel)
+        if (!buf) return
+        const iter = Array.isArray(buf) ? buf : typeof buf.values === 'function' ? buf.values() : null
+        if (!iter) return
+        for (const m of iter) {
+          if (m?.id !== msg.id) continue
+          if (m.replyTo?.user) return // the winner already had it — nothing to do
+          m.replyTo = msg.replyTo
+          // The renderer recomputes isMention(m) every render, so clearing the
+          // cached html restores the reply bar AND the red in one step — no
+          // separate mention flag to set (there is none to set).
+          m._renderedHtml = null
+          scheduleRenderMessages()
+          return
+        }
+      } catch (_) {}
+    })
+
     irc.on('message', (msg) => {
       // Share-claim dedupe: a real resub/milestone USERNOTICE from Twitch
       // matches a pending Share click. Pre-injection → cancel synthetic.

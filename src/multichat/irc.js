@@ -560,7 +560,21 @@ class IRC extends ChatClient {
     if (!msg) return
     // dedupe plain chat by (channel, id) — same id is legit across channels
     // in shared-chat sessions; BG IRC vs native tap is the real dupe source
-    if (!msg.type && msg.id && this._seenId(`${msg.channel}:${msg.id}`)) return
+    if (!msg.type && msg.id && this._seenId(`${msg.channel}:${msg.id}`)) {
+      // A duplicate is not always redundant. The same message arrives twice —
+      // once over IRC (carries reply-parent tags) and once from the native DOM
+      // tap (best-effort reply extraction off an undocumented twitch internal
+      // shape that "drifts across twitch builds"). Whichever lands FIRST claims
+      // the id and the other copy was dropped whole, so when the tap won, the
+      // reply context was gone: no "replying to" bar, and — since a native
+      // reply to you became a mention — no red either.
+      //
+      // Don't re-render the message; just hand the missing piece upward. The
+      // repair that already existed for this only covered messages YOU sent
+      // (gated on sentHost), never someone else's reply to you.
+      if (msg.replyTo?.user) this.emit('reply-ctx', msg)
+      return
+    }
     if (!msg.type && !msg.fromNativeTap && !msg.isHistory && msg.channel) {
       // rolling window of recent non-tap deliveries — the tap defers only to
       // HEALTHY flow (3+ msgs in 10s), not to a starved trickle where a

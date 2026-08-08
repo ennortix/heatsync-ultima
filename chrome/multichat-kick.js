@@ -23169,8 +23169,15 @@ class KickChat extends ChatClient {
         ? {
             user: d.replyTo.username || 'unknown',
             text: d.replyTo.content || '',
-            id: d.replyTo.id || d.replyTo.message_id || '',
-            threadId: d.replyTo.thread_id || d.replyTo.id || d.replyTo.message_id || '',
+            // `messageId` first — that is what the heatsync server actually
+            // sends for kick (kick-chat-webhooks builds {messageId, content,
+            // username}). Reading only .id/.message_id matched neither, so the
+            // bar rendered from username/content while the id came out empty:
+            // reply-thread hover was dead on kick, and ext-archived kick
+            // replies wrote a null reply_to_id. The other two spellings stay as
+            // fallbacks for the raw-payload paths.
+            id: d.replyTo.messageId || d.replyTo.id || d.replyTo.message_id || '',
+            threadId: d.replyTo.thread_id || d.replyTo.messageId || d.replyTo.id || d.replyTo.message_id || '',
           }
         : null,
     }

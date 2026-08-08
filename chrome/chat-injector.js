@@ -113,10 +113,15 @@
     #heatsync-emote-tooltip.active {
       display: block;
     }
+    /* Size is set per-hover from the emote's own rendered rect (see
+       showEmoteTooltip) so the preview is a true 4x of what's in chat. A fixed
+       128px cap used to live here, which read as 4x only for a square ~28px
+       emote and silently clipped every wide one to well under it — the
+       "hover zoom isn't 4x" report. contain keeps the hi-res asset sharp
+       inside whatever box the scale asks for. */
     #heatsync-emote-tooltip img {
       display: block;
-      max-width: 128px;
-      max-height: 128px;
+      object-fit: contain;
       image-rendering: pixelated;
       image-rendering: -moz-crisp-edges;
     }
@@ -127,6 +132,12 @@
   `
     document.head.appendChild(style)
   }
+
+  // Hover preview magnification. Same factor the multichat overlay uses
+  // (STACK_PREVIEW_SCALE in src/multichat/tooltips.js) — the two surfaces must
+  // not disagree about what "zoom" means.
+  const EMOTE_PREVIEW_SCALE = 4
+  const PREVIEW_MARGIN = 16
 
   /**
    * Get max quality URL for an emote based on its CDN
@@ -173,7 +184,17 @@
       img.src = highResUrl
     }
 
+    // 4x of the size the emote actually renders at in chat, matching the
+    // overlay's STACK_PREVIEW_SCALE — one zoom factor, both surfaces. Clamped
+    // so a very wide emote can't grow past the viewport.
     const rect = emote.getBoundingClientRect()
+    const scale = Math.min(
+      EMOTE_PREVIEW_SCALE,
+      (window.innerWidth - PREVIEW_MARGIN * 2) / (rect.width || 1),
+      (window.innerHeight - PREVIEW_MARGIN * 2) / (rect.height || 1),
+    )
+    img.style.width = `${Math.round(rect.width * scale)}px`
+    img.style.height = `${Math.round(rect.height * scale)}px`
     tooltip.style.left = `${rect.left + rect.width / 2}px`
     tooltip.style.top = `${rect.top - 8}px`
     tooltip.classList.add('active')

@@ -21543,10 +21543,9 @@ function shouldIgnore(el) {
   // this early-return through a different door. Ask for the absence of a
   // channel, which is what "browsing away" actually means; the overflow path
   // keeps its .channel-root and stays guarded.
-  if (
-    document.body?.classList?.contains('hs-twitch-no-channel') &&
-    !document.querySelector('.channel-root, [class*="channel-root"]')
-  ) return true
+  const noChannelClass = document.body?.classList?.contains('hs-twitch-no-channel')
+  const onChannel = !!document.querySelector('.channel-root, [class*="channel-root"]')
+  if (noChannelClass && !onChannel) return true
   return false
 }
 

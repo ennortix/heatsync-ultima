@@ -1231,7 +1231,6 @@ let inventoryFetchOK = false // Last fetch succeeded — gate persist writes so 
 // on every open tab — only wipe after 2 consecutive auth failures. (This
 // fix shipped 2026-06-04 and was silently dropped in a later rewrite.)
 let authConsecutiveFails = 0
-let pendingUserInfoToPersist = null // Buffered for batched init write
 let globalEmotesFetchPromise = null // In-flight guard for fetchGlobalEmotes
 
 function scheduleInventoryRefresh() {
@@ -2495,7 +2494,18 @@ async function fetchUserInfo() {
       // Only an explicit auth rejection means "logged out" — wipe. A 5xx/429/
       // gateway blip is transient: keep stale user_info so mention aliases +
       // display identity survive instead of silently dying until next refetch.
-      if (response.status === 401 || response.status === 403) browser.storage.local.remove('user_info')
+      // Drop the TOKEN too, not just the identity. Clearing user_info alone
+      // left the worst possible state: token present so every signed-out
+      // affordance stays hidden (they all test the token), identity absent so
+      // nothing matches you — signed out in fact, signed in on screen, silent
+      // either way. Removing both makes the existing logged-out UI correct
+      // again and lets the next cookie read re-authenticate cleanly.
+      if (response.status === 401 || response.status === 403) {
+        await browser.storage.local.remove(['user_info', 'auth_token_encrypted', 'auth_token'])
+        try {
+          broadcastToTabs({ type: 'auth_changed', loggedIn: false, reason: 'session_expired' })
+        } catch (_) {}
+      }
       return
     }
 
@@ -2535,8 +2545,16 @@ async function fetchUserInfo() {
         : null,
       youtube_verified: !!user.youtube_verified,
     }
-    pendingUserInfoToPersist = userInfo
     currentUsername = userInfo.username
+    // Persist HERE, not via a global the init batch happens to flush later.
+    // This used to only set `pendingUserInfoToPersist`, which reached disk in
+    // exactly one place: initialize()'s Promise.all tail. So logging in stored
+    // your TOKEN but never your IDENTITY — the cookie-change login path and the
+    // popup's refresh both fetched it and dropped it when the service worker
+    // died. Overlay symptoms: no red mentions, no "replied to you", no mention
+    // pings — while every signed-out affordance stayed hidden because those all
+    // key off the token, which WAS present. Nothing on screen said anything.
+    await browser.storage.local.set({ user_info: userInfo })
     log(' User info loaded:', userInfo.display_name)
   } catch (error) {
     console.error('[heatsync] fetchUserInfo failed:', error.message || error)
@@ -10395,10 +10413,8 @@ async function initialize() {
       if (inventoryFetchOK) {
         persist.emote_inventory = emoteInventory
       }
-      if (pendingUserInfoToPersist) {
-        persist.user_info = pendingUserInfoToPersist
-        pendingUserInfoToPersist = null
-      }
+      // user_info is no longer batched here — fetchUserInfo() persists it the
+      // moment it has it, so it can't be lost when this batch never runs.
       browser.storage.local.set(persist).catch(() => {})
     })
     .catch((err) => log(' Fetch error:', err.message))

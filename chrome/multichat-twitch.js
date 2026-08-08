@@ -49746,42 +49746,40 @@ async function uploadMediaFile(file) {
     return null
   }
   _mcUploading = true
-  showUploadStatus('uploading 0%...')
+  // No percentage. This used to be a raw XMLHttpRequest purely so it could
+  // report upload progress — and that choice is what broke it. A content
+  // script's own request is subject to the HOST page's CORS, and heatsync.org
+  // does not allow twitch.tv / kick.com / youtube.com as origins, so the
+  // response was rejected before any handler saw it and the XHR fired its
+  // generic `error` event: "upload failed: network error", on every host page,
+  // for every paste. (It worked when the same code ran on heatsync.org, which
+  // is same-origin — which is how it passed as working.) It also relied on
+  // withCredentials cookies, which don't ride a cross-site request at all.
+  //
+  // So it goes through the background worker like every other API call in the
+  // extension (see apiFetch in social.js) — that path bypasses CORS via
+  // host_permissions and carries the stored auth token. Messaging can't stream
+  // progress back, and an honest "uploading..." beats a percentage on a
+  // request that never left the page.
+  showUploadStatus('uploading...')
   try {
-    const formData = new FormData()
-    formData.append('file', file)
-    const url = await new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest()
-      xhr.upload.addEventListener('progress', (e) => {
-        if (e.lengthComputable) {
-          const pct = Math.round((e.loaded / e.total) * 100)
-          showUploadStatus(`uploading ${pct}%...`)
-        }
-      })
-      xhr.addEventListener('load', () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          try {
-            const data = JSON.parse(xhr.responseText)
-            if (data.success && data.url) resolve(data.url)
-            else reject(new Error(data.error || 'upload failed'))
-          } catch {
-            reject(new Error('bad response'))
-          }
-        } else {
-          try {
-            const err = JSON.parse(xhr.responseText)
-            reject(new Error(err.error || `http ${xhr.status}`))
-          } catch {
-            reject(new Error(`http ${xhr.status}`))
-          }
-        }
-      })
-      xhr.addEventListener('error', () => reject(new Error('network error')))
-      xhr.addEventListener('abort', () => reject(new Error('cancelled')))
-      xhr.open('POST', `${CONFIG.API_URL}/api/upload`)
-      xhr.withCredentials = true
-      xhr.send(formData)
+    // FileReader, not btoa over a Uint8Array: building the binary string a
+    // char at a time overflows the stack somewhere in the low megabytes, and
+    // the video cap here is 50MB.
+    const dataUrl = await new Promise((resolve, reject) => {
+      const fr = new FileReader()
+      fr.addEventListener('load', () => resolve(String(fr.result || '')))
+      fr.addEventListener('error', () => reject(new Error('could not read file')))
+      fr.readAsDataURL(file)
     })
+    const resp = await safeSendMessage({
+      type: 'api_upload',
+      name: file.name || 'paste',
+      mime: file.type,
+      dataUrl,
+    })
+    if (!resp?.ok || !resp.url) throw new Error(resp?.error || 'upload failed')
+    const url = resp.url
     showUploadStatus('upload done')
     setTimeout(() => showUploadStatus(null), 1500)
     return url

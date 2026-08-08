@@ -9281,6 +9281,73 @@ async function handleMessage(message, sender, sendResponse) {
       }
     })()
     return true
+  } else if (message.type === 'api_upload') {
+    // Multipart sibling of api_fetch. Same reason for existing: a content
+    // script cannot reach heatsync.org directly — the host page's CORS applies
+    // and twitch/kick/youtube are not allowed origins. api_fetch can't serve
+    // this one because it is JSON-only, so the file arrives here as a data URL
+    // and is rebuilt into a real multipart body on this side.
+    ;(async () => {
+      try {
+        const dataUrl = String(message.dataUrl || '')
+        const comma = dataUrl.indexOf(',')
+        if (!dataUrl.startsWith('data:') || comma < 0) {
+          sendResponse({ ok: false, error: 'bad file data' })
+          return
+        }
+        // Trust the declared mime only as far as its shape — the server
+        // re-derives the real type from the bytes, but there is no reason to
+        // relay something that isn't claiming to be media in the first place.
+        const mime = String(message.mime || '').toLowerCase()
+        if (!/^(image|video)\/[a-z0-9.+-]+$/.test(mime)) {
+          sendResponse({ ok: false, error: 'only images/videos allowed' })
+          return
+        }
+        const bin = atob(dataUrl.slice(comma + 1))
+        const bytes = new Uint8Array(bin.length)
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+        const form = new FormData()
+        form.append('file', new Blob([bytes], { type: mime }), String(message.name || 'paste'))
+
+        const doUpload = async (token) => {
+          const opts = { method: 'POST', body: form, headers: {} }
+          // No Content-Type header — fetch sets it WITH the multipart boundary,
+          // and overriding it here makes the body unparseable server-side.
+          if (token) opts.headers.Authorization = `Bearer ${token}`
+          const resp = await fetchWithTimeout(`${API_URL}/api/upload`, opts, 120000)
+          const data = await resp.json().catch(() => null)
+          return { resp, data }
+        }
+        const token = authToken || (await getAuthCookie())
+        let { resp, data } = await doUpload(token)
+        // Same stale-token self-heal as api_fetch — a JWT issued before the
+        // user linked an account 401s until it's re-read from the cookie.
+        if (resp.status === 401) {
+          try {
+            const cookie = await browser.cookies.get({ url: 'https://heatsync.org', name: 'auth' })
+            if (cookie?.value && cookie.value !== token) {
+              authToken = cookie.value
+              await storeToken(cookie.value)
+              ;({ resp, data } = await doUpload(cookie.value))
+            }
+          } catch (err) {
+            log(' [api_upload] cookie refresh failed:', err?.message)
+          }
+        }
+        if (!resp.ok || !data?.url) {
+          sendResponse({
+            ok: false,
+            status: resp.status,
+            error: data?.error || (resp.status === 401 ? 'log in to upload' : `http ${resp.status}`),
+          })
+          return
+        }
+        sendResponse({ ok: true, url: data.url })
+      } catch (err) {
+        sendResponse({ ok: false, error: err.message })
+      }
+    })()
+    return true
   } else if (message.type === 'register_self_twitch_id') {
     // Content script discovered the user's own twitch ID. Subscribe to 7TV
     // EventAPI so badge/paint changes push in real-time (no polling needed).

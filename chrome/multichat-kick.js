@@ -21534,7 +21534,19 @@ function shouldIgnore(el) {
   if (!el || !el.isConnected) return true
   // Mini-player while browsing away — the platform owns its geometry and our
   // rules are already gated off it.
-  if (document.body?.classList?.contains('hs-twitch-no-channel')) return true
+  //
+  // The class alone is NOT that state. main.js also sets it on a real channel
+  // page when twitch's right column overflows off-screen, and there the guard
+  // is the only thing standing between a lost layout race and a blank player —
+  // so keying off the class blinded the safety net exactly where a player
+  // exists. That is the same shape as the bug fixed in 9b061a9, which reached
+  // this early-return through a different door. Ask for the absence of a
+  // channel, which is what "browsing away" actually means; the overflow path
+  // keeps its .channel-root and stays guarded.
+  if (
+    document.body?.classList?.contains('hs-twitch-no-channel') &&
+    !document.querySelector('.channel-root, [class*="channel-root"]')
+  ) return true
   return false
 }
 

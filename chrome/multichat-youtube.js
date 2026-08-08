@@ -60163,6 +60163,10 @@ const STORAGE_KEY = 'heatsync_multichat'
     // cache on every autocomplete keystroke. A yt "@handle" and a twitch
     // "handle" collide on the same bare key — last-added wins, matching the
     // old full-rescan's insertion-order behavior.
+    // Also load-bearing beyond autocomplete: highlightMentionsInHtml uses it as
+    // the "this name actually spoke" oracle that gates bare-word mentions. Keep
+    // addUsername (fed only by real sender paths) its sole writer — seeding it
+    // from a name lookup would re-open the "@you made every 'you' a link" bug.
     _ucDisplay.set(name.toLowerCase().replace(/^@/, ''), name)
     if (usernameCache.size > USERNAME_CACHE_MAX) {
       const iter = usernameCache.values()
@@ -67135,6 +67139,22 @@ const STORAGE_KEY = 'heatsync_multichat'
     return '#fff'
   }
 
+  // Everyday words that are never a bare mention, even when someone with that
+  // login is chatting. "bruh", "what", "yeah", "mods" and "based" are all real
+  // twitch accounts — without this, one of them speaking anywhere turns every
+  // ordinary use of the word into a colored link across every channel. The
+  // bare form is a convenience; @name stays the explicit way to mention them,
+  // and it is unaffected by this list. Contraction stems ("don", "isn", "didn")
+  // are here because the regex's boundary set includes the apostrophe, so
+  // "don't" offers up "don" as a candidate name.
+  const BARE_MENTION_STOPWORDS = new Set(
+    `the and you are for not but all any can has had her him his how its new now old see two way who did let put say she too use man own why yes yet off got run set try war win act add age air bad big end few
+     that was with they this have from one were when what where whats which who whom while your yours yourself said there their theirs them these those some such here huh hmm oof will other about out many then would make like into more could than been being both people may down get come made over only just know take well very want because give most also back after work first even need much right think thing things does don isn wasn didn doesn couldn wouldn shouldn won ain dont cant wont thats hes shes youre theyre youve ive lets gonna wanna gotta kinda sorta before between during through under until against having each
+     lol lmao lmfao omg wtf wth ngl tbh imo imho fyi idk ikr brb gtg yeah yea yep yup nah nope sure same true real fake bruh bro dude guys chat mods mod stream streamer game good nice best worst cool damn holy actually literally basically honestly seriously bot bots based cringe insane crazy sick wild huge small pog poggers kek lul ggs wow hey hello thanks thank please sorry congrats welcome night morning today tomorrow yesterday time year years day days week hour min sec guy girl kid dog cat food life love hate live dead lose lost play played playing watch watching look looks looking seen saw tell told talk ask asked keep stop start help wait coming going went gone still again never always ever maybe probably definitely absolutely`
+      .split(/\s+/)
+      .filter(Boolean),
+  )
+
   // Highlight @mentions and bare known usernames in rendered chat HTML.
   // Splits on tags so substitution only happens in text segments.
   // Applies 7TV paint cosmetics if the mentioned user's userId + paint are cached.
@@ -67154,7 +67174,19 @@ const STORAGE_KEY = 'heatsync_multichat'
       /(^|[\s.,!?;:()[\]"'])(@?)([A-Za-z0-9_]{3,25})(?=$|[\s.,!?;:()[\]"'])/g,
       (m, lead, at, name) => {
         const lower = name.toLowerCase()
-        const known = knownColors.has(lower)
+        // A bare word only becomes a mention when the name belongs to someone
+        // we've actually HEARD SPEAK. knownColors answers "what color", not
+        // "is this a person": every @word in chat runs through mentionColor →
+        // hsResolveUserColor, which always returns a color (falling back to
+        // twitch's hash palette even for logins that don't exist) and writes it
+        // into knownColors. So one person typing "@you" — not even a real
+        // account — made the literal word "you" a known "user" for the rest of
+        // the session, and every plain "you" in every channel rendered as a
+        // colored mention link. _ucDisplay is the lowercase mirror of
+        // usernameCache, written only by addUsername from real sender paths,
+        // so it answers the question knownColors can't. Both are required:
+        // color-only or spoke-only would each widen what highlights today.
+        const known = knownColors.has(lower) && _ucDisplay.has(lower) && !BARE_MENTION_STOPWORDS.has(lower)
         if (!at && !known) return m
         // @mentions resolve a color even for users we haven't seen (async);
         // bare known names already have one in knownColors.

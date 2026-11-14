@@ -14,7 +14,7 @@
       margin-right: 3px;
     }
     .hs-feed-user {
-      font-weight: 600;
+      font-weight: 700;
       font-size: 13px;
       color: #fff;
       text-decoration: none;
@@ -26,7 +26,7 @@
     }
     .hs-feed-time {
       font-size: 13px;
-      color: #aaa;
+      color: var(--hs-muted);
       margin: 0 3px;
     }
     .hs-feed-body {
@@ -37,8 +37,51 @@
       margin: 0 2px;
       cursor: default;
     }
-    .hs-feed-replies {
-      cursor: pointer !important;
+    .hs-feed-up {
+      cursor: pointer;
+      color: var(--hs-muted);
+      /* a deliberate hit box: the bare 8px glyph made the hover invert a thin
+         sliver that read as the arrow resizing. Padding is paid for out of the
+         margin, so nothing in the row moves. */
+      display: inline-block;
+      padding: 0 3px;
+      margin: 0 -1px;
+      line-height: 18px;
+    }
+    .hs-feed-up.on {
+      color: var(--hs-ok);
+    }
+    .hs-feed-up:hover {
+      background: #fff;
+      color: #000;
+    }
+    .hs-feed-reactions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      margin: 1px 0 1px 6px;
+    }
+    .hs-feed-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 0 5px;
+      background: #000;
+      color: var(--hs-muted);
+      border: 1px solid var(--hs-muted);
+      font-size: 13px;
+      cursor: pointer;
+    }
+    .hs-feed-chip-img {
+      width: 18px;
+      height: 18px;
+      object-fit: contain;
+    }
+    .hs-feed-chip:hover,
+    .hs-feed-chip.on {
+      background: #fff;
+      color: #000;
+      border-color: #fff;
     }
     .hs-feed-thread-link {
       color: var(--hs-mention);
@@ -51,10 +94,6 @@
       background: #fff;
       color: #000;
       text-decoration: none;
-    }
-    .hs-feed-replies:hover {
-      background: #fff;
-      color: #000 !important;
     }
     .hs-feed-tag {
       font-size: 13px;
@@ -81,49 +120,31 @@
       gap: 4px;
       padding: 3px 8px;
       background: #000;
-      border-top: 1px solid #1a1a1a;
-      border-bottom: 1px solid #1a1a1a;
+      border-top: none;
+      border-bottom: none;
       font-size: 13px;
       line-height: 18px;
       box-sizing: border-box;
       z-index: 1002;
     }
     .hs-mc-feed-reply-ref {
-      color: #a0a0a0;
+      color: #ffffff;
       flex: 1;
       min-width: 0;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
     }
-    .hs-mc-feed-reply-cancel {
-      background: none;
-      border: none;
-      color: #aaa;
-      cursor: pointer;
-      font-size: 13px;
-      padding: 0 4px;
-      font-family: inherit;
-      flex-shrink: 0;
-    }
-    .hs-mc-feed-reply-cancel:hover {
-      background: #fff;
-      color: #000;
-    }
-    /* Canonical heat number — used everywhere via heatSpanHtml/heatSpanEl. Tier color/glow is set inline.
-       Structure: <span.hs-heat-num><span.hs-heat-n>{digits}</span><span.hs-heat-deg>°</span></span>
-       The two sub-spans let surfaces using a bitmap font keep the digits crisp
-       while the degree symbol falls back to a vector font that has a clean glyph. */
     .hs-heat-num {
       font-variant-numeric: tabular-nums;
-      font-weight: 900;
+      font-weight: 700;
       line-height: 1;
     }
     .hs-heat-n {
-      font-family: ui-monospace, SFMono-Regular, monospace;
+      font-family: monospace;
     }
     .hs-heat-deg {
-      font-family: ui-monospace, SFMono-Regular, monospace;
+      font-family: monospace;
     }
     .hs-post-link {
       color: var(--hs-mention);
@@ -138,14 +159,14 @@
       outline-offset: -2px;
     }
     .hs-thread-op {
-      border-bottom: 1px solid #808080;
+      border-bottom: 1px solid var(--hs-border);
       padding-bottom: 4px;
       margin-bottom: 4px;
     }
     .hs-thread-container {
-      margin-left: 12px;
-      border-left: 2px solid #fff;
-      padding-left: 8px;
+      margin-inline-start: 12px;
+      border-inline-start: 2px solid #fff;
+      padding-inline-start: 8px;
       margin-bottom: 4px;
     }
     .hs-thread-reply {
@@ -154,9 +175,9 @@
       font-size: 13px;
     }
     .hs-thread-reply.is-thread-op {
-      border-left: 2px solid var(--hs-thread);
-      margin-left: -2px;
-      padding-left: 10px;
+      border-inline-start: 2px solid var(--hs-thread);
+      margin-inline-start: -2px;
+      padding-inline-start: 10px;
     }
     .hs-feed-loader {
       cursor: default;
@@ -207,6 +228,27 @@
       height: 100%;
       border: 0;
     }
+    /* click-to-load: the box keeps its size, the button fills it until pressed */
+    .hs-feed-embed-container iframe[data-hs-src] {
+      display: none;
+    }
+    .hs-embed-facade {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      background: #000;
+      color: #fff;
+      border: 1px solid #fff;
+      font: inherit;
+      cursor: pointer;
+    }
+    .hs-embed-facade:hover,
+    .hs-embed-facade:focus-visible {
+      background: #fff;
+      color: #000;
+      outline: none;
+    }
     .hs-feed-embed-spotify {
       aspect-ratio: auto;
       height: 152px;
@@ -240,6 +282,10 @@
       overflow: hidden;
       cursor: pointer;
     }
+    .hs-feed-embed-yt-thumb.hs-yt-portrait {
+      aspect-ratio: 9 / 16;
+      max-width: 320px;
+    }
     .hs-feed-embed-yt-thumb img {
       width: 100%;
       height: 100%;
@@ -254,8 +300,7 @@
       justify-content: center;
       color: #fff;
       font-size: 28px;
-      text-shadow: 0 0 6px rgba(0,0,0,0.8);
-      background: rgba(0,0,0,0.25);
+      background: #000000;
       transition: background 0.15s;
     }
     .hs-feed-embed-yt-thumb:hover .hs-feed-embed-yt-play {
@@ -266,8 +311,8 @@
     .hs-feed-link-card {
       margin: 4px 0 2px;
       padding: 4px 6px;
-      background: rgba(255,255,255,0.04);
-      border: 1px solid #333;
+      background: #000000;
+      border: 1px solid #ffffff;
       border-radius: 0;
       max-width: 480px;
     }
@@ -283,12 +328,12 @@
       text-decoration: underline;
     }
     .hs-feed-link-card-icon {
-      color: #888;
+      color: #ffffff;
       font-size: 13px;
       flex-shrink: 0;
     }
     .hs-feed-link-card-url {
-      color: #aaa;
+      color: var(--hs-muted);
       word-break: break-all;
     }
     /* white plate on hover AND active, same as every other hs surface. The
@@ -309,9 +354,9 @@
     }
     .hs-feed-media-deleted {
       padding: 6px 8px;
-      background: #1a1a1a;
-      border: 1px solid #444;
-      color: #888;
+      background: #000000;
+      border: 1px solid #ffffff;
+      color: #ffffff;
       font-size: 13px;
       border-radius: 0;
       max-width: 480px;
@@ -323,27 +368,26 @@
       justify-content: center;
       min-height: 60px;
       padding: 8px;
-      background: rgba(255,255,255,0.04);
-      border: 1px solid #333;
+      background: #000000;
+      border: 1px solid #ffffff;
       max-width: 480px;
       margin: 4px 0 2px;
     }
     .hs-feed-embed-pending-label {
-      color: #888;
+      color: #ffffff;
       font-size: 13px;
-      opacity: 0.7;
-    }
+     }
     .hs-feed-embed-rich-card {
       display: flex;
       align-items: center;
       gap: 10px;
       padding: 8px;
-      background: rgba(255,255,255,0.04);
-      border: 1px solid #333;
+      background: #000000;
+      border: 1px solid #ffffff;
       max-width: 480px;
       margin: 4px 0 2px;
       text-decoration: none;
-      color: #ddd;
+      color: #ffffff;
       white-space: normal;
     }
     .hs-feed-embed-rich-card * { white-space: normal; }
@@ -368,7 +412,7 @@
     /* The placeholder's fill is white-on-black; on the plate that's white-on-
        white and the tile vanishes. Flip it to a black wash. */
     .hs-feed-embed-rich-card:is(:hover, :active) .hs-feed-embed-rich-thumb-placeholder {
-      background: rgba(0,0,0,0.08);
+      background: #000000;
       color: #000;
     }
     .hs-feed-embed-rich-thumb,
@@ -377,11 +421,11 @@
       height: 64px;
       flex-shrink: 0;
       object-fit: cover;
-      background: rgba(255,255,255,0.05);
+      background: #000000;
       display: flex;
       align-items: center;
       justify-content: center;
-      color: #888;
+      color: #ffffff;
       font-size: 13px;
     }
     .hs-feed-embed-rich-meta {
@@ -391,14 +435,14 @@
     }
     .hs-feed-embed-rich-platform {
       font-size: 13px;
-      text-transform: uppercase;
-      color: #888;
+      text-transform: none;
+      color: #ffffff;
       letter-spacing: 0.5px;
     }
     .hs-feed-embed-rich-title {
       font-size: 13px;
-      font-weight: 600;
-      color: #ddd;
+      font-weight: 700;
+      color: #ffffff;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -406,7 +450,7 @@
     }
     .hs-feed-embed-rich-author {
       font-size: 13px;
-      color: #aaa;
+      color: var(--hs-muted);
       margin-top: 2px;
       white-space: nowrap;
       overflow: hidden;
@@ -432,7 +476,7 @@
 
     /* ---- TEXT FORMATTING ---- */
     .hs-spoiler {
-      background: #808080;
+      background: var(--hs-border);
       color: transparent;
       cursor: pointer;
       border-radius: 0;
@@ -444,7 +488,7 @@
       color: inherit;
     }
     .hs-greentext {
-      color: #789922;
+      color: #00ff00;
     }
     .hs-inline-code {
       background: #000;
@@ -462,7 +506,7 @@
       text-decoration: underline;
     }
     .hs-mention.self {
-      background: #800000;
+      background: #000000;
       color: #fff;
       padding: 0 2px;
       border-radius: 0;
@@ -477,7 +521,7 @@
       color: #000;
     }
     .hs-tripcode {
-      color: #117743;
+      color: #00ff00;
       font-weight: normal;
       margin-left: 4px;
       font-size: 13px;
@@ -494,7 +538,7 @@
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      margin-left: 4px;
+      margin-inline-start: 4px;
       padding: 0 3px;
     }
 
@@ -507,11 +551,11 @@
     .hs-native-hidden div.editor-input {
       display: none !important;
     }
-    .hs-native-hidden#channel-chatroom > * {
+    body.hs-kick-native-hidden #channel-chatroom > * {
       display: none !important;
     }
     /* Force Kick chatroom hidden — container (sibling) becomes the panel */
-    .hs-native-hidden#channel-chatroom {
+    body.hs-kick-native-hidden #channel-chatroom {
       display: none !important;
     }
     /* Container becomes the fixed side panel when native is hidden.
@@ -520,7 +564,7 @@
        panel to the docked 340px column and left kick's 60px top-nav gap above
        it, in a window that has no top nav. A pop-out has no side panel: chat is
        the whole window. Same specificity trap the collapse rule below documents. */
-    body:not(.hs-popout) .hs-native-hidden#channel-chatroom ~ #hs-mc-container {
+    body:not(.hs-popout).hs-kick-native-hidden #channel-chatroom ~ #hs-mc-container {
       position: fixed !important;
       right: 0 !important;
       /* clear Kick's fixed 60px top nav so the panel doesn't bury search + login/profile */
@@ -536,7 +580,7 @@
     /* Collapsed (\\ / > button): the kick side-panel rule above is (2,1,0) and
        outranks the generic body.hs-chat-hidden hide at (1,1,1). Re-hide the
        container with a higher-specificity rule so collapse works on Kick too. */
-    body.hs-chat-hidden .hs-native-hidden#channel-chatroom ~ #hs-mc-container {
+    body.hs-chat-hidden.hs-kick-native-hidden #channel-chatroom ~ #hs-mc-container {
       display: none !important;
     }
     /* Shrink Kick's main content to make room for HeatSync panel.
@@ -545,18 +589,18 @@
        elsewhere in this file handle the offset; applying margin-right
        here too would carve 340px off the wrong side and shrink main
        (e.g., chat-left → empty right gutter, video clipped). */
-    body:has(.hs-native-hidden#channel-chatroom):not(.hs-popout):not(.hs-chat-left):not(.hs-chat-top):not(.hs-chat-bottom):not(.hs-chat-hidden) main {
+    body.hs-kick-native-hidden:not(.hs-popout):not(.hs-chat-left):not(.hs-chat-top):not(.hs-chat-bottom):not(.hs-chat-hidden) main {
       margin-right: var(--hs-kick-chat-width, 340px) !important;
       transition: none !important;
     }
     /* On live tab (native chat showing), hide overlay + input but keep tabs visible */
-    #channel-chatroom:not(.hs-native-hidden) ~ #hs-mc-container > #hs-mc-overlay,
-    #channel-chatroom:not(.hs-native-hidden) ~ #hs-mc-container > #hs-mc-emote-picker,
-    #channel-chatroom:not(.hs-native-hidden) ~ #hs-mc-container > .hs-mc-inputbar {
+    body:not(.hs-kick-native-hidden) #channel-chatroom ~ #hs-mc-container > #hs-mc-overlay,
+    body:not(.hs-kick-native-hidden) #channel-chatroom ~ #hs-mc-container > #hs-mc-emote-picker,
+    body:not(.hs-kick-native-hidden) #channel-chatroom ~ #hs-mc-container > .hs-mc-inputbar {
       display: none !important;
     }
     /* Keep tabbar visible over native chat — fixed panel, respects tab position */
-    #channel-chatroom:not(.hs-native-hidden) ~ #hs-mc-container {
+    body:not(.hs-kick-native-hidden) #channel-chatroom ~ #hs-mc-container {
       position: fixed !important;
       /* clear Kick's fixed 60px top nav — same as the native-hidden panel above.
          without this the fixed container defaults to top:0 and the collapsed HS
@@ -567,46 +611,46 @@
       pointer-events: none;
       overflow: visible !important;
     }
-    #channel-chatroom:not(.hs-native-hidden) ~ #hs-mc-container > #hs-mc-tabbar {
+    body:not(.hs-kick-native-hidden) #channel-chatroom ~ #hs-mc-container > #hs-mc-tabbar {
       pointer-events: auto;
       background: var(--hs-bg, #000) !important;
       position: relative !important;
     }
-    #channel-chatroom:not(.hs-native-hidden) ~ #hs-mc-container > #hs-kick-resize-handle {
+    body:not(.hs-kick-native-hidden) #channel-chatroom ~ #hs-mc-container > #hs-kick-resize-handle {
       pointer-events: auto;
     }
     /* Top tabs (default) — horizontal bar at top of chat */
-    .hs-tabs-top #channel-chatroom:not(.hs-native-hidden) ~ #hs-mc-container {
+    body:not(.hs-kick-native-hidden).hs-tabs-top #channel-chatroom ~ #hs-mc-container {
       top: var(--hs-kick-topnav-h, 60px) !important; right: 0 !important;
       width: var(--hs-kick-chat-width, 340px) !important;
       height: auto !important;
       flex-direction: column !important;
     }
-    .hs-tabs-top #channel-chatroom:not(.hs-native-hidden) ~ #hs-mc-container > #hs-mc-tabbar {
+    body:not(.hs-kick-native-hidden).hs-tabs-top #channel-chatroom ~ #hs-mc-container > #hs-mc-tabbar {
       flex-direction: row !important;
       flex-wrap: nowrap !important;
       width: 100% !important;
     }
     /* Bottom tabs — horizontal bar at bottom of chat */
-    .hs-tabs-bottom #channel-chatroom:not(.hs-native-hidden) ~ #hs-mc-container {
+    body:not(.hs-kick-native-hidden).hs-tabs-bottom #channel-chatroom ~ #hs-mc-container {
       bottom: 0 !important; right: 0 !important;
       width: var(--hs-kick-chat-width, 340px) !important;
       height: auto !important;
       flex-direction: column-reverse !important;
     }
-    .hs-tabs-bottom #channel-chatroom:not(.hs-native-hidden) ~ #hs-mc-container > #hs-mc-tabbar {
+    body:not(.hs-kick-native-hidden).hs-tabs-bottom #channel-chatroom ~ #hs-mc-container > #hs-mc-tabbar {
       flex-direction: row !important;
       flex-wrap: nowrap !important;
       width: 100% !important;
     }
     /* Right tabs — vertical bar on right edge */
-    .hs-tabs-right #channel-chatroom:not(.hs-native-hidden) ~ #hs-mc-container {
+    body:not(.hs-kick-native-hidden).hs-tabs-right #channel-chatroom ~ #hs-mc-container {
       top: var(--hs-kick-topnav-h, 60px) !important; right: 0 !important; bottom: 0 !important;
       width: auto !important;
       height: 100% !important;
       flex-direction: row !important;
     }
-    .hs-tabs-right #channel-chatroom:not(.hs-native-hidden) ~ #hs-mc-container > #hs-mc-tabbar {
+    body:not(.hs-kick-native-hidden).hs-tabs-right #channel-chatroom ~ #hs-mc-container > #hs-mc-tabbar {
       flex-direction: column !important;
       overflow-y: auto !important;
       overflow-x: hidden !important;
@@ -616,14 +660,14 @@
       border-left: 1px solid #fff;
     }
     /* Left tabs — vertical bar on left edge of chat area */
-    .hs-tabs-left #channel-chatroom:not(.hs-native-hidden) ~ #hs-mc-container {
+    body:not(.hs-kick-native-hidden).hs-tabs-left #channel-chatroom ~ #hs-mc-container {
       top: var(--hs-kick-topnav-h, 60px) !important; right: auto !important; bottom: 0 !important;
       left: calc(100vw - var(--hs-kick-chat-width, 340px)) !important;
       width: auto !important;
       height: 100% !important;
       flex-direction: row-reverse !important;
     }
-    .hs-tabs-left #channel-chatroom:not(.hs-native-hidden) ~ #hs-mc-container > #hs-mc-tabbar {
+    body:not(.hs-kick-native-hidden).hs-tabs-left #channel-chatroom ~ #hs-mc-container > #hs-mc-tabbar {
       flex-direction: column !important;
       overflow-y: auto !important;
       overflow-x: hidden !important;
@@ -638,15 +682,15 @@
        width). Chat IS the window there; pin the strip to the window edges.
        Same specificity trap as the fill-window rule: these are (0,2,2)+,
        placed after every variant so source order settles the ties. */
-    body.hs-popout #channel-chatroom:not(.hs-native-hidden) ~ #hs-mc-container {
+    body.hs-popout:not(.hs-kick-native-hidden) #channel-chatroom ~ #hs-mc-container {
       top: 0 !important;
     }
-    body.hs-popout.hs-tabs-top #channel-chatroom:not(.hs-native-hidden) ~ #hs-mc-container,
-    body.hs-popout.hs-tabs-bottom #channel-chatroom:not(.hs-native-hidden) ~ #hs-mc-container {
+    body.hs-popout.hs-tabs-top:not(.hs-kick-native-hidden) #channel-chatroom ~ #hs-mc-container,
+    body.hs-popout.hs-tabs-bottom:not(.hs-kick-native-hidden) #channel-chatroom ~ #hs-mc-container {
       left: 0 !important;
       width: auto !important;
     }
-    body.hs-popout.hs-tabs-left #channel-chatroom:not(.hs-native-hidden) ~ #hs-mc-container {
+    body.hs-popout.hs-tabs-left:not(.hs-kick-native-hidden) #channel-chatroom ~ #hs-mc-container {
       left: 0 !important;
     }
 
@@ -682,7 +726,7 @@
       display: none;
       flex-shrink: 0;
       padding: 4px 6px;
-      border-bottom: 1px solid #333;
+      border-bottom: 1px solid #ffffff;
       background: #000;
     }
     #hs-mc-search-bar.visible {
@@ -695,7 +739,7 @@
       padding: 5px 10px;
       background: #000;
       color: #fff;
-      border: 1px solid #808080;
+      border: 1px solid var(--hs-border);
       border-radius: 0;
       font-size: 13px;
       font-family: inherit;
@@ -705,15 +749,15 @@
       border-color: #fff;
     }
     #hs-mc-search-input::placeholder {
-      color: #aaa;
+      color: var(--hs-muted);
     }
     #hs-mc-search-count {
       display: none;
       font-size: 13px;
       font-family: inherit;
-      color: #aaa;
-      background: #111;
-      border: 1px solid #333;
+      color: var(--hs-muted);
+      background: #000000;
+      border: 1px solid #ffffff;
       padding: 1px 5px;
       flex-shrink: 0;
       white-space: nowrap;
@@ -737,7 +781,7 @@
       flex-direction: column;
       gap: 2px;
       padding: 5px 8px;
-      border-bottom: 1px solid #1a1a1a;
+      border-bottom: none;
       cursor: pointer;
       font-size: 13px;
     }
@@ -752,7 +796,7 @@
       display: flex;
       align-items: center;
       gap: 6px;
-      color: #aaa;
+      color: var(--hs-muted);
       font-size: 13px;
     }
     .hs-mc-search-user {
@@ -760,13 +804,13 @@
       color: #fff;
     }
     .hs-mc-search-content {
-      color: #ccc;
+      color: #ffffff;
       word-break: break-word;
     }
     .hs-mc-search-empty {
       padding: 16px;
       text-align: center;
-      color: #aaa;
+      color: var(--hs-muted);
       font-size: 13px;
     }
     /* btop-style discover: bordered widgets, distinct accents per section */
@@ -790,8 +834,8 @@
     }
     .hs-discover-section {
       padding: 0;
-      border: 1px solid rgba(255,255,255,0.08);
-      background: rgba(0,0,0,0.18);
+      border: 1px solid #ffffff;
+      background: #000000;
       overflow: hidden;
       display: flex;
       flex-direction: column;
@@ -801,12 +845,12 @@
       font-size: 13px;
       color: #fff;
       font-weight: 700;
-      text-transform: uppercase;
+      text-transform: none;
       letter-spacing: 0.6px;
       margin: 0;
       padding: 4px 8px;
-      background: rgba(255,255,255,0.08);
-      border-bottom: 1px solid rgba(255,255,255,0.2);
+      background: #000000;
+      border-bottom: 1px solid #ffffff;
       line-height: 17px;
       display: flex;
       justify-content: space-between;
@@ -821,13 +865,13 @@
     }
     .hs-discover-section-empty {
       padding: 8px;
-      color: #aaa;
+      color: var(--hs-muted);
       font-size: 13px;
     }
     .hs-discover-meta {
-      color: #aaa;
+      color: var(--hs-muted);
       font-size: 13px;
-      font-weight: 600;
+      font-weight: 700;
       text-transform: none;
       letter-spacing: 0;
       font-variant-numeric: tabular-nums;
@@ -863,21 +907,21 @@
       cursor: pointer;
       line-height: 17px;
       font-size: 13px;
-      border-left: 2px solid transparent;
+      border-inline-start: 2px solid transparent;
     }
     .hs-discover-profile-row:hover { background: #fff; color: #000; }
     .hs-discover-profile-row:hover * { color: #000 !important; }
-    .hs-discover-profile-row.hs-discover-row-live { border-left-color: var(--hs-live); }
+    .hs-discover-profile-row.hs-discover-row-live { border-inline-start-color: var(--hs-live); }
     .hs-discover-rank {
-      color: #aaa;
+      color: var(--hs-muted);
       font-size: 13px;
       font-variant-numeric: tabular-nums;
       width: 18px;
-      text-align: right;
+      text-align: end;
       flex-shrink: 0;
-      font-family: ui-monospace, SFMono-Regular, monospace;
+      font-family: monospace;
     }
-    .hs-discover-row-live .hs-discover-rank { color: #aaa; }
+    .hs-discover-row-live .hs-discover-rank { color: var(--hs-muted); }
     .hs-discover-live-dot {
       width: 7px; height: 7px;
       border-radius: 50%;
@@ -890,12 +934,12 @@
       flex-shrink: 0;
       border-radius: 0;
       object-fit: cover;
-      background: #1a1a1a;
+      background: #000000;
     }
     .hs-discover-avatar-empty { display: inline-block; }
     .hs-discover-profile-name {
       font-size: 13px;
-      font-weight: 600;
+      font-weight: 700;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -908,7 +952,7 @@
       flex-shrink: 0;
     }
     .hs-discover-platforms .hs-plat {
-      font-family: ui-monospace, SFMono-Regular, monospace;
+      font-family: monospace;
       font-size: 13px;
       font-weight: 700;
       padding: 0 3px;
@@ -916,22 +960,22 @@
       text-decoration: none;
     }
     .hs-discover-platforms .hs-plat:hover { background: #fff !important; color: #000 !important; }
-    .hs-discover-platforms .hs-plat-live { font-weight: 900; }
+    .hs-discover-platforms .hs-plat-live { font-weight: 700; }
     .hs-discover-platforms .hs-plat-t { color: var(--hs-plat-twitch); }
     .hs-discover-platforms .hs-plat-k { color: var(--hs-plat-kick); }
     .hs-discover-platforms .hs-plat-yt { color: var(--hs-plat-youtube); }
-    .hs-discover-platforms .hs-plat-h { color: #fff; }
+    .hs-discover-platforms .hs-plat-h { color: var(--hs-plat-hs); }
     /* Post platform letters use same colors */
     .hs-discover-post-plat.hs-plat-t { color: var(--hs-plat-twitch); }
     .hs-discover-post-plat.hs-plat-k { color: var(--hs-plat-kick); }
     .hs-discover-post-plat.hs-plat-yt { color: var(--hs-plat-youtube); }
-    .hs-discover-post-plat.hs-plat-h { color: #fff; }
+    .hs-discover-post-plat.hs-plat-h { color: var(--hs-plat-hs); }
     .hs-discover-bar {
       flex: 1;
       min-width: 28px;
       max-width: 90px;
       height: 5px;
-      background: rgba(255,255,255,0.06);
+      background: #000000;
       overflow: hidden;
     }
     .hs-discover-bar > i {
@@ -948,14 +992,14 @@
       font-size: 13px;
       font-variant-numeric: tabular-nums;
       flex-shrink: 0;
-      font-family: ui-monospace, SFMono-Regular, monospace;
+      font-family: monospace;
       line-height: 1;
     }
     .hs-discover-viewers {
       font-size: 13px;
       color: var(--hs-danger);
       font-variant-numeric: tabular-nums;
-      font-family: ui-monospace, SFMono-Regular, monospace;
+      font-family: monospace;
       flex-shrink: 0;
     }
 
@@ -966,26 +1010,26 @@
       align-items: center;
       gap: 5px;
       padding: 5px 8px;
-      background: rgba(0,0,0,0.25);
-      border-bottom: 1px solid rgba(255,255,255,0.05);
+      background: #000000;
+      border-bottom: none;
       font-size: 13px;
-      font-family: ui-monospace, SFMono-Regular, monospace;
+      font-family: monospace;
     }
     .hs-discover-chips-label {
-      color: #aaa;
+      color: var(--hs-muted);
       font-size: 13px;
       font-weight: 700;
-      margin-right: -2px;
+      margin-inline-end: -2px;
     }
     .hs-discover-chip-btn {
       padding: 2px 8px;
       background: transparent;
-      border: 1px solid rgba(255,255,255,0.12);
-      color: #aaa;
+      border: 1px solid #ffffff;
+      color: var(--hs-muted);
       cursor: pointer;
       font-size: 13px;
-      font-family: ui-monospace, SFMono-Regular, monospace;
-      font-weight: 600;
+      font-family: monospace;
+      font-weight: 700;
       border-radius: 0;
       line-height: 18px;
     }
@@ -995,19 +1039,19 @@
       color: #000;
     }
     .hs-discover-chip-btn.hs-chip-plat-t.hs-active {
-      background: var(--hs-plat-twitch);
+      background: #ffffff;
       border-color: var(--hs-plat-twitch);
-      color: #fff;
+      color: #000000;
     }
     .hs-discover-chip-btn.hs-chip-plat-k.hs-active {
-      background: var(--hs-plat-kick);
+      background: #ffffff;
       border-color: var(--hs-plat-kick);
-      color: #000;
+      color: #000000;
     }
     .hs-discover-chip-btn.hs-chip-plat-yt.hs-active {
-      background: var(--hs-plat-youtube);
+      background: #ffffff;
       border-color: var(--hs-plat-youtube);
-      color: #fff;
+      color: #000000;
     }
     .hs-discover-chip-btn:hover,
     .hs-discover-chip-btn.hs-active:hover,
@@ -1021,35 +1065,35 @@
 
     /* Section colour variants — distinct accent borders + headers per widget */
     .hs-discover-section-live {
-      border-color: rgba(255,0,0,0.35);
+      border-color: #ff0000;
     }
     .hs-discover-section-live > .hs-discover-heading {
       background: var(--hs-live-tint);
-      border-bottom-color: rgba(255,0,0,0.35);
+      border-bottom-color: #ff0000;
       color: var(--hs-live);
     }
     .hs-discover-section-posts {
-      border-color: rgba(255,255,255,0.3);
+      border-color: #ffffff;
     }
     .hs-discover-section-posts > .hs-discover-heading {
-      background: rgba(255,255,255,0.10);
+      background: #000000;
       color: #fff;
     }
     .hs-discover-section-trending {
-      border-color: rgba(255,255,255,0.15);
+      border-color: #ffffff;
     }
     .hs-discover-section-trending > .hs-discover-heading {
-      background: rgba(255,255,255,0.04);
+      background: #000000;
       color: #fff;
-      border-bottom-color: rgba(255,255,255,0.15);
+      border-bottom-color: #ffffff;
     }
     .hs-discover-section-tags {
-      border-color: rgba(255,0,255,0.35);
+      border-color: #ff00ff;
     }
     .hs-discover-section-tags > .hs-discover-heading {
-      background: rgba(255,0,255,0.08);
+      background: #000000;
       color: var(--hs-thread);
-      border-bottom-color: rgba(255,0,255,0.35);
+      border-bottom-color: #ff00ff;
     }
 
     /* Leaderboard multi-column when wide — fewer scrolls */
@@ -1061,7 +1105,7 @@
       .hs-discover-leaderboard-body {
         columns: 2;
         column-gap: 0;
-        column-rule: 1px solid rgba(255,255,255,0.05);
+        column-rule: 1px solid #ffffff;
       }
     }
     @container (min-width: 800px) {
@@ -1079,14 +1123,14 @@
       text-decoration: none;
       cursor: pointer;
       line-height: 17px;
-      border-left: 2px solid transparent;
-      border-bottom: 1px solid rgba(255,255,255,0.04);
+      border-inline-start: 2px solid transparent;
+      border-bottom: none;
     }
     .hs-discover-post-row:last-child { border-bottom: none; }
     .hs-discover-post-row:hover {
       background: #fff;
       color: #000;
-      border-left-color: #fff;
+      border-inline-start-color: #fff;
     }
     .hs-discover-post-row:hover * { color: #000 !important; }
     .hs-discover-post-meta {
@@ -1097,10 +1141,10 @@
     }
     .hs-discover-post-spacer { flex: 1; }
     .hs-discover-post-time {
-      color: #aaa;
+      color: var(--hs-muted);
       font-size: 13px;
       font-variant-numeric: tabular-nums;
-      font-family: ui-monospace, SFMono-Regular, monospace;
+      font-family: monospace;
       flex-shrink: 0;
     }
     .hs-discover-post-plat {
@@ -1108,7 +1152,7 @@
     }
     .hs-discover-post-user {
       font-size: 13px;
-      font-weight: 600;
+      font-weight: 700;
       white-space: nowrap;
       flex-shrink: 1;
       max-width: 140px;
@@ -1116,7 +1160,7 @@
       text-overflow: ellipsis;
     }
     .hs-discover-post-text {
-      color: #c8c8c8;
+      color: #ffffff;
       font-size: 13px;
       line-height: 18px;
       overflow: hidden;
@@ -1132,16 +1176,16 @@
     }
     .hs-discover-post-replies {
       font-size: 13px;
-      color: #aaa;
+      color: var(--hs-muted);
       font-variant-numeric: tabular-nums;
-      font-family: ui-monospace, SFMono-Regular, monospace;
+      font-family: monospace;
       flex-shrink: 0;
     }
 
     /* Tag chips with optional inline count */
     .hs-discover-chip-count {
-      margin-left: 5px;
-      color: rgba(255,0,255,0.6);
+      margin-inline-start: 5px;
+      color: #ff00ff;
       font-variant-numeric: tabular-nums;
       font-size: 13px;
     }
@@ -1150,7 +1194,7 @@
     .hs-pinned-row {
       display: block;
       padding: 2px 8px;
-      border-bottom: 1px solid rgba(255,255,255,0.04);
+      border-bottom: none;
       text-decoration: none;
       cursor: pointer;
       line-height: 18px;
@@ -1163,12 +1207,12 @@
       gap: 5px;
       margin: 0;
     }
-    .hs-pinned-channel { font-size: 13px; color: #fff; font-weight: 600; }
-    .hs-pinned-user { font-size: 13px; color: #bbb; }
-    .hs-pinned-time { font-size: 13px; color: #aaa; margin-left: auto; }
+    .hs-pinned-channel { font-size: 13px; color: #fff; font-weight: 700; }
+    .hs-pinned-user { font-size: 13px; color: #ffffff; }
+    .hs-pinned-time { font-size: 13px; color: var(--hs-muted); margin-inline-start: auto; }
     .hs-pinned-body {
       font-size: 13px;
-      color: #ddd;
+      color: #ffffff;
       word-break: break-word;
       white-space: nowrap;
       overflow: hidden;
@@ -1181,16 +1225,87 @@
       align-items: baseline;
       gap: 6px;
       padding: 2px 8px;
-      border-bottom: 1px solid rgba(255,255,255,0.04);
+      border-bottom: none;
       line-height: 18px;
       font-size: 13px;
     }
-    .hs-modlog-row:hover { background: rgba(255,135,0,0.07); }
-    .hs-modlog-time { color: #808080; font-variant-numeric: tabular-nums; }
-    .hs-modlog-channel { color: #fff; font-weight: 600; }
-    .hs-modlog-body { color: #ddd; word-break: break-word; }
+    .hs-modlog-time { color: var(--hs-border); font-variant-numeric: tabular-nums; }
+    .hs-modlog-channel { color: #fff; font-weight: 700; }
+    .hs-modlog-body { color: #ffffff; word-break: break-word; }
+    .hs-modlog-actor { color: #fff; white-space: nowrap; }
     .hs-modlog-ban .hs-modlog-body { color: var(--hs-danger); }
     .hs-modlog-timeout .hs-modlog-body { color: var(--hs-gold); }
     .hs-modlog-unban .hs-modlog-body,
     .hs-modlog-untimeout .hs-modlog-body { color: var(--hs-ok); }
-    .hs-modlog-delete .hs-modlog-body { color: #9e9e9e; }
+    .hs-modlog-delete .hs-modlog-body { color: #ffffff; }
+
+    /* Quoted chat line (the post↔log bridge). A post that cites a chat message
+       resolves the /logs permalink back into the real line: who said it, when,
+       in which channel, with the emotes they actually used. Cyan is the quote
+       accent from the palette — the same one reply context and whispers use.
+       The whole card is the anchor, so the click-through to the surrounding log
+       is the obvious action; hover is the universal white plate. */
+    .hs-log-embed {
+      display: block;
+      margin: 4px 0 0;
+      padding: 3px 6px;
+      border-inline-start: 2px solid var(--hs-reply-dim);
+      background: #000000;
+      color: #ffffff;
+      font-size: 13px;
+      line-height: 18px;
+      text-decoration: none;
+      cursor: pointer;
+    }
+    .hs-log-embed:hover {
+      background: #fff;
+      color: #000;
+      border-inline-start-color: #000;
+    }
+    .hs-log-embed-meta {
+      display: flex;
+      gap: 6px;
+      color: var(--hs-border);
+      font-size: 13px;
+    }
+    .hs-log-embed:hover .hs-log-embed-meta { color: #000; }
+    .hs-log-embed-when { font-variant-numeric: tabular-nums; }
+    .hs-log-embed-line { display: block; word-break: break-word; }
+    .hs-log-embed-user {
+      color: var(--hs-reply);
+      margin-inline-end: 4px;
+    }
+    .hs-log-embed-user::after { content: ':'; }
+    .hs-log-embed:hover .hs-log-embed-user { color: #000; }
+    /* Archive emotes ride the same rail as every other inline emote — bitmap
+       rows keep their integer baseline (see the vertical-align note in
+       10-emotes.css). */
+    .hs-log-embed .hs-cl-emote {
+      height: 18px;
+      width: auto;
+      vertical-align: text-bottom;
+    }
+    /* Embed media the viewer has not opted in to: one dashed-cyan line, the same
+       tell flagged emotes wear. Square, black, white-on-hover. */
+    .hs-mc-held {
+      display: inline-block;
+      padding: 2px 6px;
+      border: 2px dashed #00ffff;
+      background: #000000;
+      color: #ffffff;
+    }
+    .hs-mc-held-show {
+      margin-left: 4px;
+      padding: 0 6px;
+      border: 1px solid #ffffff;
+      background: none;
+      color: #ffffff;
+      font: inherit;
+      cursor: pointer;
+    }
+    .hs-mc-held-show:hover, .hs-mc-held-show:focus-visible { background: #ffffff; color: #000000; }
+    /* a revealed post's media: the box is out of the way until "hide" puts it back */
+    .hs-mc-held-post.hs-open > .hs-mc-held { display: none; }
+    .hs-mc-held-real > .hs-mc-held-show { display: block; margin: 0 0 2px; }
+    /* the one blink: top heat tier (5000+) */
+    @keyframes hs-blink { 50% { opacity: 0; } }

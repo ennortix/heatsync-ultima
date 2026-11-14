@@ -8,8 +8,8 @@
 
 // Third-party cosmetics state (BTTV/FFZ/Chatterino badges, 7TV paints+badges)
 let mcBttvBadgeMap = new Map()
-let mcFfzBadgeMap = new Map()
-let mcChatterinoBadgeMap = new Map()
+let mcFfzBadgeMap = new BadgeIndex([])
+let mcChatterinoBadgeMap = new BadgeIndex([])
 const mcUserCosmetics = new Map()
 // A channel buffer renders ~1500-2000 distinct users; caps below must clear
 // that or a full-buffer rebuild silently drops most cosmetic lookups. (500/100
@@ -21,6 +21,37 @@ function setMcCosmetic(uid, c) {
   if (mcUserCosmetics.size > MC_COSMETICS_MAX) {
     mcUserCosmetics.delete(mcUserCosmetics.keys().next().value)
   }
+}
+// Saved across a refresh (newest 300, 7 days) and put back before the first row renders, so
+// badges and 7TV paints are in the first paint instead of landing row by row seconds later and
+// pushing every name sideways. A saved entry is `stale` until the server answers again.
+const MC_COSMETICS_PERSIST_KEY = 'hs_cosmetics_7tv_v1'
+const MC_COSMETICS_PERSIST_MAX = 300
+const MC_COSMETICS_PERSIST_TTL = 7 * 24 * 60 * 60 * 1000
+const mcCosmeticsStale = new Set()
+let mcCosmeticsSaveTimer = null
+/** Nothing known for this uid, or only a saved answer the server has not confirmed yet. */
+const mcCosmeticsNeedLookup = (uid) => !mcUserCosmetics.has(uid) || mcCosmeticsStale.has(uid)
+function scheduleMcCosmeticsSave() {
+  if (mcCosmeticsSaveTimer) return
+  mcCosmeticsSaveTimer = cleanup.setPageTimeout(() => {
+    mcCosmeticsSaveTimer = null
+    const items = [...mcUserCosmetics].filter(([, c]) => c && (c.badge || c.paint)).slice(-MC_COSMETICS_PERSIST_MAX)
+    try {
+      browser.storage.local.set({ [MC_COSMETICS_PERSIST_KEY]: { at: Date.now(), items } }).catch(() => {})
+    } catch (_) {}
+  }, 3000)
+}
+async function hydrateMcCosmetics() {
+  try {
+    const blob = (await browser.storage.local.get(MC_COSMETICS_PERSIST_KEY))?.[MC_COSMETICS_PERSIST_KEY]
+    if (!blob || Date.now() - (blob.at || 0) > MC_COSMETICS_PERSIST_TTL) return
+    for (const [uid, c] of blob.items || []) {
+      if (mcUserCosmetics.has(uid) || !c || typeof c !== 'object') continue
+      setMcCosmetic(uid, c)
+      mcCosmeticsStale.add(uid)
+    }
+  } catch (_) {}
 }
 const MC_COSMETICS_PENDING_MAX = 3000
 const mcCosmeticsPending = new Set()
@@ -163,7 +194,7 @@ function queueYtNameToTwitchId(user) {
     return
   }
   if (!ytNameLookupTimer) {
-    ytNameLookupTimer = cleanup.setTimeout(() => {
+    ytNameLookupTimer = cleanup.setPageTimeout(() => {
       ytNameLookupTimer = null
       flushYtNameLookups()
     }, 800)
@@ -187,13 +218,16 @@ async function flushYtNameLookups() {
         path: `/api/profile/${encodeURIComponent(key)}`,
         method: 'GET',
       })
-      const tid = resp?.data?.twitch_id || resp?.twitch_id || null
-      const tuser = resp?.data?.twitch_username || resp?.twitch_username || null
+      // /api/profile answers { profile: { twitch_id, twitch_username, ... } }
+      const prof = resp?.data?.profile || resp?.data || resp || {}
+      const tid = prof.twitch_id || null
+      const tuser = prof.twitch_username || null
       evictYtNameCache()
       ytNameToTwitchId.set(key, tid ? String(tid) : null)
       ytNameToTwitchUsername.set(key, tuser ? String(tuser).toLowerCase() : null)
       if (tid) {
         const tidStr = String(tid)
+        knownUserIds.set(userKey(key, 'youtube'), tidStr) // reply/@mention paints read this
         // Backfill: stamp data-uid on all currently-rendered YT msgs by this
         // user so updateCosmeticsInPlace can find them once cosmetics resolve.
         const container = document.getElementById('hs-mc-messages')
@@ -241,6 +275,11 @@ async function flushYtNameLookups() {
       if (!channelId) return
       const ytUid = `yt_${channelId}`
       if (mcUserCosmetics.has(ytUid)) return
+      // Third-party only. The name→twitch-id resolution ABOVE stays ungated:
+      // it also feeds heatsync's own paints (it sets m.userId), and the switch
+      // is named "third-party cosmetics". This 7TV google-id fetch is the only
+      // part of this path the switch actually owns.
+      if (gateAtBoot('cosmetics') === false) return
       let googleResp = null
       try {
         googleResp = await safeSendMessage({ type: 'get_youtube_user_cosmetics', channelIds: [channelId] })
@@ -260,7 +299,7 @@ async function flushYtNameLookups() {
   }
   for (const key of batch) await lookupOne(key)
   if (ytNameLookupPending.size > 0 && !ytNameLookupTimer) {
-    ytNameLookupTimer = cleanup.setTimeout(() => {
+    ytNameLookupTimer = cleanup.setPageTimeout(() => {
       ytNameLookupTimer = null
       flushYtNameLookups()
     }, 1500)
@@ -281,6 +320,17 @@ const kickNameToTwitchUsername = new Map() // kickHandle → twitchUsername | nu
 // without a linked twitch account.
 const kickNamePaintUid = new Map()
 const kickNameLookupPending = new Set()
+// kickHandle → numeric kick user id, when the caller already knows it (the
+// kick tap / server relay carry it on every message) — threaded into the
+// BG request so it can skip the kick.com username→id lookup entirely.
+const kickNamePendingIds = new Map()
+// kickHandle → timestamp before which a fresh queue is refused. Set only when
+// a flush came back WITHOUT this key (BG hit a transient 429/5xx/network
+// failure and deliberately omitted it — see flushKickNameLookups). Without
+// this, a busy channel's next message from the same chatter re-queues into
+// the very next 800ms flush and re-hits the same rate limit.
+const kickNameRetryAt = new Map()
+const KICK_NAME_RETRY_COOLDOWN = 20 * 1000
 let kickNameLookupTimer = null
 const KICK_NAME_BATCH = 8
 const KICK_NAME_CACHE_MAX = 1000
@@ -305,11 +355,14 @@ function getKickLinkedTwitch(kickUsername) {
   return null
 }
 
-function queueKickNameToCosmetics(user) {
+function queueKickNameToCosmetics(user, kickId) {
   const key = (user || '').toLowerCase()
   if (!key) return
   if (kickNameResolved.has(key)) return
   if (kickNameLookupPending.has(key)) return
+  const retryAt = kickNameRetryAt.get(key)
+  if (retryAt && Date.now() < retryAt) return
+  if (kickId != null && /^\d+$/.test(String(kickId))) kickNamePendingIds.set(key, String(kickId))
   kickNameLookupPending.add(key)
   if (kickNameLookupPending.size >= KICK_NAME_BATCH) {
     if (kickNameLookupTimer) {
@@ -320,7 +373,7 @@ function queueKickNameToCosmetics(user) {
     return
   }
   if (!kickNameLookupTimer) {
-    kickNameLookupTimer = cleanup.setTimeout(() => {
+    kickNameLookupTimer = cleanup.setPageTimeout(() => {
       kickNameLookupTimer = null
       flushKickNameLookups()
     }, 800)
@@ -330,22 +383,38 @@ function queueKickNameToCosmetics(user) {
 async function flushKickNameLookups() {
   if (!kickNameLookupPending.size) return
   const batch = [...kickNameLookupPending].slice(0, KICK_NAME_BATCH)
+  const kickIds = {}
   batch.forEach((k) => {
     kickNameLookupPending.delete(k)
+    const id = kickNamePendingIds.get(k)
+    if (id) kickIds[k] = id
+    kickNamePendingIds.delete(k)
   })
   let resp = null
   try {
-    resp = await safeSendMessage({ type: 'get_kick_user_cosmetics', kickUsernames: batch })
+    resp = await safeSendMessage({ type: 'get_kick_user_cosmetics', kickUsernames: batch, kickIds })
   } catch {
     resp = null
   }
   const cosmetics = resp?.cosmetics || {}
   const changedIds = []
   for (const key of batch) {
+    // BG omits the key entirely on a transient (429/5xx/network) failure —
+    // it is NOT the same as a resolved "no cosmetics" (which comes back as a
+    // real object with null fields). Don't mark it resolved: a short cooldown
+    // lets it retry later instead of getting permanently cached as null for
+    // the rest of the session (the original bug) or instantly re-queued into
+    // the next 800ms flush (a re-hit of the same rate limit).
+    if (!Object.hasOwn(cosmetics, key)) {
+      kickNameRetryAt.set(key, Date.now() + KICK_NAME_RETRY_COOLDOWN)
+      continue
+    }
+    kickNameRetryAt.delete(key)
     const c = cosmetics[key]
     evictKickNameCache()
     const tid = c?.twitchId ? String(c.twitchId) : null
     kickNameResolved.set(key, tid)
+    if (tid) knownUserIds.set(userKey(key, 'kick'), tid) // reply/@mention paints read this
     kickNameToTwitchUsername.set(key, c?.twitchUsername || null)
     // Namespaced kick paint uid — independent of whether a twitch link
     // resolved. Queued directly (never via queueMcCosmeticsLookup, which is
@@ -378,6 +447,11 @@ async function flushKickNameLookups() {
       // existing updateCosmeticsInPlace pipeline paints by uid.
       setMcCosmetic(tid, { paint: c.paint || null, badge: c.badge || null })
       changedIds.push(tid)
+    } else if (paintUid && (c?.paint || c?.badge)) {
+      // A 7TV account linked to kick only (no twitch connection): keep its paint/badge
+      // under the namespaced kick uid (never the twitch-id space) like yt's google id.
+      setMcCosmetic(paintUid, { paint: c.paint || null, badge: c.badge || null })
+      changedIds.push(paintUid)
     }
     // Backfill data-uid (twitch) / data-hs-paint-uid (kick paint) on rendered
     // Kick msgs by lowercase username so updateCosmeticsInPlace / the HS-paint
@@ -420,7 +494,7 @@ async function flushKickNameLookups() {
   }
   if (changedIds.length) updateCosmeticsInPlace(changedIds)
   if (kickNameLookupPending.size > 0 && !kickNameLookupTimer) {
-    kickNameLookupTimer = cleanup.setTimeout(() => {
+    kickNameLookupTimer = cleanup.setPageTimeout(() => {
       kickNameLookupTimer = null
       flushKickNameLookups()
     }, 1500)
@@ -436,19 +510,40 @@ function queueMcCosmeticsLookup(userId) {
   // dedup (hsPaintCache), so this is unconditional even when the 7TV lookup
   // below short-circuits on an already-cached (possibly negative) entry.
   queuePaintLookup(userId)
-  if (mcUserCosmetics.has(userId)) return
+  // …and heatsync paints stay OUTSIDE the gate below on purpose: the switch is
+  // named "third-party cosmetics" and must not take our own paints with it.
+  //
+  // The 7TV half is what `cosmetics` actually switches off. Only the boot pull
+  // (loadBulkBadges) was gated, so this — the per-message chokepoint every
+  // rendered row goes through — kept running and the switch never delivered
+  // the ram it promises on a busy channel.
+  if (gateAtBoot('cosmetics') === false) return
+  if (mcUserCosmetics.has(userId) && !mcCosmeticsStale.has(userId)) return
   if (mcCosmeticsPending.size >= MC_COSMETICS_PENDING_MAX) return
   mcCosmeticsPending.add(userId)
   if (!mcCosmeticsTimer) {
-    mcCosmeticsTimer = cleanup.setTimeout(() => {
-      mcCosmeticsTimer = null
-      flushMcCosmeticsBatch()
-    }, 100)
+    // 2s window — was 100ms, which on a busy channel's chatter churn fired a
+    // fresh /api/cosmetics/batch request roughly every 100-600ms continuously
+    // (see the 500ms continuation below). Cosmetics don't change mid-stream,
+    // so batching a whole 2s worth of newly-seen chatters into one request
+    // costs nothing but a slightly later first paint for the tail of the batch.
+    // After a quiet spell the first batch leaves once ~60ms of the burst has queued (a refresh
+    // would otherwise sit unpainted for the whole window); the 2s only spaces batches apart.
+    mcCosmeticsTimer = cleanup.setTimeout(
+      () => {
+        mcCosmeticsTimer = null
+        flushMcCosmeticsBatch()
+      },
+      Math.max(60, 2000 - (Date.now() - mcCosmeticsLastFlushAt)),
+    )
   }
 }
 
+let mcCosmeticsLastFlushAt = 0
+
 function flushMcCosmeticsBatch() {
   if (!mcCosmeticsPending.size) return
+  mcCosmeticsLastFlushAt = Date.now()
   // Drain newest-queued first: messages queue oldest→newest, but the user is
   // looking at the bottom (newest) of the buffer, so the visible viewport
   // resolves in the first batch instead of last. Off-screen/scrolled-away
@@ -462,19 +557,23 @@ function flushMcCosmeticsBatch() {
       if (!resp?.cosmetics) return
       const changedIds = []
       for (const [uid, c] of Object.entries(resp.cosmetics)) {
+        mcCosmeticsStale.delete(uid)
         if (c) {
           setMcCosmetic(uid, c)
           changedIds.push(uid)
-        }
+        } else mcUserCosmetics.delete(uid) // answered "none": a saved entry that no longer holds stops being served
       }
       if (changedIds.length) updateCosmeticsInPlace(changedIds)
+      scheduleMcCosmeticsSave()
     })
     .catch(() => {})
+  // A backlog (a history burst names hundreds of chatters) drains at 25 per 200ms, the way paints
+  // drain: at 2s a refresh left the tail of the channel without badges for ~15s.
   if (mcCosmeticsPending.size > 0) {
     mcCosmeticsTimer = cleanup.setTimeout(() => {
       mcCosmeticsTimer = null
       flushMcCosmeticsBatch()
-    }, 500)
+    }, 200)
   }
 }
 
@@ -499,6 +598,18 @@ function retryOrHideBadgeImg(img) {
   )
 }
 
+// An in-place badge / paint / colour / tenure update can grow a row (a badge widens a name
+// until it wraps, a painted name splits into spans). Nothing re-pinned after those, so with the
+// reader on the bottom the list stayed put while its content grew: the chat read as scrolled up
+// a tick. One frame-coalesced pin, before paint, whenever the reader is not scrolled up.
+function pinAfterInPlaceUpdate() {
+  try {
+    if (typeof scheduleScrollPin !== 'function' || typeof isScrolledUp === 'undefined' || isScrolledUp) return
+    const el = document.getElementById('hs-mc-messages')
+    if (el) scheduleScrollPin(el)
+  } catch (_) {}
+}
+
 // In-place repaint for HeatSync name paints (paints.js) — the counterpart
 // to updateCosmeticsInPlace below, fired from its own independent batch
 // (queuePaintLookup/flushHsPaintBatch in paints.js) once a paint resolves.
@@ -507,35 +618,49 @@ function retryOrHideBadgeImg(img) {
 // flushKickNameLookups) and any inline @mention/reply-context anchors
 // (_mentionIndex) for this uid.
 function updateHsPaintsInPlace(userIds) {
-  const container = document.getElementById('hs-mc-messages')
-  if (!container) return
-  for (const uid of userIds) {
-    const mentionSet = _mentionIndex.get(uid)
-    if (mentionSet) {
-      for (const el of mentionSet) applyHsPaintToElement(el, uid)
+  try {
+    hsNameSweep(userIds)
+    const container = document.getElementById('hs-mc-messages')
+    if (!container) return
+    for (const uid of userIds) {
+      // A uid reaching here with no paint was CLEARED by its owner (a live
+      // cosmetic push is the only way an unpainted uid gets into this list —
+      // see hsForcedRepaint in paints.js). Strip ours instead of applying.
+      const wasCleared = !getHsPaintClass(uid) || !getHsPaintSpec(uid)
+      const mentionSet = _mentionIndex.get(uid)
+      if (mentionSet) {
+        for (const el of mentionSet) {
+          if (wasCleared) clearHsPaintFromElement(el)
+          else applyHsPaintToElement(el, uid)
+        }
+      }
+      // kick_ AND yt_ paint uids are namespaced — never in data-uid/_uidIndex
+      // (that stays twitch-id-space only, ID-SPACE SAFETY in paints.js). Find
+      // their rows via the parallel data-hs-paint-uid attribute (kick via
+      // flushKickNameLookups, yt via social.js). Without the yt_ case a resolved
+      // youtube paint applied to nothing (updateCosmeticsInPlace already handles it).
+      const isNamespacedUid = uid.startsWith('kick_') || uid.startsWith('yt_')
+      const divs = isNamespacedUid
+        ? container.querySelectorAll(`[data-hs-paint-uid="${CSS.escape(uid)}"]`)
+        : _uidIndex.get(uid)
+      if (!divs) continue
+      for (const div of divs) {
+        // The row's primary (twitch) uid resolving its own HS paint outranks
+        // this kick-space fallback — matches buildMessageDiv's
+        // hsPaintRender(m.userId) || hsPaintRender(m.hsPaintUid) precedence,
+        // so a later-resolving kick paint can't clobber an applied twitch one.
+        // (was `isKickUid` — an undeclared name that threw a ReferenceError on
+        // the FIRST row and killed the whole in-place pass: restored history
+        // rows of every painted user stayed on the static fallback color.)
+        if (isNamespacedUid && hasResolvedHsPaint(div._hsMsg?.userId)) continue
+        const userLink = div.querySelector('.hs-mc-user:not(.hs-mc-reply-user)')
+        if (!userLink) continue
+        if (wasCleared) clearHsPaintFromElement(userLink)
+        else applyHsPaintToElement(userLink, uid)
+      }
     }
-    // kick_ AND yt_ paint uids are namespaced — never in data-uid/_uidIndex
-    // (that stays twitch-id-space only, ID-SPACE SAFETY in paints.js). Find
-    // their rows via the parallel data-hs-paint-uid attribute (kick via
-    // flushKickNameLookups, yt via social.js). Without the yt_ case a resolved
-    // youtube paint applied to nothing (updateCosmeticsInPlace already handles it).
-    const isNamespacedUid = uid.startsWith('kick_') || uid.startsWith('yt_')
-    const divs = isNamespacedUid
-      ? container.querySelectorAll(`[data-hs-paint-uid="${CSS.escape(uid)}"]`)
-      : _uidIndex.get(uid)
-    if (!divs) continue
-    for (const div of divs) {
-      // The row's primary (twitch) uid resolving its own HS paint outranks
-      // this kick-space fallback — matches buildMessageDiv's
-      // hsPaintRender(m.userId) || hsPaintRender(m.hsPaintUid) precedence,
-      // so a later-resolving kick paint can't clobber an applied twitch one.
-      // (was `isKickUid` — an undeclared name that threw a ReferenceError on
-      // the FIRST row and killed the whole in-place pass: restored history
-      // rows of every painted user stayed on the static fallback color.)
-      if (isNamespacedUid && hasResolvedHsPaint(div._hsMsg?.userId)) continue
-      const userLink = div.querySelector('.hs-mc-user:not(.hs-mc-reply-user)')
-      if (userLink) applyHsPaintToElement(userLink, uid)
-    }
+  } finally {
+    pinAfterInPlaceUpdate()
   }
 }
 
@@ -545,21 +670,31 @@ function updateHsPaintsInPlace(userIds) {
 // uses. NEVER twitch (its rows use data-uid and its colour is the prime perk).
 // A resolved HS paint owns the fill, so skip painted names.
 function updateHsColorsInPlace(userIds) {
-  const container = document.getElementById('hs-mc-messages')
-  if (!container) return
-  for (const uid of userIds) {
-    // Cached colour is already validated #RRGGBB (setHsColorEntry), safe for
-    // style.color without re-sanitizing.
-    const colour = getHsPickedColor(uid)
-    if (!colour) continue
-    const divs = container.querySelectorAll(`[data-hs-paint-uid="${CSS.escape(uid)}"]`)
-    for (const div of divs) {
-      // A row's own resolved paint (twitch-uid or this namespaced uid) wins.
-      if (hasResolvedHsPaint(div._hsMsg?.userId) || hasResolvedHsPaint(uid)) continue
-      const userLink = div.querySelector('.hs-mc-user:not(.hs-mc-reply-user)')
-      // paint class (hsp-) owns the fill via CSS — don't overwrite with a colour.
-      if (userLink && !userLink.className.includes('hsp-')) userLink.style.color = colour
+  try {
+    hsNameSweep(userIds)
+    const container = document.getElementById('hs-mc-messages')
+    if (!container) return
+    for (const uid of userIds) {
+      // Cached colour is already validated #RRGGBB (setHsColorEntry), safe for
+      // style.color without re-sanitizing.
+      const colour = getHsPickedColor(uid)
+      if (!colour) continue
+      const divs = container.querySelectorAll(`[data-hs-paint-uid="${CSS.escape(uid)}"]`)
+      for (const div of divs) {
+        // A row's own resolved paint (twitch-uid or this namespaced uid) wins.
+        if (hasResolvedHsPaint(div._hsMsg?.userId) || hasResolvedHsPaint(uid)) continue
+        const userLink = div.querySelector('.hs-mc-user:not(.hs-mc-reply-user)')
+        // paint class (hsp-) owns the fill via CSS — don't overwrite with a colour.
+        if (userLink && !userLink.className.includes('hsp-')) userLink.style.color = colour
+        // a painted name keeps no inline colour, but its underlay shows this one
+        else if (userLink) {
+          const decl = hsNameColourDecl(colour)
+          if (decl) userLink.style.setProperty('--hs-name-c', decl.slice('--hs-name-c:'.length, -1))
+        }
+      }
     }
+  } finally {
+    pinAfterInPlaceUpdate()
   }
 }
 
@@ -574,7 +709,18 @@ function _placeHsPlusTenureToken(el, since) {
   if (token) el.insertAdjacentElement('afterend', token)
 }
 
-// Apply a resolved PLUS TENURE token beside visible rows in place — the
+/**
+ * Take the tenure token back off. Tenure is public only while entitled (the
+ * server re-checks on every read), so "no tenure" for a uid that HAD a token
+ * means the membership lapsed — leaving it would keep advertising a paid
+ * membership that ended.
+ */
+function _removeHsPlusTenureToken(el) {
+  const stale = el?.nextElementSibling
+  if (stale?.classList?.contains('hs-plus-tenure')) stale.remove()
+}
+
+// Apply a resolved PLUS TENURE token (and the heatsync badge, see badges.js) beside visible rows in place — the
 // counterpart to updateHsPaintsInPlace above, fired from its own independent
 // batch (queuePlusTenureLookup/flushHsPaintBatch in paints.js) once tenure
 // resolves. Repaints both the sender username anchor (_uidIndex for a
@@ -582,30 +728,40 @@ function _placeHsPlusTenureToken(el, since) {
 // same lookup updateHsPaintsInPlace uses) and any inline @mention/reply-
 // context anchors (_mentionIndex) for this uid.
 function applyHsPlusTenureToVisible(userIds) {
-  const container = document.getElementById('hs-mc-messages')
-  if (!container) return
-  for (const uid of userIds) {
-    const since = getHsPlusTenureSince(uid)
-    if (!since) continue
-    const mentionSet = _mentionIndex.get(uid)
-    if (mentionSet) {
-      // The "+" tenure token is a sender-identity mark, not part of a name
-      // wherever it appears. Keep it on the reply-context anchor (a reply
-      // header), but NOT on inline @mentions inside message content — a name
-      // typed in someone's message shouldn't sprout a "+".
-      for (const el of mentionSet) {
-        if (el.classList.contains('hs-mc-reply-user')) _placeHsPlusTenureToken(el, since)
+  try {
+    const container = document.getElementById('hs-mc-messages')
+    if (!container) return
+    for (const uid of userIds) {
+      const since = getHsPlusTenureSince(uid)
+      const mentionSet = _mentionIndex.get(uid)
+      if (mentionSet) {
+        // The "+" tenure token is a sender-identity mark, not part of a name
+        // wherever it appears. Keep it on the reply-context anchor (a reply
+        // header), but NOT on inline @mentions inside message content — a name
+        // typed in someone's message shouldn't sprout a "+".
+        for (const el of mentionSet) {
+          if (!el.classList.contains('hs-mc-reply-user')) continue
+          if (since) _placeHsPlusTenureToken(el, since)
+          else _removeHsPlusTenureToken(el)
+          placeHsBadgeToken(el, getHsBadgeId(uid))
+        }
+      }
+      const isNamespacedUid = uid.startsWith('kick_') || uid.startsWith('yt_')
+      const divs = isNamespacedUid
+        ? container.querySelectorAll(`[data-hs-paint-uid="${CSS.escape(uid)}"]`)
+        : _uidIndex.get(uid)
+      if (!divs) continue
+      const badgeId = getHsBadgeId(uid)
+      for (const div of divs) {
+        const userLink = div.querySelector('.hs-mc-user:not(.hs-mc-reply-user)')
+        if (since) _placeHsPlusTenureToken(userLink, since)
+        else _removeHsPlusTenureToken(userLink)
+        // the heatsync badge rides this same pass: it sits after the plus mark
+        placeHsBadgeToken(userLink, badgeId)
       }
     }
-    const isNamespacedUid = uid.startsWith('kick_') || uid.startsWith('yt_')
-    const divs = isNamespacedUid
-      ? container.querySelectorAll(`[data-hs-paint-uid="${CSS.escape(uid)}"]`)
-      : _uidIndex.get(uid)
-    if (!divs) continue
-    for (const div of divs) {
-      const userLink = div.querySelector('.hs-mc-user:not(.hs-mc-reply-user)')
-      _placeHsPlusTenureToken(userLink, since)
-    }
+  } finally {
+    pinAfterInPlaceUpdate()
   }
 }
 
@@ -614,73 +770,80 @@ function applyHsPlusTenureToVisible(userIds) {
 // the full message container — at 25-user batches × 500 children that was
 // 50 full DOM scans per cosmetic flush.
 function updateCosmeticsInPlace(userIds) {
-  const container = document.getElementById('hs-mc-messages')
-  if (!container) return
-  for (const uid of userIds) {
-    const cosmetic = mcUserCosmetics.get(uid)
-    if (!cosmetic) continue
-    // Precedence: a HeatSync paint (this user's own choice on our platform)
-    // always wins over their 7TV paint. If one is already resolved for this
-    // uid, skip the 7TV inline style entirely — applyHsPaintToElement (via
-    // updateHsPaintsInPlace) owns painting this element from here on,
-    // whichever batch (7TV or HS) resolves first or last.
-    const paintStyle = hasResolvedHsPaint(uid) ? '' : getMcPaintStyle(uid)
-    // Repaint inline @mentions of this user across all visible messages
-    if (paintStyle) {
-      const mentionSet = _mentionIndex.get(uid)
-      if (mentionSet) {
-        for (const mention of mentionSet) mention.setAttribute('style', paintStyle)
-      }
-    }
-    // A `yt_<UCid>` uid (flushYtNameLookups' google-id fallback for yt
-    // chatters with no linked Twitch) is never in data-uid — that attribute
-    // stays twitch-id-space only (ID-SPACE SAFETY, paints.js) — so it's never
-    // in _uidIndex either. Find its rows via the parallel data-hs-paint-uid
-    // attribute social.js already stamps, same technique updateHsPaintsInPlace
-    // uses for kick_ ids.
-    const isNamespacedUid = uid.startsWith('yt_')
-    const divSet = isNamespacedUid
-      ? container.querySelectorAll(`[data-hs-paint-uid="${CSS.escape(uid)}"]`)
-      : _uidIndex.get(uid)
-    if (!divSet) continue
-    for (const div of divSet) {
-      // Update paint on the SENDER's username link — exclude the reply
-      // target (.hs-mc-reply-user) which also has .hs-mc-user but is a
-      // different person and would get the wrong paint/badge.
-      const userLink = div.querySelector('.hs-mc-user:not(.hs-mc-reply-user)')
-      if (userLink) {
-        if (paintStyle) {
-          userLink.setAttribute('style', paintStyle)
+  try {
+    hsNameSweep(userIds)
+    const container = document.getElementById('hs-mc-messages')
+    if (!container) return
+    for (const uid of userIds) {
+      const cosmetic = mcUserCosmetics.get(uid)
+      if (!cosmetic) continue
+      // Precedence: a HeatSync paint (this user's own choice on our platform)
+      // always wins over their 7TV paint. If one is already resolved for this
+      // uid, skip the 7TV inline style entirely — applyHsPaintToElement (via
+      // updateHsPaintsInPlace) owns painting this element from here on,
+      // whichever batch (7TV or HS) resolves first or last.
+      const paintStyle = hasResolvedHsPaint(uid) ? '' : getMcPaintStyle(uid)
+      // Repaint inline @mentions of this user across all visible messages
+      if (paintStyle) {
+        const mentionSet = _mentionIndex.get(uid)
+        if (mentionSet) {
+          for (const mention of mentionSet) mention.setAttribute('style', paintStyle)
         }
       }
-      // Add 7TV badge if not already present and cosmetic has one
-      if (cosmetic.badge && !div.querySelector('.hs-mc-7tv-badge')) {
-        const files = cosmetic.badge.host?.files || []
-        const file =
-          files.find((f) => f.name?.endsWith('.webp')) || files.find((f) => f.name?.endsWith('.avif')) || files[0]
-        if (file) {
-          const base = cosmetic.badge.host?.url || ''
-          // 7TV returns protocol-relative URLs (//cdn.7tv.app/...) — promote
-          // to https before validation so safeUrl doesn't drop them.
-          const absBase = base.startsWith('//') ? `https:${base}` : base
-          const rawUrl = (absBase.endsWith('/') ? absBase : `${absBase}/`) + file.name
-          const url = safeUrl(rawUrl)
-          if (url) {
-            const img = document.createElement('img')
-            img.className = 'hs-mc-badge-img hs-mc-7tv-badge'
-            img.alt = '7TV'
-            img.title = cosmetic.badge.tooltip || '7TV'
-            img.style.cssText = 'width:18px;height:18px;'
-            img.dataset.hsSrc = url
-            // Insert FIRST, then set src — so an immediate QUIC-drop error
-            // fires while the img is already under msgsEl and the capture-phase
-            // error handler (→ retryOrHideBadgeImg) catches it.
-            if (userLink) userLink.parentNode.insertBefore(img, userLink)
-            img.src = url
+      // A `yt_<UCid>` uid (flushYtNameLookups' google-id fallback for yt
+      // chatters with no linked Twitch) is never in data-uid — that attribute
+      // stays twitch-id-space only (ID-SPACE SAFETY, paints.js) — so it's never
+      // in _uidIndex either. Find its rows via the parallel data-hs-paint-uid
+      // attribute social.js already stamps, same technique updateHsPaintsInPlace
+      // uses for kick_ ids.
+      const isNamespacedUid = uid.startsWith('yt_') || uid.startsWith('kick_')
+      const divSet = isNamespacedUid
+        ? container.querySelectorAll(`[data-hs-paint-uid="${CSS.escape(uid)}"]`)
+        : _uidIndex.get(uid)
+      if (!divSet) continue
+      for (const div of divSet) {
+        // Update paint on the SENDER's username link — exclude the reply
+        // target (.hs-mc-reply-user) which also has .hs-mc-user but is a
+        // different person and would get the wrong paint/badge.
+        const userLink = div.querySelector('.hs-mc-user:not(.hs-mc-reply-user)')
+        if (userLink) {
+          if (paintStyle) {
+            // the name's own colour stays: it is the paint's currentColor underlay
+            const colour = userLink.style.color
+            userLink.setAttribute('style', colour ? `color:${colour};${paintStyle}` : paintStyle)
+          }
+        }
+        // Add 7TV badge if not already present and cosmetic has one
+        if (cosmetic.badge && !div.querySelector('.hs-mc-7tv-badge')) {
+          const files = cosmetic.badge.host?.files || []
+          const file =
+            files.find((f) => f.name?.endsWith('.webp')) || files.find((f) => f.name?.endsWith('.avif')) || files[0]
+          if (file) {
+            const base = cosmetic.badge.host?.url || ''
+            // 7TV returns protocol-relative URLs (//cdn.7tv.app/...) — promote
+            // to https before validation so safeUrl doesn't drop them.
+            const absBase = base.startsWith('//') ? `https:${base}` : base
+            const rawUrl = (absBase.endsWith('/') ? absBase : `${absBase}/`) + file.name
+            const url = safeUrl(rawUrl)
+            if (url) {
+              const img = document.createElement('img')
+              img.className = 'hs-mc-badge-img hs-mc-7tv-badge'
+              img.alt = '7TV'
+              img.title = cosmetic.badge.tooltip || '7TV'
+              img.style.cssText = 'width:18px;height:18px;'
+              img.dataset.hsSrc = url
+              // Insert FIRST, then set src — so an immediate QUIC-drop error
+              // fires while the img is already under msgsEl and the capture-phase
+              // error handler (→ retryOrHideBadgeImg) catches it.
+              if (userLink) userLink.parentNode.insertBefore(img, userLink)
+              img.src = url
+            }
           }
         }
       }
     }
+  } finally {
+    pinAfterInPlaceUpdate()
   }
 }
 
@@ -696,55 +859,59 @@ function updateCosmeticsInPlace(userIds) {
 // badges land exactly where buildMessageDiv's ${badges} sits: after native
 // badges, before ${avatarHtml}${userLink}.
 function updateThirdPartyBadgesInPlace() {
-  if (!document.getElementById('hs-mc-messages')) return
-  const wantBttv = getSetting('bttvBadges')
-  const wantFfz = getSetting('ffzBadges')
-  const wantChat = getSetting('chatterinoBadges')
-  if (!wantBttv && !wantFfz && !wantChat) return
-  const mkBadge = (cls, url, title, bg) => {
-    const safe = safeUrl(url)
-    if (!safe) return null
-    const img = document.createElement('img')
-    img.className = `hs-mc-badge-img ${cls}`
-    img.alt = title || ''
-    img.title = title || ''
-    img.decoding = 'async'
-    img.width = 18
-    img.height = 18
-    img.style.cssText = `width:18px;height:18px;${bg ? `background:${bg};` : ''}`
-    // Insert FIRST, then set src (caller) — so an immediate QUIC-drop error
-    // fires while the img is already under msgsEl and the capture-phase error
-    // handler (retryOrHideBadgeImg) catches it. Mirrors updateCosmeticsInPlace.
-    img.dataset.hsSrc = safe
-    return img
-  }
-  for (const [uid, divSet] of _uidIndex) {
-    const bttv = wantBttv ? mcBttvBadgeMap.get(uid) : null
-    const ffzList = wantFfz ? mcFfzBadgeMap.get(uid) : null
-    const chat = wantChat ? mcChatterinoBadgeMap.get(uid) : null
-    if (!bttv && !ffzList && !chat) continue
-    for (const div of divSet) {
-      const anchor = div.querySelector('.hs-mc-avatar') || div.querySelector('.hs-mc-user:not(.hs-mc-reply-user)')
-      if (!anchor) continue
-      const insert = (img) => {
-        if (img) {
-          anchor.parentNode.insertBefore(img, anchor)
-          img.src = img.dataset.hsSrc
+  try {
+    if (!document.getElementById('hs-mc-messages')) return
+    if (!getSetting('thirdPartyBadges')) return
+    const mkBadge = (cls, url, title, bg) => {
+      const safe = safeUrl(url)
+      if (!safe) return null
+      const img = document.createElement('img')
+      img.className = `hs-mc-badge-img ${cls}`
+      img.alt = title || ''
+      img.title = title || ''
+      img.decoding = 'async'
+      img.width = 18
+      img.height = 18
+      img.style.cssText = `width:18px;height:18px;${bg ? `background:${bg};` : ''}`
+      // Insert FIRST, then set src (caller) — so an immediate QUIC-drop error
+      // fires while the img is already under msgsEl and the capture-phase error
+      // handler (retryOrHideBadgeImg) catches it. Mirrors updateCosmeticsInPlace.
+      img.dataset.hsSrc = safe
+      return img
+    }
+    for (const [uid, divSet] of _uidIndex) {
+      const bttv = mcBttvBadgeMap.get(uid)
+      const ffzList = mcFfzBadgeMap.get(uid)
+      const chat = mcChatterinoBadgeMap.get(uid)?.at(-1)
+      if (!bttv && !ffzList && !chat) continue
+      for (const div of divSet) {
+        const anchor =
+          div.querySelector('.hs-mc-marks') ||
+          div.querySelector('.hs-mc-avatar') ||
+          div.querySelector('.hs-mc-user:not(.hs-mc-reply-user)')
+        if (!anchor) continue
+        const insert = (img) => {
+          if (img) {
+            anchor.parentNode.insertBefore(img, anchor)
+            img.src = img.dataset.hsSrc
+          }
         }
-      }
-      if (bttv && !div.querySelector('.hs-mc-bttv-badge')) {
-        insert(mkBadge('hs-mc-bttv-badge', bttv.url, bttv.description))
-      }
-      if (ffzList && !div.querySelector('.hs-mc-ffz-badge')) {
-        for (const b of ffzList) {
-          const safeColor = /^#[0-9a-fA-F]{3,8}$/.test(b.color) ? b.color : ''
-          insert(mkBadge('hs-mc-ffz-badge', b.url, b.title, safeColor))
+        if (bttv && !div.querySelector('.hs-mc-bttv-badge')) {
+          insert(mkBadge('hs-mc-bttv-badge', bttv.url, bttv.description))
         }
-      }
-      if (chat && !div.querySelector('.hs-mc-chatterino-badge')) {
-        insert(mkBadge('hs-mc-chatterino-badge', chat.url, chat.tooltip || 'Chatterino'))
+        if (ffzList && !div.querySelector('.hs-mc-ffz-badge')) {
+          for (const b of ffzList) {
+            const safeColor = /^#[0-9a-fA-F]{3,8}$/.test(b.color) ? b.color : ''
+            insert(mkBadge('hs-mc-ffz-badge', b.url, b.title, safeColor))
+          }
+        }
+        if (chat && !div.querySelector('.hs-mc-chatterino-badge')) {
+          insert(mkBadge('hs-mc-chatterino-badge', chat.url, chat.tooltip || 'Chatterino'))
+        }
       }
     }
+  } finally {
+    pinAfterInPlaceUpdate()
   }
 }
 
@@ -777,6 +944,9 @@ function updateThirdPartyBadgesInPlace() {
 // the document — querySelectorAll on #hs-mc-messages can't see it) stayed
 // on stale text-fallback badges until something forced a full rebuild.
 function _patchBadgesInRoot(root, channelLogin) {
+  // In text mode there is nothing to upgrade: the chips ARE the intended
+  // render, and this function's entire job is replacing a chip with an image.
+  if (textBadgesEnabled) return
   for (const div of root.querySelectorAll('.hs-mc-msg')) {
     const m = div._hsMsg
     if (!m?.badges || typeof m.badges !== 'string') continue
@@ -801,8 +971,13 @@ function _patchBadgesInRoot(root, channelLogin) {
       if (!safeU) continue
       const key = `${name}/${version}`
       // Dedup: img already present — update src if a better URL is available
+      const label = (!isKick && resolveBadgeTitle(ch, name, version)) || BADGE_STYLES[name]?.label || name
       const existingImg = div.querySelector(`img.hs-mc-badge-img[data-badge="${key}"]`)
       if (existingImg) {
+        if (existingImg.title !== label) {
+          existingImg.title = label
+          existingImg.alt = label
+        }
         if (existingImg.getAttribute('src') !== safeU) {
           existingImg.dataset.hsSrc = safeU
           existingImg.src = safeU
@@ -814,8 +989,8 @@ function _patchBadgesInRoot(root, channelLogin) {
       const img = document.createElement('img')
       img.className = 'hs-mc-badge-img'
       img.dataset.badge = key
-      img.alt = name
-      img.title = BADGE_STYLES[name]?.label || name
+      img.alt = label
+      img.title = label
       img.decoding = 'async'
       img.width = 18
       img.height = 18
@@ -838,15 +1013,19 @@ function _patchBadgesInRoot(root, channelLogin) {
 // channelLogin: null  = global badges just loaded (update all rows)
 //               string = channel badges for that specific channel only
 function updateNativeBadgesInPlace(channelLogin) {
-  const msgsEl = document.getElementById('hs-mc-messages')
-  if (msgsEl) _patchBadgesInRoot(msgsEl, channelLogin)
-  // Also patch every OTHER tab's snapshotted fragment (see _patchBadgesInRoot's
-  // comment) instead of the old approach of just _dropAllTabCaches()-ing them —
-  // that forced a full rebuild (avatar/emote/badge image reload flash) on next
-  // visit just to fix a handful of badge imgs. A DocumentFragment supports the
-  // same querySelectorAll surface as a live Element, so this is exactly as cheap.
-  for (const cache of _tabCache.values()) {
-    if (cache?.frag) _patchBadgesInRoot(cache.frag, channelLogin)
+  try {
+    const msgsEl = document.getElementById('hs-mc-messages')
+    if (msgsEl) _patchBadgesInRoot(msgsEl, channelLogin)
+    // Also patch every OTHER tab's snapshotted fragment (see _patchBadgesInRoot's
+    // comment) instead of the old approach of just _dropAllTabCaches()-ing them —
+    // that forced a full rebuild (avatar/emote/badge image reload flash) on next
+    // visit just to fix a handful of badge imgs. A DocumentFragment supports the
+    // same querySelectorAll surface as a live Element, so this is exactly as cheap.
+    for (const cache of _tabCache.values()) {
+      if (cache?.frag) _patchBadgesInRoot(cache.frag, channelLogin)
+    }
+  } finally {
+    pinAfterInPlaceUpdate()
   }
 }
 
@@ -857,81 +1036,20 @@ function updateNativeBadgesInPlace(channelLogin) {
 // paint object: a WeakMap auto-evicts when the cosmetic is dropped, and keying
 // on identity means a replaced paint recomputes with no manual invalidation.
 const _mcPaintStyleCache = new WeakMap()
-function getMcPaintStyle(userId) {
+// The CSS is lib/stv-paint-css.js — 7TV's own algorithm, the site's file byte
+// for byte. It draws over `background-color:currentColor`, so the name's own
+// colour shows wherever the paint is transparent; callers that know it pass it.
+function getMcPaintStyle(userId, colour = '') {
   if (!getSetting('sevenTvPaints')) return ''
   const cosmetic = mcUserCosmetics.get(userId)
   const paint = cosmetic?.paint
   if (!paint?.function) return ''
-  const cached = _mcPaintStyleCache.get(paint)
-  if (cached !== undefined) return cached
-  const style = _computeMcPaintStyle(paint)
-  _mcPaintStyleCache.set(paint, style)
-  return style
-}
-function _computeMcPaintStyle(paint) {
-  const fn = paint.function.toLowerCase()
-  if (fn === 'url' && paint.image_url) {
-    if (!/^https:\/\//.test(paint.image_url)) return ''
-    const safeCssUrl = paint.image_url.replace(/[()'"\\;{}]/g, encodeURIComponent)
-    let style = `background-image:url(${safeCssUrl});background-size:cover;-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text`
-    if (paint.shadows?.length) {
-      style +=
-        ';filter:' +
-        paint.shadows
-          .map((s) => {
-            const r = (s.color >>> 24) & 0xff
-            const g = (s.color >>> 16) & 0xff
-            const b = (s.color >>> 8) & 0xff
-            const a = (s.color & 0xff) / 255
-            return `drop-shadow(${Number(s.x_offset) || 0}px ${Number(s.y_offset) || 0}px ${Number(s.radius) || 0}px rgba(${r},${g},${b},${a.toFixed(2)}))`
-          })
-          .join(' ')
-    }
-    return style
+  let style = _mcPaintStyleCache.get(paint)
+  if (style === undefined) {
+    style = stvPaintCss(paint).style
+    _mcPaintStyleCache.set(paint, style)
   }
-  if (
-    (fn === 'linear-gradient' || fn === 'radial-gradient' || fn === 'linear_gradient' || fn === 'radial_gradient') &&
-    paint.stops?.length
-  ) {
-    const stops = paint.stops
-      .map((s) => {
-        const r = (s.color >>> 24) & 0xff
-        const g = (s.color >>> 16) & 0xff
-        const b = (s.color >>> 8) & 0xff
-        const a = (s.color & 0xff) / 255
-        return `rgba(${r},${g},${b},${a.toFixed(2)}) ${Math.round(s.at * 100)}%`
-      })
-      .join(', ')
-    const safeAngle = Number.isFinite(Number(paint.angle)) ? Number(paint.angle) : 0
-    const safeShape = /^(circle|ellipse)$/.test(paint.shape) ? paint.shape : 'circle'
-    const grad =
-      fn === 'linear-gradient' || fn === 'linear_gradient'
-        ? `linear-gradient(${safeAngle}deg, ${stops})`
-        : `radial-gradient(${safeShape}, ${stops})`
-    let style = `background:${grad};-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text`
-    if (paint.shadows?.length) {
-      style +=
-        ';filter:' +
-        paint.shadows
-          .map((s) => {
-            const r = (s.color >>> 24) & 0xff
-            const g = (s.color >>> 16) & 0xff
-            const b = (s.color >>> 8) & 0xff
-            const a = (s.color & 0xff) / 255
-            return `drop-shadow(${Number(s.x_offset) || 0}px ${Number(s.y_offset) || 0}px ${Number(s.radius) || 0}px rgba(${r},${g},${b},${a.toFixed(2)}))`
-          })
-          .join(' ')
-    }
-    return style
-  }
-  if (paint.color) {
-    const r = (paint.color >>> 24) & 0xff
-    const g = (paint.color >>> 16) & 0xff
-    const b = (paint.color >>> 8) & 0xff
-    const a = (paint.color & 0xff) / 255
-    return `color:rgba(${r},${g},${b},${a.toFixed(2)})`
-  }
-  return ''
+  return style && colour ? `color:${colour};${style}` : style
 }
 
 // Resolve a 7TV paint CSS string for any username surface (reply context,
@@ -943,6 +1061,6 @@ function _computeMcPaintStyle(paint) {
 function userPaintStyle(uid, lower, platform) {
   if (!uid && lower) uid = knownUserIds.get(userKey(lower, platform)) || ''
   if (!uid) return ''
-  if (!mcUserCosmetics.has(uid)) queueMcCosmeticsLookup(uid)
+  if (mcCosmeticsNeedLookup(uid)) queueMcCosmeticsLookup(uid)
   return getMcPaintStyle(uid)
 }

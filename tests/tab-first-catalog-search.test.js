@@ -131,14 +131,13 @@ describe('auto-add-on-send registry scope', () => {
     expect(recentRemoteCompletions.get('kap').source).toBe('7tv')
   })
 
-  test('exact-name match is case-insensitive, like emote names are in practice', async () => {
-    const { recentRemoteCompletions, fetch } = build({
-      matches: [],
-      search: 'sadge',
-      stv: async () => [stvEmote('Sadge')],
-    })
-    await fetch('sadge')
-    expect([...recentRemoteCompletions.keys()]).toEqual(['Sadge'])
+  test('exact-name match is case-exact: a case twin is offered but not registered as typed (rule 5)', async () => {
+    const twin = build({ matches: [], search: 'sadge', stv: async () => [stvEmote('Sadge')] })
+    await twin.fetch('sadge')
+    expect([...twin.recentRemoteCompletions.keys()]).toEqual([])
+    const same = build({ matches: [], search: 'Sadge', stv: async () => [stvEmote('Sadge')] })
+    await same.fetch('Sadge')
+    expect([...same.recentRemoteCompletions.keys()]).toEqual(['Sadge'])
   })
 })
 
@@ -158,7 +157,7 @@ describe('plain-text (wysiwyg off) still commits the emote at send', () => {
   })
 
   test('sendMessage commits the registry against the outgoing text unconditionally', () => {
-    const s = INPUT_SRC.indexOf('async function sendMessage()')
+    const s = INPUT_SRC.indexOf('async function sendMessage(retry)')
     expect(s).toBeGreaterThan(-1)
     const body = INPUT_SRC.slice(s, s + 900)
     expect(body).toContain('autoAddInputEmotes(text)')
@@ -167,5 +166,35 @@ describe('plain-text (wysiwyg off) still commits the emote at send', () => {
     const addAt = body.indexOf('autoAddInputEmotes(text)')
     expect(addAt).toBeGreaterThan(textAt)
     expect(body.slice(textAt, addAt)).not.toContain('wysiwyg')
+  })
+})
+
+describe('same-name uploads stay separate once the name is typed in full', () => {
+  const id = (n) => `01GPTQQTDR0001F90QP9X30T5${n}`.slice(0, 26)
+  const up = (n) => ({ name: 'shrujj', url: `https://cdn.7tv.app/emote/${id(n)}/1x.avif`, provider: '7tv', id: id(n) })
+
+  test('exact name keeps every upload, top one first', async () => {
+    const { acState, fetch } = build({ search: 'shrujj', stv: async () => [up('A'), up('B'), up('C')] })
+    await fetch('shrujj')
+    expect(acState.matches.map((m) => m.id)).toEqual([id('A'), id('B'), id('C')])
+  })
+
+  test('only the top upload registers for auto-add-on-send', async () => {
+    const { recentRemoteCompletions, fetch } = build({ search: 'shrujj', stv: async () => [up('A'), up('B')] })
+    await fetch('shrujj')
+    expect(recentRemoteCompletions.get('shrujj').url).toContain(id('A'))
+  })
+
+  test('an upload already in the cycle is not listed twice', async () => {
+    const owned = { name: 'shrujj', url: up('B').url, source: '7tv', type: 'emote' }
+    const { acState, fetch } = build({ search: 'shrujj', matches: [owned], stv: async () => [up('A'), up('B')] })
+    await fetch('shrujj')
+    expect(acState.matches.map((m) => m.url)).toEqual([owned.url, up('A').url])
+  })
+
+  test('a partial query still merges same-name uploads into one', async () => {
+    const { acState, fetch } = build({ search: 'shru', stv: async () => [up('A'), up('B')] })
+    await fetch('shru')
+    expect(acState.matches.length).toBe(1)
   })
 })

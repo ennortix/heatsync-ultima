@@ -48,10 +48,11 @@ function _frSafeRegex(src, flags) {
   }
 }
 
-// Valid highlight-sound names — kept in sync with FILTER_SOUND_PRESETS in
-// mentions.js (the player). An unknown/absent name compiles to null = silent.
-// Inlined (not imported) so this module stays self-contained + unit-testable.
-const FR_SOUNDS = new Set(['ping', 'blip', 'knock', 'chime'])
+// Valid highlight-sound names — SFX_PRESETS in sounds.js (the player) plus
+// 'custom', the rule's own picked file. An unknown/absent name compiles to
+// null = silent. Inlined (not imported) so this module stays self-contained +
+// unit-testable; tests/chat-sounds.test.js fails if the two lists drift.
+const FR_SOUNDS = new Set(['ping', 'blip', 'knock', 'chime', 'custom'])
 
 // ── boolean expression engine (match type 'expr') ─────────────────────────────
 // Chatterino-style composable filters — "user:bob && !badge:subscriber", "first
@@ -238,6 +239,31 @@ function _frParseExpr(toks) {
   return ast
 }
 
+// Does the message carry badge `v` (lowercased)? twitch/kick rows hold a "set/ver,set/ver"
+// string; youtube rows hold a list of { type, label } (owner, moderator, member...), or
+// strings of the same shape. "mod" also matches a youtube moderator.
+function _frHasBadge(badges, v) {
+  if (!badges) return false
+  if (typeof badges === 'string') {
+    const list = badges.split(',')
+    for (let i = 0; i < list.length; i++) if (list[i].split('/')[0].toLowerCase() === v) return true
+    return false
+  }
+  if (!Array.isArray(badges)) return false
+  for (let i = 0; i < badges.length; i++) {
+    const b = badges[i]
+    const names = typeof b === 'string' ? [b.split('/')[0]] : b ? [b.type, b.label, b.name] : []
+    for (const n of names) {
+      const k = typeof n === 'string' ? n.toLowerCase() : ''
+      if (k === v || (v === 'mod' && k === 'moderator')) return true
+    }
+  }
+  return false
+}
+
+// a youtube author arrives as "@handle"; rules are written without the @
+const _frBareUser = (u) => String(u).toLowerCase().replace(/^@/, '')
+
 function _frEvalNode(node, m) {
   switch (node.op) {
     case 'or':
@@ -253,13 +279,9 @@ function _frEvalNode(node, m) {
       if (node.name === 'cheer') return !!(m.bits && Number(m.bits) > 0)
       return false
     case 'user':
-      return !!m.user && String(m.user).toLowerCase() === node.v
-    case 'badge': {
-      if (!m.badges || typeof m.badges !== 'string') return false
-      const badges = m.badges.split(',')
-      for (let i = 0; i < badges.length; i++) if (badges[i].split('/')[0].toLowerCase() === node.v) return true
-      return false
-    }
+      return !!m.user && _frBareUser(m.user) === node.v.replace(/^@/, '')
+    case 'badge':
+      return _frHasBadge(m.badges, node.v)
     case 'type':
       if (node.v === 'first-message' || node.v === 'first') return !!m.isFirstMsg
       if (node.v === 'action') return !!m.isAction
@@ -295,6 +317,7 @@ function _frEvalNode(node, m) {
 // when channelKey matches. Compiled once → evaluated with no allocation per call.
 let _frAllRules = [] // compiled rules with scope 'all'
 let _frByChannel = new Map() // compiled rules keyed by channel tab id
+let _frMergedByChannel = new Map() // all-rules + channel bucket, precomputed at compile
 
 // ── compile helpers ───────────────────────────────────────────────────────────
 function _frCompileOne(rule) {
@@ -315,12 +338,22 @@ function _frCompileOne(rule) {
     action,
     color: action === 'highlight' && rule.color && /^#[0-9a-f]{3,8}$/i.test(rule.color) ? rule.color : null,
     sound: action === 'highlight' && typeof rule.sound === 'string' && FR_SOUNDS.has(rule.sound) ? rule.sound : null,
+    soundVolume: null,
+    // "also notify me": a matching highlight acts as a mention (mentions tab, tab
+    // flash, desktop notice) with no heatsync login. Strictly boolean, hide never.
+    notify: action === 'highlight' && rule.notify === true,
     scope,
     matchType: m.type,
     caseSensitive: cs,
     value: '',
     re: null,
     ast: null,
+  }
+
+  // 0..100, whole numbers. Absent or junk = null = follow the shared chat-sounds
+  // volume, which is exactly how every rule sounded before volumes existed.
+  if (c.sound && typeof rule.soundVolume === 'number' && Number.isFinite(rule.soundVolume)) {
+    c.soundVolume = Math.round(Math.min(100, Math.max(0, rule.soundVolume)))
   }
 
   switch (m.type) {
@@ -389,6 +422,12 @@ function compileFilterRules(rules) {
       bucket.push(c)
     }
   }
+  // Merge once here so the per-message path never concatenates — global rules
+  // evaluate first, matching the pre-merge ordering.
+  _frMergedByChannel = new Map()
+  for (const [key, bucket] of _frByChannel) {
+    _frMergedByChannel.set(key, _frAllRules.concat(bucket))
+  }
 }
 
 /**
@@ -396,26 +435,47 @@ function compileFilterRules(rules) {
  * Hot path — no per-call allocation when there are no rules for this scope.
  * @param {object} m           message object (text, user, badges, isFirstMsg, isAction, bits, replyTo)
  * @param {string|null} channelKey  channel tab id (ch.id) or null
- * @returns {{ hide: boolean, highlight: string|null, sound: string|null }}
+ * @returns {{ hide: boolean, highlight: string|null, notify: boolean, sound: string|null, soundId: string|null, soundVolume: number|null }}
+ *   notify: some matching highlight rule asked to also notify (see _frCompileOne).
+ *   sound is the winning highlight rule's sound name; soundId (the rule's id,
+ *   which keys its picked file) and soundVolume (0..100, null = shared volume)
+ *   ride along so the player needs nothing else from the rule.
  */
 function evaluateFilterRules(m, channelKey) {
   const hasChannel = channelKey && _frByChannel.has(channelKey)
-  if (!_frAllRules.length && !hasChannel) return { hide: false, highlight: null, sound: null }
+  if (!_frAllRules.length && !hasChannel) return _frVerdict(false, null, null, false)
 
-  const rules = hasChannel ? _frAllRules.concat(_frByChannel.get(channelKey)) : _frAllRules
+  const rules = hasChannel ? _frMergedByChannel.get(channelKey) : _frAllRules
 
   let highlight = null
-  let sound = null
+  let soundRule = null
+  let notify = false
   for (let i = 0; i < rules.length; i++) {
     const rule = rules[i]
     if (!_frTest(rule, m)) continue
-    if (rule.action === 'hide') return { hide: true, highlight: null, sound: null }
-    if (rule.action === 'highlight' && highlight === null) {
-      highlight = rule.color
-      sound = rule.sound
+    if (rule.action === 'hide') return _frVerdict(true, null, null, false)
+    if (rule.action === 'highlight') {
+      // the alert is every matching rule's own ask, not just the colour winner's
+      if (rule.notify) notify = true
+      if (highlight === null) {
+        highlight = rule.color
+        soundRule = rule
+      }
     }
   }
-  return { hide: false, highlight, sound }
+  return _frVerdict(false, highlight, soundRule, notify)
+}
+
+// One verdict shape everywhere, so callers read the same fields on every path.
+function _frVerdict(hide, highlight, rule, notify) {
+  return {
+    hide,
+    highlight,
+    notify: !!notify,
+    sound: rule ? rule.sound : null,
+    soundId: rule?.sound ? rule.id : null,
+    soundVolume: rule?.sound ? rule.soundVolume : null,
+  }
 }
 
 function _frTest(rule, m) {
@@ -430,17 +490,12 @@ function _frTest(rule, m) {
       return rule.ast ? _frEvalNode(rule.ast, m) : false
     case 'user': {
       if (!m.user) return false
-      const u = rule.caseSensitive ? String(m.user) : String(m.user).toLowerCase()
-      return u === rule.value
+      const raw = String(m.user).replace(/^@/, '')
+      const u = rule.caseSensitive ? raw : raw.toLowerCase()
+      return u === rule.value.replace(/^@/, '')
     }
-    case 'badge': {
-      if (!m.badges || typeof m.badges !== 'string') return false
-      const badges = m.badges.split(',')
-      for (let i = 0; i < badges.length; i++) {
-        if (badges[i].split('/')[0].toLowerCase() === rule.value) return true
-      }
-      return false
-    }
+    case 'badge':
+      return _frHasBadge(m.badges, rule.value)
     case 'msgtype': {
       const mt = rule.value
       if (mt === 'first-message') return !!m.isFirstMsg
@@ -454,4 +509,35 @@ function _frTest(rule, m) {
   }
 }
 
-export { compileFilterRules, evaluateFilterRules }
+// How many of the newest chat rows the settings form tries an unsaved rule on.
+const FR_PREVIEW_LIMIT = 200
+
+/**
+ * Dry-run ONE unsaved rule against buffered rows — the settings form's live
+ * "matches N of the last 200 messages". It compiles with _frCompileOne and tests
+ * with _frTest, the same two functions the live path uses, so the count is
+ * exactly what saving the rule would catch. Chat rows only: notices, stream
+ * events and whispers carry a `type` and never reach evaluateFilterRules.
+ * @param {object} rule  a raw rule (match, action, scope…); id/enabled are forced
+ * @param {Array} msgs   buffered rows, oldest first
+ * @param {number} [limit]  newest chat rows to try, default FR_PREVIEW_LIMIT
+ * @returns {{ ok: false } | { ok: true, hits: number, total: number }}
+ *   ok:false = the rule would not compile (an expression that does not parse, an empty value)
+ */
+function previewFilterRule(rule, msgs, limit = FR_PREVIEW_LIMIT) {
+  const c = _frCompileOne({ ...rule, id: 'preview', enabled: true })
+  if (!c) return { ok: false }
+  let hits = 0
+  let total = 0
+  if (Array.isArray(msgs)) {
+    for (let i = msgs.length - 1; i >= 0 && total < limit; i--) {
+      const m = msgs[i]
+      if (!m || m.type || typeof m.text !== 'string') continue
+      total++
+      if (_frTest(c, m)) hits++
+    }
+  }
+  return { ok: true, hits, total }
+}
+
+export { compileFilterRules, evaluateFilterRules, previewFilterRule }

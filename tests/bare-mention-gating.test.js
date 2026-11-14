@@ -32,11 +32,10 @@
  */
 
 import { describe, expect, test } from 'bun:test'
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
 import { escapeHtml, outsideTags } from '../src/lib/utils.js'
+import { mainSource } from './main-src.js'
 
-const MAIN_SRC = readFileSync(join(import.meta.dir, '..', 'src', 'multichat', 'main.js'), 'utf8')
+const MAIN_SRC = mainSource()
 
 function sliceBetween(marker, endMarker) {
   const start = MAIN_SRC.indexOf(marker)
@@ -49,12 +48,12 @@ function sliceBetween(marker, endMarker) {
 // Real source of both the stopword list and the highlighter, evaluated against
 // stubs for the surrounding overlay state.
 const STOPWORDS_SRC = sliceBetween(
-  '  const BARE_MENTION_STOPWORDS = new Set(',
-  '  // Highlight @mentions and bare known usernames',
+  'const BARE_MENTION_STOPWORDS = new Set(',
+  '// Highlight @mentions and bare known usernames',
 )
 const HIGHLIGHT_SRC = sliceBetween(
-  '  function highlightMentionsInHtml(html, platform) {',
-  '\n  // DOM-node twin of highlightHashtagsInHtml',
+  'function highlightMentionsInHtml(html, platform) {',
+  '\n// DOM-node twin of highlightHashtagsInHtml',
 )
 
 function makeHighlighter({ colors = [], spoke = [] } = {}) {
@@ -161,5 +160,25 @@ describe('bare-word mentions — everyday words are never a mention', () => {
   test('the stopword list is lowercase-only — it is matched against a lowercased name', () => {
     const { fn } = makeHighlighter({ colors: ['what'], spoke: ['what'] })
     expect(anchorsFor(fn('What is that', 'twitch'), 'what')).toHaveLength(0)
+  })
+})
+
+describe('a tag that drops the underscores is still the person', () => {
+  test('@sleepyshaman draws as sleepyshaman___ in his color', () => {
+    const { fn } = makeHighlighter({ colors: [['sleepyshaman___', '#f54e00']], spoke: ['sleepyshaman___'] })
+    const out = fn('hi @SleepyShaman', 'twitch')
+    expect(anchorsFor(out, 'sleepyshaman___')).toHaveLength(1)
+    expect(out).toContain('color:#f54e00')
+    expect(out).toContain('>@SleepyShaman<')
+  })
+
+  test('a tag two chatters could mean stays as typed', () => {
+    const { fn } = makeHighlighter({ spoke: ['twin_name', 'twinname_'] })
+    expect(anchorsFor(fn('@twinname', 'twitch'), 'twinname')).toHaveLength(1)
+  })
+
+  test('a name that spoke exactly as typed is never redirected', () => {
+    const { fn } = makeHighlighter({ spoke: ['bob', 'bob_'] })
+    expect(anchorsFor(fn('@bob', 'twitch'), 'bob')).toHaveLength(1)
   })
 })

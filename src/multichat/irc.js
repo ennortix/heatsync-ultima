@@ -7,8 +7,15 @@
 const _raidWindows = new Map()
 const RAID_WINDOW_MS = 90 * 1000
 
+// Archive-demand throttle: channel(lowercase) → ms of the last signal sent.
+// Mirrors the server's own one-per-socket-per-channel-per-5min window, so we
+// stop paying to send frames it discards at the door. Bounded by the number of
+// channels this tab actually joins.
+const ARCHIVE_DEMAND_INTERVAL_MS = 5 * 60 * 1000
+const archiveDemandSentAt = new Map()
+
 // Kick sub/gift/KICKs celebrations reach us on TWO independent transports —
-// the server's official webhook relay and BG's Pusher tap — and a channel can
+// the server's official webhook relay and BG's kick tap — and a channel can
 // have both. Neither payload carries a stable event id to dedup on, so the key
 // is the content itself inside a short window. Collapsing a genuine second
 // identical gift within 30s costs one line; letting every celebration render
@@ -107,11 +114,16 @@ function parseIrcLine(raw, channel) {
     const tags = parseTags(tagsMatch[1])
 
     // PRIVMSG: @tags :user!user@user.tmi.twitch.tv PRIVMSG #channel :message
-    const privmsg = raw.match(/PRIVMSG #([^ ]+) :(.+)$/)
+    // The trailing colon is OPTIONAL in IRC when the message is a single word —
+    // robotty's recent-messages replay serializes one-word lines without it
+    // (`PRIVMSG #ch Gladge`), and requiring the colon silently dropped every
+    // emote-only/one-word message from history (2026-08-10, same fix as site).
+    const privmsg = raw.match(/PRIVMSG #([^ ]+) (?::(.*)|([^\s:][^ ]*))$/)
     if (privmsg) {
+      privmsg[2] = privmsg[2] ?? privmsg[3]
       const displayName = tags['display-name'] || 'anonymous'
       // /me sends as \x01ACTION text\x01
-      let text = flatStr(privmsg[2])
+      let text = flatStr(stripDupBypass(privmsg[2]))
       let isAction = false
       if (text.charCodeAt(0) === 1 && text.startsWith('\x01ACTION ')) {
         text = text.slice(8, text.endsWith('\x01') ? -1 : undefined)
@@ -134,15 +146,18 @@ function parseIrcLine(raw, channel) {
         channel: channel || flatStr(privmsg[1].toLowerCase()),
         time: parseInt(tags['tmi-sent-ts'], 10) || parseInt(tags['rm-received-ts'], 10) || Date.now(),
         id: tags.id || '',
-        replyTo: tags['reply-parent-display-name']
-          ? {
-              user: ircTagUnescape(tags['reply-parent-display-name']),
-              text: tags['reply-parent-msg-body'] ? ircTagUnescape(tags['reply-parent-msg-body']) : '',
-              id: tags['reply-parent-msg-id'] || '',
-              userId: tags['reply-parent-user-id'] || '',
-              threadId: tags['reply-thread-parent-msg-id'] || tags['reply-parent-msg-id'] || '',
-            }
-          : null,
+        // display-name can be absent on replayed/relayed copies while the login
+        // is not — key the bar on either so the reply never degrades to plain.
+        replyTo:
+          tags['reply-parent-display-name'] || tags['reply-parent-user-login']
+            ? {
+                user: ircTagUnescape(tags['reply-parent-display-name'] || tags['reply-parent-user-login']),
+                text: tags['reply-parent-msg-body'] ? ircTagUnescape(tags['reply-parent-msg-body']) : '',
+                id: tags['reply-parent-msg-id'] || '',
+                userId: tags['reply-parent-user-id'] || '',
+                threadId: tags['reply-thread-parent-msg-id'] || tags['reply-parent-msg-id'] || '',
+              }
+            : null,
       }
       const twitchEmotes = parseTwitchEmotesTag(tags.emotes, text)
       if (twitchEmotes) msg.twitchEmotes = twitchEmotes
@@ -166,7 +181,10 @@ function parseIrcLine(raw, channel) {
       if (tags['msg-id'] === 'gigantified-emote-message') msg.gigantified = true
       if (tags['msg-id'] === 'animated-message') msg.animationId = tags['animation-id'] || 'effect'
       // Shared chat: source-room-id differing from room-id = partner-channel origin
-      if (tags['source-room-id'] && tags['room-id'] && tags['source-room-id'] !== tags['room-id']) msg.sharedChat = true
+      if (tags['source-room-id'] && tags['room-id'] && tags['source-room-id'] !== tags['room-id']) {
+        msg.sharedChat = true
+        msg.sourceRoomId = tags['source-room-id']
+      }
       if (tags['first-msg'] === '1') msg.isFirstMsg = true
       if (tags['returning-chatter'] === '1') msg.isReturningChatter = true
       // Raider: a first-time chatter arriving inside the window opened by a raid
@@ -241,6 +259,10 @@ function parseIrcLine(raw, channel) {
         sourceMsgId: tags['source-msg-id'] || undefined,
         sharedChat:
           tags['source-room-id'] && tags['room-id'] && tags['source-room-id'] !== tags['room-id'] ? true : undefined,
+        sourceRoomId:
+          tags['source-room-id'] && tags['room-id'] && tags['source-room-id'] !== tags['room-id']
+            ? tags['source-room-id']
+            : undefined,
         id: tags.id || '',
       }
     }
@@ -387,9 +409,33 @@ function flatStr(s) {
   return s && s.length > 12 ? (' ' + s).slice(1) : s
 }
 
+// Twitch refuses a message identical to your previous one in the channel
+// (NOTICE msg_duplicate). Like chatterino, a repeat goes out with an invisible
+// tag char (U+E0000) appended; the next identical send goes plain again.
+const DUP_BYPASS_CHAR = '\u{E0000}'
+const DUP_BYPASS_SUFFIX = ` ${DUP_BYPASS_CHAR}`
+function dupBypassWire(lastWire, text) {
+  return text === lastWire ? text + DUP_BYPASS_SUFFIX : text
+}
+// drops one trailing " <U+E0000>" (or a bare trailing <U+E0000>) so an echo
+// never shows a tofu glyph and still matches the text we typed
+function stripDupBypass(text) {
+  const s = String(text ?? '')
+  if (!s.endsWith(DUP_BYPASS_CHAR)) return s
+  const cut = s.slice(0, -DUP_BYPASS_CHAR.length)
+  return cut.endsWith(' ') ? cut.slice(0, -1) : cut
+}
+
 // ============================================
 // CIRCULAR BUFFER FOR CHANNEL MESSAGES
 // ============================================
+// one comparison key for "the same text" across the typed send and its echo (NBSP, runs of space, case)
+const heldTextKey = (text) =>
+  String(text || '')
+    .replace(/[\s\u00a0]+/g, ' ')
+    .trim()
+    .toLowerCase()
+
 class CircularBuffer {
   constructor(cap = 1500) {
     this.buf = new Array(cap)
@@ -454,6 +500,55 @@ class CircularBuffer {
     this.head = 0
     this.size = 0
   }
+}
+
+// Fold a batch of history rows into a channel ring WITHOUT breaking its sort.
+// Every buffer must stay non-decreasing by ord (utils.js, invariant #1) —
+// mergeSortedRuns, sortedInsert and the render diff all rely on it. History
+// hydration and the 3s/8s/20s BG re-pulls used to push() straight onto the
+// ring: rows newer than a live message already in it landed BEFORE that
+// message, and the live ones after them. From then on every new arrival
+// binary-searched a lying array, landed mid-list, and the newest chat sat
+// above a stale tail — chat looked frozen until the bad rows aged out of the
+// window (~2 min). One sorted rewrite keeps the ring truthful.
+//   replaceHistory: drop the ring's old history rows first (a re-pull carries
+//   the same rows again, fresher); live rows always stay.
+// A history row whose id a live row already carries is dropped — the live copy
+// is the richer one.
+function mergeIntoRing(buf, incoming, replaceHistory = false) {
+  if (!buf || !incoming?.length) return
+  const have = buf.getAll()
+  const keep = replaceHistory ? have.filter((m) => !m.isHistory) : have
+  const liveIds = new Set()
+  for (const m of keep) if (m?.id) liveIds.add(m.id)
+  // A dropped history copy may still hold what the live copy lacks: the native
+  // tap / a tagless transport can win the id race with no reply-parent context,
+  // while the replayed IRC line carries it. Graft it across (never overwrite).
+  let grafted = 0
+  let liveById = null
+  const fresh = []
+  for (const m of incoming) {
+    if (!(m?.id && liveIds.has(m.id))) {
+      fresh.push(m)
+      continue
+    }
+    if (!m.replyTo?.user) continue
+    if (!liveById) {
+      liveById = new Map()
+      for (const k of keep) if (k?.id) liveById.set(k.id, k)
+    }
+    const live = liveById.get(m.id)
+    if (live && !live.replyTo?.user) {
+      live.replyTo = m.replyTo
+      live._renderedHtml = null
+      grafted++
+    }
+  }
+  const all = fresh.concat(keep)
+  all.sort((a, b) => ordOf(a) - ordOf(b))
+  buf.clear()
+  for (const m of all) buf.push(m)
+  return grafted
 }
 
 // ============================================
@@ -527,21 +622,40 @@ class IRC extends ChatClient {
     // Capped at 500 entries (FIFO eviction) so they can't grow unbounded.
     this._modNoticeIndex = new Map()
     this._deleteNoticeIndex = new Map()
-    this._listener = (message) => {
-      if (this._destroyed || !message || typeof message !== 'object') return
-      if (message.type === 'bg_irc_msg') {
-        this._handleMsg(message.msg)
-      } else if (message.type === 'bg_irc_history_merged') {
-        this._refreshFromBg(message.channel)
+    // channels whose join-failed toast already showed (cleared by a join that lands)
+    this._joinFailSaid = new Set()
+    // The irc-twitch subsystem switch lives HERE, not at the call site.
+    // main.js gates `irc.connect()` on it — but connect() is a no-op (the BG
+    // owns the socket), so that gate turned nothing off: this listener is the
+    // twitch feed as far as the overlay is concerned. Measured, not assumed —
+    // with irc-twitch off, a bg_irc_msg broadcast still rendered a chat row.
+    // KickChat registers its own listener inside connect(), which is why the
+    // kick switch always worked; this restores the same shape.
+    if (gateAtBoot('irc-twitch')) {
+      this._listener = (message) => {
+        if (this._destroyed || !message || typeof message !== 'object') return
+        if (message.type === 'bg_irc_msg') {
+          this._handleMsg(message.msg)
+        } else if (message.type === 'bg_irc_history_merged') {
+          this._refreshFromBg(message.channel)
+        } else if (message.type === 'bg_irc_rejoin') {
+          this._rejoinBg()
+        }
       }
+      cleanup.addListener(chrome.runtime?.onMessage, this._listener)
     }
-    cleanup.addListener(chrome.runtime?.onMessage, this._listener)
     // Global twitch badges (mod sword, vip diamond, subscriber/0 star, etc.)
     // were previously fetched in irc.ws.onopen — removed when WebSocket moved
     // to BG. Without this, mod/sub fall back to TEXT badges instead of images.
     try {
       fetchGlobalBadges()
     } catch {}
+  }
+
+  // A woken SW has no record of what this tab joined (it reads rings per
+  // join), so the tab re-asserts its channels; the buffers here are intact.
+  _rejoinBg() {
+    for (const ch of this.channels.keys()) safeSendMessage({ type: 'bg_irc_join', channel: ch })
   }
 
   _seenId(id) {
@@ -611,7 +725,10 @@ class IRC extends ChatClient {
       return
     }
     if (msg.type === 'whisper') return // whispers come via EventSub now
-    if (msg.type === 'roomstate') return // BG already converted to mode_change notice
+    if (msg.type === 'roomstate') {
+      chatLockRoomstate(msg)
+      return // BG already converted to mode_change notice
+    }
     const ch = msg.channel
     if (!ch || !this.channels.has(ch)) return
     if (msg.user) {
@@ -632,6 +749,13 @@ class IRC extends ChatClient {
     } catch {}
     if (!msg.type || msg.type === 'usernotice' || msg.type === 'notice') {
       const buf = this.channels.get(ch)
+      // a timeout/ban aimed at us shuts the composer the moment it lands
+      if (msg.type === 'notice') {
+        try {
+          const lk = chatLockFromClearchat(msg, selfNamesFor('twitch'))
+          if (lk) chatLockSet(ch, lk)
+        } catch (_) {}
+      }
       // A single timeout/ban reaches us many ways: the CLEARCHAT (everyone), the
       // mod-only timeout_success/ban_success NOTICE, the direct-IRC vs server
       // EventSub fanout, and the native tap. EventSub can even drop the timeout
@@ -677,38 +801,49 @@ class IRC extends ChatClient {
           this._deleteNoticeIndex.delete(this._deleteNoticeIndex.keys().next().value)
         this._deleteNoticeIndex.set(idxKey, msg)
       }
+      // Stamp the display position ONCE, here, for a genuinely live chat line.
+      // Normally that is just tmi-sent-ts and twitch interleaves truthfully
+      // with kick/yt; a line that reached us long after it was sent takes the
+      // visual now instead, so it lands at the bottom rather than appearing in
+      // the middle of scrollback the reader has already scrolled past. Same
+      // predicate as the archive relay below — a notice, a history replay and a
+      // local synthetic are all excluded: history is chronological, and a
+      // synthetic carries client Date.now(), which must never be allowed to
+      // drag the visual clock away from server time.
+      if (!msg.type && !msg.isHistory && !msg.isSynthetic) msg.ord = liveOrd(msg.time)
       // Ordered insert, not blind push — a BG history merge or native-tap
       // copy can race a live PRIVMSG and land here with an OLDER tmi-sent-ts,
       // which would otherwise silently break the buffer's sortedness that
       // fairMerge/mergeSortedRuns (main.js) depend on.
       buf.insertOrdered(msg)
-      // Relay PRIVMSGs to server archive (ON CONFLICT DO NOTHING dedupes across
-      // multiple viewers). Skip replays from BG history merge.
+      // Tell the server this channel has a live viewer, so it archives it.
+      //
+      // This used to send a FULL message payload per PRIVMSG, and the comment
+      // here still claimed it fed the archive directly. It does not: the
+      // server side is `ws:archive-demand:<socket>:<channel>` at ONE token per
+      // 5 minutes, so every frame after the first was discarded at the door.
+      // On a busy channel that is hundreds of frames/sec for one signal — and
+      // the per-connection 30/s WS limiter is type-agnostic, so the flood
+      // silently ate this user's OWN sends, acks and presence as collateral.
+      // Mirror the server's window here and send one bare signal per channel.
       if (!msg.type && !msg.isHistory && !msg.isSynthetic && msg.user && msg.text && msg.id) {
-        try {
-          chrome.runtime
-            .sendMessage({
-              type: 'ws_send',
-              data: {
-                type: 'twitch:chat:relay',
-                channel: ch,
-                username: msg.login || String(msg.user).toLowerCase(),
-                display_name: msg.user,
-                message: msg.text,
-                message_id: msg.id,
-                timestamp: msg.time || Date.now(),
-                emote_refs: msg.twitchEmotes ? { twitch: msg.twitchEmotes } : null,
-                reply_to_id: msg.replyTo?.id || null,
-              },
-            })
-            .catch((e) => log('archive relay failed:', e?.message || e))
-        } catch (e) {
-          log('archive relay failed:', e?.message || e)
+        const lastAt = archiveDemandSentAt.get(ch) || 0
+        if (Date.now() - lastAt >= ARCHIVE_DEMAND_INTERVAL_MS) {
+          archiveDemandSentAt.set(ch, Date.now())
+          try {
+            chrome.runtime
+              .sendMessage({ type: 'ws_send', data: { type: 'twitch:chat:relay', channel: ch } })
+              .catch((e) => log('archive demand failed:', e?.message || e))
+          } catch (e) {
+            log('archive demand failed:', e?.message || e)
+          }
         }
       }
       if (msg.type === 'notice') {
         // An unban retires any prior ban/timeout notice for this target so the
-        // dedup above won't suppress a subsequent re-ban within the window.
+        // dedup above won't suppress a subsequent re-ban within the window, and
+        // lifts the ban dim from their lines (not a delete), as kick's does: the
+        // render re-greys any line its buffer still holds removed.
         if (msg.noticeType === 'unban_success' && msg.targetUser) {
           const tlc = msg.targetUser.toLowerCase()
           for (const m of buf.getAll()) {
@@ -718,6 +853,9 @@ class IRC extends ChatClient {
               (m.targetUser || '').toLowerCase() === tlc
             ) {
               m._supersededByUnban = true
+            } else if (m.cleared && m.clearedReason !== 'deleted' && (m.user || '').toLowerCase() === tlc) {
+              m.cleared = false
+              delete m.clearedReason
             }
           }
         }
@@ -727,7 +865,9 @@ class IRC extends ChatClient {
             for (const m of buf.getAll()) {
               if (m.user && m.user.toLowerCase() === targetLc && !m.cleared) {
                 m.cleared = true
-                m.clearedReason = msg.banDuration ? `timed out (${msg.banDuration}s)` : 'banned'
+                m.clearedReason = msg.banDuration
+                  ? t('mc_mod_label_timed_out', [String(msg.banDuration)])
+                  : t('mc_mod_label_banned')
               }
             }
           }
@@ -742,6 +882,32 @@ class IRC extends ChatClient {
             }
           }
         }
+      }
+      // A held send that posts: its "held for mod approval" row stops being true. Matched on the
+      // held text, so a different message of yours going out meanwhile retires nothing.
+      if (
+        !msg.type &&
+        !msg.isHistory &&
+        !msg.isSynthetic &&
+        msg.user &&
+        typeof currentUsername === 'string' &&
+        msg.user.toLowerCase() === currentUsername.toLowerCase()
+      ) {
+        const echoed = heldTextKey(msg.text)
+        const ids = []
+        for (const m of buf.getAll()) {
+          if (
+            m.type === 'notice' &&
+            m.noticeType === 'msg_rejected' &&
+            !m.resolved &&
+            m.heldText &&
+            heldTextKey(m.heldText) === echoed
+          ) {
+            m.resolved = true
+            ids.push(m.id)
+          }
+        }
+        if (ids.length) msg.resolvedHolds = ids
       }
       this.emit('message', msg)
     }
@@ -762,7 +928,7 @@ class IRC extends ChatClient {
     }
     this._refreshBusy.add(ch)
     try {
-      const resp = await chrome.runtime.sendMessage({ type: 'bg_irc_history', channel: ch })
+      const resp = await browser.runtime.sendMessage({ type: 'bg_irc_history', channel: ch })
       if (!resp?.ok) return
       const wasSize = this.channels.get(ch)?.size ?? 0
       try {
@@ -788,7 +954,7 @@ class IRC extends ChatClient {
             } catch {}
           }
           try {
-            const sentHost = peekSentHost(m.text)
+            const sentHost = peekOwnSentHost(m, 'twitch')
             if (sentHost) {
               // Cross-device simulcast replay: only ONE leg per send renders.
               if (claimHydratedEcho(m.text, 'twitch', m.time)) m.hidden = true
@@ -803,13 +969,10 @@ class IRC extends ChatClient {
       )
       const buf = this.channels.get(ch)
       if (!buf) return // channel left during staging
-      // Snapshot live messages AFTER staging — anything that arrived while we
-      // yielded (or during the sendMessage await) stays newest, not buried
-      // behind history.
-      const liveSnap = buf.getAll().filter((m) => !m.isHistory)
-      buf.clear()
-      for (const m of staged) buf.push(m)
-      for (const m of liveSnap) buf.push(m)
+      // Merge AFTER staging — anything that arrived while we yielded (or
+      // during the sendMessage await) keeps its sorted place among the history.
+      const grafted = mergeIntoRing(buf, staged, true)
+      historyWentLive(ch).catch(() => {})
       try {
         _dropAllTabCaches()
       } catch {}
@@ -818,7 +981,7 @@ class IRC extends ChatClient {
       // hydrations always rebuild so the DOM matches the buffer.
       const isCurrent = currentTab === ch || (currentTab === 'live' && getLiveChannel() === ch)
       const delta = buf.size - wasSize
-      if (isCurrent && (isMsgsElEmpty() || delta >= 5)) {
+      if (isCurrent && (isMsgsElEmpty() || delta >= 5 || grafted > 0)) {
         scheduleRenderMessages()
       }
     } catch (e) {
@@ -833,11 +996,29 @@ class IRC extends ChatClient {
     /* BG owns the WebSocket */
   }
 
+  // Tell the BG which channels this tab still shows. See bg_irc_interest in
+  // background.js: its interest map dies with the service worker.
+  _reassertInterest() {
+    if (this._destroyed || !this.channels.size) return
+    try {
+      browser.runtime.sendMessage({ type: 'bg_irc_interest', channels: [...this.channels.keys()] }).catch(() => {})
+    } catch {}
+  }
+
   async join(ch) {
+    // 13 of the 17 join call sites carry no subsystem gate — a switch that
+    // depends on every caller remembering it is not a switch. It lives at the
+    // chokepoint instead: without this, irc-twitch off still sent bg_irc_join,
+    // the BG joined, and the history pull below filled the buffer that
+    // renderMessages reads.
+    if (!gateAtBoot('irc-twitch')) return
     ch = ch.toLowerCase()
     if (this.channels.has(ch)) return
     this.channels.set(ch, new CircularBuffer(3000))
     log('Joined', ch)
+    if (!this._interestTimer) {
+      this._interestTimer = cleanup.setInterval(() => this._reassertInterest(), 15000)
+    }
     // Pre-warm channel badges (sub tiers, FFZ custom mod/vip overrides) so
     // restored history from BG renders with proper images on first paint.
     try {
@@ -851,7 +1032,10 @@ class IRC extends ChatClient {
     // otherwise loses the join forever (channels.set above blocks re-entry).
     const sendJoin = (attempt) => {
       safeSendMessage({ type: 'bg_irc_join', channel: ch }).then((r) => {
-        if (r && r.ok !== false) return
+        if (r && r.ok !== false) {
+          this._joinFailSaid.delete(ch)
+          return
+        }
         if (!this.channels.has(ch)) {
           // Channel was removed (tab closed) during the retry backoff — not
           // our failure to report, nothing left to clean up.
@@ -864,9 +1048,13 @@ class IRC extends ChatClient {
           // without this a failed join permanently empties the tab until the
           // user manually refreshes. Delete so a later join(ch) can retry.
           this.channels.delete(ch)
-          try {
-            showToast(t('mc_irc_join_failed', [ch]), 'error')
-          } catch (_) {}
+          // main.js rejoins a dropped channel every 15s: say it once, not every round
+          if (!this._joinFailSaid.has(ch)) {
+            this._joinFailSaid.add(ch)
+            try {
+              showToast(t('mc_irc_join_failed', [ch]), 'error')
+            } catch (_) {}
+          }
           return
         }
         setTimeout(() => sendJoin(attempt + 1), 2000 * (attempt + 1))
@@ -884,9 +1072,10 @@ class IRC extends ChatClient {
       if (typeof _recentSentHydrated !== 'undefined') await _recentSentHydrated
     } catch {}
     try {
-      const resp = await chrome.runtime.sendMessage({ type: 'bg_irc_history', channel: ch })
+      const resp = await browser.runtime.sendMessage({ type: 'bg_irc_history', channel: ch })
       if (resp?.ok && Array.isArray(resp.msgs) && resp.msgs.length > 0) {
         const buf = this.channels.get(ch)
+        const hydrate = []
         for (const m of resp.msgs) {
           if (m?.type === 'roomstate' || m?.type === 'userstate' || m?.type === 'whisper') continue
           m.isHistory = true
@@ -906,7 +1095,7 @@ class IRC extends ChatClient {
           // Host attribution override — IRC echo arrives as platform='twitch';
           // if we tracked this exact text as a kick/yt/heatsync send, retag.
           try {
-            const sentHost = peekSentHost(m.text)
+            const sentHost = peekOwnSentHost(m, 'twitch')
             if (sentHost) {
               // Cross-device simulcast replay: only ONE leg per send renders.
               if (claimHydratedEcho(m.text, 'twitch', m.time)) m.hidden = true
@@ -914,8 +1103,10 @@ class IRC extends ChatClient {
               m.platform = sentHost === 'yt' ? 'youtube' : sentHost
             }
           } catch {}
-          buf.push(m)
+          hydrate.push(m)
         }
+        mergeIntoRing(buf, hydrate)
+        historyWentLive(ch).catch(() => {})
         log('BG history hydrated:', resp.msgs.length, 'msgs for', ch)
         try {
           _dropAllTabCaches()
@@ -954,7 +1145,7 @@ class IRC extends ChatClient {
     for (const k of [...this._deleteNoticeIndex.keys()]) if (k.startsWith(prefix)) this._deleteNoticeIndex.delete(k)
     log('Parted', ch)
     try {
-      chrome.runtime.sendMessage({ type: 'bg_irc_part', channel: ch }).catch(() => {})
+      browser.runtime.sendMessage({ type: 'bg_irc_part', channel: ch }).catch(() => {})
     } catch {}
   }
 
@@ -983,9 +1174,9 @@ class KickChat extends ChatClient {
     this._PERSIST_DEBOUNCE_MS = 1500
     this._SYNC_BACKUP_MAX = 200
     this._pendingChannels = new Set()
-    this._recentLiveIds = new Set() // Kick message-id dedup across server-relay + Pusher-tap sources
+    this._recentLiveIds = new Set() // Kick message-id dedup across server-relay + kick-tap sources
     // Self-inflicted mod actions (toolbar/slash) inject a synthetic notice
-    // immediately; the Pusher tap then reflects the same action back —
+    // immediately; the kick tap then reflects the same action back —
     // without this index every self-mod on a tapped channel prints twice.
     this._selfModIndex = new Map() // `${slug}|${noticeType}|${target}` → ts
     // Per-channel watchdog. Kick traffic flows BG → runtime.sendMessage →
@@ -1002,7 +1193,7 @@ class KickChat extends ChatClient {
     window.addEventListener('pagehide', this._pagehideHandler)
   }
 
-  // Record a self-inflicted mod action so the Pusher-tap reflection of the
+  // Record a self-inflicted mod action so the kick-tap reflection of the
   // same action is collapsed instead of printing a second system line.
   noteSelfMod(slug, noticeType, target) {
     const key = `${(slug || '').toLowerCase()}|${noticeType}|${(target || '').toLowerCase()}`
@@ -1082,7 +1273,7 @@ class KickChat extends ChatClient {
     if (!fromNativeTap) this._touchChannel(channel)
     if (!channel || !this.channels.has(channel)) return
     // Dedup by Kick message id — the same message can arrive from the server
-    // webhook relay, the BG Pusher tap, AND the page-level native tap; keep
+    // webhook relay, the BG kick tap, AND the page-level native tap; keep
     // only the first. (touchChannel above still ran so the watchdog sees
     // primary liveness.)
     if (d.id) {
@@ -1106,7 +1297,7 @@ class KickChat extends ChatClient {
       channel,
       time: d.timestamp || Date.now(),
       platform: 'kick',
-      // numeric kick USER id (pusher tap + server relay both forward it);
+      // numeric kick USER id (kick tap + server relay both forward it);
       // setKnownColor below already read msg.userId — it was undefined
       // for every kick message until this landed
       userId: d.senderId != null ? String(d.senderId) : '',
@@ -1132,7 +1323,15 @@ class KickChat extends ChatClient {
     // emote-enrich.ts.
     if (d.hsEmotes && typeof d.hsEmotes === 'object') msg.hsEmotes = d.hsEmotes
     if (fromNativeTap) msg.fromNativeTap = true
-    // Ordered insert — the server webhook relay, the BG Pusher tap, and the
+    // Display position, decided once (see liveOrd in src/lib/utils.js). Every
+    // caller of this method is a LIVE transport — the webhook relay, the BG
+    // kick tap and the native tap; kick history takes the push() paths in
+    // loadHistory/hydrate instead and is deliberately left chronological. The
+    // relay leg is the one that can run seconds-to-minutes behind when kick
+    // throttles us, and without this its backlog would splice in above rows
+    // already on screen instead of arriving at the bottom.
+    msg.ord = liveOrd(msg.time)
+    // Ordered insert — the server webhook relay, the BG kick tap, and the
     // native tap can each deliver the same window's messages with a
     // slightly different arrival order; insertOrdered keeps the buffer
     // sorted by real timestamp instead of raw arrival.
@@ -1155,7 +1354,9 @@ class KickChat extends ChatClient {
     const action = message.action
     const targetLc = (message.targetUser || '').toLowerCase()
     if ((action === 'ban' || action === 'timeout') && targetLc) {
-      const reason = message.banDuration ? `timed out (${message.banDuration}s)` : 'banned'
+      const reason = message.banDuration
+        ? t('mc_mod_label_timed_out', [String(message.banDuration)])
+        : t('mc_mod_label_banned')
       for (const m of buf.getAll()) {
         if (!m.cleared && (m.user || '').toLowerCase() === targetLc) {
           m.cleared = true
@@ -1195,12 +1396,12 @@ class KickChat extends ChatClient {
     if (this._consumeSelfMod(channel, noticeType, action === 'delete' ? message.targetMsgId : targetLc)) return
     const text =
       action === 'delete'
-        ? `a message was deleted`
+        ? t('mc_ircx_msg_deleted')
         : action === 'unban'
-          ? `${target} was unbanned`
+          ? t('mc_ircx_unbanned', [target])
           : action === 'timeout'
-            ? `${target} timed out for ${message.banDuration || 1}s`
-            : `${target} was banned`
+            ? t('mc_ircx_timed_out', [target, String(message.banDuration || 1)])
+            : t('mc_ircx_banned', [target])
     this.emit('message', {
       type: 'notice',
       noticeType,
@@ -1290,7 +1491,7 @@ class KickChat extends ChatClient {
         return
       }
 
-      // Kick moderation (ban/timeout/delete/unban) observed on the Pusher tap —
+      // Kick moderation (ban/timeout/delete/unban) observed on the kick tap —
       // reflect it like Twitch's CLEARCHAT/CLEARMSG: flag the offender's buffer
       // entries `cleared` (so re-renders keep the dim) and emit a notice-shaped
       // message so main.js's irc.on('message') dims the live DOM, prints the
@@ -1301,7 +1502,7 @@ class KickChat extends ChatClient {
       }
 
       // Kick chat-mode banners (slow/sub-only/emote-only/followers) — BG
-      // already converted the Pusher ChatroomUpdatedEvent into a mode_change
+      // already converted the ChatroomUpdatedEvent into a mode_change
       // notice shaped exactly like Twitch's ROOMSTATE→mode_change (see
       // main.js's noticeKind mapping), platform-tagged kick.
       if (message.type === 'kick_mode_change' && message.channel && message.msg) {
@@ -1320,11 +1521,15 @@ class KickChat extends ChatClient {
       if (message.type === 'kick_pin_event' && message.channel) {
         const channel = message.channel.toLowerCase()
         if (!this.channels.has(channel)) return
-        const by = message.sender ? ` ${message.sender}:` : ':'
         const msg = {
           user: message.sender || 'system',
           text: '',
-          systemMsg: message.pinned ? `pinned${by} ${message.text}`.trim() : 'message unpinned',
+          systemMsg: message.pinned
+            ? (message.sender
+                ? t('mc_main_ev_pinned_by', [message.sender, message.text])
+                : t('mc_main_ev_pinned', [message.text])
+              ).trim()
+            : t('mc_main_ev_unpinned'),
           // feeds sanitizeColor()/COLOR_RE downstream (main.js) — literal hex only, no var().
           color: '#ffd700',
           badges: '',
@@ -1350,7 +1555,13 @@ class KickChat extends ChatClient {
         const msg = {
           user: message.username || 'anonymous',
           text: message.message || '',
-          systemMsg: `${message.username || 'Anonymous'} gifted ${message.amount} KICKs${message.giftName ? ` (${message.giftName})` : ''}!`,
+          systemMsg: message.giftName
+            ? t('mc_ircx_gift_kicks_named', [
+                message.username || t('mc_ircx_anonymous'),
+                String(message.amount),
+                message.giftName,
+              ])
+            : t('mc_ircx_gift_kicks', [message.username || t('mc_ircx_anonymous'), String(message.amount)]),
           // feeds sanitizeColor()/COLOR_RE downstream (main.js) — must stay literal hex, no var(). Canonical gold.
           color: '#ffd700',
           badges: '',
@@ -1448,7 +1659,7 @@ class KickChat extends ChatClient {
     }
     this._refreshBusy.add(ch)
     try {
-      const resp = await chrome.runtime.sendMessage({ type: 'bg_kick_history', channel: ch })
+      const resp = await browser.runtime.sendMessage({ type: 'bg_kick_history', channel: ch })
       if (!resp?.ok || !Array.isArray(resp.msgs)) return
       const wasSize = this.channels.get(ch)?.size ?? 0
       try {
@@ -1468,7 +1679,7 @@ class KickChat extends ChatClient {
             } catch {}
           }
           try {
-            const sentHost = peekSentHost(m.text)
+            const sentHost = peekOwnSentHost(m, 'kick')
             if (sentHost) {
               // Cross-device simulcast replay: only ONE leg per send renders.
               if (claimHydratedEcho(m.text, 'kick', m.time)) m.hidden = true
@@ -1482,11 +1693,8 @@ class KickChat extends ChatClient {
       )
       const buf = this.channels.get(ch)
       if (!buf) return // channel left during staging
-      // Snapshot live messages AFTER staging so mid-ingest arrivals stay newest.
-      const liveSnap = buf.getAll().filter((m) => !m.isHistory)
-      buf.clear()
-      for (const m of staged) buf.push(m)
-      for (const m of liveSnap) buf.push(m)
+      // Merge AFTER staging; live rows that arrived mid-ingest stay, in sorted place.
+      mergeIntoRing(buf, staged, true)
       try {
         _dropAllTabCaches()
       } catch {}
@@ -1512,7 +1720,7 @@ class KickChat extends ChatClient {
     let chromeMsgs = null,
       syncMsgs = null
     try {
-      const stored = await chrome.storage.local.get(storageKey)
+      const stored = await browser.storage.local.get(storageKey)
       const data = stored[storageKey]
       if (data?.msgs?.length > 0 && Date.now() - data.ts < 86400000) chromeMsgs = data.msgs
     } catch {}
@@ -1558,7 +1766,7 @@ class KickChat extends ChatClient {
       if (isStreamEvent && m.text) {
         if (!m.type) m.type = 'stream-event'
         if (!m.text.startsWith('[')) {
-          const em = m.text.match(/^([a-zA-Z0-9_]+) ◆/)
+          const em = m.text.match(/^([a-zA-Z0-9_]+) \u25c6/)
           if (em) m.text = `[${em[1]}]${m.text.slice(em[1].length)}`
         }
         if (seenEventTexts.has(m.text)) return false
@@ -1580,8 +1788,8 @@ class KickChat extends ChatClient {
         addUsername(msg.user)
         setKnownColor(msg.user.toLowerCase(), msg.color, msg.userId, 'kick')
       }
-      buffer.push(msg)
     }
+    mergeIntoRing(buffer, filtered)
     // Always render when history hydrates and panel is current — even if a
     // couple live msgs already painted, the buffer just grew and the DOM
     // must reflect it.
@@ -1614,6 +1822,11 @@ class KickChat extends ChatClient {
   }
 
   async join(kickUsername) {
+    // Same chokepoint as IRC.join above. Kick's RENDER side was already gated
+    // (its listener registers in connect()), but the joins were not: with
+    // chat-kick off the overlay still asked the BG for this channel's history
+    // and badges.
+    if (!gateAtBoot('chat-kick')) return
     kickUsername = kickUsername.toLowerCase()
     if (this.channels.has(kickUsername)) return
     this.channels.set(kickUsername, new CircularBuffer(3000))
@@ -1632,12 +1845,13 @@ class KickChat extends ChatClient {
     // history if BG is cold.
     let hydrated = false
     try {
-      const resp = await chrome.runtime.sendMessage({ type: 'bg_kick_history', channel: kickUsername })
+      const resp = await browser.runtime.sendMessage({ type: 'bg_kick_history', channel: kickUsername })
       if (resp?.ok && Array.isArray(resp.msgs) && resp.msgs.length > 0) {
         const buf = this.channels.get(kickUsername)
         try {
           if (typeof _recentSentHydrated !== 'undefined') await _recentSentHydrated
         } catch {}
+        const hydrate = []
         for (const m of resp.msgs) {
           m.isHistory = true
           if (m.user) {
@@ -1649,7 +1863,7 @@ class KickChat extends ChatClient {
             } catch {}
           }
           try {
-            const sentHost = peekSentHost(m.text)
+            const sentHost = peekOwnSentHost(m, 'kick')
             if (sentHost) {
               // Cross-device simulcast replay: only ONE leg per send renders.
               if (claimHydratedEcho(m.text, 'kick', m.time)) m.hidden = true
@@ -1657,8 +1871,9 @@ class KickChat extends ChatClient {
               m.platform = sentHost === 'yt' ? 'youtube' : sentHost
             }
           } catch {}
-          buf.push(m)
+          hydrate.push(m)
         }
+        mergeIntoRing(buf, hydrate)
         hydrated = true
         log('Kick BG history hydrated:', resp.msgs.length, 'msgs for', kickUsername)
         try {

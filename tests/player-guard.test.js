@@ -24,7 +24,16 @@ const SRC = readFileSync(join(ROOT, 'src', 'multichat', 'player-guard.js'), 'utf
  * Stand the guard up against a fake DOM. Non-module content-script globals in
  * one bundled scope, same approach as highlight-idempotent.test.js.
  */
-function makeGuard({ width, height, hidden = false, fullscreen = false, pip = false, bodyClasses = [] }) {
+function makeGuard({
+  width,
+  height,
+  hidden = false,
+  fullscreen = false,
+  pip = false,
+  bodyClasses = [],
+  selector = '.persistent-player',
+  rendered = true,
+}) {
   const rect = { width, height }
   const classes = new Set(bodyClasses)
   const removedProps = []
@@ -33,6 +42,7 @@ function makeGuard({ width, height, hidden = false, fullscreen = false, pip = fa
   const player = {
     isConnected: true,
     getBoundingClientRect: () => rect,
+    getClientRects: () => (rendered ? [rect] : []),
     style: { removeProperty: (p) => removedProps.push(p) },
   }
 
@@ -40,7 +50,7 @@ function makeGuard({ width, height, hidden = false, fullscreen = false, pip = fa
     hidden,
     fullscreenElement: fullscreen ? {} : null,
     pictureInPictureElement: pip ? {} : null,
-    querySelector: (sel) => (sel === '.persistent-player' ? player : null),
+    querySelector: (sel) => (sel === selector ? player : null),
     body: {
       classList: {
         add: (c) => classes.add(c),
@@ -87,6 +97,22 @@ function makeGuard({ width, height, hidden = false, fullscreen = false, pip = fa
     },
   }
 }
+
+describe('player-guard — youtube', () => {
+  test('measures #movie_player, so a healthy watch page is never flagged', () => {
+    const g = makeGuard({ width: 925, height: 520, selector: '#movie_player' })
+    g.check()
+    g.fireConfirm()
+    expect(g.playerGuardDisengaged()).toBe(false)
+  })
+
+  test('a collapsed #movie_player still releases our geometry', () => {
+    const g = makeGuard({ width: 0, height: 0, selector: '#movie_player' })
+    g.check()
+    g.fireConfirm()
+    expect(g.playerGuardDisengaged()).toBe(true)
+  })
+})
 
 describe('player-guard — fires when the player is actually broken', () => {
   test('a collapsed player releases our geometry', () => {
@@ -201,5 +227,21 @@ describe('the CSS kill-switch actually gates the player rules', () => {
 
   test('the gate is actually present on player rules', () => {
     expect(CSS).toContain('body:not(.hs-player-safe).hs-platform')
+  })
+})
+
+describe('player-guard — a player that is not there', () => {
+  test('a zero-size player with no box (an offline kick channel keeps a hidden video) never trips it', () => {
+    const g = makeGuard({ width: 0, height: 0, rendered: false })
+    g.check()
+    g.fireConfirm()
+    expect(g.playerGuardDisengaged()).toBe(false)
+  })
+
+  test('a zero-size player that still has a box is the collapse it exists for', () => {
+    const g = makeGuard({ width: 0, height: 0 })
+    g.check()
+    g.fireConfirm()
+    expect(g.playerGuardDisengaged()).toBe(true)
   })
 })

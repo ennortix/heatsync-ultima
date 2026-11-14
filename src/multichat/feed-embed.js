@@ -1,7 +1,8 @@
 // Feed media + embed rendering for the extension home tab.
 // Mirrors heatsync client/embed/embed-parser.js + renderers/media-renderer.js
 // All embeds always-enabled (extension has no per-platform toggles yet).
-// Uses plain iframes (no facade) — feed virtual-scrolls so visible iframe count stays low.
+// Feed iframes are click-to-load (hsFacadeIframes): nothing reaches a third
+// party until the viewer presses the button naming its host.
 
 // Defence-in-depth sandbox for third-party iframes. allow-scripts/same-origin
 // are required by every embed provider (player JS + auth cookies); the rest
@@ -10,6 +11,19 @@
 // ship malicious payload.
 const EMBED_SANDBOX =
   'allow-scripts allow-same-origin allow-presentation allow-popups allow-popups-to-escape-sandbox allow-forms'
+
+// Click-to-load. Each iframe keeps its address in data-hs-src behind a button
+// that names the host; attachFeedFallbacks wires the click that sets .src.
+function hsFacadeIframes(html) {
+  return html.replace(/<iframe\b([^>]*?)\ssrc="([^"]+)"/g, (_m, pre, src) => {
+    let host = ''
+    try {
+      host = new URL(src.replace(/&amp;/g, '&')).hostname.replace(/^www\./, '')
+    } catch {}
+    const label = escapeHtml(t('mc_feed_embed_load', [host]))
+    return `<button type="button" class="hs-embed-facade" data-hs-embed-load>▶ ${label}</button><iframe${pre} data-hs-src="${src}"`
+  })
+}
 
 function sanitizeEmbedId(id) {
   if (!id || typeof id !== 'string') return ''
@@ -36,7 +50,6 @@ const HS_IMG_DIRECT_HOSTS = new Set([
   'files.kick.com',
   'heatsync.org',
   'cdn.heatsync.org',
-  'i.imgur.com',
   'd3aqoihi2n8ty8.cloudfront.net',
 ])
 function hsProxyImg(url) {
@@ -66,7 +79,7 @@ function ytEmbed(videoId) {
     </a>`
   }
   return `<div class="hs-feed-embed-container hs-feed-embed-youtube">
-    <iframe src="https://www.youtube-nocookie.com/embed/${id}?modestbranding=1&playsinline=1&rel=0&enablejsapi=1"
+    <iframe src="https://www.youtube.com/embed/${id}?modestbranding=1&playsinline=1&rel=0&enablejsapi=1"
       sandbox="${EMBED_SANDBOX}"
       allow="autoplay; accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
       loading="lazy"
@@ -93,7 +106,7 @@ function kickClipEmbed(clipId, fullUrl) {
   const safe = safeUrl(fullUrl) || `https://kick.com/clips/${id}`
   return `<div class="hs-feed-embed-pending hs-feed-embed-kick"
     data-resolve-url="${attr(safe)}" data-resolve-platform="kick">
-    <span class="hs-feed-embed-pending-label">loading kick clip…</span>
+    <span class="hs-feed-embed-pending-label">${escapeHtml(t('mc_feed_loading_name', ['kick clip']))}</span>
   </div>`
 }
 
@@ -137,20 +150,26 @@ function soundcloudEmbed(url) {
   </div>`
 }
 
-function giphyEmbed(gifId) {
-  const id = sanitizeEmbedId(gifId)
-  if (!id) return ''
-  return `<div class="hs-feed-embed-container hs-feed-embed-giphy">
-    <iframe src="https://giphy.com/embed/${id}" sandbox="${EMBED_SANDBOX}" allow="fullscreen" loading="lazy"></iframe>
+// Giphy / Tenor / Imgur resolve through the server so the image is scanned and
+// held behind the viewer's own settings before it shows — a raw iframe or <img>
+// would show whatever the link points at, unlooked-at.
+function resolvedImageEmbed(platform, url, label) {
+  return `<div class="hs-feed-embed-pending hs-feed-embed-${platform}"
+    data-resolve-url="${attr(url)}" data-resolve-platform="${platform}">
+    <span class="hs-feed-embed-pending-label">${escapeHtml(t('mc_feed_loading_name', [label]))}</span>
   </div>`
 }
 
-function tenorEmbed(gifId) {
+function giphyEmbed(gifId) {
   const id = sanitizeEmbedId(gifId)
   if (!id) return ''
-  return `<div class="hs-feed-embed-container hs-feed-embed-tenor">
-    <iframe src="https://tenor.com/embed/${id}" sandbox="${EMBED_SANDBOX}" allow="fullscreen" loading="lazy"></iframe>
-  </div>`
+  return resolvedImageEmbed('giphy', `https://giphy.com/gifs/${id}`, 'giphy gif')
+}
+
+function tenorEmbed(_gifId, url) {
+  const safe = safeUrl(url || '')
+  if (!safe) return ''
+  return resolvedImageEmbed('tenor', safe, 'tenor gif')
 }
 
 function twitterEmbed(tweetId, _url) {
@@ -169,16 +188,7 @@ function twitterEmbed(tweetId, _url) {
 function imgurEmbed(imgurId) {
   const id = sanitizeEmbedId(imgurId)
   if (!id) return ''
-  // Imgur embed needs script — fall back to direct image link approach.
-  // data-fb="hide" is the host-CSP-safe replacement for inline onerror;
-  // attachFeedFallbacks() wires the listener post-render.
-  return `<div class="hs-feed-embed-container hs-feed-embed-imgur" style="aspect-ratio:auto;max-width:480px">
-    <a href="https://imgur.com/${id}" target="_blank" rel="noopener">
-      <img src="https://i.imgur.com/${id}.jpg" alt="imgur"
-        style="max-width:100%;height:auto;display:block"
-        data-fb="hide">
-    </a>
-  </div>`
+  return resolvedImageEmbed('imgur', `https://imgur.com/${id}`, 'imgur')
 }
 
 function tiktokEmbed(videoId, _url) {
@@ -205,7 +215,7 @@ function redditEmbed(url) {
     return `<div class="hs-feed-embed-pending hs-feed-embed-reddit"
       data-resolve-url="${attr(safe)}" data-resolve-platform="reddit"
       data-fb-title="${attr(title)}" data-fb-author="r/${attr(sub)}">
-      <span class="hs-feed-embed-pending-label">loading reddit…</span>
+      <span class="hs-feed-embed-pending-label">${escapeHtml(t('mc_feed_loading_name', ['reddit']))}</span>
     </div>`
   }
   // Non-permalink (subreddit, user) → link card.
@@ -229,9 +239,51 @@ function instagramEmbed(url) {
 }
 
 // Convert a single URL → embed HTML, or '' if not embeddable
+// Platforms the archive stores — everything else has no /search/logs surface at all,
+// so a permalink for one would point at a page that can never hold it. Declared
+// here rather than next to buildLogPermalink in chat-logs.js because that file
+// is concatenated LATER: a const read from an earlier file is still in its
+// temporal dead zone, and `typeof` does not save you from that one.
+const HS_LOG_PLATFORMS = new Set(['twitch', 'kick', 'youtube'])
+
+// A heatsync chat-log permalink, split into the three things that identify the
+// line. Mirrors the site's logResolveEndpoint (client/embed/embed-resolver.js).
+// The date segment is deliberately ignored: the archive resolves on
+// (platform, channel, message_id), so the day in the URL only picks which log
+// PAGE a click-through lands on — see buildLogPermalink in chat-logs.js.
+function logPermalinkParts(url) {
+  try {
+    const u = new URL(url)
+    if (!/(^|\.)heatsync\.org$/.test(u.hostname)) return null
+    const seg = u.pathname.split('/') // ['', 'search', 'logs', platform, channel, date] or (legacy) ['', 'logs', platform, channel, date]
+    const base = seg[1] === 'search' && seg[2] === 'logs' ? 3 : seg[1] === 'logs' ? 2 : -1
+    if (base === -1 || seg.length < base + 3) return null
+    const platform = (seg[base] || '').toLowerCase()
+    const channel = (seg[base + 1] || '').toLowerCase()
+    const messageId = u.searchParams.get('m')
+    if (!messageId || !channel || !HS_LOG_PLATFORMS.has(platform)) return null
+    return { platform, channel, messageId }
+  } catch (_) {
+    return null
+  }
+}
+
+// First-party quoted chat line. Resolves through the archive API, NOT the
+// third-party embed resolver — see _fetchFeedResolve.
+function logEmbed(url) {
+  const safe = safeUrl(url)
+  if (!safe) return ''
+  return `<div class="hs-feed-embed-pending hs-feed-embed-log" data-resolve-url="${attr(safe)}" data-resolve-platform="log">
+    <span class="hs-feed-embed-pending-label">${escapeHtml(t('mc_feed_loading_chat_line'))}</span>
+  </div>`
+}
+
 function parseFeedEmbed(url) {
   if (!url || typeof url !== 'string') return ''
   const cleanUrl = url.replace(/[.,;!?]+$/, '')
+
+  // heatsync chat-log permalink → the actual quoted chat line (post↔log bridge)
+  if (logPermalinkParts(cleanUrl)) return logEmbed(cleanUrl)
 
   // YouTube
   if (cleanUrl.includes('youtube.com/watch?v=') || cleanUrl.includes('youtu.be/')) {
@@ -302,7 +354,7 @@ function parseFeedEmbed(url) {
   // Tenor
   if (cleanUrl.includes('tenor.com/view/')) {
     const m = cleanUrl.match(/view\/.*-(\d+)$/)
-    if (m) return tenorEmbed(m[1])
+    if (m) return tenorEmbed(m[1], cleanUrl)
   }
 
   // TikTok
@@ -349,8 +401,10 @@ function parseFeedEmbed(url) {
 // Extract first embeddable URL from message content (OP only, mirrors website)
 function extractFeedEmbed(content) {
   if (!content || typeof content !== 'string') return ''
-  // Same priority order as website _extractEmbed
+  // Same priority order as website _extractEmbed, with the first-party chat-log
+  // permalink ahead of everything: it is the one embed that IS the post's point.
   const priorityPatterns = [
+    /https?:\/\/(?:[\w-]+\.)?heatsync\.org\/(?:search\/logs|logs)\/\w+\/[\w-]+\/[\d-]+\?m=[^\s]+/,
     /https?:\/\/(?:www\.)?streamable\.com\/\w+/,
     /https?:\/\/(?:www\.)?youtu(?:\.be\/|be\.com\/watch\?v=)[\w-]+/,
     /https?:\/\/clips\.twitch\.tv\/[\w-]+/,
@@ -398,11 +452,17 @@ function extractChatEmbed(text, opts) {
   // constantly because platforms throttle links for non-subs, and linkifyPartialLinks
   // already turns these into anchors. Without this they were link-only: you had
   // to leave chat to watch. Falls through only when no real URL produced a card,
-  // so an explicit link in the same message still wins. Rides the same
-  // partialLinksEnabled toggle — off means "don't guess at bare fragments".
+  // so an explicit link in the same message still wins. Off with clickable
+  // links — no links at all means no guessing at bare fragments either.
   if (opts?.partialLinks === false) return ''
-  const partial = typeof firstPartialYtUrl === 'function' ? firstPartialYtUrl(text) : ''
-  return partial ? chatEmbedForUrl(partial) : ''
+  const yt = typeof firstPartialYtUrl === 'function' ? firstPartialYtUrl(text) : ''
+  const ytHtml = yt ? chatEmbedForUrl(yt) : ''
+  if (ytHtml) return ytHtml
+  const tweet = typeof firstPartialTweetUrl === 'function' ? firstPartialTweetUrl(text) : ''
+  const tweetHtml = tweet ? chatEmbedForUrl(tweet) : ''
+  if (tweetHtml) return tweetHtml
+  const reddit = typeof firstPartialRedditUrl === 'function' ? firstPartialRedditUrl(text) : ''
+  return reddit ? chatEmbedForUrl(reddit) : ''
 }
 
 function chatEmbedForUrl(rawUrl) {
@@ -418,11 +478,28 @@ function chatEmbedForUrl(rawUrl) {
   }
   const safe = safeUrl(cleanUrl)
   if (!safe) return ''
+  // heatsync chat-log permalink → the quoted line, in chat too. First-party and
+  // text-weight: no iframe, no third-party fetch, so the chat-volume rule above
+  // is not in play.
+  if (logPermalinkParts(cleanUrl)) return logEmbed(cleanUrl)
   // Direct image / gif → inline, lazy, error-guarded (data-fb hides on 404/blocked).
+  // data-hs-src-url lets the row fold the raw URL out of the message text: the
+  // image IS the content, so the link adds nothing but noise. Only direct media
+  // carries it — a link CARD keeps its URL visible, because there you're being
+  // asked to click through to somewhere and you get to see where.
+  // The anchor exists for the right-click menu. hsProxyImg() rewrites unknown
+  // hosts to /api/img, so "copy image address" off the <img> would hand back
+  // OUR proxy url; "copy link address" off the anchor gives the real one.
   if (/\.(jpg|jpeg|png|gif|webp|avif)(\?.*)?$/i.test(cleanUrl)) {
-    return `<div class="hs-mc-media"><img src="${attr(hsProxyImg(safe))}" alt="" loading="lazy" decoding="async" data-fb="hide"></div>`
+    return `<div class="hs-mc-media" data-hs-src-url="${attr(safe)}"><a class="hs-mc-media-link" href="${attr(safe)}" target="_blank" rel="noopener noreferrer"><img src="${attr(hsProxyImg(safe))}" alt="" loading="lazy" decoding="async" data-fb="hide"></a></div>`
   }
   // Direct video → inline, preload=none (no bytes until play — critical at chat volume).
+  // No anchor: it would swallow the transport controls, and video src is never
+  // proxied, so the native "copy video address" already yields the real url.
+  // No data-hs-src-url either — a video keeps its url on screen. preload="none"
+  // means nothing is fetched until you press play, so there is never a moment
+  // where the file has proved it exists, and until then the url is the only
+  // thing in the message that says what you'd be pressing play on.
   if (/\.(mp4|webm|mov)(\?.*)?$/i.test(cleanUrl)) {
     return `<div class="hs-mc-media"><video controls muted preload="none" playsinline src="${attr(safe)}" data-fb="hide"></video></div>`
   }
@@ -434,11 +511,18 @@ function chatEmbedForUrl(rawUrl) {
   else if ((ym = cleanUrl.match(/youtube\.com\/shorts\/([\w-]{11})/))) ytId = ym[1]
   if (ytId) {
     const id = sanitizeEmbedId(ytId)
-    if (id)
-      return `<a href="https://www.youtube.com/watch?v=${id}" target="_blank" rel="noopener" class="hs-mc-media hs-mc-playable hs-feed-embed-yt-thumb">
-      <img src="${hsProxyImg(`https://i.ytimg.com/vi/${id}/mqdefault.jpg`)}" alt="" loading="lazy" decoding="async" data-fb="hide">
+    // Shorts are 9:16 — the card (and the in-place player that overlays its
+    // rect) renders portrait like the tiktok card, instead of letterboxing
+    // the video into a strip inside a 16:9 box. oar2.jpg is the portrait
+    // thumb yt serves for shorts; data-fb hides it if a short lacks one.
+    const isShort = /\/shorts\//i.test(cleanUrl)
+    if (id) {
+      const thumb = isShort ? `https://i.ytimg.com/vi/${id}/oar2.jpg` : `https://i.ytimg.com/vi/${id}/mqdefault.jpg`
+      return `<a href="https://www.youtube.com/watch?v=${id}" target="_blank" rel="noopener" class="hs-mc-media hs-mc-playable hs-feed-embed-yt-thumb${isShort ? ' hs-yt-portrait' : ''}">
+      <img src="${hsProxyImg(thumb)}" alt="" loading="lazy" decoding="async" data-fb="hide">
       <span class="hs-feed-embed-yt-play">▶</span>
     </a>`
+    }
   }
   // Providers the server resolver handles (oEmbed) → lightweight pending card.
   // Server returns image/video/audio/rich; unsupported → graceful link card.
@@ -451,19 +535,46 @@ function chatEmbedForUrl(rawUrl) {
     )
   ) {
     const playable = chatUrlPlayable(cleanUrl) ? ' hs-mc-playable' : ''
-    return `<div class="hs-mc-media hs-feed-embed-pending${playable}" data-resolve-url="${attr(safe)}" data-resolve-platform="link"><span class="hs-feed-embed-pending-label">loading preview…</span></div>`
+    return `<div class="hs-mc-media hs-feed-embed-pending${playable}" data-resolve-url="${attr(safe)}" data-resolve-platform="link"><span class="hs-feed-embed-pending-label">${escapeHtml(t('mc_feed_loading_preview'))}</span></div>`
   }
   return ''
 }
 
-// Main entry: build full media HTML for a feed message.
-// Handles direct uploads (image/video), multi-image (media[]), and content-extracted embeds.
+// Main entry: the media of a feed/thread message, held behind the viewer's own
+// toggles when the scanner flagged the post (same default as the site: nothing
+// opted in = held). The real markup rides inside a <template>, so the browser
+// loads nothing until "show"; csam carries no markup and no button at all.
 function buildFeedMediaHtml(m) {
+  // The server already took the file out for this viewer (media_held): draw the
+  // box; "show" fetches the media from /api/messages/:id/media. Only the
+  // categories a viewer may open get a button (never csam, spam, a ban).
+  if (Array.isArray(m?.media_held) && m.media_held.length && m.has_media) {
+    const cat = m.media_held[0]
+    const label = hsHeldLabel(cat)
+    const open = HS_MEDIA_SETTING[cat] && m.base36_id
+    const reveal = open
+      ? ` <button type="button" class="hs-mc-held-post-show" data-mid="${attr(m.base36_id)}">${attr(t('mc_held_show'))}</button></span>`
+      : '</span>'
+    return `<div class="hs-mc-held-post"><span class="hs-mc-held" data-cat="${attr(cat)}">${attr(t('mc_held_media', [label]))}${reveal}</div>`
+  }
+  const html = _feedMediaHtml(m)
+  const cat = html ? hsHeldMediaCat(m.moderation_result?.flaggedCategories) : ''
+  if (!cat) return html
+  const label = hsHeldLabel(cat)
+  const reveal =
+    cat === 'csam'
+      ? ''
+      : ` <button type="button" class="hs-mc-held-post-show">${attr(t('mc_held_show'))}</button></span><template>${html}</template>`
+  return `<div class="hs-mc-held-post"><span class="hs-mc-held" data-cat="${attr(cat)}">${attr(t('mc_held_media', [label]))}${reveal || '</span>'}</div>`
+}
+
+// Handles direct uploads (image/video), multi-image (media[]), and content-extracted embeds.
+function _feedMediaHtml(m) {
   if (!m) return ''
   // Media URLs come back origin-relative (/uploads/...). The ext renders
   // cross-origin (twitch/kick/yt), so a relative src silently 404s AND safeUrl()
   // throws on a relative URL → the image is dropped entirely. Absolutize here —
-  // the single render chokepoint for feed, thread, and /logs — so no insert path
+  // the single render chokepoint for feed, thread, and /search/logs — so no insert path
   // can leak a relative URL. Idempotent: absolute URLs pass through untouched.
   if (typeof _absolutizeThreadMedia === 'function') _absolutizeThreadMedia(m)
   const isReply = !!m.reply_to
@@ -502,7 +613,7 @@ function buildFeedMediaHtml(m) {
 
     if (isEmbedType) {
       const embedHtml = parseFeedEmbed(safe)
-      if (embedHtml) return `<div class="hs-feed-media">${embedHtml}</div>`
+      if (embedHtml) return `<div class="hs-feed-media">${hsFacadeIframes(embedHtml)}</div>`
     }
 
     if (isVideo) {
@@ -519,11 +630,58 @@ function buildFeedMediaHtml(m) {
   // No direct media — for OPs, scan content for embeddable URL
   if (!isReply && m.content) {
     const embedHtml = extractFeedEmbed(m.content)
-    if (embedHtml) return `<div class="hs-feed-media">${embedHtml}</div>`
+    if (embedHtml) return `<div class="hs-feed-media">${hsFacadeIframes(embedHtml)}</div>`
   }
 
   return ''
 }
+
+// "show" on a held post's media opens it in place and offers "hide" to put the
+// box back. Capture, so the row's own click (open thread) never sees either.
+document.addEventListener(
+  'click',
+  (e) => {
+    const btn = e.target?.closest?.('.hs-mc-held-post-show, .hs-mc-held-post-hide')
+    const box = btn?.closest('.hs-mc-held-post')
+    if (!box) return
+    e.preventDefault()
+    e.stopPropagation()
+    if (btn.classList.contains('hs-mc-held-post-hide')) {
+      box.querySelector('.hs-mc-held-real')?.remove()
+      box.classList.remove('hs-open')
+      return
+    }
+    const tpl = box.querySelector('template')
+    const mid = btn.dataset.mid
+    if (!tpl && !mid) return
+    const open = (frag) => {
+      box.querySelector('.hs-mc-held-real')?.remove()
+      const real = document.createElement('div')
+      real.className = 'hs-mc-held-real'
+      const hide = document.createElement('button')
+      hide.type = 'button'
+      hide.className = 'hs-mc-held-post-hide hs-mc-held-show'
+      hide.textContent = t('mc_held_hide')
+      real.append(hide, frag)
+      box.append(real)
+      box.classList.add('hs-open')
+    }
+    if (tpl) return open(tpl.content.cloneNode(true))
+    // withheld by the server: ask for it (auth attached by the background proxy)
+    btn.disabled = true
+    apiFetch(`/api/messages/${encodeURIComponent(mid)}/media`, { auth: true }).then((resp) => {
+      const d = resp?.ok ? resp.data : null
+      const html = d ? _feedMediaHtml({ ...d, base36_id: mid, has_media: true, content: '' }) : ''
+      if (!html) {
+        btn.disabled = false
+        btn.textContent = resp?.status === 403 ? t('mc_feed_adult_login') : t('common_retry')
+        return
+      }
+      open(document.createRange().createContextualFragment(html))
+    })
+  },
+  { signal: mcSignal, capture: true },
+)
 
 // Resolve `.hs-feed-embed-pending[data-resolve-url]` placeholders via
 // heatsync.org/api/embed/resolve. All HTML built from server fields is escaped
@@ -537,6 +695,17 @@ function _fetchFeedResolve(url) {
   // page-origin CORS, but the SW has full host_permissions and bypasses it.
   const promise = (async () => {
     try {
+      // First-party chat-log permalink → the archive, not the third-party embed
+      // resolver. A miss (cold-stored, soft-deleted, never archived, or an
+      // opted-out channel/chatter) resolves to null, and the placeholder falls
+      // back to a plain link — the same degradation heatsync.org chose.
+      const parts = logPermalinkParts(url)
+      if (parts) {
+        const path = `/api/archive/message/${encodeURIComponent(parts.platform)}/${encodeURIComponent(parts.channel)}?id=${encodeURIComponent(parts.messageId)}`
+        const resp = await apiFetch(path)
+        const row = resp?.ok ? resp.data?.message : null
+        return row ? { type: 'chatlog', ...row } : null
+      }
       const data = await safeSendMessage({ type: 'fetch_embed_resolve', url })
       if (!data || data.error || data.ok === false) return null
       return data
@@ -552,7 +721,46 @@ function _fetchFeedResolve(url) {
   return promise
 }
 
-function _buildFeedResolvedHtml(ph, data) {
+// The server scans the media an embed shows and returns its moderation
+// categories as `flagged`. Held behind the same toggles the viewer already has for
+// emotes (the site writes the media + emote columns together, one row per
+// category), so nothing new to sync. Default is held; an unreadable setting holds.
+const HS_MEDIA_SETTING = {
+  nsfw: 'viewer_show_sexual',
+  violence: 'viewer_show_gore',
+  weapons: 'viewer_show_weapon',
+  drugs: 'viewer_show_drug',
+  hate: 'viewer_show_hate',
+}
+const HS_MEDIA_LABEL_KEY = {
+  nsfw: 'mc_held_nsfw',
+  violence: 'mc_held_violence',
+  weapons: 'mc_held_weapons',
+  drugs: 'mc_held_drugs',
+  hate: 'mc_held_hate',
+}
+// the scanner's category in the viewer's language; an id with no label (csam) shows as itself
+const hsHeldLabel = (cat) => (HS_MEDIA_LABEL_KEY[cat] ? t(HS_MEDIA_LABEL_KEY[cat]) : cat)
+
+function hsHeldMediaCat(flagged) {
+  if (!Array.isArray(flagged)) return ''
+  for (const cat of flagged) {
+    if (cat === 'csam') return 'csam'
+    const key = HS_MEDIA_SETTING[cat]
+    if (!key) continue
+    if (typeof getSetting !== 'function' || getSetting(key) !== true) return cat
+  }
+  return ''
+}
+
+function _buildHeldEmbedHtml(cat) {
+  const label = hsHeldLabel(cat)
+  return `<span class="hs-mc-held" data-cat="${attr(cat)}">${attr(t('mc_held_embed', [label]))} <button type="button" class="hs-mc-held-show">${attr(t('mc_held_show'))}</button></span>`
+}
+
+function _buildFeedResolvedHtml(ph, data, revealed = false) {
+  const heldCat = revealed ? '' : hsHeldMediaCat(data.flagged)
+  if (heldCat) return _buildHeldEmbedHtml(heldCat)
   const url = ph.dataset.resolveUrl || ''
   const platform = ph.dataset.resolvePlatform || ''
   const safeUrlStr = attr(url)
@@ -566,6 +774,23 @@ function _buildFeedResolvedHtml(ph, data) {
   const safeMedia = attr(safeUrl(data.mediaUrl || ''))
   const safeMediaImg = attr(hsProxyImg(safeUrl(data.mediaUrl || '')))
   const safePlat = attr(platform)
+
+  // Quoted chat line. The body is left EMPTY on purpose: the message text is
+  // rendered as DOM by appendChatLogBody (the archive viewer's renderer) right
+  // after the swap, so the archive's emotes, the blocked-emote gate and the
+  // hashtag handling all behave exactly as they do everywhere else — and the
+  // server's message_html never has to be trusted as markup inside a content
+  // script running on twitch.tv.
+  if (data.type === 'chatlog') {
+    const who = attr(data.display_name || data.username || '')
+    const when = data.timestamp ? new Date(data.timestamp) : null
+    const stamp = when && !Number.isNaN(when.getTime()) ? formatTimeFromTs(when.getTime()) : ''
+    const where = attr(`${data.platform || ''}/${data.channel || ''}`)
+    return `<a class="hs-log-embed" href="${safeUrlStr}" target="_blank" rel="noopener">
+      <span class="hs-log-embed-meta"><span class="hs-log-embed-where">${where}</span><span class="hs-log-embed-when">${attr(stamp)}</span></span>
+      <span class="hs-log-embed-line"><span class="hs-log-embed-user">${who}</span><span class="hs-log-embed-body"></span></span>
+    </a>`
+  }
 
   if (data.type === 'image' && data.mediaUrl) {
     return `<a href="${safeUrlStr}" target="_blank" rel="noopener" class="hs-feed-embed-rich-imglink">
@@ -663,8 +888,31 @@ function resolvePendingFeedEmbeds(root) {
       if (!ph.isConnected) return
       if (data && !data.error) {
         const html = _buildFeedResolvedHtml(ph, data)
-        if (html) _swapPlaceholder(ph, html, 'hs-feed-embed-resolved')
-        else _swapPlaceholder(ph, _buildFeedResolveFailedHtml(ph), 'hs-feed-embed-resolve-failed')
+        if (html) {
+          _swapPlaceholder(ph, html, 'hs-feed-embed-resolved')
+          // "show" reveals this one embed in place; the post itself is untouched.
+          ph.querySelector('.hs-mc-held-show')?.addEventListener('click', () => {
+            const shown = _buildFeedResolvedHtml(ph, data, true)
+            if (!shown) return
+            _swapPlaceholder(ph, shown, 'hs-feed-embed-resolved')
+            attachFeedFallbacks(ph)
+          })
+          // Quoted chat line: fill the body with the archive viewer's own
+          // renderer rather than server markup (see the chatlog branch).
+          if (data.type === 'chatlog') {
+            const body = ph.querySelector('.hs-log-embed-body')
+            if (body) appendChatLogBody(body, data)
+            const who = ph.querySelector('.hs-log-embed-user')
+            if (who)
+              hsNameApply(who, {
+                name: data.display_name || data.username || '',
+                userId: data.user_id,
+                platform: data.platform,
+                colour: data.color || data.user_color,
+                login: String(data.username || '').toLowerCase(),
+              })
+          }
+        } else _swapPlaceholder(ph, _buildFeedResolveFailedHtml(ph), 'hs-feed-embed-resolve-failed')
       } else {
         _swapPlaceholder(ph, _buildFeedResolveFailedHtml(ph), 'hs-feed-embed-resolve-failed')
       }
@@ -681,6 +929,21 @@ function resolvePendingFeedEmbeds(root) {
 //   data-fallback-anon      → swap src to /anon.webp (avatars)
 function attachFeedFallbacks(root) {
   if (!root?.querySelectorAll) return
+  root.querySelectorAll('[data-hs-embed-load]').forEach((btn) => {
+    btn.addEventListener(
+      'click',
+      (e) => {
+        e.stopPropagation()
+        const frame = btn.nextElementSibling
+        if (frame?.tagName === 'IFRAME' && frame.dataset.hsSrc) {
+          frame.src = frame.dataset.hsSrc
+          frame.removeAttribute('data-hs-src')
+        }
+        btn.remove()
+      },
+      { once: true },
+    )
+  })
   root.querySelectorAll('img[data-fallback-anon]').forEach((img) => {
     img.addEventListener(
       'error',
@@ -703,7 +966,7 @@ function attachFeedFallbacks(root) {
           const tag = mode === 'deleted-span' ? 'span' : 'div'
           const replacement = document.createElement(tag)
           replacement.className = 'hs-feed-media-deleted'
-          replacement.textContent = 'image unavailable'
+          replacement.textContent = t('mc_feed_image_unavailable')
           img.replaceWith(replacement)
         }
       },
@@ -762,13 +1025,13 @@ const _AUDIO_PROVIDERS = [
   {
     id: 'youtube',
     test: /youtu\.be\/|youtube\.com\/(watch\?v=|shorts\/)/i,
-    origin: 'https://www.youtube-nocookie.com',
+    origin: 'https://www.youtube.com',
     video: true,
     volume: true,
     frameUrl: (u) => {
       const id = sanitizeEmbedId((String(u).match(/(?:youtu\.be\/|v=|shorts\/)([\w-]{11})/) || [])[1] || '')
       return id
-        ? `https://www.youtube-nocookie.com/embed/${id}?enablejsapi=1&modestbranding=1&playsinline=1&rel=0&autoplay=1`
+        ? `https://www.youtube.com/embed/${id}?enablejsapi=1&modestbranding=1&playsinline=1&rel=0&autoplay=1`
         : ''
     },
     // youtube answers nothing until it's been told someone is listening; the
@@ -901,11 +1164,52 @@ function _hsAudioSend(msg) {
 function _hsTransportEl(provider) {
   const bar = document.createElement('div')
   bar.className = 'hs-mc-transport'
+  // Video only: ← back (shrink to the card) when filled, ⤢ (fill chat) when not.
+  // Lives in the transport — the bottom bar is the one strip nothing overlays.
+  if (provider.video) {
+    const fill = document.createElement('button')
+    fill.type = 'button'
+    fill.className = 'hs-mc-transport-fill'
+    bar.appendChild(fill)
+  }
+  // Video: one click to the real site. An embed inside another site's page
+  // cannot see the viewer's sign-in on the video host, so a bot-check wall
+  // there never clears — this is the way out.
+  if (provider.video) {
+    const out = document.createElement('a')
+    out.className = 'hs-mc-transport-toggle hs-mc-transport-out'
+    out.textContent = '↗'
+    out.title = t('mc_feed_open_new_tab')
+    out.target = '_blank'
+    out.rel = 'noopener'
+    out.addEventListener('click', () => {
+      const u = safeUrl(_hsAudio?.url || '')
+      if (u) out.href = u
+    })
+    out.addEventListener('pointerdown', () => {
+      const u = safeUrl(_hsAudio?.url || '')
+      if (u) out.href = u
+    })
+    bar.appendChild(out)
+  }
+  if (provider.video) {
+    const re = document.createElement('button')
+    re.type = 'button'
+    re.className = 'hs-mc-transport-toggle hs-mc-transport-reload'
+    re.textContent = '↻'
+    re.title = t('mc_feed_reload_player')
+    re.addEventListener('click', (e) => {
+      e.preventDefault()
+      e.stopPropagation()
+      _hsPlayerReload()
+    })
+    bar.appendChild(re)
+  }
   const pause = document.createElement('button')
   pause.type = 'button'
   pause.className = 'hs-mc-transport-toggle'
   pause.textContent = '||'
-  pause.title = 'pause'
+  pause.title = t('mc_feed_pause')
   bar.appendChild(pause)
   // No slider at all for a provider that can't take one. A greyed-out control
   // is still a control the eye has to read and dismiss; spotify's embed simply
@@ -918,7 +1222,7 @@ function _hsTransportEl(provider) {
     vol.max = '100'
     vol.step = '1'
     vol.value = String(Math.round(embedVolume() * 100))
-    vol.title = 'volume'
+    vol.title = t('mc_feed_volume')
     vol.addEventListener('input', () => setEmbedVolume(Number(vol.value) / 100))
     bar.appendChild(vol)
   }
@@ -958,9 +1262,13 @@ function _hsAudioStop() {
   _hsAudioSend(_hsAudio.provider.pause)
   try {
     _hsAudio.ro?.disconnect()
+    _hsAudio.mo?.disconnect()
   } catch (_) {}
   _hsAudio.frame?.remove()
+  _hsAudio.host?.remove()
   _hsAudio = null
+  document.getElementById('hs-mc-messages')?.classList.remove('hs-mc-filled')
+  hsTakeoverSync()
   document.getElementById('hs-mc-audio-host')?.remove()
   markNowPlaying(document)
 }
@@ -972,8 +1280,37 @@ function _hsAudioStop() {
 // judder. Only real layout changes move it, which is what the observer is for.
 function _hsPlacePlayer() {
   const a = _hsAudio
-  if (!a?.host || !a.card) return
+  if (!a?.host) return
   const scroller = document.getElementById('hs-mc-messages')
+  // Filled: the player IS the chat pane. Pinned to the visible window of the
+  // scroller (scrollTop, not 0) and the scroller is locked so it stays there.
+  const filled = !!(a.fill && a.provider.video && scroller)
+  a.host.classList.toggle('hs-fill', filled)
+  const fillBtn = a.host.querySelector('.hs-mc-transport-fill')
+  if (fillBtn) {
+    fillBtn.textContent = filled ? t('mc_feed_back') : '⤢'
+    fillBtn.title = filled ? t('mc_feed_back_to_chat') : t('mc_feed_fill_chat')
+  }
+  scroller?.classList.toggle('hs-mc-filled', filled)
+  hsTakeoverSync()
+  if (filled) {
+    a.host.style.top = `${scroller.scrollTop}px`
+    a.host.style.left = '0px'
+    a.host.style.width = `${scroller.clientWidth}px`
+    a.host.style.height = `${scroller.clientHeight}px`
+    return
+  }
+  if (!a.card) return
+  if (scroller && !a.card.isConnected) {
+    // The row was re-rendered: same video, new element. Follow it, so the
+    // parked player never hangs where the old card used to be.
+    for (const c of scroller.querySelectorAll('.hs-mc-media.hs-mc-playable')) {
+      if ((c.dataset.resolveUrl || (c.tagName === 'A' ? c.href : '')) === a.url) {
+        a.card = c
+        break
+      }
+    }
+  }
   if (!scroller || !a.card.isConnected) {
     // The anchor row aged out of the DOM cap. Orphan audio you can't reach a
     // stop button for is worse than silence.
@@ -1023,9 +1360,21 @@ function chatEmbedToggle(url, card) {
   frame.setAttribute('sandbox', EMBED_SANDBOX)
   frame.setAttribute('allow', 'autoplay; encrypted-media; fullscreen; picture-in-picture')
   host.appendChild(frame)
-  if (provider.video) host.appendChild(_hsTransportEl(provider))
+  if (provider.video) {
+    host.appendChild(_hsTransportEl(provider))
+  }
   parent.appendChild(host)
-  _hsAudio = { url, provider, frame, host, card: provider.video ? card || null : null, ready: false, playing: true }
+  _hsAudio = {
+    url,
+    provider,
+    frame,
+    host,
+    card: provider.video ? card || null : null,
+    ready: false,
+    playing: true,
+    fill: !!provider.video,
+    loadedAt: Date.now(),
+  }
   if (provider.video) {
     _hsPlacePlayer()
     // Layout, not scroll: the player and its card scroll together for free, so
@@ -1035,9 +1384,30 @@ function chatEmbedToggle(url, card) {
       try {
         ro.observe(parent)
         if (card) ro.observe(card)
-      } catch (_) {}
+      } catch (e) {
+        // A throw here means the docked player never repositions again — it
+        // sits wherever it happened to mount and drifts away from the card.
+        swallow(e, 'feed-player-observe')
+      }
       _hsAudio.ro = ro
       cleanup.trackObserver(ro)
+    }
+    // Rows re-render without resizing anything the observer above watches; a
+    // parked player must still follow its card. One check per frame, and only
+    // while parked (filled players ignore the card).
+    if (typeof MutationObserver !== 'undefined') {
+      let queued = false
+      const mo = new MutationObserver(() => {
+        if (queued || !_hsAudio || _hsAudio.fill) return
+        queued = true
+        requestAnimationFrame(() => {
+          queued = false
+          if (_hsAudio && !_hsAudio.fill) _hsPlacePlayer()
+        })
+      })
+      mo.observe(parent, { childList: true })
+      _hsAudio.mo = mo
+      cleanup.trackObserver(mo)
     }
   }
   // youtube is the one provider that stays silent until greeted, and the greet
@@ -1082,6 +1452,65 @@ window.addEventListener(
   { signal: mcSignal },
 )
 
+// Remount the playing video from scratch. After a sign-in detour the old frame
+// still shows the bot wall; a fresh load picks the login up.
+function _hsPlayerReload() {
+  const a = _hsAudio
+  if (!a?.provider.video) return
+  const { url, card, fill } = a
+  _hsAudioStop()
+  if (chatEmbedToggle(url, card) && _hsAudio) {
+    _hsAudio.fill = fill
+    _hsPlacePlayer()
+  }
+}
+
+// Leaving the window soon after a video loads and coming back reads as "went to
+// sign in": reload once so it picks the login up (the site player does the
+// same). visibilitychange only — clicking inside the frame blurs the window too.
+const _HS_SIGNIN_DETOUR_MS = 3 * 60_000
+let _hsSignInDetour = false
+document.addEventListener(
+  'visibilitychange',
+  () => {
+    if (document.hidden) {
+      if (_hsAudio?.provider.video && Date.now() - _hsAudio.loadedAt < _HS_SIGNIN_DETOUR_MS) _hsSignInDetour = true
+      return
+    }
+    if (!_hsSignInDetour) return
+    _hsSignInDetour = false
+    _hsPlayerReload()
+  },
+  { signal: mcSignal },
+)
+
+function _hsSetFill(on) {
+  if (!_hsAudio?.provider.video) return
+  // Going back pauses: the small player is a parked video, not a second screen.
+  if (!on && _hsAudio.fill && _hsAudio.playing) chatEmbedToggle(_hsAudio.url)
+  _hsAudio.fill = on
+  _hsPlacePlayer()
+}
+
+// A programmatic autoscroll (new message) moves scrollTop under the locked
+// scroller; follow it so the filled player stays on the visible window.
+// Scroll doesn't bubble, so one capture listener covers every mount.
+document.addEventListener(
+  'scroll',
+  (e) => {
+    if (_hsAudio?.fill && e.target?.id === 'hs-mc-messages') _hsPlacePlayer()
+  },
+  { signal: mcSignal, capture: true, passive: true },
+)
+
+document.addEventListener(
+  'keydown',
+  (e) => {
+    if (e.key === 'Escape' && _hsAudio?.fill) _hsSetFill(false)
+  },
+  { signal: mcSignal },
+)
+
 function _hsPlayerDockClose() {
   document.getElementById('hs-mc-player-dock')?.remove()
 }
@@ -1100,9 +1529,13 @@ function _hsPlayerDockOpen(url, label) {
     `<div class="hs-mc-player-dock-bar">` +
       `<span class="hs-mc-player-dock-title">${escapeHtml(String(label || '').slice(0, 60))}</span>` +
       (safeu
-        ? `<a class="hs-mc-player-dock-out" href="${attr(safeu)}" target="_blank" rel="noopener" title="open in new tab">↗</a>`
+        ? `<a class="hs-mc-player-dock-out" href="${attr(safeu)}" target="_blank" rel="noopener" title="${escapeHtml(t('mc_feed_open_new_tab_short'))}">↗</a>`
         : '') +
-      `<button class="hs-mc-player-close" type="button" title="close player">×</button>` +
+      hsXButtonHtml(
+        'hs-mc-player-close',
+        escapeHtml(t('mc_feed_close_player')),
+        `title="${escapeHtml(t('mc_feed_close_player'))}"`,
+      ) +
       `</div>${html}`,
   )
   overlay.appendChild(dock)
@@ -1116,6 +1549,12 @@ document.addEventListener(
       e.preventDefault()
       e.stopPropagation()
       _hsPlayerDockClose()
+      return
+    }
+    if (e.target?.closest?.('.hs-mc-transport-fill')) {
+      e.preventDefault()
+      e.stopPropagation()
+      _hsSetFill(!_hsAudio?.fill)
       return
     }
     // Modified clicks keep native browser behaviour (new tab / window).

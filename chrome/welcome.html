@@ -5,24 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>heatsync</title>
   <style>
-    @font-face {
-      font-family: 'CozetteVector';
-      src: url('fonts/CozetteVector.woff2') format('woff2');
-      font-weight: 400;
-      font-style: normal;
-      font-display: block;
-    }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body {
       min-height: 100%;
       background: #000;
       color: #fff;
-      font-family: 'CozetteVector', monospace, 'Noto Color Emoji';
+      font-family: monospace, 'Noto Color Emoji';
       font-size: 13px;
       line-height: 1.5;
-      -webkit-font-smoothing: none;
-      font-smooth: never;
-      text-rendering: optimizeSpeed;
       font-kerning: normal;
       font-feature-settings: "kern" 1, "liga" 1, "calt" 1;
     }
@@ -51,92 +41,49 @@
       font-size: 18px;
       font-weight: 400;
     }
-    .tagline {
-      color: #999;
-      font-size: 13px;
+    .lead { text-align: center; }
+    .steps { list-style: none; display: flex; flex-direction: column; gap: 14px; counter-reset: step; }
+    .steps li { display: flex; flex-direction: column; gap: 6px; padding-left: 3ch; position: relative; }
+    .steps li::before {
+      counter-increment: step;
+      content: counter(step);
+      position: absolute;
+      left: 0;
+      font-weight: 700;
     }
-    .label {
-      color: #fff;
+    .steps h2 { font-size: 15px; font-weight: 700; text-decoration: underline; }
+    .go { display: flex; flex-wrap: wrap; gap: 6px; }
+    .cta, .cta-alt, .cta-close {
+      font: inherit;
       font-size: 13px;
-    }
-    .cta {
-      width: 100%;
-      max-width: 340px;
-      align-self: center;
-      padding: 10px 20px;
-      background: #fff;
-      color: #000;
+      line-height: 1.5;
+      padding: 6px 14px;
       text-decoration: none;
       text-align: center;
-      font-size: 15px;
-      border: 1px solid #fff;
+      border-radius: 0;
+      cursor: pointer;
     }
-    .cta:hover, .cta:focus-visible {
+    .cta { background: #fff; color: #000; border: 1px solid #fff; }
+    .cta-alt, .cta-close { background: #000; color: #fff; border: 1px solid #fff; }
+    .cta-alt { align-self: flex-start; }
+    .cta-close { align-self: center; }
+    .cta:hover, .cta:focus-visible, .cta:active,
+    .cta-alt:hover, .cta-alt:focus-visible, .cta-alt:active,
+    .cta-close:hover, .cta-close:focus-visible, .cta-close:active {
       background: #fff;
       color: #000;
       border-color: #fff;
       outline: none;
     }
-    .next {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-      align-items: center;
-      text-align: center;
-      margin-top: -10px;
-    }
-    .next .arrow { color: #fff; }
-    .next p { color: #bbb; }
-    .cta-kick {
-      color: #fff;
-      text-decoration: none;
-      align-self: center;
-      font-size: 13px;
-      border: 1px solid #fff;
-      padding: 8px 16px;
-    }
-    .cta-kick:hover, .cta-kick:focus-visible {
-      background: #fff;
-      color: #000;
-      outline: none;
-    }
-    .trust {
-      color: #999;
-      font-size: 13px;
-      text-align: center;
-    }
-    .trust .dot { color: #888; }
-    .done {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      align-items: center;
-      text-align: center;
-    }
-    .done .ok { color: #5fd700; font-size: 15px; }
-    .done p { color: #bbb; }
-    .done a {
-      color: #fff;
-      text-decoration: none;
-      margin-top: 6px;
-      display: inline-block;
-      border: 1px solid #fff;
-      padding: 8px 16px;
-      font-size: 13px;
-    }
-    .done a:hover, .done a:focus-visible {
-      background: #fff;
-      color: #000;
-      outline: none;
-    }
+    .ok { color: #00ff00; font-size: 15px; }
     [hidden] { display: none !important; }
     footer {
       display: flex;
       gap: 12px;
       justify-content: center;
-      color: #888;
+      color: #ffffff;
     }
-    footer a { color: #999; text-decoration: underline; }
+    footer a { color: #ffffff; text-decoration: underline; }
     footer a:hover, footer a:focus-visible {
       background: #fff;
       color: #000;
@@ -149,29 +96,34 @@
     <header>
       <img src="icon-48.png" alt="">
       <h1 data-i18n="welcome_title">heatsync</h1>
-      <p class="tagline" data-i18n="welcome_tagline">twitch, kick + youtube chat in one panel. plus any 7tv, bttv or ffz emote in every chat — 5,000 slots, free.</p>
+      <p class="lead" data-i18n="welcome_get_2">reading chat needs no account</p>
     </header>
 
-    <a class="cta" data-when="out" href="https://www.twitch.tv/"
-       target="_blank" rel="noopener" data-i18n="welcome_cta">open a stream → try multichat</a>
+    <ol class="steps">
+      <li>
+        <h2 data-i18n="welcome_s1_t">open a stream</h2>
+        <p data-i18n="welcome_start_1">open any twitch, kick or youtube stream. heatsync chat appears by itself</p>
+        <div class="go">
+          <a class="cta" href="https://www.twitch.tv/" target="_blank" rel="noopener">twitch.tv</a>
+          <a class="cta" href="https://kick.com/" target="_blank" rel="noopener">kick.com</a>
+          <a class="cta" href="https://www.youtube.com/live" target="_blank" rel="noopener">youtube.com/live</a>
+        </div>
+        <p class="hint" data-i18n="welcome_s1_tour">a short tour shows up the first time. skip it any time</p>
+      </li>
+      <li>
+        <h2 data-i18n="welcome_s2_t">hide and show the chat</h2>
+        <p data-i18n="welcome_s2_d">the hide button in the chat's tab bar tucks it away. click the thin white strip at the edge of the page to bring it back</p>
+      </li>
+      <li>
+        <h2 data-i18n="welcome_s3_t">sign in (optional)</h2>
+        <p data-i18n="welcome_s3_d">an account lets you send to twitch, kick and youtube at once, and use your own emotes on every device</p>
+        <a class="cta-alt" data-when="out" href="https://heatsync.org/login"
+           target="_blank" rel="noopener" data-i18n="welcome_cta_kick">sign in →</a>
+        <p class="ok" data-when="in" hidden><span class="check">✓</span> <span data-i18n="welcome_done_title">you're in</span></p>
+      </li>
+    </ol>
 
-    <section class="next" data-when="out">
-      <span class="label" data-i18n="welcome_next_label">what happens when you click</span>
-      <p><span class="arrow">→</span> <span data-i18n="welcome_next_1">emotes light up instantly — 7tv, bttv, ffz — no sign-in</span></p>
-      <p><span class="arrow">→</span> <span data-i18n="welcome_next_2">sign in whenever to claim your own 5,000-slot inventory</span></p>
-    </section>
-
-    <a class="cta-kick" data-when="out" href="https://heatsync.org/api/auth/login?return_to=%2F"
-       target="_blank" rel="noopener" data-i18n="welcome_cta_kick">optional — sign in to save your own emotes</a>
-
-    <section class="done" data-when="in" hidden>
-      <p class="ok"><span class="check">✓</span> <span data-i18n="welcome_done_title">you're in</span></p>
-      <p><span data-i18n="welcome_done_1">open any twitch, kick, or youtube stream — your emotes render right in chat</span></p>
-      <p><span data-i18n="welcome_done_2">import a channel you watch → its emotes render in every chat you open</span></p>
-      <a href="https://www.twitch.tv/" target="_blank" rel="noopener">open twitch →</a>
-    </section>
-
-    <p class="trust" data-i18n="welcome_trust">open source · no trackers · your emotes stay yours</p>
+    <button type="button" class="cta-close" id="hs-close-btn" data-i18n="welcome_close">close</button>
 
     <footer>
       <a href="https://heatsync.org/legal/privacy" target="_blank" rel="noopener" data-i18n="welcome_privacy">privacy</a>

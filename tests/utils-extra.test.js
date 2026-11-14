@@ -1,8 +1,11 @@
 import { describe, expect, test } from 'bun:test'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import {
   boostReadability,
   debounce,
   escapeHtml,
+  NAME_STRIPE,
   safeUrl,
   sanitizeUiSettings,
   throttle,
@@ -153,14 +156,10 @@ describe('boostReadability', () => {
     expect(out).toMatch(/^#[0-9a-f]{6}$/i)
   })
 
-  test('pure red #ff0000 (raw relL ≈ 0.213) gets boosted above 0.25', () => {
-    // raw relL = 0.2126 * 1.0 = 0.2126 < 0.25 → should boost
-    // NOTE: WCAG proper uses gamma-expanded channels; boostReadability uses raw
-    // 0-1 values (no gamma expansion), which is a documented simplification.
-    // This test verifies the ACTUAL threshold used by the function.
+  test('pure red #ff0000 is lifted, and stays red', () => {
     const out = boostReadability('#ff0000')
+    expect(out).toMatch(/^#ff[0-9a-f]{4}$/i)
     expect(out).not.toBe('#ff0000')
-    expect(out).toMatch(/^#[0-9a-f]{6}$/i)
   })
 
   test('3-char shorthand #fff is handled', () => {
@@ -173,19 +172,47 @@ describe('boostReadability', () => {
     expect(out).toMatch(/^#[0-9a-f]{6}$/i)
   })
 
-  test('heatsync orange #ff8700 (relL ≈ 0.27) passes threshold', () => {
-    // 0.2126*(1) + 0.7152*(0.529) + 0.0722*(0) ≈ 0.2126 + 0.378 ≈ 0.591 → above 0.25
-    expect(boostReadability('#ff8700')).toBe('#ff8700')
-  })
-
-  test('custom minRelL=0 never boosts anything', () => {
+  test('custom minRatio=0 never boosts anything', () => {
     expect(boostReadability('#000000', 0)).toBe('#000000')
   })
 
-  // POTENTIAL GAP: #000000 has relL=0, below default 0.25, but all channels are 0
-  // so saturation=0, hue=0 → achromatic; boost loop starts at max(l=0, 0.5)=0.5
-  // meaning black gets lifted to a very light gray — may surprise callers expecting
-  // pure black to stay black. No bug per se, but worth documenting.
+  // The stripe is the hard ground: every twitch default colour, and the worst
+  // a chatter can pick, ends at 3:1 or better on it.
+  test('every name clears 3:1 on the zebra stripe', () => {
+    const lum = (hex) => {
+      const lin = [1, 3, 5]
+        .map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
+        .map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4))
+      return 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2]
+    }
+    const onStripe = (hex) => (lum(hex) + 0.05) / (lum(NAME_STRIPE) + 0.05)
+    const twitchDefaults = [
+      '#ff0000',
+      '#0000ff',
+      '#008000',
+      '#b22222',
+      '#ff7f50',
+      '#9acd32',
+      '#ff4500',
+      '#2e8b57',
+      '#daa520',
+      '#d2691e',
+      '#5f9ea0',
+      '#1e90ff',
+      '#ff69b4',
+      '#8a2be2',
+      '#00ff7f',
+      '#000000',
+      '#030303',
+      '#000033',
+    ]
+    for (const c of twitchDefaults) expect(onStripe(boostReadability(c)), c).toBeGreaterThanOrEqual(3 - 1e-9)
+  })
+
+  test('the stripe constant is the palette stripe', () => {
+    const palette = readFileSync(join(import.meta.dir, '../src/multichat/styles/01-brand-tokens.css'), 'utf8')
+    expect(palette.match(/--brand-zebra:\s*(#[0-9a-f]{6})/i)?.[1].toLowerCase()).toBe(NAME_STRIPE)
+  })
 })
 
 // ── debounce ──────────────────────────────────────────────────────────────────
@@ -336,17 +363,13 @@ describe('UI_SYNC_BLOCKLIST', () => {
     expect(UI_SYNC_BLOCKLIST.has('platformFilters')).toBe(true)
   })
 
-  test('contains keywordHighlights (free-form text — too large for sync quota)', () => {
-    expect(UI_SYNC_BLOCKLIST.has('keywordHighlights')).toBe(true)
-  })
-
   test('contains chatFilterRules (JSON array — too large for sync quota)', () => {
     expect(UI_SYNC_BLOCKLIST.has('chatFilterRules')).toBe(true)
   })
 
   test('has exactly the documented entries (no silent additions)', () => {
     // guards against accidental expansion; update this test if blocklist grows
-    expect(UI_SYNC_BLOCKLIST.size).toBe(3)
+    expect(UI_SYNC_BLOCKLIST.size).toBe(2)
   })
 })
 
@@ -439,9 +462,9 @@ describe('sanitizeUiSettings', () => {
     expect(out.ok).toBe(1)
   })
 
-  test('strips keywordHighlights (blocklisted)', () => {
-    const out = sanitizeUiSettings({ keywordHighlights: 'mellen', ok: 1 })
-    expect(out).not.toHaveProperty('keywordHighlights')
+  test('strips chatFilterRules (blocklisted)', () => {
+    const out = sanitizeUiSettings({ chatFilterRules: '[]', ok: 1 })
+    expect(out).not.toHaveProperty('chatFilterRules')
     expect(out.ok).toBe(1)
   })
 
@@ -496,14 +519,14 @@ describe('truncateSafe', () => {
   })
 
   test('surrogate pair straddling the boundary is dropped whole', () => {
-    const s = 'a'.repeat(3) + '😀' + 'b'
+    const s = `${'a'.repeat(3)}😀b`
     const out = truncateSafe(s, 4)
     expect(out).toBe('aaa')
     expect(out.isWellFormed()).toBe(true)
   })
 
   test('pair ending exactly at the boundary is kept', () => {
-    const s = 'a'.repeat(3) + '😀' + 'b'
+    const s = `${'a'.repeat(3)}😀b`
     const out = truncateSafe(s, 5)
     expect(out).toBe('aaa😀')
     expect(out.isWellFormed()).toBe(true)

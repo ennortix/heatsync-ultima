@@ -12,23 +12,42 @@ on:
 permissions:
   contents: write
 
+# Two runs for the same tag would both `gh release upload --clobber` the same
+# assets. The finisher re-dispatches during an outage, so this is reachable:
+# queue the second one behind the first instead of racing it. Never
+# cancel-in-progress — the run being cancelled might be mid-upload.
+concurrency:
+  group: release-${{ github.event.inputs.tag || github.ref }}
+  cancel-in-progress: false
+
 jobs:
   release:
     runs-on: ubuntu-latest
+    # A hung step must not sit on github's 6h default. v1.7.59 and v1.7.60 both
+    # did exactly that — the pre-build test gate wedged, the job burned six
+    # hours, and NEITHER tag ever produced release assets, so the self-dist xpi
+    # and the README download links silently kept serving an older build. Fail
+    # in minutes and loudly instead. 40 rather than 25 to fit the signing
+    # retries below; the point of the cap is that it is minutes, not hours.
+    timeout-minutes: 40
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ github.event.inputs.tag || github.ref }}
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
-          bun-version: 1.3.14
+          bun-version: 1.4.4
 
       - name: install
         run: bun install --frozen-lockfile
 
       - name: build + package
+        env:
+          # same as ci.yml: the paint-compiler parity gate needs the private site
+          # repo beside this one, which this runner cannot have.
+          HS_PARITY_SKIP_OK: "1"
         run: bun run build.js --package
 
       - name: derive version
@@ -44,46 +63,12 @@ jobs:
         run: |
           cp "dist/heatsync-chrome-${VERSION}.zip" dist/heatsync-chrome.zip
 
-      - name: sign firefox xpi (AMO self-distribution)
-        env:
-          AMO_JWT_ISSUER: ${{ secrets.AMO_JWT_ISSUER }}
-          AMO_JWT_SECRET: ${{ secrets.AMO_JWT_SECRET }}
-          VERSION: ${{ steps.ver.outputs.version }}
-        run: |
-          # Upload dist/firefox to AMO, wait for automated unlisted signing, then
-          # publish the signed .xpi as the versionless alias. Fails loud if signing
-          # fails — release Firefox refuses to install an unsigned xpi, so we never
-          # ship the bare zip renamed to .xpi (the old bug).
-          # AMO version numbers are single-use ACROSS channels: the listed store
-          # submission (scripts/publish.js, run before tagging) owns the clean
-          # X.Y.Z, so this unlisted self-dist build signs as X.Y.Z.1 — the two
-          # can never collide and release order stops mattering. (1.7.24/1.7.25
-          # burned the clean number unlisted and 409-blocked the store channel;
-          # the suffix only shows in about:addons for direct-xpi installs.)
-          SIGN_VERSION="${VERSION}.1"
-          jq --arg v "$SIGN_VERSION" '.version = $v' dist/firefox/manifest.json > /tmp/fxman.json
-          mv /tmp/fxman.json dist/firefox/manifest.json
-          # web-ext can 409 against its OWN submission ("version already exists")
-          # when validation polling races the upload — the version record is live
-          # on AMO and signs server-side regardless. Fall back to downloading the
-          # signed file for this exact version instead of failing the release.
-          if ! bunx web-ext@10.4.0 sign \
-            --source-dir dist/firefox \
-            --channel unlisted \
-            --api-key "$AMO_JWT_ISSUER" \
-            --api-secret "$AMO_JWT_SECRET" \
-            --artifacts-dir dist/signed \
-            --timeout 900000 \
-            --no-input; then
-            echo "web-ext sign failed — trying to fetch already-signed ${SIGN_VERSION} from AMO"
-            mkdir -p dist/signed
-            bun scripts/amo-fetch-signed.js "$SIGN_VERSION" "dist/signed/heatsync-${SIGN_VERSION}.xpi"
-          fi
-          signed=$(ls dist/signed/*.xpi 2>/dev/null | head -1)
-          if [ -z "$signed" ]; then echo "::error::no signed xpi produced"; exit 1; fi
-          cp "$signed" dist/heatsync-firefox.xpi
-
-      - name: create release + attach assets
+      # Everything above here is ours; everything below depends on Mozilla. The
+      # release is created FIRST, as a prerelease, so an AMO outage can only
+      # delay the firefox half instead of throwing the whole release away.
+      # v1.7.62 lost its chrome zip, source zip and checksums to a mozilla
+      # 503 because `gh release create` ran last and never got there.
+      - name: create prerelease + attach the assets AMO cannot touch
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.ver.outputs.version }}
@@ -103,12 +88,120 @@ jobs:
               "heatsync-firefox-${VERSION}.zip" \
               "heatsync-source-${VERSION}.zip" > checksums.txt )
           notes="$(printf '%s\n\n### sha256\n```\n%s\n```\n' "$notes" "$(cat dist/checksums.txt)")"
-          gh release create "$TAG" \
-            --title "$TAG" \
-            --notes "$notes" \
-            "dist/heatsync-chrome-${VERSION}.zip" \
-            "dist/heatsync-firefox-${VERSION}.zip" \
-            "dist/heatsync-source-${VERSION}.zip" \
-            dist/heatsync-chrome.zip \
-            dist/heatsync-firefox.xpi \
+          assets=(
+            "dist/heatsync-chrome-${VERSION}.zip"
+            "dist/heatsync-firefox-${VERSION}.zip"
+            "dist/heatsync-source-${VERSION}.zip"
+            dist/heatsync-chrome.zip
             dist/checksums.txt
+          )
+          # Idempotent: re-running this workflow for a tag whose release already
+          # exists (the finisher does exactly that) must top the assets up, not
+          # explode on "release already exists".
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "release $TAG already exists — refreshing assets"
+            gh release upload "$TAG" "${assets[@]}" --clobber
+          else
+            gh release create "$TAG" --title "$TAG" --notes "$notes" --prerelease "${assets[@]}"
+          fi
+
+      - name: sign firefox xpi (AMO self-distribution)
+        env:
+          AMO_JWT_ISSUER: ${{ secrets.AMO_JWT_ISSUER }}
+          AMO_JWT_SECRET: ${{ secrets.AMO_JWT_SECRET }}
+          VERSION: ${{ steps.ver.outputs.version }}
+          UPDATES_URL: https://github.com/mellen9999/heatsync-extension/releases/latest/download/updates.json
+          XPI_URL: https://github.com/mellen9999/heatsync-extension/releases/latest/download/heatsync-firefox.xpi
+        run: |
+          # Upload dist/firefox to AMO, wait for automated unlisted signing, then
+          # publish the signed .xpi as the versionless alias. Fails loud if signing
+          # fails — release Firefox refuses to install an unsigned xpi, so we never
+          # ship the bare zip renamed to .xpi (the old bug).
+          # AMO version numbers are single-use ACROSS channels: the listed store
+          # submission (scripts/publish.js, run before tagging) owns the clean
+          # X.Y.Z, so this unlisted self-dist build signs as X.Y.Z.1 — the two
+          # can never collide and release order stops mattering. (1.7.24/1.7.25
+          # burned the clean number unlisted and 409-blocked the store channel;
+          # the suffix only shows in about:addons for direct-xpi installs.)
+          # update_url lives ONLY in this self-dist build: AMO rejects it on the
+          # listed channel, and without it a direct-xpi install never updates
+          # itself — 1.7.44.1 installs sat frozen while the store moved on.
+          # The alias URLs always resolve to the newest release's assets.
+          SIGN_VERSION="${VERSION}.1"
+          jq --arg v "$SIGN_VERSION" --arg u "$UPDATES_URL" \
+            '.version = $v | .browser_specific_settings.gecko.update_url = $u' \
+            dist/firefox/manifest.json > /tmp/fxman.json
+          mv /tmp/fxman.json dist/firefox/manifest.json
+          jq -n --arg v "$SIGN_VERSION" --arg link "$XPI_URL" '
+            {addons: {"heatsync@heatsync.org": {updates: [
+              {version: $v, update_link: $link, browser_specific_settings: {gecko: {strict_min_version: "128.0"}}}
+            ]}}}' > dist/updates.json
+          # AMO's own heartbeat is the ONLY probe that tracked the 2026-08-20
+          # outage. /addons/addon/<guid>/ came back 200 while signing was still
+          # dead, and /addons/upload/ answered 401 while VALIDATION was still
+          # dead; each of those false "it's back" readings cost a rerun. Don't
+          # invent a new probe — ask them.
+          mkdir -p dist/signed
+          wait_for_amo() {
+            for _ in $(seq 1 20); do
+              code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 25 \
+                https://addons.mozilla.org/__heartbeat__ || true)
+              [ "$code" = "200" ] && return 0
+              echo "amo heartbeat: ${code:-000} — waiting 30s"
+              sleep 30
+            done
+            return 1
+          }
+          # web-ext can 409 against its OWN submission ("version already exists")
+          # when validation polling races the upload — the version record is live
+          # on AMO and signs server-side regardless. Fall back to downloading the
+          # signed file for this exact version instead of failing the release.
+          # Same fallback covers a retry whose earlier attempt did land.
+          for attempt in 1 2 3; do
+            if ! wait_for_amo; then
+              echo "::warning::amo unhealthy for 10min (attempt ${attempt}/3)"
+              continue
+            fi
+            if bunx web-ext@10.4.0 sign \
+              --source-dir dist/firefox \
+              --channel unlisted \
+              --api-key "$AMO_JWT_ISSUER" \
+              --api-secret "$AMO_JWT_SECRET" \
+              --artifacts-dir dist/signed \
+              --timeout 900000 \
+              --no-input; then
+              break
+            fi
+            echo "web-ext sign failed — trying to fetch already-signed ${SIGN_VERSION} from AMO"
+            if bun scripts/amo-fetch-signed.js "$SIGN_VERSION" "dist/signed/heatsync-${SIGN_VERSION}.xpi"; then
+              break
+            fi
+            [ "$attempt" -lt 3 ] && { echo "retrying sign in 60s (attempt ${attempt}/3)"; sleep 60; }
+          done
+          signed=$(ls dist/signed/*.xpi 2>/dev/null | head -1)
+          if [ -z "$signed" ]; then
+            echo "::error::no signed xpi produced — the prerelease stands, re-run this workflow when AMO is healthy"
+            exit 1
+          fi
+          cp "$signed" dist/heatsync-firefox.xpi
+
+      # Only now is the release complete, so only now may it become Latest.
+      #
+      # Every self-dist firefox install polls
+      # releases/latest/download/updates.json, and that alias resolves to the
+      # newest NON-prerelease release. Which makes two failure modes possible,
+      # and both are silent:
+      #   • Latest without updates.json  → every install 404s and stops seeing
+      #     updates at all until the next good release.
+      #   • Latest with updates.json but no xpi → every install is pointed at a
+      #     download that 404s, over and over.
+      # So the pair is uploaded in ONE command and the promotion happens after
+      # it. Anything that fails before this point leaves a prerelease, which
+      # `latest` ignores — the previous release keeps serving updates untouched.
+      - name: attach firefox assets + promote to latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.ver.outputs.tag }}
+        run: |
+          gh release upload "$TAG" dist/heatsync-firefox.xpi dist/updates.json --clobber
+          gh release edit "$TAG" --prerelease=false --latest

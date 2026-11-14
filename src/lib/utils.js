@@ -64,7 +64,7 @@ function unescapeHtml(str) {
 // U+2060 word joiner, U+FEFF BOM/zero-width no-break space, U+00AD soft hyphen.
 // ASCII controls (0x00–0x1F and 0x7F) are also stripped — trim() only removes
 // whitespace (0x09–0x0D, 0x20), leaving null bytes and other controls intact.
-const _INVISIBLE_RE = /[\x00-\x1F\x7F­​‌‍⁠﻿]/g
+const _INVISIBLE_RE = /[\x00-\x1F\x7F\u00ad\u200b\u200c\u200d\u2060\ufeff]/g
 
 function safeUrl(url) {
   if (typeof url !== 'string' || !url) return ''
@@ -263,47 +263,55 @@ const DEBUG =
 // READABLE NAME COLOR (luminance boost)
 // ============================================
 
+/** WCAG 2.x relative luminance of a #rrggbb string (sRGB-linearised). */
+function hexLuminance(h6) {
+  const lin = [0, 2, 4]
+    .map((i) => parseInt(h6.slice(i, i + 2), 16) / 255)
+    .map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4))
+  return 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2]
+}
+
+// The darkest ground a name sits on is the zebra stripe (--hs-zebra in
+// 00-palette.css), not the black row: a lift calibrated to black left #0000ff
+// at 1.1:1 and #8a2be2 at 1.6:1 on every other line. A name clears 3:1 on the
+// stripe — the same legibility floor painted names are held to (paint-core
+// PAINT_MIN_CONTRAST) — which is 6.5:1 on the black rows. Expressed as the
+// black-relative ratio so the lift below measures one ground.
+const NAME_STRIPE = '#444444'
+const NAME_MIN_RATIO = (3 * (hexLuminance(NAME_STRIPE.slice(1)) + 0.05)) / 0.05
+
 /**
- * Boost a hex color so it's readable on a dark/black bg.
- * Uses WCAG relative luminance — catches pure blue (#0000ff) which has
- * HSL L=0.5 but perceptual L≈0.07, invisible on black.
- * Raises HSL L (preserving hue + saturation) until relL clears threshold.
+ * Lift a name colour until it reads on the chat background, stripe included.
+ * Real relative luminance; hue and saturation kept, only HSL lightness rises,
+ * in small steps, so a dark purple stays purple. White always clears the bar.
+ * Same algorithm as the site's color-utils boostReadability.
  * @param {string} hex - "#rgb" or "#rrggbb"
- * @param {number} [minRelL=0.25] - minimum WCAG relative luminance (0..1)
- * @returns {string}
+ * @param {number} [minRatio=NAME_MIN_RATIO] - minimum contrast ratio against #000
+ * @returns {string} same colour if already readable / malformed, else lifted hex
  */
-function boostReadability(hex, minRelL = 0.25) {
+function boostReadability(hex, minRatio = NAME_MIN_RATIO) {
   if (typeof hex !== 'string') return hex
   const m = hex.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i)
   if (!m) return hex
   let h6 = m[1]
   if (h6.length === 3) h6 = h6[0] + h6[0] + h6[1] + h6[1] + h6[2] + h6[2]
+  // contrast vs black = (L + 0.05) / 0.05, so the bar is a luminance floor
+  const minL = minRatio * 0.05 - 0.05
+  if (hexLuminance(h6) >= minL) return hex
   const r = parseInt(h6.slice(0, 2), 16) / 255
   const g = parseInt(h6.slice(2, 4), 16) / 255
   const b = parseInt(h6.slice(4, 6), 16) / 255
-  const relL = 0.2126 * r + 0.7152 * g + 0.0722 * b
-  if (relL >= minRelL) return hex
-  const max = Math.max(r, g, b),
-    min = Math.min(r, g, b)
-  let h,
-    s,
-    l = (max + min) / 2
-  if (max === min) {
-    h = 0
-    s = 0
-  } else {
+  const max = Math.max(r, g, b)
+  const min = Math.min(r, g, b)
+  const l = (max + min) / 2
+  let h = 0
+  let s = 0
+  if (max !== min) {
     const d = max - min
     s = l > 0.5 ? d / (2 - max - min) : d / (max + min)
-    switch (max) {
-      case r:
-        h = (g - b) / d + (g < b ? 6 : 0)
-        break
-      case g:
-        h = (b - r) / d + 2
-        break
-      default:
-        h = (r - g) / d + 4
-    }
+    if (max === r) h = (g - b) / d + (g < b ? 6 : 0)
+    else if (max === g) h = (b - r) / d + 2
+    else h = (r - g) / d + 4
     h /= 6
   }
   const hue2rgb = (p, q, t) => {
@@ -314,24 +322,21 @@ function boostReadability(hex, minRelL = 0.25) {
     if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6
     return p
   }
-  const rgbAt = (ll) => {
-    const q = ll < 0.5 ? ll * (1 + s) : ll + s - ll * s
-    const p = 2 * ll - q
-    return [hue2rgb(p, q, h + 1 / 3), hue2rgb(p, q, h), hue2rgb(p, q, h - 1 / 3)]
-  }
-  let lT = Math.max(l, 0.5)
-  let rr, gg, bb
-  for (let i = 0; i < 9; i++) {
-    ;[rr, gg, bb] = rgbAt(lT)
-    if (0.2126 * rr + 0.7152 * gg + 0.0722 * bb >= minRelL) break
-    if (lT >= 0.85) break
-    lT = Math.min(0.85, lT + 0.05)
-  }
   const toByte = (x) =>
     Math.round(x * 255)
       .toString(16)
       .padStart(2, '0')
-  return `#${toByte(rr)}${toByte(gg)}${toByte(bb)}`
+  const hexAt = (ll) => {
+    const q = ll < 0.5 ? ll * (1 + s) : ll + s - ll * s
+    const p = 2 * ll - q
+    return toByte(hue2rgb(p, q, h + 1 / 3)) + toByte(hue2rgb(p, q, h)) + toByte(hue2rgb(p, q, h - 1 / 3))
+  }
+  // smallest lift that clears the bar — a dim green becomes a readable green
+  for (let lT = l + 0.02; lT < 1; lT += 0.02) {
+    const out = hexAt(lT)
+    if (hexLuminance(out) >= minL) return `#${out}`
+  }
+  return '#ffffff'
 }
 
 function log(...args) {
@@ -404,7 +409,7 @@ function debounce(fn, ms = 100) {
 // YOUTUBE LIVE CHAT EVENT CLASSIFICATION
 // ============================================
 // Pure parsing helpers for yt-live-chat's special renderers — shared between
-// chrome/youtube-content.js (DOM extraction) and the multichat overlay (event
+// src/content/youtube-content.js (DOM extraction) and the multichat overlay (event
 // banner dispatch in social.js) so tag-name → type and text-pattern → subtype
 // logic lives in exactly one place.
 
@@ -466,7 +471,7 @@ function parseYtGiftCount(systemText) {
 // YOUTUBE LIVE CHAT MODERATION
 // ============================================
 // Pure logic for driving YouTube's OWN moderation flow (get_item_context_menu
-// → moderate). Lives here — not inside chrome/youtube-content.js's IIFE — so it
+// → moderate). Lives here — not inside src/content/youtube-content.js's IIFE — so it
 // is unit-tested against realistic menu JSON (tests/yt-moderation.test.js). YT
 // moderation can't be self-verified live without a moderator account, so this
 // pure layer is where correctness is locked in.
@@ -548,28 +553,60 @@ function ytHasModItems(items) {
 // 8 KB QUOTA_BYTES_PER_ITEM ceiling. These move to chrome.storage.local
 // (we hold the unlimitedStorage permission) instead.
 //
-// NOT all of them are device-local, though — keywordHighlights and
-// chatFilterRules are real cross-device preferences (chatterino's #1 sync
-// complaint is exactly "my highlight words don't follow me"), just too big
-// for chrome.storage.sync. They DO ride the server-backed ws ui-state
+// NOT all of them are device-local, though — chatFilterRules is a real
+// cross-device preference (chatterino's #1 sync complaint is exactly "my
+// highlight words don't follow me"), just too big for chrome.storage.sync.
+// It DOES ride the server-backed ws ui-state
 // channel (which has no 8 KB ceiling), size-capped per key — see
 // LARGE_KEY_SYNC_MAX. Only DEVICE_LOCAL_KEYS below are excluded from that
 // channel too.
-const UI_SYNC_BLOCKLIST = new Set(['platformFilters', 'keywordHighlights', 'chatFilterRules'])
+const UI_SYNC_BLOCKLIST = new Set(['platformFilters', 'chatFilterRules'])
 
 // Subset of UI_SYNC_BLOCKLIST that is genuinely per-device UI state, not a
 // preference — platformFilters is keyed by this device's own multichat tab
-// ids (§ src/multichat/main.js loadPlatformFilters) and would be meaningless
+// ids (the retired T/K/Y view filter; stale copies must never be adopted) and would be meaningless
 // (or actively wrong) replayed onto a different device's tab layout. Never
 // sent to, or adopted from, the server ui-state channel.
 const DEVICE_LOCAL_KEYS = new Set(['platformFilters'])
+
+// Keys the 2026-11 settings pass retired. Old builds, the server's ui_state
+// and chrome.storage.sync blobs written before the update keep carrying them
+// for months: they are never adopted from the server, and the stored blob
+// drops them once this device has migrated their values (retireSettings in
+// main.js) — they would only eat the 8 KB sync quota.
+const RETIRED_UI_KEYS = new Set([
+  'customPresets',
+  'emoteWysiwyg',
+  'emoteSpaceAfter',
+  'rightClickBlockMode',
+  'hideChatHeader',
+  'compactChatInput',
+  'highlightMentions',
+  'showCosmetics',
+  'lineHeight',
+  'bttvBadges',
+  'ffzBadges',
+  'chatterinoBadges',
+  'automodRegex',
+  'automodAllCaps',
+  'keywordHighlights',
+  'debugLogging',
+  'crashTelemetry',
+  'emoteProviderPriority',
+  'partialLinksEnabled',
+  'channelVolumeTwitch',
+  'channelVolumeKick',
+  'channelVolumeYouTube',
+  'crossFollowTwitchNotify',
+  'ytFeedShelves',
+  'nativeVisible',
+])
 
 // registry key → chrome.storage.local key name, for every UI_SYNC_BLOCKLIST
 // entry. Single source for the overflow-bucket names so main.js and
 // background.js route a synced/received value to the same local slot.
 const OVERFLOW_MIRROR_KEYS = {
   platformFilters: 'platform_filters',
-  keywordHighlights: 'keyword_highlights',
   chatFilterRules: 'chat_filter_rules',
 }
 
@@ -602,12 +639,19 @@ function isLargeKeySyncEligible(key, value) {
   return UI_SYNC_BLOCKLIST.has(key) && !DEVICE_LOCAL_KEYS.has(key) && estimateSettingSize(value) <= LARGE_KEY_SYNC_MAX
 }
 
+// showNamePaints: the extension stores on/off, heatsync.org a mode
+// (full/static/off). Either shape can arrive here (sync from the site, an
+// old blob), and !!'off' is true — so only false and 'off' mean off.
+function namePaintsOn(v) {
+  return v !== false && v !== 'off'
+}
+
 /**
  * Sanitize a ui_settings-shaped object before merging into chrome.storage.sync
  * or echoing into localStorage. Strips:
  *   - numeric-string keys (corruption marker)
  *   - prototype pollution keys
- *   - blocklist keys (platformFilters, keywordHighlights — too big for sync)
+ *   - blocklist keys (platformFilters, chatFilterRules — too big for sync)
  *   - oversized strings (>4 KB) and oversized values (JSON >6 KB)
  *   - non-data values (function/symbol)
  * Returns a fresh plain object — never mutates input.
@@ -637,21 +681,6 @@ function sanitizeUiSettings(obj) {
     out[key] = v
   }
   return out
-}
-
-/**
- * Whether a string is a plausible (lowercased) twitch login: 1-25 chars of
- * [a-z0-9_]. Yt videoIds (11 chars, may carry '-' / uppercase) and other
- * junk that leaks into channel sets must never be treated as twitch
- * channels — reconcileAutoTabs uses this to refuse ghost `auto_<videoId>`
- * tabs from stale open-channel state. NOTE: a hyphen-free videoId still
- * passes (indistinguishable from a login) — the real guard is upstream:
- * yt URL channels are never IRC-joined.
- * @param {*} ch
- * @returns {boolean}
- */
-function isValidTwitchLogin(ch) {
-  return typeof ch === 'string' && /^[a-z0-9_]{1,25}$/.test(ch)
 }
 
 /**
@@ -692,11 +721,42 @@ function emoteProviderOrder(preferred) {
  */
 function resolveEmoteProviderWinner(existing, incoming, preferred) {
   if (!existing) return incoming
-  const order = emoteProviderOrder(preferred)
+  const order = Array.isArray(preferred) ? preferred : emoteProviderOrder(preferred)
   const exI = order.indexOf(existing.source || '')
   const inI = order.indexOf(incoming.source || '')
   if (exI === -1 || inI === -1 || existing.source === incoming.source) return incoming
   return exI < inI ? existing : incoming
+}
+
+/**
+ * The ONE provider order for a bare word with no sender ref (rule 3), winner first:
+ * a channel's set is ffz, 7tv, bttv; globals are 7tv, bttv, ffz, twitch. Platform
+ * natives (twitch/kick) trail the third parties in a channel: they arrive as tokens
+ * (rule 1), a bare word never lets one beat a 7tv/bttv/ffz copy. chrome/background.js
+ * builds its arrays in this same order (tests pin the two together).
+ * @type {{channel: readonly string[], global: readonly string[]}}
+ */
+const EMOTE_TIER_ORDER = {
+  channel: ['ffz', '7tv', 'bttv', 'twitch', 'kick'],
+  global: ['7tv', 'bttv', 'ffz', 'twitch'],
+}
+
+/**
+ * Stable re-rank of a pool array so index 0 is the winner for every name: in a channel,
+ * entries with no `source` (the owner's heatsync set) stay in front, then providers by tier
+ * order, unknown providers last. Returns a new array; the input is untouched.
+ * @param {Array<{source?: string}>} list
+ * @param {'channel'|'global'} tier
+ */
+function rankEmotePool(list, tier) {
+  const order = EMOTE_TIER_ORDER[tier] || EMOTE_TIER_ORDER.global
+  const rank = (e) => {
+    if (!e?.source) return tier === 'channel' ? -1 : order.length
+    const i = order.indexOf(e.source)
+    return i === -1 ? order.length : i
+  }
+  // Array.prototype.sort is stable: equal ranks keep their input order
+  return [...(list || [])].sort((a, b) => rank(a) - rank(b))
 }
 
 /**
@@ -710,13 +770,142 @@ function resolveEmoteProviderWinner(existing, incoming, preferred) {
  * @param {boolean}     opts.isYtVideoPage  URL is /watch, /live/<id> or /live_chat
  * @param {string|null} opts.autoVideoId    _autoYtVideoId gate value
  * @param {string}      opts.resolvedName   channelName from youtube_status
+ * @param {string}      [opts.pageName]     the uploader the watch page itself shows (a premiere or a
+ *                                          waiting room never gets a youtube_status echo)
  * @returns {string}
  */
-function resolveYtLiveLabel(channel, { isYtVideoPage, autoVideoId, resolvedName }) {
+function resolveYtLiveLabel(channel, { isYtVideoPage, autoVideoId, resolvedName, pageName }) {
   if (!channel) return ''
   if (!/^[a-zA-Z0-9_-]{11}$/.test(channel)) return channel
   if (channel !== autoVideoId && !isYtVideoPage) return channel
-  return resolvedName || ''
+  return resolvedName || pageName || ''
+}
+
+/**
+ * True when the send composer should tell the user to log in instead of
+ * promising "send to #channel". Only a KNOWN anonymous heatsync session counts
+ * (=== false; null = not resolved yet), and a host page that can send on its
+ * own (twitch via its auth cookie, kick via its session cookie) keeps its
+ * normal placeholder. hostSession: true = host can send, false = known absent,
+ * null = unknown (treated like absent once heatsync is known anonymous).
+ * @param {{hsAuth: boolean|null, hostSession?: boolean|null}} o
+ * @returns {boolean}
+ */
+function composerNeedsLogin({ hsAuth, hostSession }) {
+  if (hsAuth !== false) return false
+  return hostSession !== true
+}
+
+/**
+ * Parse a YouTube URL's pathname/search into heatsync's "current channel"
+ * identifier: an @handle (lowercased), a raw UC channel id, or a videoId
+ * (from ?v= or /live/<id>) — all case-sensitive except the handle. Pure so
+ * getCurrentChannel()'s four URL shapes are unit-testable without a real
+ * `location`.
+ * @param {string} pathname
+ * @param {string} search
+ * @returns {string|null}
+ */
+function parseYoutubeChannel(pathname, search) {
+  const handleMatch = pathname.match(/^\/@([^/]+)/)
+  if (handleMatch) return handleMatch[1].toLowerCase()
+  const vParam = new URLSearchParams(search).get('v')
+  if (vParam) return vParam
+  const liveMatch = pathname.match(/^\/live\/([^/?]+)/)
+  if (liveMatch) return liveMatch[1]
+  // Channel id is case-sensitive — never lowercase it like the handle above.
+  const channelMatch = pathname.match(/^\/channel\/(UC[\w-]+)/)
+  if (channelMatch) return channelMatch[1]
+  return null
+}
+
+/**
+ * The live URL for a channel-handle live page (/@handle/live), '' for anything
+ * else. That page IS the stream (youtube plays the live video there), but its
+ * path ends in "/live" with no trailing slash, so the /watch|/live/ video-page
+ * test misses it and the page's chat never bound to "watching". ytSubscribe
+ * resolves the @handle live URL to the concrete videoId.
+ * @param {string} pathname
+ * @returns {string}
+ */
+function ytHandleLiveUrl(pathname) {
+  const m = String(pathname || '').match(/^\/@([^/]+)\/live\/?$/)
+  return m ? `https://www.youtube.com/@${m[1].toLowerCase()}/live` : ''
+}
+
+/**
+ * Which channel a typed mod command (/ban /timeout /unban /delete /nuke
+ * /announce) acts on. A channel tab acts on its own entry. The live tab is not
+ * a channel ("live" would be dispatched as a twitch login): it acts on the
+ * page's channel on the platform the page is on, through that channel's saved
+ * tab when there is one so linked legs fan out too. Built-in tabs act on
+ * nothing. Ids may carry dashes (kick slugs).
+ * @param {string} tab currentTab
+ * @param {'twitch'|'kick'|'yt'} hostPlatform
+ * @param {string|null} pageCh the page's channel (getLiveChannel)
+ * @param {Array<{id: string, twitch?: string, kick?: string}>} channels
+ * @param {Iterable<string>} builtin ids of the built-in tabs
+ * @returns {{channel: string|null, entry: object|null, twitch: string|null, kick: string|null, platform: 'kick'|undefined}}
+ */
+function resolveTypedModChannel(tab, hostPlatform, pageCh, channels, builtin) {
+  const none = { channel: null, entry: null, twitch: null, kick: null, platform: undefined }
+  const ok = (v) => typeof v === 'string' && /^[a-z0-9_-]{2,40}$/i.test(v)
+  const list = channels || []
+  if (tab === 'live') {
+    const ch = String(pageCh || '').toLowerCase()
+    if (!ok(ch) || (hostPlatform !== 'twitch' && hostPlatform !== 'kick')) return none
+    const entry = list.find((c) => (hostPlatform === 'kick' ? c.kick : c.twitch)?.toLowerCase() === ch) || null
+    if (entry)
+      return { channel: entry.id, entry, twitch: entry.twitch || null, kick: entry.kick || null, platform: undefined }
+    return {
+      channel: ch,
+      entry: null,
+      twitch: hostPlatform === 'twitch' ? ch : null,
+      kick: hostPlatform === 'kick' ? ch : null,
+      platform: hostPlatform === 'kick' ? 'kick' : undefined,
+    }
+  }
+  if (!ok(tab)) return none
+  const entry = list.find((c) => c.id === tab) || null
+  if (entry) return { channel: tab, entry, twitch: entry.twitch || null, kick: entry.kick || null, platform: undefined }
+  if (new Set(builtin || []).has(tab)) return none
+  return { channel: tab, entry: null, twitch: tab, kick: null, platform: undefined }
+}
+
+/**
+ * What KIND of identifier parseYoutubeChannel(pathname, search) returned for
+ * the same URL — 'handle' and 'channel' ARE a channel identity (safe to feed
+ * straight to /api/profile or a 7TV/channel-emote lookup); 'video' is a
+ * video id, which is NOT a channel identity — it must be resolved to its
+ * owning channel first (oEmbed / the server) before any identity/profile/
+ * emote lookup, and it must never be lowercased (case-sensitive). Callers
+ * that skip this and pass a video id straight into a channel-keyed lookup
+ * get a 404 (or worse, a same-cased collision) — see parseYoutubeChannel's
+ * `v`/`/live/<id>` branches, which hand back the bare id with no type tag.
+ * @param {string} pathname
+ * @param {string} search
+ * @returns {'handle'|'channel'|'video'|null}
+ */
+function parseYoutubeChannelType(pathname, search) {
+  if (/^\/@([^/]+)/.test(pathname)) return 'handle'
+  if (/^\/channel\/(UC[\w-]+)/.test(pathname)) return 'channel'
+  if (new URLSearchParams(search).get('v')) return 'video'
+  if (/^\/live\/([^/?]+)/.test(pathname)) return 'video'
+  return null
+}
+
+/**
+ * True if two YouTube `location.search` strings are the same video — compares
+ * only the `v` param. YouTube's own &pp=/&list=/&index= replaceState churn
+ * (autoplay tracking, playlist position) fires mid-stream on the SAME video;
+ * comparing the full search string read that as a video change and fired a
+ * full WS unsubscribe/resubscribe loop for every param flip.
+ * @param {string} a
+ * @param {string} b
+ * @returns {boolean}
+ */
+function ytSameVideoSearch(a, b) {
+  return new URLSearchParams(a || '').get('v') === new URLSearchParams(b || '').get('v')
 }
 
 /**
@@ -738,6 +927,92 @@ function identityYtLiveUrl(res) {
   return `https://www.youtube.com/@${String(yt).replace(/^@/, '')}/live`
 }
 
+/**
+ * The platform a stream event (went live, game switch...) really belongs to.
+ * The wire carries it; twitch is the default for anything missing or odd, so a
+ * twitch row stays exactly as it always was (twitch rows carry no platform).
+ * @param {unknown} p
+ * @returns {'twitch'|'kick'|'youtube'}
+ */
+function streamEventPlatform(p) {
+  const v = String(p || '').toLowerCase()
+  if (v === 'youtube' || v === 'yt') return 'youtube'
+  return v === 'kick' ? 'kick' : 'twitch'
+}
+
+/**
+ * Where a stream-event row opens: the channel's own page on the platform it
+ * went live on, tagged #hs-live so the page lands on that channel's live tab.
+ * YouTube goes to /live (the running stream, not the empty channel home).
+ * @param {string} platform raw event platform (normalised here)
+ * @param {string} ch channel handle
+ * @returns {string}
+ */
+function streamEventUrl(platform, ch) {
+  const c = encodeURIComponent(String(ch || '').replace(/^@/, ''))
+  const p = streamEventPlatform(platform)
+  if (p === 'youtube') return `https://www.youtube.com/@${c}/live#hs-live`
+  if (p === 'kick') return `https://kick.com/${c}#hs-live`
+  return `https://twitch.tv/${c}#hs-live`
+}
+
+/**
+ * The channel-tab config entry for a channel opened from an event row (#hs-live),
+ * enabling only the platform the page is on. youtube slots hold full live URLs.
+ * @param {'twitch'|'kick'|'yt'} hostPlatform
+ * @param {string} cur page channel (lowercased handle)
+ * @returns {{id: string, twitch: string, kick: string, youtube: string}}
+ */
+function hsLiveChannelEntry(hostPlatform, cur) {
+  return {
+    id: cur,
+    twitch: hostPlatform === 'twitch' ? cur : '',
+    kick: hostPlatform === 'kick' ? cur : '',
+    youtube: hostPlatform === 'yt' ? `https://www.youtube.com/@${cur}/live` : '',
+  }
+}
+
+/**
+ * Fills the page platform's EMPTY slot on an existing channel entry (an event
+ * row opened a tab saved earlier as twitch-only). Never overwrites or drops a
+ * leg. Returns true when the entry changed.
+ * @param {{twitch?: string, kick?: string, youtube?: string}} entry mutated in place
+ * @param {'twitch'|'kick'|'yt'} hostPlatform
+ * @param {string} cur page channel (lowercased handle)
+ * @returns {boolean}
+ */
+function fillHsLiveLeg(entry, hostPlatform, cur) {
+  const slot = hostPlatform === 'yt' ? 'youtube' : hostPlatform
+  if (!entry || entry[slot]) return false
+  const fresh = hsLiveChannelEntry(hostPlatform, cur)
+  if (!fresh[slot]) return false
+  entry[slot] = fresh[slot]
+  return true
+}
+
+/**
+ * The OTHER platform's live handle for the page channel, read off a
+ * resolveIdentity() result. Twitch↔kick only: a same-name guess is the
+ * default the caller already joined, so only a VERIFIED handle that differs
+ * from it is worth returning (twitch zackrawrr → kick asmongold). Anything
+ * equal to the page channel, missing, or on a youtube host yields ''.
+ * @param {string} hostPlatform 'twitch' | 'kick' | 'yt'
+ * @param {string} urlCh page channel, lowercased by the caller or here
+ * @param {{ok?: boolean, identity?: {twitch?: string|null, kick?: string|null}}|null} res
+ * @returns {{twitch: string, kick: string}} '' where nothing verified differs
+ */
+function liveIdentityCounterpart(hostPlatform, urlCh, res) {
+  const none = { twitch: '', kick: '' }
+  const id = res?.ok ? res.identity : null
+  const ch = String(urlCh || '').toLowerCase()
+  if (!id || !ch) return none
+  const tw = String(id.twitch || '').toLowerCase()
+  const ki = String(id.kick || '').toLowerCase()
+  if (hostPlatform === 'twitch') return { twitch: '', kick: ki && ki !== ch ? ki : '' }
+  if (hostPlatform === 'kick') return { twitch: tw && tw !== ch ? tw : '', kick: '' }
+  return none
+}
+
 // Export
 // ── partial / defanged link detection ───────────────────────────────────────
 // Chat-borne links plain URL regexes miss: bare "watch?v=<id>" youtube refs
@@ -747,9 +1022,9 @@ function identityYtLiveUrl(res) {
 // and existing <a>…</a> spans are skipped whole so links can never nest.
 // Input is pre-escaped html; matches exclude <>"' so the emitted href is
 // attribute-safe verbatim (same contract as the feed's linkify pass).
-// Known trade-off, gated behind partialLinksEnabled: the spaced " dot " form
-// can linkify prose like "the dot com era" — that's the price of "get all of
-// them"; the toggle is the escape hatch.
+// Known trade-off: the spaced " dot " form can linkify prose like "the dot
+// com era" — that's the price of "get all of them"; clickable links off is
+// the escape hatch.
 
 // Host-less path fragments: chat drops the domain constantly ("shorts/e2B1_DNpsV4",
 // "watch?v=…", "r/place"). The 11-char youtube id shape is what keeps prose like
@@ -769,7 +1044,14 @@ const PARTIAL_YT_RE = new RegExp(
 const PARTIAL_YT_LIST_RE = /(?<![\w/.=-])\/?(playlist\?list=|channel\/UC)([A-Za-z0-9_-]{12,})(?![A-Za-z0-9_-])/g
 // reddit's own limits: 3-21 chars, letters/digits/underscore (leading dash never
 // valid), which is why "w/e" and "24/7" can't reach this.
-const PARTIAL_REDDIT_RE = /(?<![\w/.-])\/?(r|u|user)\/([A-Za-z0-9][A-Za-z0-9_]{2,20})(?![\w/-])/g
+// A post permalink rides along (`r/sub/comments/id/title/`, plus a comment id),
+// so a shared post links to the post and embeds, not just the subreddit.
+const PARTIAL_REDDIT_RE =
+  /(?<![\w/.-])\/?(r|u|user)\/([A-Za-z0-9][A-Za-z0-9_]{2,20})(\/comments\/[a-z0-9]{2,12}(?:\/[\w-]+){0,2})?\/?(?![\w/-])/g
+// A tweet with its host cut off — `name/status/2107279328723484841`. The
+// `status/` word plus a long numeric id is what makes it a tweet and not prose;
+// handles are x's own 1-15 word chars. A `?s=20` share query is dropped.
+const PARTIAL_TWEET_RE = /(?<![\w/.@-])@?([A-Za-z0-9_]{1,15})\/status\/(\d{8,25})(?:\?[\w=&;%-]*)?(?![\w/])/g
 // Bare host with NO path — "go to heatsync.org". LINK_RE already covers the
 // with-path form, so only this one is missing, and only this one is dangerous:
 // chat runs sentences together ("lol.im dead"), so an open TLD rule would
@@ -821,23 +1103,35 @@ const YT_FRAGMENT_PATH = {
   'embed/': (id, qs) => `embed/${id}${qs}`,
 }
 
+// Gate each pass with a plain regex test before paying for outsideTags'
+// split/replace/join — almost every chat message has no link fragment, and a
+// no-match test never allocates. Testing the WHOLE html (tags included) is a
+// safe superset: a tag-only match wastes one pass, never changes output.
+function outsideTagsIf(html, re, fn) {
+  re.lastIndex = 0
+  if (!re.test(html)) return html
+  re.lastIndex = 0
+  return outsideTags(html, re, fn)
+}
+
 function linkifyPartialLinks(html) {
-  let out = outsideTags(html, PARTIAL_YT_RE, (m0, kind, id, qs) =>
+  let out = outsideTagsIf(html, PARTIAL_YT_RE, (m0, kind, id, qs) =>
     anchor(`https://www.youtube.com/${YT_FRAGMENT_PATH[kind.toLowerCase()](id, qs || '')}`, m0),
   )
-  out = outsideTags(out, PARTIAL_YT_LIST_RE, (m0, kind, id) =>
+  out = outsideTagsIf(out, PARTIAL_YT_LIST_RE, (m0, kind, id) =>
     anchor(`https://www.youtube.com/${kind.startsWith('playlist') ? `playlist?list=${id}` : `channel/UC${id}`}`, m0),
   )
-  out = outsideTags(out, PARTIAL_REDDIT_RE, (m0, kind, name) =>
-    anchor(`https://www.reddit.com/${kind === 'r' ? 'r' : 'user'}/${name}`, m0),
+  out = outsideTagsIf(out, PARTIAL_REDDIT_RE, (m0, kind, name, post) =>
+    anchor(`https://www.reddit.com/${kind === 'r' ? 'r' : 'user'}/${name}${post || ''}`, m0),
   )
-  out = outsideTags(out, DEFANG_RE, (m0, scheme, core, path) => {
+  out = outsideTagsIf(out, PARTIAL_TWEET_RE, (m0, handle, id) => anchor(`https://x.com/${handle}/status/${id}`, m0))
+  out = outsideTagsIf(out, DEFANG_RE, (m0, scheme, core, path) => {
     const host = defangedToHost(core)
     if (!host) return m0
     const proto = scheme ? scheme.toLowerCase().replace(/^hxx/, 'htt') : 'https://'
     return anchor(`${proto}${host}${path || ''}`, m0)
   })
-  return outsideTags(out, BARE_HOST_RE, (m0) => anchor(`https://${m0.toLowerCase()}`, m0))
+  return outsideTagsIf(out, BARE_HOST_RE, (m0) => anchor(`https://${m0.toLowerCase()}`, m0))
 }
 
 /** First bare youtube fragment in RAW message text as a canonical watch URL.
@@ -863,21 +1157,135 @@ function firstPartialYtUrl(text) {
   return `https://www.youtube.com/watch?v=${m[2]}`
 }
 
+/** First host-less reddit post (`r/sub/comments/id/…`) in RAW message text as
+ * its reddit.com url — a bare `r/sub` stays link-only, there is no post to embed.
+ */
+function firstPartialRedditUrl(text) {
+  if (!text || typeof text !== 'string') return ''
+  let url = ''
+  PARTIAL_REDDIT_RE.lastIndex = 0
+  for (const m of text.matchAll(PARTIAL_REDDIT_RE)) {
+    if (!m[3]) continue
+    url = `https://www.reddit.com/${m[1] === 'r' ? 'r' : 'user'}/${m[2]}${m[3]}`
+    break
+  }
+  return url
+}
+
+/** First host-less tweet (`name/status/id`) in RAW message text as its x.com
+ * url — the tweet twin of firstPartialYtUrl, same regex the linkifier reads.
+ */
+function firstPartialTweetUrl(text) {
+  if (!text || typeof text !== 'string') return ''
+  PARTIAL_TWEET_RE.lastIndex = 0
+  const m = PARTIAL_TWEET_RE.exec(text)
+  PARTIAL_TWEET_RE.lastIndex = 0
+  return m ? `https://x.com/${m[1]}/status/${m[2]}` : ''
+}
+
 // ============================================
 // CROSS-PLATFORM MESSAGE ORDERING
 // ============================================
 // Every per-platform chat buffer (twitch, kick, youtube) is kept sorted
-// non-decreasing by ORD — a display-order value that's usually just the
-// message's real `time`, but diverges for paced-live YouTube (see
-// commitPacedYtMsg in social.js: it stamps `ord` with the paced-commit
-// value so live YT still lands at the visual "now", while `time` stays
-// YouTube's true send timestamp). `ord` is absent on twitch/kick messages
-// and on old persisted buffers written before this field existed — ordOf's
-// fallback to `time` makes both cases equivalent to "ord === time".
+// non-decreasing by ORD — a DISPLAY-order value, not a clock reading. For a
+// message that was live when it arrived, ord is just its real `time`, so the
+// platforms interleave truthfully. For one that arrived too stale to still be
+// part of the conversation, ord is the visual "now" instead (liveOrd below),
+// so it lands at the bottom rather than materializing in the middle of
+// scrollback the reader has already passed. `time` is NEVER rewritten — it
+// stays the platform's true send timestamp for dedup, relay and display.
+//
+// `ord` is absent on history/backfill/replay rows (deliberately: history is
+// chronological, it belongs at its real place) and on persisted buffers
+// written before this field existed — ordOf's fallback to `time` makes both
+// cases equivalent to "ord === time".
 
 /** The value every sort/merge/insert in the multichat overlay orders by. */
 function ordOf(m) {
   return m?.ord ?? m?.time ?? 0
+}
+
+// How far behind the visual tail a live message may be and still weave into
+// chronological place. Sized for transport skew between platforms, not for
+// lag: twitch IRC lands in ~0ms, the kick relay in ~120ms, so a kick reply
+// must be free to render ABOVE the twitch line it answers. Anything staler
+// than this window was not part of the live conversation when it showed up.
+// Same rule and same constant as the site (LIVE_WEAVE_SKEW_MS in
+// client/managers/channel-buffer-manager.js) — the two surfaces must not
+// disagree about where a late message goes.
+const LIVE_WEAVE_SKEW_MS = 2000
+
+// The newest ord handed out so far — the overlay's idea of "now", and
+// deliberately NOT Date.now(): twitch and kick stamp `time` from their own
+// servers, so measuring staleness against the local clock would mis-clamp
+// every message on a machine whose clock is off by more than the window.
+// Comparing message time against message time is skew-proof. Monotonic, so a
+// clamped row can never land above one already committed.
+let _visualNow = 0
+// The newest REAL message time seen (fresh ones only). The visual clock may
+// run ahead of it by at most DRIFT_CAP_MS: every stale arrival spends a tick,
+// and a backlog flood (kick relay catching up, a held-back tab flushing) could
+// otherwise push the visual now seconds past reality — every fresh line then
+// sorted ABOVE the flood and the pane looked frozen until real time caught up.
+let _realNow = 0
+const VISUAL_DRIFT_CAP_MS = 1000
+
+/**
+ * Display ord for a LIVE message, assigned ONCE at insert and never
+ * recomputed — that is the whole guarantee: a row's position is decided when
+ * it enters the buffer, so no later render can move it.
+ *
+ * Fresh enough to still be part of the conversation → its own `time`, and it
+ * weaves chronologically with the other platforms. Staler than the window →
+ * the visual now, i.e. the bottom.
+ *
+ * History, backfill and replay rows must NOT come through here. They are
+ * history, and history is chronological.
+ *
+ * @param {number} time real send timestamp from the platform
+ * @returns {number} the ord to stamp
+ */
+function liveOrd(time) {
+  if (Number.isFinite(time) && time > 0 && !(_visualNow && _visualNow - time > LIVE_WEAVE_SKEW_MS)) {
+    if (time > _visualNow) _visualNow = time
+    if (time > _realNow) _realNow = time
+    return time
+  }
+  return visualNowOrd()
+}
+
+/**
+ * The visual now, advanced by one tick — the ord for a source that is stale
+ * BY CONSTRUCTION rather than by accident, so there is nothing to test. The
+ * YouTube pacer is the case: it drains 5-second poll batches, so every row it
+ * commits shares a send time several seconds behind the live platforms and
+ * must display at the moment it is emitted instead.
+ *
+ * One tick, never a re-read of the wall clock. Re-anchoring to Date.now()
+ * looks harmless and isn't: on a machine whose clock runs ahead, the first
+ * stale row would drag the visual now past every real server timestamp, so
+ * every later message would read as stale, clamp, and the cross-platform
+ * interleave would be dead for that user for the whole session. Incrementing
+ * keeps the clock in the platforms' own time base. It also can't run away —
+ * a tick is 1ms and only a stale arrival spends one, while every fresh
+ * message pulls the clock back onto real time.
+ *
+ * The +1 keeps every ord distinct, so two rows committed in the same
+ * millisecond hold arrival order instead of tying and being re-sorted by id.
+ */
+function visualNowOrd() {
+  // Cold start has no message time to anchor to yet — a YouTube-only channel
+  // can commit before any platform has spoken. The wall clock is the only
+  // reference available, and it is what the YT pacer always used.
+  if (!_visualNow) _visualNow = _realNow = Date.now()
+  else if (_visualNow < _realNow + VISUAL_DRIFT_CAP_MS) _visualNow++ // at the cap: hold, ties keep arrival order
+  return _visualNow
+}
+
+/** Test seam — the visual clock is module state and each case needs it cold. */
+function _resetVisualNow(v = 0) {
+  _visualNow = v
+  _realNow = v
 }
 
 // Index of the first element whose ordOf is > `ord` — i.e. where `ord`
@@ -929,6 +1337,8 @@ const utils = {
   // Links
   linkifyPartialLinks,
   firstPartialYtUrl,
+  firstPartialTweetUrl,
+  firstPartialRedditUrl,
   defangedToHost,
   outsideTags,
 
@@ -962,13 +1372,25 @@ const utils = {
   DEBUG,
 
   // Identity validation
-  isValidTwitchLogin,
   resolveYtLiveLabel,
+  composerNeedsLogin,
   identityYtLiveUrl,
+  streamEventPlatform,
+  streamEventUrl,
+  hsLiveChannelEntry,
+  fillHsLiveLeg,
+  resolveTypedModChannel,
+  ytHandleLiveUrl,
+  liveIdentityCounterpart,
+  parseYoutubeChannel,
+  parseYoutubeChannelType,
+  ytSameVideoSearch,
 
   // Emote provider priority
   EMOTE_THIRD_PARTY_PROVIDERS,
+  EMOTE_TIER_ORDER,
   emoteProviderOrder,
+  rankEmotePool,
   resolveEmoteProviderWinner,
 
   // Scroll-wheel volume
@@ -977,14 +1399,19 @@ const utils = {
 
   // Cross-platform message ordering
   ordOf,
+  liveOrd,
+  visualNowOrd,
+  LIVE_WEAVE_SKEW_MS,
   findOrdInsertIndex,
   sortedInsert,
 
   // Storage hygiene
+  namePaintsOn,
   sanitizeUiSettings,
   UI_SYNC_BLOCKLIST,
   DEVICE_LOCAL_KEYS,
   OVERFLOW_MIRROR_KEYS,
+  RETIRED_UI_KEYS,
   LARGE_KEY_SYNC_MAX,
   estimateSettingSize,
   isLargeKeySyncEligible,
@@ -996,48 +1423,69 @@ if (typeof window !== 'undefined') {
 }
 
 export {
+  _resetVisualNow,
   boostReadability,
   classifyYtMembership,
   classifyYtRendererType,
+  composerNeedsLogin,
   createElement,
   DEVICE_LOCAL_KEYS,
   debounce,
   EMOTE_THIRD_PARTY_PROVIDERS,
+  EMOTE_TIER_ORDER,
   emoteProviderOrder,
   error,
   escapeHtml,
   estimateSettingSize,
+  fillHsLiveLeg,
   findComponent,
   findOrdInsertIndex,
+  firstPartialRedditUrl,
+  firstPartialTweetUrl,
   firstPartialYtUrl,
   getFiber,
+  hsLiveChannelEntry,
   identityYtLiveUrl,
   isLargeKeySyncEligible,
-  isValidTwitchLogin,
   LARGE_KEY_SYNC_MAX,
+  LIVE_WEAVE_SKEW_MS,
+  liveIdentityCounterpart,
+  liveOrd,
   log,
+  NAME_STRIPE,
+  namePaintsOn,
   OVERFLOW_MIRROR_KEYS,
   ordOf,
   outsideTags,
+  parseYoutubeChannel,
+  parseYoutubeChannelType,
   parseYtGiftCount,
   qsArray,
   qsaArray,
+  RETIRED_UI_KEYS,
+  rankEmotePool,
   resolveEmoteProviderWinner,
+  resolveTypedModChannel,
   resolveVolumeWheelStep,
   resolveYtLiveLabel,
   safeUrl,
   sanitizeUiSettings,
   sortedInsert,
   stepVolume,
+  streamEventPlatform,
+  streamEventUrl,
   throttle,
   truncateSafe,
   UI_SYNC_BLOCKLIST,
   unescapeHtml,
+  visualNowOrd,
   warn,
+  ytHandleLiveUrl,
   ytHasModItems,
   ytItemModEndpoint,
   ytItemText,
   ytMatchModAction,
   ytResolveModAction,
+  ytSameVideoSearch,
 }
 export default utils

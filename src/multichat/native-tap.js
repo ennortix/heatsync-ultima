@@ -20,13 +20,72 @@ let _tapContainer = null
 let _tapChannel = ''
 let _tapRetryTimer = null // bind-retry while container missing
 let _tapPollTimer = null // permanent remount watcher
-const _tapStats = { mined: 0, fiberMiss: 0 }
+const _tapStats = { mined: 0, fiberMiss: 0, held: 0, filled: 0 }
+
+// Twitch's own chat is the ground truth on a twitch page: every line it shows,
+// the reader should have too. While the reader looks healthy its copy wins (it
+// carries the reply/bits/highlight tags), so a native line waits a moment for
+// it. It used to be dropped instead, and a reader twitch had throttled to a
+// trickle still counted as healthy: the lines it never got were shown nowhere,
+// and the chat sat minutes behind the stream. A line the reader hasn't
+// delivered by the end of the wait is shown from here.
+const TAP_GRACE_MS = 2500
+const TAP_HELD_MAX = 600
+const _tapHeld = []
+let _tapHeldTimer = null
+// a plain chat line with an id can be matched to the reader's copy; anything
+// else keeps the old rule (the reader's copy, or nothing)
+function _tapHold(msg) {
+  if (msg.type || !msg.id || !msg.channel) return false
+  _tapHeld.push({ msg, key: `${msg.channel}:${msg.id}`, at: Date.now() })
+  if (_tapHeld.length > TAP_HELD_MAX) _tapHeld.splice(0, _tapHeld.length - TAP_HELD_MAX)
+  _tapStats.held++
+  if (!_tapHeldTimer) _tapHeldTimer = cleanup.setPageTimeout(_tapFlushHeld, TAP_GRACE_MS)
+  return true
+}
+function _tapFlushHeld() {
+  _tapHeldTimer = null
+  const now = Date.now()
+  let i = 0
+  for (; i < _tapHeld.length && now - _tapHeld[i].at >= TAP_GRACE_MS; i++) {
+    const { msg, key } = _tapHeld[i]
+    if (irc?._seenIds?.has?.(key)) continue
+    _tapStats.filled++
+    _tapReaderMissed(msg.channel, now)
+    try {
+      irc?._handleMsg?.(msg)
+    } catch (_) {}
+  }
+  _tapHeld.splice(0, i)
+  if (_tapHeld.length) _tapHeldTimer = cleanup.setPageTimeout(_tapFlushHeld, TAP_GRACE_MS - (now - _tapHeld[0].at))
+}
+// The reader keeps missing lines twitch shows: it is being throttled. The lines
+// are covered from here; a fresh reader connection is what ends the episode.
+// The background rate-limits the reconnect itself.
+const TAP_MISS_WINDOW_MS = 30_000
+const TAP_MISS_LIMIT = 8
+const _tapMisses = new Map()
+function _tapReaderMissed(ch, now) {
+  const recent = (_tapMisses.get(ch) || []).filter((t) => now - t < TAP_MISS_WINDOW_MS)
+  recent.push(now)
+  if (recent.length < TAP_MISS_LIMIT) {
+    _tapMisses.set(ch, recent)
+    return
+  }
+  _tapMisses.set(ch, [])
+  try {
+    hsDiagLog('reader_missed', { ch: ch.slice(0, 25), n: recent.length })
+  } catch (_) {}
+  try {
+    safeSendMessage({ type: 'bg_irc_reader_missed', channel: ch }).catch(() => {})
+  } catch (_) {}
+}
 
 function _tapFindContainer() {
-  return (
-    document.querySelector('.chat-scrollable-area__message-container') ||
-    document.querySelector('[data-test-selector="chat-scrollable-area__message-container"]')
-  )
+  return hsQuery('twitch:chat-message-container', [
+    CONFIG.SELECTORS.TWITCH_CHAT_CONTAINER,
+    '[data-test-selector="chat-scrollable-area__message-container"]',
+  ])
 }
 
 // Walk the row's fiber tree for memoizedProps.message (twitch's chat-line
@@ -145,9 +204,18 @@ function _tapToMsg(m, channel) {
   // names drift across twitch builds — check both casings)
   const roomID = m.roomID ?? m.roomId
   const srcRoomID = m.sourceRoomID ?? m.sourceRoomId
-  if (roomID != null && srcRoomID != null && String(roomID) !== String(srcRoomID)) msg.sharedChat = true
+  if (roomID != null && srcRoomID != null && String(roomID) !== String(srcRoomID)) {
+    msg.sharedChat = true
+    msg.sourceRoomId = String(srcRoomID)
+  }
+  // The page's badge version is tier-prefixed: tier 1 is plain months ("14"),
+  // tier 2 is 2000 + months ("2040"), tier 3 is 3000 + months. Read raw, a
+  // tier 2 sub of 40 months drew as 2040 months — "170y" on the hover card.
   const subMatch = badgeStr.match(/subscriber\/(\d+)/)
-  if (subMatch) msg.subMonths = parseInt(subMatch[1], 10)
+  if (subMatch) {
+    const v = parseInt(subMatch[1], 10)
+    msg.subMonths = v >= 1000 ? v % 1000 : v
+  }
   return msg
 }
 
@@ -183,11 +251,12 @@ function _tapHandleRow(rowEl) {
   if (!ch) return
   if (ch !== _tapChannel) _tapChannel = ch
   // richness guard: when IRC flow is HEALTHY for this channel (3+ msgs in
-  // the last 10s) its copies are richer (replies/bits/highlights) — defer.
-  // a starved trickle (1 msg/20s) must NOT suppress the tap.
+  // the last 10s) its copies are richer (replies/bits/highlights) — wait for
+  // them (_tapHold). a starved trickle (1 msg/20s) feeds the tap straight away.
+  let healthy = false
   try {
     const ts = irc?._lastLiveAt?.get?.(ch)
-    if (Array.isArray(ts) && ts.length >= 3 && Date.now() - ts[ts.length - 3] < 10_000) return
+    healthy = Array.isArray(ts) && ts.length >= 3 && Date.now() - ts[ts.length - 3] < 10_000
   } catch (_) {}
   const mined = _tapMineMessage(rowEl)
   if (!mined) {
@@ -204,6 +273,10 @@ function _tapHandleRow(rowEl) {
     msg.msgId = 'announcement'
   }
   _tapStats.mined++
+  if (healthy) {
+    _tapHold(msg)
+    return
+  }
   try {
     irc?._handleMsg?.(msg)
   } catch (_) {}
@@ -213,7 +286,7 @@ function _tapBind() {
   const container = _tapFindContainer()
   if (!container) {
     if (!_tapRetryTimer)
-      _tapRetryTimer = cleanup.setInterval(() => {
+      _tapRetryTimer = cleanup.setPageInterval(() => {
         const c = _tapFindContainer()
         if (c) {
           cleanup.clearInterval(_tapRetryTimer)
@@ -255,7 +328,7 @@ function startNativeTap(channel) {
   // the bind-retry can't shadow it (shared slot = poll never installed when
   // the container is missing at startup → tap dies on first remount)
   if (!_tapPollTimer)
-    _tapPollTimer = cleanup.setInterval(() => {
+    _tapPollTimer = cleanup.setPageInterval(() => {
       const c = _tapFindContainer()
       if (c && c !== _tapContainer) _tapBind()
     }, 5000)
@@ -271,10 +344,12 @@ function startNativeTap(channel) {
 // irc._handleMsg path as the DOM tap, and (b) owns the takeover signal: a
 // body-dataset flag plus a heartbeat the MAIN world treats as a dead-man
 // switch — beat goes stale for 45s → Twitch resumes rendering natively.
-// The beat interval deliberately uses cleanup.setInterval, NOT the
+// The beat interval deliberately uses cleanup.setPageInterval, NOT the
 // visibility-gated variant: a hidden tab must KEEP suppressing (that's the
-// biggest RAM case), and overlay teardown clears the interval anyway, which
-// stales the beat and fails open.
+// biggest RAM case). Page timer because a channel switch drains plain ones and
+// a dead beat reads stale at 45s; full teardown still clears it, which stales
+// the beat and fails open, and each tick fails open itself once the overlay is
+// gone.
 let _nsBeatTimer = null
 let _nsRxBound = false
 
@@ -339,7 +414,17 @@ function _updateNativeSuppress() {
 
 // Stage counters, window-exposed (isolated world only — invisible to the
 // page) so field debugging can read them over CDP/devtools without a rebuild.
-const _nsStats = { rx: 0, dropOrigin: 0, dropShape: 0, dropNoCh: 0, dropRich: 0, nullMsg: 0, fed: 0, feedErr: 0 }
+const _nsStats = {
+  rx: 0,
+  dropOrigin: 0,
+  dropShape: 0,
+  dropNoCh: 0,
+  dropRich: 0,
+  held: 0,
+  nullMsg: 0,
+  fed: 0,
+  feedErr: 0,
+}
 try {
   window.__hsNsStats = _nsStats
 } catch (_) {}
@@ -365,13 +450,12 @@ function _nsStart() {
         return
       }
       // richness guard, same as the DOM tap: healthy IRC delivers richer
-      // copies (replies/bits/highlights) — let its copy win the id-dedup.
+      // copies (replies/bits/highlights) — its copy gets a head start on the
+      // id-dedup, and this one fills in if it never comes (_tapHold).
+      let healthy = false
       try {
         const ts = irc?._lastLiveAt?.get?.(ch)
-        if (Array.isArray(ts) && ts.length >= 3 && Date.now() - ts[ts.length - 3] < 10_000) {
-          _nsStats.dropRich++
-          return
-        }
+        healthy = Array.isArray(ts) && ts.length >= 3 && Date.now() - ts[ts.length - 3] < 10_000
       } catch (_) {}
       const msg = _tapToMsg(d.m, ch)
       if (!msg) {
@@ -379,6 +463,14 @@ function _nsStart() {
         return
       }
       _tapStats.mined++
+      if (healthy) {
+        if (_tapHold(msg)) {
+          _nsStats.held++
+          return
+        }
+        _nsStats.dropRich++
+        return
+      }
       try {
         irc?._handleMsg?.(msg)
         _nsStats.fed++
@@ -389,7 +481,16 @@ function _nsStart() {
   }
   if (!_nsBeatTimer) {
     _updateNativeSuppress()
-    _nsBeatTimer = cleanup.setInterval(_updateNativeSuppress, 15000)
+    // NOT the visibility-gated variant (see the header comment): the beat is
+    // the dead-man signal, and a hidden tab must KEEP beating or the MAIN
+    // world reads it stale at 45s, twitch resumes rendering its hidden chat
+    // untrimmed, and the watchdog force-reveals native chat — the exact
+    // +118MB case the takeover exists to prevent. Gating this was tried
+    // (29aaa83) and is a regression, not a perf win.
+    _nsBeatTimer = cleanup.setPageInterval(_updateNativeSuppress, 15000)
+    cleanup.addEventListener(document, 'visibilitychange', () => {
+      if (!document.hidden) _updateNativeSuppress()
+    })
   }
 }
 

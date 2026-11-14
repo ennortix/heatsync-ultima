@@ -1,12 +1,6 @@
 import { describe, expect, test } from 'bun:test'
-import {
-  compilePaintCss,
-  EFFECTS,
-  hashPaintSpec,
-  paintNeedsLetterSplit,
-  paintPhaseNow,
-  validatePaintSpec,
-} from '../src/lib/paint-spec.js'
+import { validatePaintSpec } from '../src/lib/paint-authoring.js'
+import { compilePaintCss, EFFECTS, hashPaintSpec, paintNeedsSpans, paintPhaseNow } from '../src/lib/paint-spec.js'
 
 // Smoke-test coverage for the ext's ported copy of the heatsync monorepo's
 // client/utils/paint-spec.js — see the provenance header in src/lib/paint-spec.js.
@@ -49,9 +43,12 @@ describe('validatePaintSpec — schema clamps', () => {
   })
 
   test('clamps base.angle to integer 0-360', () => {
+    // #5fafff, not #000fff: the synced compiler carries the legibility floor
+    // (a paint's DIMMEST stop must clear 3:1 against the chat background), and
+    // this fixture predated it — the ext copy had drifted behind the site.
     const stops = [
       { color: '#fff000', pos: 0 },
-      { color: '#000fff', pos: 100 },
+      { color: '#5fafff', pos: 100 },
     ]
     expect(validatePaintSpec(baseSpec({ base: { type: 'linear', angle: -1, stops } })).ok).toBe(false)
     expect(validatePaintSpec(baseSpec({ base: { type: 'linear', angle: 361, stops } })).ok).toBe(false)
@@ -150,7 +147,7 @@ describe('validatePaintSpec — layer/slot compatibility rules', () => {
     const spec = baseSpec({
       effects: [
         { id: 'pan', speed: 1 },
-        { id: 'gold', speed: 1 },
+        { id: 'glint', speed: 1 },
       ],
     })
     const result = validatePaintSpec(spec)
@@ -159,7 +156,7 @@ describe('validatePaintSpec — layer/slot compatibility rules', () => {
   })
 
   test('allows exactly 1 paint-slot effect', () => {
-    for (const id of ['pan', 'conic', 'hue', 'glint', 'chrome', 'gold', 'fire', 'matrix', 'holo', 'reveal']) {
+    for (const id of ['pan', 'conic', 'hue', 'glint', 'reveal', 'stripes', 'stardust', 'pulse']) {
       expect(validatePaintSpec(baseSpec({ effects: [{ id, speed: 1 }] })).ok, id).toBe(true)
     }
   })
@@ -204,7 +201,8 @@ describe('validatePaintSpec — luminance min-period enforcement (via compiler)'
       for (const speed of [0.25, 1, 2, 3]) {
         const spec = baseSpec({ effects: [{ id, speed }] })
         const css = compilePaintCss(spec, '.hsp-test', { hash: 'test' })
-        const match = css.match(new RegExp(`hsp_test_${id} ([0-9.]+)s`))
+        // hs[pq]: a letter motion's keyframes carry the composited prefix now.
+        const match = css.match(new RegExp(`hs[pq]_test_${id} ([0-9.]+)s`))
         expect(match, css).not.toBeNull()
         expect(Number(match[1])).toBeGreaterThanOrEqual(1)
       }
@@ -212,19 +210,19 @@ describe('validatePaintSpec — luminance min-period enforcement (via compiler)'
   })
 })
 
-describe('paintNeedsLetterSplit', () => {
+describe('paintNeedsSpans', () => {
   test('true for wave/ripple/tumble', () => {
     for (const id of ['wave', 'ripple', 'tumble']) {
-      expect(paintNeedsLetterSplit(baseSpec({ effects: [{ id, speed: 1 }] }))).toBe(true)
+      expect(paintNeedsSpans(baseSpec({ effects: [{ id, speed: 1 }] }))).toBe(true)
     }
   })
   test('false for other effects and no effects', () => {
-    expect(paintNeedsLetterSplit(baseSpec())).toBe(false)
-    expect(paintNeedsLetterSplit(baseSpec({ effects: [{ id: 'heli', speed: 1 }] }))).toBe(false)
+    expect(paintNeedsSpans(baseSpec())).toBe(false)
+    expect(paintNeedsSpans(baseSpec({ effects: [{ id: 'heli', speed: 1 }] }))).toBe(false)
   })
   test('false for null/undefined spec', () => {
-    expect(paintNeedsLetterSplit(null)).toBe(false)
-    expect(paintNeedsLetterSplit(undefined)).toBe(false)
+    expect(paintNeedsSpans(null)).toBe(false)
+    expect(paintNeedsSpans(undefined)).toBe(false)
   })
 })
 
@@ -270,7 +268,7 @@ describe('compilePaintCss — structural checks', () => {
   test('solid base with no effects compiles a plain color rule, no gradient/animation', () => {
     const spec = baseSpec()
     const css = compilePaintCss(spec, '.hsp-abc123', { hash: 'abc123' })
-    expect(css).toContain('.hsp-abc123{display:inline-block;color:#ff8700;}')
+    expect(css).toContain('.hsp-abc123>.hs-name{display:inline-block;color:#ff8700;}')
     expect(css).not.toContain('@keyframes')
     expect(css).not.toContain('background-clip')
   })
@@ -289,28 +287,22 @@ describe('compilePaintCss — structural checks', () => {
     })
     const css = compilePaintCss(spec, '.hsp-xyz789', { hash: 'xyz789' })
     expect(css).toContain('background-clip:text')
-    expect(css).toContain('animation:hsp_xyz789_pan 5s linear infinite')
+    // steps(80), not linear: the fill's phase is rate-limited to
+    // FILL_STEPS_PER_SECOND redraws a second (paint-core.steppedTiming,
+    // raised 8->16 2026-09-16 — synced from the site).
+    expect(css).toContain('animation:hsp_xyz789_pan 5s steps(80) infinite')
     expect(css).toContain('@keyframes hsp_xyz789_pan')
     expect(css).toContain('linear-gradient(90deg,')
     expect(css).toContain('#ff0000 100%')
   })
 
-  test('themed preset (gold) ignores base stops entirely — fixed palette', () => {
-    const spec = baseSpec({
-      base: {
-        type: 'linear',
-        angle: 0,
-        stops: [
-          { color: '#00ff00', pos: 0 },
-          { color: '#0000ff', pos: 100 },
-        ],
-      },
-      effects: [{ id: 'gold', speed: 1 }],
-    })
-    const css = compilePaintCss(spec, '.hsp-gold1', { hash: 'gold1' })
-    expect(css).not.toContain('#00ff00')
-    expect(css).toContain('#ffd700')
-  })
+  // The themed presets (chrome/gold/fire/matrix/holo/rainbow/ice/lava) were
+  // deleted on 2026-09-16 — a fixed palette that overrode the wearer's own
+  // colours is the one way two people ended up identical, and the builder got
+  // banded fills and pan's scale/loop/skew controls to rebuild those looks
+  // from their own colours instead. There is no longer any effect that ignores
+  // base stops, which is why the test that asserted one is gone rather than
+  // ported.
 
   test('motion effect (heli) never touches background/color — layers transform only', () => {
     const spec = baseSpec({ effects: [{ id: 'heli', speed: 1 }] })
@@ -319,25 +311,39 @@ describe('compilePaintCss — structural checks', () => {
     expect(css).toContain('color:#ff8700')
   })
 
-  test('letter-split effect (wave) emits ONE `span` rule with --i delay', () => {
+  test('letter-split effect (wave) emits ONE `span` rule, one animation per EFFECT, and no inherited phase', () => {
     const spec = baseSpec({ effects: [{ id: 'wave', speed: 1 }] })
     const css = compilePaintCss(spec, '.hsp-wave1', { hash: 'wave1' })
-    // Single combined rule — display:inline-block + animation live together,
-    // not a separate display-only rule followed by a separate animation rule.
-    expect(css.match(/\.hsp-wave1 span\{/g)?.length).toBe(1)
-    expect(css).toContain('.hsp-wave1 span{display:inline-block;animation:hsp_wave1_wave')
-    expect(css).toContain('var(--i)')
+    expect(css.match(/\.hsp-wave1>\.hs-name>span\{/g)?.length).toBe(1)
+    const spanRule = css.match(/\.hsp-wave1>\.hs-name>span\{[^}]*\}/)[0]
+    // The glyph animates itself, with literal keyframes the compositor owns —
+    // one per EFFECT, never one per property or per stop.
+    expect(spanRule.match(/animation:/g)?.length).toBe(1)
+    expect(spanRule).toContain('animation:hsq_wave1_wave')
+    expect(css).toContain('@keyframes hsq_wave1_wave')
+    // The stagger is a time offset now, riding the same delay as the
+    // wall-clock phase lock.
+    expect(spanRule).toContain('var(--i, 0)')
+    // The parent drives nothing: an animated custom property that INHERITS
+    // restyles the whole subtree every frame, which is what this replaced.
+    expect(css).not.toContain('inherits:true')
+    expect(css).not.toContain('--hsp-wave1-wave-ph')
   })
 
-  // Regression: paint effect (fire/pan/conic/hue/glint/reveal/themed) and
-  // per-letter motion (wave/ripple/tumble) both target `${selector} span`
-  // when the name is split. Two separate rules each setting the `animation`
-  // shorthand on that same selector don't compose — the later rule wins
-  // outright and blanks the earlier one's animation-name (verified live:
-  // the fire gradient rendered fully static, only the wave transform ran).
-  // The fix combines every span-targeted animation into ONE rule with
-  // comma-listed animation/animation-delay.
-  test('fire (paint) + wave (motion): one span rule, two comma-listed animations, paint delay phase-locked', () => {
+  // Regression (superseded 2026-09-10, then 2026-09-10 again): paint effect
+  // (fire/pan/conic/hue/glint/reveal/themed) and per-letter motion (wave/
+  // ripple/tumble) used to BOTH target `${selector} span`, so this block
+  // originally verified they combined into one comma-listed rule instead of
+  // clobbering. Letter motion moved to ONE Animation on the PARENT first
+  // (buildLetterMotionCss); the paint slot stayed per-span for a moment
+  // (a real device trace found a paint-slot fill combined with a
+  // letter-split name still ran one Animation PER GLYPH — enough on its own
+  // to blow the whole page's mobile animation budget off one multi-layer
+  // name). buildPaintPhaseCss closed that gap the same way: paint is now
+  // ALSO a parent-driven phase, so these verify the span carries NO
+  // animation at all for either slot — every live Animation for a name
+  // lives on the parent, comma-listed, regardless of letter count.
+  test('pan (paint) + wave (motion): both animate the SPAN, comma-listed, one each', () => {
     const spec = baseSpec({
       base: {
         type: 'linear',
@@ -348,25 +354,34 @@ describe('compilePaintCss — structural checks', () => {
         ],
       },
       effects: [
-        { id: 'fire', speed: 1 },
+        { id: 'pan', speed: 1 },
         { id: 'wave', speed: 1 },
       ],
     })
     const css = compilePaintCss(spec, '.hsp-fw', { hash: 'fw' })
-    const spanRules = css.match(/\.hsp-fw span\{[^}]*\}/g) || []
+    // Anchored so a crowd-tier rule (`body.hs-paint-x .hsp-fw>.hs-name>span`)
+    // is not counted as a second copy of the spec — the span only started
+    // carrying tier rules when the fill's animation moved onto it.
+    const spanRules = (css.match(/(^|\})[^{}]*\.hsp-fw>\.hs-name>span\{[^}]*\}/g) || []).filter(
+      (r) => !r.includes('body.hs-paint-'),
+    )
     expect(spanRules.length).toBe(1)
     const rule = spanRules[0]
-    expect(rule).toMatch(/animation:hsp_fw_fire[^,]*, hsp_fw_wave[^;]*;/)
-    // paint slot delay = wall-clock phase fold; motion slot keeps the --i stagger plus the fold
-    expect(rule).toMatch(
-      /animation-delay:calc\(-1 \* mod\(var\(--hsp-t, 0s\), [\d.]+s\)\), calc\(var\(--i\)[^;]*mod\(var\(--hsp-t, 0s\)[^;]*\);/,
-    )
     // Paint decls (background/clip) must still be present — not clobbered.
-    expect(rule).toContain('background:linear-gradient(0deg, #870000')
+    expect(rule).toContain('background:linear-gradient(90deg, #ff8700')
     expect(rule).toContain('background-clip:text')
+    expect(rule).toContain('background-position:')
+    // ONE comma-listed shorthand, one entry per effect. The fill's animation
+    // has to be HERE: `background-position` is declared on the span and
+    // nowhere else, so running it on the name box animated nothing at all.
+    expect(rule.match(/animation:/g).length).toBe(1)
+    expect(rule).toMatch(/animation:hsp_fw_pan[^,]*, hsq_fw_wave[^;]*;/)
+    // And the name box is left with nothing of its own to run.
+    const parentAnim = (css.match(/\.hsp-fw>\.hs-name\{[^}]*\}/g) || []).find((r) => r.includes('animation:'))
+    expect(parentAnim).toBeUndefined()
   })
 
-  test('wave + ripple (two per-letter motions, no paint): both animations combine, no paint slot', () => {
+  test('wave + ripple (two per-letter motions): ONE comma-listed shorthand, two staggers', () => {
     const spec = baseSpec({
       base: {
         type: 'linear',
@@ -382,15 +397,21 @@ describe('compilePaintCss — structural checks', () => {
       ],
     })
     const css = compilePaintCss(spec, '.hsp-wr', { hash: 'wr' })
-    const spanRules = css.match(/\.hsp-wr span\{[^}]*\}/g) || []
+    const spanRules = css.match(/\.hsp-wr>\.hs-name>span\{[^}]*\}/g) || []
     expect(spanRules.length).toBe(1)
-    expect(spanRules[0]).toMatch(/animation:hsp_wr_wave[^,]*, hsp_wr_ripple[^;]*;/)
-    expect(spanRules[0]).toMatch(
-      /animation-delay:calc\(var\(--i\) \* 0\.0900s - mod\(var\(--hsp-t, 0s\), [\d.]+s\)\), calc\(var\(--i\) \* -0\.1800s - mod\(var\(--hsp-t, 0s\), [\d.]+s\)\);/,
+    expect(spanRules[0].match(/animation:/g).length).toBe(1)
+    expect(spanRules[0]).toMatch(/animation:hsq_wr_wave[^,]*, hsq_wr_ripple[^;]*;/)
+    expect(css).toContain('translateY')
+    expect(css).toContain('hue-rotate')
+    // ripple's wave travels the other way, so its per-glyph offset is POSITIVE
+    // where wave's is negative — the sign the old `mod()` carried.
+    expect(spanRules[0]).toContain(
+      'animation-delay:calc(calc(-1 * mod(var(--hsp-t, 0s), 1.6s)) + var(--i, 0) * -0.09s),' +
+        ' calc(calc(-1 * mod(var(--hsp-t, 0s), 2.4s)) + var(--i, 0) * 0.18s);',
     )
   })
 
-  test('pan (paint) + tumble (motion): one span rule; tumble perspective stays a separate parent rule', () => {
+  test('pan (paint) + tumble (motion): both on the span; only the perspective stays on the parent', () => {
     const spec = baseSpec({
       base: {
         type: 'linear',
@@ -406,25 +427,31 @@ describe('compilePaintCss — structural checks', () => {
       ],
     })
     const css = compilePaintCss(spec, '.hsp-pt', { hash: 'pt' })
-    const spanRules = css.match(/\.hsp-pt span\{[^}]*\}/g) || []
-    expect(spanRules.length).toBe(1)
-    expect(spanRules[0]).toMatch(/animation:hsp_pt_pan[^,]*, hsp_pt_tumble[^;]*;/)
-    expect(spanRules[0]).toMatch(
-      /animation-delay:calc\(-1 \* mod\(var\(--hsp-t, 0s\), [\d.]+s\)\), calc\(var\(--i\)[^;]*mod\(var\(--hsp-t, 0s\)[^;]*\);/,
+    const spanRules = (css.match(/(^|\})[^{}]*\.hsp-pt>\.hs-name>span\{[^}]*\}/g) || []).filter(
+      (r) => !r.includes('body.hs-paint-'),
     )
+    expect(spanRules.length).toBe(1)
+    expect(spanRules[0]).toContain('background-position:')
     expect(spanRules[0]).toContain('transform-style:preserve-3d;')
-    expect(css).toContain('.hsp-pt{perspective:300px;}')
+    expect(spanRules[0]).toMatch(/animation:hsp_pt_pan[^,]*, hsq_pt_tumble[^;]*;/)
+    // perspective is the one thing that genuinely belongs to the parent: a
+    // glyph cannot give itself the vanishing point it rotates about.
+    expect(css).toContain('.hsp-pt>.hs-name{perspective:300px;}')
   })
 
-  test('split-without-paint (wave only): single animation, still fine, one rule', () => {
+  test('split-without-paint (wave only): the name box runs nothing at all', () => {
     const spec = baseSpec({ effects: [{ id: 'wave', speed: 1 }] })
     const css = compilePaintCss(spec, '.hsp-w', { hash: 'w' })
-    const spanRules = css.match(/\.hsp-w span\{[^}]*\}/g) || []
+    const spanRules = css.match(/\.hsp-w>\.hs-name>span\{[^}]*\}/g) || []
     expect(spanRules.length).toBe(1)
-    expect(spanRules[0]).toMatch(/animation:hsp_w_wave[^;,]*;/)
+    expect(spanRules[0]).toMatch(/animation:hsq_w_wave[^;,]*;/)
+    expect((css.match(/\.hsp-w>\.hs-name\{[^}]*\}/g) || []).find((r) => r.includes('animation:'))).toBeUndefined()
   })
 
-  test('non-split paint + whole-name motion (fire + coin) is untouched — separate rules, out of scope here', () => {
+  test('non-split paint + whole-name motion (pan + coin): ONE selector rule, both animations comma-listed', () => {
+    // Two `.hsp-fc>.hs-name{animation:…}` rules on one selector do not compose — the
+    // later won, so gold foil + heartbeat ran only the heartbeat. Self-level
+    // animations merge like the spans always did.
     const spec = baseSpec({
       base: {
         type: 'linear',
@@ -435,22 +462,24 @@ describe('compilePaintCss — structural checks', () => {
         ],
       },
       effects: [
-        { id: 'fire', speed: 1 },
+        { id: 'pan', speed: 1 },
         { id: 'coin', speed: 1 },
       ],
     })
     const css = compilePaintCss(spec, '.hsp-fc', { hash: 'fc' })
-    expect(css).not.toContain(' span{')
-    expect(css.match(/\.hsp-fc\{[^}]*animation:/g)?.length).toBe(2)
+    expect(css).not.toContain('>span{')
+    const animRules = css.match(/\.hsp-fc>\.hs-name\{[^}]*animation:[^}]*\}/g) || []
+    expect(animRules.length).toBe(1)
+    expect(animRules[0]).toMatch(/animation:hsp_fc_pan[^,]*, hsp_fc_coin/)
   })
 
-  test('conic effect namespaces its @property angle var per-hash (no cross-user collision)', () => {
+  test('conic effect namespaces its @property phase var per-hash (no cross-user collision)', () => {
     const specA = baseSpec({ effects: [{ id: 'conic', speed: 1 }] })
     const cssA = compilePaintCss(specA, '.hsp-a1', { hash: 'a1' })
     const cssB = compilePaintCss(specA, '.hsp-b2', { hash: 'b2' })
-    expect(cssA).toContain('--hsp-a1-ang')
-    expect(cssB).toContain('--hsp-b2-ang')
-    expect(cssA).not.toContain('--hsp-b2-ang')
+    expect(cssA).toContain('--hsp-a1-conic-ph')
+    expect(cssB).toContain('--hsp-b2-conic-ph')
+    expect(cssA).not.toContain('--hsp-b2-conic-ph')
   })
 
   test('glow with no neon effect emits a static (non-animated) text-shadow', () => {
@@ -502,48 +531,54 @@ describe('compilePaintCss — adversarial injection resistance', () => {
   })
 })
 
-describe('EFFECTS enum — exactly the 20 phase-1 effects, correctly classified', () => {
-  const EXPECTED_IDS = [
-    'pan',
-    'conic',
-    'hue',
-    'wave',
-    'ripple',
+describe('EFFECTS enum — the catalog, correctly classified', () => {
+  // chrome/fire/gold/holo/ice/lava/matrix/rainbow left on 2026-09-16 — fixed
+  // palettes that overrode the wearer's own colours, replaced by banded fills
+  // and pan's scale/loop/skew controls in the builder.
+  const PAINT = ['conic', 'glint', 'hue', 'pan', 'pulse', 'reveal', 'stardust', 'stripes']
+  const MOTION = [
     'coin',
-    'heli',
-    'glint',
-    'neon',
-    'chrome',
-    'gold',
-    'fire',
-    'matrix',
-    'holo',
+    'flicker',
     'float',
+    'glitch',
     'heart',
-    'reveal',
-    'wobble',
+    'heli',
+    'hop',
+    'jitter',
+    'neon',
+    'ripple',
     'swing',
     'tumble',
+    'twirl',
+    'type',
+    'wave',
+    'wobble',
   ]
 
-  test('has exactly the 20 required ids, no more, no less', () => {
-    expect(Object.keys(EFFECTS).sort()).toEqual([...EXPECTED_IDS].sort())
+  test('has exactly these ids, no more, no less', () => {
+    expect(Object.keys(EFFECTS).sort()).toEqual([...PAINT, ...MOTION].sort())
   })
 
-  test('paint-slot ids are exactly pan/conic/hue/glint/chrome/gold/fire/matrix/holo/reveal', () => {
+  test('paint-slot ids', () => {
     const paintIds = Object.entries(EFFECTS)
       .filter(([, m]) => m.slot === 'paint')
       .map(([id]) => id)
       .sort()
-    expect(paintIds).toEqual(['chrome', 'conic', 'fire', 'glint', 'gold', 'holo', 'hue', 'matrix', 'pan', 'reveal'])
+    expect(paintIds).toEqual(PAINT)
   })
 
-  test('only hue/ripple/neon are classified as luminance-changing', () => {
+  test('motion-slot ids, every one carrying a sig', () => {
+    const motion = Object.entries(EFFECTS).filter(([, m]) => m.slot === 'motion')
+    expect(motion.map(([id]) => id).sort()).toEqual(MOTION)
+    for (const [id, m] of motion) expect(m.sig, id).toMatch(/^(self|letter):(transform|filter|shadow|opacity)$/)
+  })
+
+  test('luminance-changing effects are exactly the ones that change luminance', () => {
     const lumIds = Object.entries(EFFECTS)
       .filter(([, m]) => m.luminance)
       .map(([id]) => id)
       .sort()
-    expect(lumIds).toEqual(['hue', 'neon', 'ripple'])
+    expect(lumIds).toEqual(['flicker', 'hue', 'neon', 'pulse', 'ripple', 'type'])
   })
 })
 
@@ -565,17 +600,27 @@ describe('wall-clock phase sync (--hsp-t)', () => {
     glow: null,
   }
 
-  test('alternate-direction paint (fire) folds over 2x its duration', () => {
-    const css = compilePaintCss({ ...baseOnly, effects: [{ id: 'fire', speed: 1 }] }, '.hsp-f', { hash: 'f' })
-    const dur = Number(css.match(/animation:hsp_f_fire ([\d.]+)s/)[1])
+  test('alternate-direction paint (pan, loop:bounce) drives its phase over 2x its raw effect duration', () => {
+    // fire used to be a CSS `alternate` animation, where the browser did the
+    // there-and-back doubling and the fold math had to double the duration
+    // separately to match. Now the round trip is baked into ONE linear phase
+    // Animation (see paintPhaseDriver's roundTrip branch), so the
+    // animation's own declared duration already IS the fold period — and
+    // that duration is itself 2x the raw effect duration.
+    const css = compilePaintCss({ ...baseOnly, effects: [{ id: 'pan', speed: 1, loop: 'bounce' }] }, '.hsp-f', {
+      hash: 'f',
+    })
+    const dur = Number(css.match(/animation:hsp_f_pan ([\d.]+)s/)[1])
     const period = Number(css.match(/mod\(var\(--hsp-t, 0s\), ([\d.]+)s\)/)[1])
-    expect(period).toBeCloseTo(dur * 2, 3)
+    expect(dur).toBeCloseTo(EFFECTS.pan.basePeriod * 2, 3)
+    expect(period).toBeCloseTo(dur, 3)
   })
 
-  test('normal-direction paint (pan) folds over exactly its duration', () => {
+  test('normal-direction paint (pan) folds over exactly its raw effect duration', () => {
     const css = compilePaintCss({ ...baseOnly, effects: [{ id: 'pan', speed: 1 }] }, '.hsp-p', { hash: 'p' })
     const dur = Number(css.match(/animation:hsp_p_pan ([\d.]+)s/)[1])
     const period = Number(css.match(/mod\(var\(--hsp-t, 0s\), ([\d.]+)s\)/)[1])
+    expect(dur).toBeCloseTo(EFFECTS.pan.basePeriod, 3)
     expect(period).toBeCloseTo(dur, 3)
   })
 

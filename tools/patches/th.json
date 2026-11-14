@@ -1,6 +1,6 @@
 {
   "manifest_name": "heatsync",
-  "manifest_description": "แผงเดียวสำหรับแชทสดของ Twitch, Kick + YouTube พร้อมคลังอิโมทฟรี 5000 ช่องที่ติดตามคุณไปทุกช่อง",
+  "manifest_description": "แผงเดียวสำหรับแชทสดของ Twitch, Kick + YouTube พร้อมคลังอิโมทฟรี 5,000 ช่องที่ติดตามคุณไปทุกช่อง",
   "common_loading": "กำลังโหลด...",
   "common_extension_updated": "อัปเดตส่วนขยายแล้ว — โปรดรีเฟรชหน้า",
   "common_no_matches": "ไม่พบผลลัพธ์",
@@ -42,7 +42,6 @@
   "welcome_step2_desc": "เพิ่มภาพใดก็ได้ — 5000 ช่อง รองรับทุกฟอร์แมต",
   "welcome_step3_title": "ใช้ในแชท",
   "welcome_step3_desc": "คลิกปุ่ม heatsync ในแชท Twitch/Kick เพื่อเข้าถึงอีโมตของคุณ",
-  "welcome_cta": "เริ่มต้น",
   "welcome_privacy": "ความเป็นส่วนตัว",
   "welcome_source": "ซอร์สโค้ด",
   "btn_auth_login": "เข้าสู่ระบบ",

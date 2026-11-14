@@ -1,22 +1,35 @@
 name: ci
 
-# PR + manual dispatch only — push triggers disabled to conserve Actions
-# minutes during solo pre-launch work. Re-enable after June 1 reset if needed.
+# every push to main, every PR, and by hand. the repo is public, so hosted
+# runner minutes are free — a red main must be visible the moment it lands.
 on:
+  push:
+    branches: [main]
   pull_request:
     branches: [main]
   workflow_dispatch:
+
+# read-only by default; a job that needs more says so itself
+permissions:
+  contents: read
 
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: oven-sh/setup-bun@v2
+      # The contract tests (ws-contract, paint-compiler-parity, site-copy-parity)
+      # read the private site repo, which has to sit beside this checkout. They
+      # no longer skip anywhere: no key, no run, and the step says how to add it.
+      - uses: ./.github/actions/site
         with:
-          bun-version: 1.3.14
+          ssh-key: ${{ secrets.SITE_DEPLOY_KEY }}
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.4
 
       - name: install dependencies
         # Strict frozen install — no fallback. A drifted/poisoned lockfile must
@@ -24,17 +37,159 @@ jobs:
         # release.yml; keep the two in sync.
         run: bun install --frozen-lockfile
 
+      # --minify is the release-sized build; the budget step below measures it.
       - name: build
-        run: bun run build.js
+        run: bun run build.js --minify
+
+      # Per-file + total bytes against scripts/bundle-budgets.json. Needs the
+      # firefox build too.
+      - name: bundle size budget
+        run: |
+          bun run build.js firefox --minify
+          bun scripts/check-bundle-budget.ts
+
+      # The bundles are gitignored build output; what chrome/ still tracks
+      # (manifest.json, _locales) is generated from src/manifests and
+      # src/_locales, and a src edit committed without a rebuild fails here, in
+      # the open, instead of on a user's tab.
+      - name: tracked outputs under chrome/ match this build
+        run: git diff --exit-code --stat -- chrome/
 
       - name: test
-        run: bun test
+        run: bun test --coverage --coverage-reporter=lcov
+
+      # Whole-suite line + function coverage only rises (scripts/coverage-floor.ts).
+      - name: coverage floor
+        run: bun scripts/coverage-floor.ts
 
       - name: lint
-        run: bunx @biomejs/biome check src/ chrome/ tests/ build.js
+        run: bunx @biomejs/biome check src/ tests/ build.js
+
+      # tests/ is held to zero warnings (src/ still carries some, so the line
+      # above stays warn-tolerant). A warning in a test is a dead import or an
+      # unused fixture: noise that hides the next real finding.
+      - name: lint tests (no warnings)
+        run: bunx @biomejs/biome check tests/ --error-on-warnings
 
       - name: typecheck
         run: bun run typecheck
 
+      # The root typecheck has checkJs:false and leaves out src/content/ and
+      # src/multichat/ — about 95% of the product. This one checks the BUILT
+      # output (the concatenation is what actually has to resolve) and holds
+      # the crash-class errors at zero. `build` above already produced
+      # dist/chrome, so this only runs tsc.
+      - name: Built-extension crash-class typecheck
+        run: node scripts/type-signal.mjs
+
       - name: check version sync
         run: bun tests/check-versions.js
+
+      # Load the built extension in a real browser and prove it starts: a
+      # bundle that throws on evaluation, a manifest the browser rejects, a
+      # service worker that dies on registration — nothing above sees those.
+      # Branded google-chrome ignores --load-extension (since chrome 137), so the
+      # MV3 service worker never starts and every launch times out waiting for
+      # it (first nightly, 2026-10-14). Playwright's own chromium still honours
+      # the flag; install the build matching the pinned playwright-core.
+      - name: install chromium
+        run: |
+          bunx playwright-core install chromium
+          echo "CHROMIUM_BIN=$(bun -e "console.log(require('playwright-core').chromium.executablePath())")" >> "$GITHUB_ENV"
+
+      - name: smoke (built extension boots in chrome)
+        run: bun scripts/smoke-extension.ts
+
+      # The firefox build is its own artifact (MV2 manifest, background page,
+      # firefox's CSP, world: MAIN content scripts) and the chromium smoke above
+      # never loads it. Headless firefox + geckodriver, both preinstalled on
+      # ubuntu-latest, so no install step. dist/firefox comes from the budget
+      # step's build; the script says so if it is missing.
+      - name: smoke (built extension boots in firefox)
+        timeout-minutes: 3
+        run: bun scripts/smoke-firefox.ts
+
+      # The real-browser render suite (mock irc, all three platforms, picker,
+      # composer, per-site off switch). Off CI it sat red for six days while
+      # three fixtures drifted from deliberate product changes — nobody ran it.
+      - name: render (overlay geometry + behaviour in a real browser)
+        run: bun scripts/render-extension.ts
+
+      # Same-name emote collisions (heatsync vs 7tv vs bttv vs ffz, overlay and
+      # native twitch + kick chat) against stand-in pages. `bun run test:emotes`
+      # locally; off CI these were the one browser suite nobody ran. ~40s.
+      - name: emote collisions (overlay, native twitch, native kick)
+        run: |
+          bun scripts/render-emote-collisions.ts
+          bun scripts/render-emote-collisions-native.ts
+          bun scripts/render-emote-collisions-kick.ts
+
+  # Dependencies with a known high/critical advisory, and secrets in the commits
+  # a push brings. The nightly runs the same two over the whole history.
+  supply-chain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read # gitleaks lists a pull request's commits
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0 # gitleaks walks commits; a shallow clone hides the ones it needs
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.4
+
+      - name: install dependencies
+        run: bun install --frozen-lockfile
+
+      # exits non-zero on any advisory at or above the level; lower ones are
+      # listed by the nightly and left for a human
+      - name: bun audit (high and critical fail)
+        run: bun audit --audit-level=high
+
+      # config: .gitleaks.toml (public values and fixtures are allowlisted there,
+      # each with the reason). on a push it scans the pushed commits only.
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2.3.9
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # the action's default (8.24.3) predates [[allowlists]] and silently ignores
+          # every allowlist in .gitleaks.toml; 8.30.1 is checksum-verified clean on full history
+          GITLEAKS_VERSION: 8.30.1
+
+  notify-failure:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [build-and-test, supply-chain]
+    # A PR check is attended work — its author is looking at the red tick — so
+    # the only run worth ringing a phone about is a merge that broke main.
+    #
+    # `github.ref` alone could not express that, and quietly expressed the
+    # inverse: on a `pull_request` event the ref is `refs/pull/<n>/merge`, never
+    # `refs/heads/main`, so the old gate was false for every PR and true only
+    # for a HAND DISPATCH off main — the one run nobody needs telling about
+    # (2026-10-14: that is what the `ext ci FAILED branch main` page was).
+    # Naming the event as well as the ref is what makes it mean what it says.
+    #
+    # `cancelled()` too: a job killed by its own timeout-minutes concludes
+    # `cancelled`, so a bare `failure()` is skipped and a HANG pages nobody
+    # (nightly-heap run 38505736893, 15m23s, silent). No concurrency group
+    # here, so nothing supersedes a run and `cancelled` can only be its own
+    # ceiling or a hand cancel.
+    if: ${{ (failure() || cancelled()) && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    steps:
+      - name: spool alert
+        run: |
+          code=$(curl -sS -m 10 -o /dev/null -w '%{http_code}' -X POST \
+            "https://heatsync.org/api/ops/intake/ci" \
+            -H "Authorization: Bearer ${{ secrets.OPS_INTAKE_KEY }}" \
+            -H 'content-type: application/json' \
+            -d "{\"workflow\":\"ext ${{ github.workflow }}\",\"run_id\":\"${{ github.run_id }}\",\"attempt\":\"${{ github.run_attempt }}\",\"branch\":\"${{ github.ref_name }}\",\"sha\":\"${{ github.sha }}\"}" \
+            || echo 000)
+          if [ "$code" = 204 ]; then
+            echo "::notice::ops-intake accepted the ext alert"
+          else
+            echo "::error::ops-intake refused the ext alert (HTTP $code) — check that secrets.OPS_INTAKE_KEY matches OPS_INTAKE_KEY in prod's .env"
+          fi

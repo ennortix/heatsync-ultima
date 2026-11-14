@@ -14,6 +14,7 @@
 import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { mainSource } from './main-src.js'
 
 const SRC = readFileSync(join(import.meta.dir, '..', 'src', 'multichat', 'social.js'), 'utf8')
 
@@ -40,8 +41,54 @@ const row = (over = {}) => ({
   ...over,
 })
 
+describe('buildFeedInlineNotif media tag', () => {
+  const tag = (over) => harness().buildFeedInlineNotif(row(over)).msg.mediaTag
+  test('a text-only post has none', () => expect(tag()).toBeNull())
+  test('an image post says img; a gif says gif; a video says vid', () => {
+    expect(tag({ media_url: 'https://heatsync.org/uploads/a.webp', media_type: 'image' })).toBe('img')
+    expect(tag({ media_url: 'https://heatsync.org/uploads/a.gif', media_type: 'image' })).toBe('gif')
+    expect(tag({ media_url: 'https://heatsync.org/uploads/a.mp4', media_type: 'video' })).toBe('vid')
+  })
+  test('several items carry a count, and mixed kinds read as media', () => {
+    const m = (url, type) => ({ url, type })
+    expect(tag({ media: [m('/a.png', 'image'), m('/b.png', 'image')] })).toBe('2 img')
+    expect(tag({ media: [m('/a.png', 'image'), m('/b.mp4', 'video')] })).toBe('2 media')
+  })
+  describe('hover preview source', () => {
+    const src = (over) => harness().buildFeedInlineNotif(row(over)).msg.mediaSrc
+    test('an image post previews its own url, relative ones made absolute', () => {
+      expect(src({ media_url: '/uploads/a.webp', media_type: 'image' })).toBe('https://heatsync.org/uploads/a.webp')
+    })
+    test('a video previews its thumbnail', () => {
+      expect(src({ media: [{ url: '/v.mp4', type: 'video', thumbnail_url: '/t.jpg' }] })).toBe(
+        'https://heatsync.org/t.jpg',
+      )
+    })
+    test('a post still scanning never previews', () => {
+      expect(src({ media_url: '/a.png', media_type: 'image', moderation_pending: true })).toBeNull()
+    })
+    test('a flagged post keeps its preview url and carries its flags, so the peek can be held', () => {
+      const flagged = { media_url: '/a.png', media_type: 'image', moderation_result: { flaggedCategories: ['nsfw'] } }
+      const msg = harness().buildFeedInlineNotif(row(flagged)).msg
+      expect(msg.mediaSrc).toBe('https://heatsync.org/a.png')
+      expect(msg.mediaCats).toEqual(['nsfw'])
+    })
+    test('text only has none; the main.js row wires data-src', () => {
+      expect(src()).toBeNull()
+      const main = mainSource()
+      expect(main).toContain('mediaSrc: m.mediaSrc')
+      expect(main).toContain('data-src=')
+    })
+  })
+  test('the main.js row carries it through the saved shape', () => {
+    const main = mainSource()
+    expect(main).toContain('mediaTag: m.mediaTag')
+    expect(main).toContain('hs-feed-media-tag')
+  })
+})
+
 describe('buildFeedInlineNotif', () => {
-  test('an OP builds an [OP] row and becomes the /opr target', () => {
+  test('an OP builds an [OP] row and becomes the /re target', () => {
     const { buildFeedInlineNotif, lastOp } = harness()
     const built = buildFeedInlineNotif(row())
     expect(built.notifType).toBe('op')
@@ -53,7 +100,7 @@ describe('buildFeedInlineNotif', () => {
     buildFeedInlineNotif(row())
     const built = buildFeedInlineNotif(row({ base36_id: '00002q', reply_to: '00002p' }))
     expect(built.notifType).toBe('re')
-    // still the thread root — consecutive /opr keeps replying to the thread
+    // still the thread root — consecutive /re keeps replying to the thread
     expect(lastOp()).toBe('00002p')
   })
 

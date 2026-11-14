@@ -16,6 +16,7 @@
 import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { SLASH_REGISTRY } from '../src/multichat/slash-registry.js'
 
 const ROOT = join(import.meta.dir, '..')
 const SRC = readFileSync(join(ROOT, 'src', 'multichat', 'input.js'), 'utf8')
@@ -27,19 +28,21 @@ function slice(start, end) {
   return SRC.slice(s, e)
 }
 
-const deadSrc = slice('const DEAD_TWITCH_CHAT_COMMANDS = new Set([', '\nconst NON_ECHOING_CHAT_COMMANDS')
-const commandsSrc = slice('const SLASH_COMMANDS = [', '\nconst slashAcState')
-const { DEAD_TWITCH_CHAT_COMMANDS, SLASH_COMMANDS } = new Function(
-  `${deadSrc}\n${commandsSrc}\nreturn { DEAD_TWITCH_CHAT_COMMANDS, SLASH_COMMANDS }`,
-)()
+const deadSrc = slice('const DEAD_TWITCH_CHAT_COMMANDS = new Set([', '\nfunction registerPendingSend(')
+// The dead set still lives in input.js beside the guard it feeds, so it stays
+// carved. The command list comes from the registry — and the check now covers
+// hidden rows too, which a slice of the advertised array could not.
+const SLASH_COMMANDS = SLASH_REGISTRY
+const { DEAD_TWITCH_CHAT_COMMANDS } = new Function(`${deadSrc}\nreturn { DEAD_TWITCH_CHAT_COMMANDS }`)()
 
 describe('dead twitch chat commands', () => {
   test('the whole deprecated set is covered', () => {
-    for (const cmd of ['clear', 'color', 'raid', 'unraid', 'commercial', 'marker']) {
+    for (const cmd of ['clear', 'raid', 'unraid', 'commercial', 'marker']) {
       expect(DEAD_TWITCH_CHAT_COMMANDS.has(cmd)).toBe(true)
     }
-    // vip/unvip/mod/unmod are NOT dead anymore — implemented via GQL 2026-07-22.
-    for (const cmd of ['vip', 'unvip', 'mod', 'unmod']) {
+    // vip/unvip/mod/unmod are NOT dead anymore — implemented via GQL 2026-07-22,
+    // and color via updateChatColor 2026-10-17.
+    for (const cmd of ['vip', 'unvip', 'mod', 'unmod', 'color']) {
       expect(DEAD_TWITCH_CHAT_COMMANDS.has(cmd)).toBe(false)
     }
   })

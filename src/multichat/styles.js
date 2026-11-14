@@ -10,42 +10,29 @@ function injectStyles() {
   const style = document.createElement('style')
   style.id = 'hs-mc-styles'
   const css = '__HS_STYLES_BUNDLE__'
-  const cozetteUrl =
-    typeof chrome !== 'undefined' && chrome.runtime?.getURL ? chrome.runtime.getURL('fonts/CozetteVector.woff2') : ''
-  style.textContent = css.replace(/__HS_FONT_COZETTE__/g, cozetteUrl)
+  style.textContent = css
   document.head.appendChild(cleanup.trackNode(style))
-  // Default to bitmap-mode on style inject — Cozette is the default font.
-  // applyFontSettings() flips this off if the user picked a non-bitmap font.
-  // Set here so tabs render crisp even before the async settings load fires
-  // (settings hydration races with container mount; bare default prevents
-  // the brief AA-on flash).
-  document.body.classList.add('hs-font-bitmap')
-  document.documentElement.classList.add('hs-font-bitmap')
-  declareDarkColorScheme()
 }
 
-// UA auto-dark (chromium WebContentsForceDark / android "darken websites")
-// double-inverts hosts that render dark but never declare it — twitch's dark
-// theme has no color-scheme meta, so the whole page (overlay included) paints
-// inverted to light. Declaring `dark` makes the UA skip the page. Gated on the
-// host actually rendering dark so the declaration is never a lie; no-op when
-// the page already declares a scheme (heatsync.org does).
-function declareDarkColorScheme() {
-  try {
-    if (document.head.querySelector('meta[name="color-scheme"]')) return
-    const channels = (el) => {
-      const c = getComputedStyle(el).backgroundColor.match(/\d+(\.\d+)?/g)
-      if (!c || c.length < 3) return null
-      if (c.length > 3 && Number(c[3]) === 0) return null // transparent
-      return c.slice(0, 3).map(Number)
-    }
-    const rgb = channels(document.body) || channels(document.documentElement)
-    if (!rgb) return
-    const luminance = 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2]
-    if (luminance > 60) return // host is light-themed — not ours to declare
-    const meta = document.createElement('meta')
-    meta.name = 'color-scheme'
-    meta.content = 'dark'
-    document.head.appendChild(cleanup.trackNode(meta))
-  } catch (_) {}
-}
+// The page-level `<meta name="color-scheme" content="dark">` this file used to
+// stamp on the host is GONE. It was never a declaration about our overlay — it
+// was a declaration about someone else's page, and it reached everything on it.
+//
+// What it bought: chromium force-dark skips a page that declares itself dark,
+// so twitch (dark, but declaring nothing) stopped being double-inverted to
+// light. The per-element `color-scheme: dark` rules in styles/00-palette.css
+// took that job over and do it better — they shield every hs- root regardless
+// of host theme or meta timing, which is exactly why they were added.
+//
+// What it cost: a white video player. Suppressing force-dark for the PAGE
+// suppresses it for the frames on it too, and a twitch overlay extension is a
+// frame stacked on the player — one whose light surface force-dark had been
+// darkening. Declare the page dark and that surface renders as-is: a white
+// rectangle over the whole video, appearing and disappearing exactly as the
+// extension is toggled. The same symptom was reported on firefox and bisected
+// to the commit that added this (1.7.43); gating it to chromium in 7c2f77e
+// fixed that reporter and left every chromium user with it.
+//
+// The shield we need is per-element and already applied. Do not reintroduce a
+// page-level stamp — force-dark on the host page is the user's setting, and
+// overriding it for a page we do not own is not a thing this extension does.

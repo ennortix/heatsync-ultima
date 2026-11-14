@@ -64,6 +64,7 @@ function harness({ activeThread = null, currentTab = 'feed', posted = null } = {
     updateInputPlaceholder: () => {},
     renderFeed: () => {},
     isOpMsg: () => false,
+    buildFeedEmoteRefs: () => null,
     t: (k) => k,
     cleanup: { setTimeout: () => {} },
     showToast: () => {},
@@ -146,17 +147,21 @@ describe('own post echoes into chat', () => {
     expect(echoes[0].msg.created_at).toBeTruthy()
   })
 
-  test('no echo on the feed tab — the post is already visible there', async () => {
+  // Posted from the feed tab (a reply in an open thread, say), the post is
+  // visible THERE — but the chat tabs never heard of it, and switching to one
+  // read as if the reply had not gone out until a reload. The row is buffered
+  // for chat regardless; injectInlineNotif only paints it when a chat tab is up.
+  test('the feed tab echoes too — chat buffers the row for when you switch back', async () => {
     const { postFeedMessage, echoes } = harness({
       currentTab: 'feed',
       posted: { base36_id: '00002p', created_at: '2026-07-30T19:00:00Z' },
     })
     await postFeedMessage('hello', { topLevel: true })
-    expect(echoes.length).toBe(0)
+    expect(echoes.length).toBe(1)
   })
 })
 
-describe('replyTo — /opr targets the last [OP] seen in chat', () => {
+describe('replyTo — /re targets the last [OP] seen in chat', () => {
   test('replyTo wins over the open thread', async () => {
     const { postFeedMessage, calls } = harness({ activeThread: { id: 'openthread', replies: [] } })
     await postFeedMessage('nice one', { replyTo: '00002p' })

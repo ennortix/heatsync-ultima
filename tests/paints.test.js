@@ -1,21 +1,33 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { compilePaintCss, hashPaintSpec, paintNeedsLetterSplit, paintPhaseNow } from '../src/lib/paint-spec.js'
+import { CONTRAST_EPS, PAINT_BG, PAINT_MIN_CONTRAST, UNDERLAY_NAME_MIN_LUM } from '../src/lib/paint-core.js'
+import {
+  compilePaintCss,
+  hashPaintSpec,
+  NAME_BOX_CLASS,
+  paintMarkupMode,
+  paintNameHtmlFor,
+  paintNeedsSpans,
+  paintPhaseNow,
+} from '../src/lib/paint-spec.js'
 import { escapeHtml } from '../src/lib/utils.js'
 import {
   applyHsPaintToElement,
-  computeHsLetterSpans,
+  clearHsPaintFromElement,
+  clearHsPaintSheet,
   evictOldestPaintEntry,
   getHsPaintClass,
   getHsPickedColor,
+  hsNameColourDecl,
   hsUsernameColor,
   partitionPaintBatch,
   primeSelfHsCosmetics,
+  reinjectHsPaintSheet,
   setHsColorEntry,
   setHsPaintEntry,
-  splitHsLettersHtml,
 } from '../src/multichat/paints.js'
+import { mainSource } from './main-src.js'
 
 // Reference copy of the SHARED djb2 username-colour contract (website
 // client/utils/color-utils.js usernameColor + server chat-log-permalinks.ts).
@@ -53,39 +65,75 @@ function refUsernameColor(username) {
 // repo's existing test convention (see filter-rules.test.js / mod-log.test.js)
 // of unit-testing pure logic only, not the DOM/network-bound glue.
 //
-// splitHsLettersHtml DOES reach for one bundle-global (escapeHtml, from
-// src/lib/utils.js) — stand it in on globalThis for the duration of this
-// file (using the real implementation), same pattern as
-// tests/user-notes.test.js does for its identity-graph globals.
+// The per-letter splitter used to be a local copy reaching for a bundle-global
+// escapeHtml; it is lib/paint-spec.js's own now, like the rest of the markup.
 //
 // applyHsPaintToElement/setHsPaintEntry ARE exercised below (the "in-place
 // application" describe block) — they need a `document` for the injected
 // paint stylesheet, so a minimal fake stands in (a style-tag look-alike +
-// a no-op head), and compilePaintCss/hashPaintSpec/paintNeedsLetterSplit
+// a no-op head), and compilePaintCss/hashPaintSpec/paintNeedsSpans
 // (normally bundle-globals from lib/paint-spec.js, per build.js's
 // readMultichatModules) are the REAL implementations. The DOM elements
 // applyHsPaintToElement itself operates on are duck-typed fakes (a real
 // jsdom/happy-dom isn't a repo dependency) — just enough surface
 // (classList/dataset/hasAttribute/removeAttribute/innerHTML/textContent)
 // to prove the hardening behavior, no visual rendering involved.
+let fakeHead = []
 beforeEach(() => {
   globalThis.escapeHtml = escapeHtml
   globalThis.compilePaintCss = compilePaintCss
   globalThis.hashPaintSpec = hashPaintSpec
-  globalThis.paintNeedsLetterSplit = paintNeedsLetterSplit
+  globalThis.paintNeedsSpans = paintNeedsSpans
+  globalThis.paintMarkupMode = paintMarkupMode
+  // The bundle hands these over as free variables (build.js embeds
+  // lib/paint-spec.js ahead of this module); the markup and the box class both
+  // come from there now instead of a local copy.
+  globalThis.paintNameHtmlFor = paintNameHtmlFor
+  globalThis.NAME_BOX_CLASS = NAME_BOX_CLASS
   globalThis.paintPhaseNow = paintPhaseNow
+  globalThis.UNDERLAY_NAME_MIN_LUM = UNDERLAY_NAME_MIN_LUM
+  globalThis.CONTRAST_EPS = CONTRAST_EPS
+  // Records appended nodes so the per-paint rule lifecycle (one <style> per
+  // hash, removed when the LRU drops its last user) is observable.
+  fakeHead = []
   globalThis.document = {
     getElementById: () => null,
-    createElement: () => ({ id: '', textContent: '' }),
-    head: { appendChild: () => {} },
+    createElement: () => ({
+      id: '',
+      textContent: '',
+      dataset: {},
+      parentNode: null,
+      removeChild(child) {
+        const i = fakeHead.indexOf(child)
+        if (i !== -1) fakeHead.splice(i, 1)
+        child.parentNode = null
+      },
+    }),
+    head: {
+      appendChild(node) {
+        node.parentNode = this
+        fakeHead.push(node)
+        return node
+      },
+      removeChild(node) {
+        const i = fakeHead.indexOf(node)
+        if (i !== -1) fakeHead.splice(i, 1)
+        node.parentNode = null
+      },
+    },
   }
 })
 afterEach(() => {
   globalThis.escapeHtml = undefined
   globalThis.compilePaintCss = undefined
   globalThis.hashPaintSpec = undefined
-  globalThis.paintNeedsLetterSplit = undefined
+  globalThis.paintNeedsSpans = undefined
+  globalThis.paintMarkupMode = undefined
+  globalThis.paintNameHtmlFor = undefined
+  globalThis.NAME_BOX_CLASS = undefined
   globalThis.paintPhaseNow = undefined
+  globalThis.UNDERLAY_NAME_MIN_LUM = undefined
+  globalThis.CONTRAST_EPS = undefined
   globalThis.document = undefined
 })
 
@@ -151,13 +199,18 @@ describe('applyHsPaintToElement — in-place DOM application (BUG #3 hardening)'
     expect(el.innerHTML.replace(/<[^>]+>/g, '')).toBe('@mellen')
   })
 
-  test('does NOT split (no per-letter spans) for a solid paint that needs no split', () => {
+  test('a solid paint gets the name box, and no per-letter spans', () => {
+    // This asserted `innerHTML === '@mellen'` — bare text under the paint
+    // class — and passed for three days while that was exactly the bug: every
+    // compiled rule addresses `.hsp-<hash>>.hs-name`, so a solid or gradient
+    // paint matched none of its own and rendered as plain text. A test that
+    // pins the defect is worse than no test, because it defends it.
     setHsPaintEntry(UID, SOLID_SPEC)
     const el = fakeAnchor('@mellen')
     applyHsPaintToElement(el, UID)
     expect(el.classList.contains(getHsPaintClass(UID))).toBe(true)
-    expect(el.dataset.hsPaintSplit).toBeUndefined()
-    expect(el.innerHTML).toBe('@mellen')
+    expect(el.dataset.hsPaintSplit, 'no per-letter shape to protect').toBeUndefined()
+    expect(el.innerHTML).toBe('<span class="hs-name">@mellen</span>')
   })
 
   test('clears a pre-existing inline color decl (precedence: class-based paint must win), but re-adds the phase-lock mount stamp', () => {
@@ -283,71 +336,6 @@ describe('partitionPaintBatch — pure batch/rest split, newest-queued first', (
   })
 })
 
-describe('computeHsLetterSpans — pure per-letter split data', () => {
-  test('computes 0-based index per letter and midpoint = (len-1)/2', () => {
-    const { mid, letters } = computeHsLetterSpans('abcd')
-    expect(mid).toBe(1.5)
-    expect(letters).toEqual([
-      { ch: 'a', i: 0 },
-      { ch: 'b', i: 1 },
-      { ch: 'c', i: 2 },
-      { ch: 'd', i: 3 },
-    ])
-  })
-
-  test('handles a single character (mid = 0)', () => {
-    const { mid, letters } = computeHsLetterSpans('x')
-    expect(mid).toBe(0)
-    expect(letters).toEqual([{ ch: 'x', i: 0 }])
-  })
-
-  test('handles empty string', () => {
-    const { mid, letters } = computeHsLetterSpans('')
-    expect(mid).toBe(-0.5)
-    expect(letters).toEqual([])
-  })
-
-  test('handles null/undefined gracefully', () => {
-    expect(computeHsLetterSpans(null).letters).toEqual([])
-    expect(computeHsLetterSpans(undefined).letters).toEqual([])
-  })
-
-  test('includes the leading @ as its own letter for mention/reply anchors', () => {
-    const { letters } = computeHsLetterSpans('@bob')
-    expect(letters[0]).toEqual({ ch: '@', i: 0 })
-    expect(letters.length).toBe(4)
-  })
-})
-
-describe('splitHsLettersHtml — escapes each glyph individually', () => {
-  test('wraps each character in a span with --i/--mid custom props', () => {
-    const html = splitHsLettersHtml('ab')
-    expect(html).toBe('<span style="--i:0;--mid:0.5">a</span><span style="--i:1;--mid:0.5">b</span>')
-  })
-
-  test('HTML-escapes glyphs that are themselves markup-shaped (defense in depth)', () => {
-    const html = splitHsLettersHtml('<>')
-    expect(html).not.toContain('<>')
-    expect(html).toContain('&lt;')
-    expect(html).toContain('&gt;')
-  })
-})
-
-// ── ID-space guard: structural invariant, not a value-based check ───────────
-//
-// Paints are keyed by heatsync-side ids in per-platform NAMESPACES: bare
-// numeric ids are twitch-space; kick-origin ids are `kick_<kickid>` (server
-// migration 200, 2026-07-05). Bare kick/twitch numeric ids collide in VALUE
-// (see heatsync_userid_collision_kick_twitch in project memory — both are
-// bare numeric, indistinguishable by shape), so the safety here is
-// architectural: queuePaintLookup must be called from exactly TWO places —
-// queueMcCosmeticsLookup (twitch-space: native twitch id, or a RESOLVED
-// linked-twitch-id for kick/YouTube via flushYtNameLookups — never a bare
-// kick/yt id) and flushKickNameLookups (kick-space: always the `kick_`-
-// namespaced string, never the bare numeric kick id on its own). A third
-// call site, or either of these two accepting an unnamespaced platform-native
-// id, would be a silent way to reintroduce the collision trap — asserted
-// directly against the source rather than left to convention.
 describe('paint lookup id-space guard — structural invariant', () => {
   // Both call sites live in cosmetics.js (split out of main.js)
   const cosmeticsJs = readFileSync(join(import.meta.dir, '..', 'src', 'multichat', 'cosmetics.js'), 'utf8')
@@ -374,7 +362,6 @@ describe('paint lookup id-space guard — structural invariant', () => {
     // The raw numeric kick id must never reach queuePaintLookup on its own —
     // only wrapped in the kick_ namespace template literal.
     expect(fnBody).not.toMatch(/queuePaintLookup\(c\.kickId\)/)
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: asserting literal source text (the kick_ template literal), not writing a real template string
     expect(fnBody).toContain('`kick_${c.kickId}`')
   })
 })
@@ -418,7 +405,7 @@ describe('primeSelfHsCosmetics — own identity seeds instantly', () => {
   beforeEach(() => {
     // paints.js resolves `cleanup` from the bundle scope; stub it for the
     // standalone-module import used by these tests.
-    globalThis.cleanup = { setTimeout: () => 0 }
+    globalThis.cleanup = { setTimeout: () => 0, setPageTimeout: () => 0 }
   })
 
   test('seeds the picked name colour with no network round trip', () => {
@@ -448,5 +435,272 @@ describe('primeSelfHsCosmetics — own identity seeds instantly', () => {
   test('no identity ids — no throw, no seed', () => {
     expect(() => primeSelfHsCosmetics({})).not.toThrow()
     expect(() => primeSelfHsCosmetics(null)).not.toThrow()
+  })
+})
+
+// ── paint rule lifecycle ────────────────────────────────────────────────────
+//
+// The CSS for a paint used to be appended to one shared <style> with
+// `textContent +=` — a full re-serialize and reparse of every paint seen so
+// far, on each new one — and it was never removed, so the stylesheet outgrew
+// the LRU cache that described it. Now each paint owns a <style> node that is
+// dropped when the cache drops its last user.
+//
+// paints.js module state (the injected-hash set, the node map, the paint cache)
+// is shared across every test in this file, so each test starts by clearing the
+// sheet and uses uids of its own.
+describe('paint rule lifecycle', () => {
+  const mkSpec = (color) => ({
+    base: { type: 'solid', angle: 0, stops: [{ color, pos: 0 }] },
+    effects: [],
+  })
+
+  /** Rule nodes only — ensureHsPaintSheet appends the base sheet here too. */
+  const ruleNodes = () => fakeHead.filter((n) => n.dataset?.hsPaint)
+  const hashesInHead = () => new Set(ruleNodes().map((n) => n.dataset.hsPaint))
+
+  beforeEach(() => {
+    clearHsPaintSheet()
+    fakeHead.length = 0
+  })
+
+  test('one style node per distinct paint, not one growing sheet', () => {
+    setHsPaintEntry('lc-a', mkSpec('#ff0000'))
+    setHsPaintEntry('lc-b', mkSpec('#00ff00'))
+    const nodes = ruleNodes()
+    expect(nodes).toHaveLength(2)
+    // Each node carries only its own rule — that is what makes an insert cost
+    // its own CSS instead of re-serializing the whole sheet.
+    expect(nodes[0].textContent.length).toBeGreaterThan(0)
+    expect(nodes[1].textContent.length).toBeGreaterThan(0)
+    expect(nodes[0].textContent).not.toBe(nodes[1].textContent)
+  })
+
+  test('the same paint on two users injects one rule', () => {
+    setHsPaintEntry('lc-same1', mkSpec('#0000ff'))
+    const after1 = hashesInHead().size
+    setHsPaintEntry('lc-same2', mkSpec('#0000ff'))
+    expect(hashesInHead().size).toBe(after1)
+    expect(after1).toBe(1)
+  })
+
+  test('clearHsPaintSheet removes every rule node', () => {
+    setHsPaintEntry('lc-c', mkSpec('#111111'))
+    setHsPaintEntry('lc-d', mkSpec('#222222'))
+    expect(ruleNodes().length).toBeGreaterThan(0)
+    clearHsPaintSheet()
+    expect(ruleNodes()).toHaveLength(0)
+  })
+
+  test('evicting one wearer of a shared paint keeps the rule for the others', () => {
+    // Two users wearing the same paint share one rule. The LRU evicts uids, not
+    // paints, so dropping the older wearer must not un-style the younger one —
+    // that would leave a row carrying an hsp- class with no CSS behind it.
+    setHsPaintEntry('lc-shared-old', mkSpec('#0f0f0f'))
+    setHsPaintEntry('lc-shared-new', mkSpec('#0f0f0f'))
+    const shared = [...hashesInHead()][0]
+    expect(shared).toBeTruthy()
+
+    // Push past HS_PAINT_CACHE_MAX (500) so the two shared uids age out one at
+    // a time, oldest first.
+    for (let i = 0; i < 499; i++)
+      setHsPaintEntry(`lc-filler-${i}`, mkSpec(`#${(i + 4096).toString(16).padStart(6, '0')}`))
+    // lc-shared-old is gone by now, lc-shared-new is not — the rule must stand.
+    expect(getHsPaintClass('lc-shared-old')).toBe('')
+    expect(getHsPaintClass('lc-shared-new')).toBe(`hsp-${shared}`)
+    expect(hashesInHead().has(shared)).toBe(true)
+
+    // Age out the last wearer too — now the rule may go.
+    for (let i = 0; i < 60; i++)
+      setHsPaintEntry(`lc-filler2-${i}`, mkSpec(`#${(i + 8192).toString(16).padStart(6, '0')}`))
+    expect(getHsPaintClass('lc-shared-new')).toBe('')
+    expect(hashesInHead().has(shared)).toBe(false)
+  })
+
+  test('reinject restores the rule for a cached paint', () => {
+    setHsPaintEntry('lc-e', mkSpec('#abcdef'))
+    const hash = [...hashesInHead()][0]
+    expect(hash).toBeTruthy()
+    clearHsPaintSheet()
+    fakeHead.length = 0
+    reinjectHsPaintSheet()
+    expect(hashesInHead().has(hash)).toBe(true)
+  })
+})
+
+/**
+ * THE MARKUP THE EXTENSION RENDERS MUST MATCH THE CSS IT COMPILES.
+ *
+ * lib/paint-spec.js is mirrored from the site byte for byte, and the parity
+ * test fences exactly those three lib/ files — so the COMPILER can never drift,
+ * while the runtime that feeds it is local and hand-written. That is the gap,
+ * and it has now been walked through twice:
+ *
+ *   - the local markup builder compared `mode === 'wrap'` exactly, and missed
+ *     when the site's compiler started emitting `wrap+9`;
+ *   - the site gave the name its own box and moved EVERY compiled rule onto
+ *     `.hsp-<hash>>.hs-name`. The local builder never emitted that box, so from
+ *     2026-09-13 every heatsync name paint in the extension rendered as plain
+ *     text. It shipped that way in 1.7.73.
+ *
+ * Byte-parity on the compiler cannot see either one. This reads what the sheet
+ * asks for BELOW the host element and checks the rendered string carries it.
+ * There is no DOM engine in this repo, so it is a string check and not a real
+ * selector match — it still fails on both bugs above, which is the bar.
+ */
+describe('a compiled paint can select the markup the extension emits', () => {
+  const SPECS = {
+    'solid (the common case)': { base: { type: 'solid', angle: 0, stops: [{ color: '#FFB000', pos: 0 }] } },
+    gradient: {
+      base: {
+        stops: [
+          { color: '#ff8700', pos: 0 },
+          { color: '#ffffff', pos: 100 },
+        ],
+      },
+    },
+    'per-letter motion': { base: { stops: [{ color: '#ff8700', pos: 0 }] }, effects: [{ id: 'wave' }] },
+  }
+
+  /** Every selector the sheet carries, from the `.hsp-` onward. */
+  function compiledSelectors(css) {
+    const out = new Set()
+    for (const m of css.matchAll(/(\.hsp-[a-z0-9]+[^{},@]*?)\s*\{/g)) {
+      const sel = m[1].trim()
+      if (/hs-masked|hs-paint-offscreen/.test(sel)) continue
+      out.add(sel.replace(/::?[a-z-]+(\([^)]*\))?/g, '').trim())
+    }
+    return [...out].filter(Boolean)
+  }
+
+  for (const [label, spec] of Object.entries(SPECS)) {
+    test(`${label}: the sheet addresses nothing the markup lacks`, () => {
+      const hash = hashPaintSpec(spec)
+      const selectors = compiledSelectors(compilePaintCss(spec, `.hsp-${hash}`, { hash }))
+      expect(selectors.length).toBeGreaterThan(0)
+
+      const html = paintNameHtmlFor('ennortix', paintMarkupMode(spec))
+
+      // Every class the sheet names UNDER the host has to exist in the markup.
+      const needed = new Set()
+      for (const sel of selectors) {
+        const below = sel.slice(sel.indexOf('>') + 1)
+        if (below === sel) continue
+        for (const m of below.matchAll(/\.([a-z][\w-]*)/g)) needed.add(m[1])
+      }
+      expect(needed.has('hs-name'), 'the compiler puts the fill on the name box').toBe(true)
+      for (const cls of needed) expect(html).toContain(`class="${cls}"`)
+
+      // ...and when it addresses spans under the box, the markup needs them.
+      if (selectors.some((sel) => /\.hs-name>span/.test(sel))) {
+        expect(html).toMatch(/<span class="hs-name"><span/)
+      }
+    })
+  }
+
+  test('the extension builds its markup with the mirrored builder, not a copy', () => {
+    // A copy of a contract is a copy that drifts. This one drifted twice.
+    const src = readFileSync(join(import.meta.dir, '../src/multichat/paints.js'), 'utf8')
+    expect(src).toContain('return paintNameHtmlFor(rawText, paintMarkupMode(spec))')
+    expect(
+      /function splitHsLettersHtml/.test(src),
+      'the local per-letter splitter was a second copy of the same contract',
+    ).toBe(false)
+  })
+
+  test('the in-place applier asks whether the box is THERE, not whether letters are needed', () => {
+    // applyHsPaintToElement is where a name drawn before its paint resolved
+    // gets it — most of them, on a cold pane. paintNeedsSpans answers a
+    // different question and is false for a solid or gradient paint, so it
+    // added the class over bare text and the name stayed unpainted.
+    const src = readFileSync(join(import.meta.dir, '../src/multichat/paints.js'), 'utf8')
+    const fn = src.slice(src.indexOf('function applyHsPaintToElement'))
+    expect(fn).toContain('NAME_BOX_CLASS')
+    expect(
+      /paintNeedsSpans\(spec\)[^\n]*!el\.dataset\.hsPaintSplit/.test(fn),
+      'the shaping guard must not be keyed on per-letter need',
+    ).toBe(false)
+  })
+})
+
+describe('--hs-name-c — a painted name keeps the colour it would have worn, for an underlay', () => {
+  test('hsNameColourDecl lifts a colour under the underlay floor (3:1 against the chat background) and keeps a readable one as written', () => {
+    const lum = (hex) => {
+      const lin = (v) => {
+        const s = v / 255
+        return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4
+      }
+      const n = parseInt(hex.slice(1), 16)
+      return 0.2126 * lin(n >> 16) + 0.7152 * lin((n >> 8) & 255) + 0.0722 * lin(n & 255)
+    }
+    for (const dark of ['#000033', '#404040', '#000', '#330000', 'rgb(0, 0, 40)', '#00003380']) {
+      const out = hsNameColourDecl(dark).slice('--hs-name-c:'.length, -1)
+      expect(out, dark).toMatch(/^#[0-9a-f]{6}$/)
+      expect((lum(out) + 0.05) / (lum(PAINT_BG) + 0.05), dark).toBeGreaterThanOrEqual(PAINT_MIN_CONTRAST - 1e-9)
+    }
+    // the floor is the lib's, not a number kept here: PAINT_MIN_CONTRAST over PAINT_BG
+    expect(UNDERLAY_NAME_MIN_LUM).toBeCloseTo(PAINT_MIN_CONTRAST * (lum(PAINT_BG) + 0.05) - 0.05, 9)
+    expect(hsNameColourDecl('#ffffff')).toBe('--hs-name-c:#ffffff;')
+    expect(hsNameColourDecl('#56a0ee')).toBe('--hs-name-c:#56a0ee;')
+  })
+
+  test('hsNameColourDecl takes hex and the rgb() a browser reads back, and nothing else', () => {
+    expect(hsNameColourDecl('#ff8700')).toBe('--hs-name-c:#ff8700;')
+    expect(hsNameColourDecl('#F80')).toBe('--hs-name-c:#F80;')
+    expect(hsNameColourDecl('#ff870080')).toBe('--hs-name-c:#ff870080;')
+    expect(hsNameColourDecl('rgb(255, 135, 0)')).toBe('--hs-name-c:rgb(255, 135, 0);')
+    for (const bad of [
+      '',
+      undefined,
+      null,
+      'red',
+      'url(x)',
+      '#ff8700;color:red',
+      'var(--x)',
+      '#12345',
+      'rgb(1,2,3);x',
+    ]) {
+      expect(hsNameColourDecl(bad), String(bad)).toBe('')
+    }
+  })
+
+  test('the in-place applier clears the inline style but keeps the colour as the property', () => {
+    setHsPaintEntry('c1', SOLID_SPEC)
+    const el = fakeAnchor('@mellen', { style: 'color:#00afff' })
+    applyHsPaintToElement(el, 'c1')
+    expect(el.style.getPropertyValue('color')).toBe('')
+    expect(el.style.getPropertyValue('--hs-name-c')).toBe('#00afff')
+  })
+
+  test('a colour an earlier pass already kept survives a second application', () => {
+    setHsPaintEntry('c2', SOLID_SPEC)
+    const el = fakeAnchor('@mellen', { style: '--hs-name-c:#56a0ee' })
+    applyHsPaintToElement(el, 'c2')
+    expect(el.style.getPropertyValue('--hs-name-c')).toBe('#56a0ee')
+  })
+
+  test('clearing a paint takes the property with it', () => {
+    setHsPaintEntry('c3', SOLID_SPEC)
+    const el = fakeAnchor('@mellen', { style: 'color:#00afff' })
+    applyHsPaintToElement(el, 'c3')
+    clearHsPaintFromElement(el)
+    expect(el.style.getPropertyValue('--hs-name-c')).toBe('')
+  })
+
+  test('every overlay surface that writes a paint stamp writes the colour beside it', () => {
+    const dir = join(import.meta.dir, '../src/multichat')
+    let stamps = 0
+    for (const f of ['main.js', 'whispers.js', 'tooltips.js', 'name-style.js']) {
+      const src = f === 'main.js' ? mainSource() : readFileSync(join(dir, f), 'utf8')
+      for (const m of src.matchAll(/--hsp-t:\$\{paintPhaseNow\(\)\};(\$\{hsNameColourDecl\()?/g)) {
+        stamps++
+        expect(m[1], `${f}: a painted name's style stamps --hsp-t with no --hs-name-c`).toBeDefined()
+      }
+    }
+    expect(stamps).toBeGreaterThanOrEqual(4) // author, feed quote, reply bar, mention
+    // whispers go through the shared name-style helper (its stamp is counted above);
+    // the card peek fallback carries no stamp (the compiled phase default applies) but still the colour
+    expect(readFileSync(join(dir, 'whispers.js'), 'utf8')).toContain('hsNameParts(')
+    expect(readFileSync(join(dir, 'tooltips.js'), 'utf8')).toContain('hsNameColourDecl(safeColor)')
   })
 })

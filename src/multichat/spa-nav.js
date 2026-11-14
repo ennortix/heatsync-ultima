@@ -18,13 +18,19 @@ let spaReinitializing = false
 
 function handleMcNav() {
   // On YouTube, /watch?v=A → /watch?v=B keeps the same pathname — detect
-  // the video change via the full search string so the YT soft-nav block
-  // runs and swaps the WS subscription to the new video. YT-only: Twitch
-  // (?t=, clip params) and Kick (?category=) churn search via replaceState
-  // without a channel change — comparing search there would fire spurious
-  // soft-navs (part+join on the live channel) on every param flip.
+  // the video change via the `v` param so the YT soft-nav block runs and
+  // swaps the WS subscription to the new video. YT-only: Twitch (?t=, clip
+  // params) and Kick (?category=) churn search via replaceState without a
+  // channel change — comparing search there would fire spurious soft-navs
+  // (part+join on the live channel) on every param flip.
+  //
+  // Compare only `v`, not the full search string: YouTube's own &pp=/&list=/
+  // &index= replaceState churn (autoplay tracking, playlist position) fires
+  // mid-stream on the SAME video and was triggering a full unsub/resub loop —
+  // a dropped WS subscription is worse than a missed reinit.
   const newSearch = location.search
-  if (location.pathname === lastPath && (hostPlatform !== 'yt' || newSearch === lastSearch)) return
+  const sameVideo = hostPlatform !== 'yt' || ytSameVideoSearch(newSearch, lastSearch)
+  if (location.pathname === lastPath && sameVideo) return
   // Bug #3: capture the old live channel before updating lastPath so
   // soft-nav can part it and avoid an unbounded irc.channels accumulation.
   // NON_CHANNEL_PATHS filter mirrors getCurrentChannel — without it a nav
@@ -41,6 +47,11 @@ function handleMcNav() {
   lastPath = location.pathname
   lastSearch = newSearch
   log('Navigation detected, reinitializing...')
+  // The page channel changed: the temp tab renames itself, hides under a saved
+  // tab that covers the new channel, or comes back for the user it moved off
+  // (syncLiveTab). A tab the user chose is never touched — switchTab clears the
+  // hand-back on any manual pick. Deferred so the soft nav has settled the page.
+  cleanup.setTimeout(syncLiveTab, 300)
   // Re-evaluate body-mount overlay state for the new URL before teardown so
   // CSS rules flip ahead of the panel reappearing on the new page.
   try {
@@ -229,6 +240,10 @@ function fullSpaReinit() {
 
   // Clean up — remove entire container (our elements are inside it)
   document.getElementById('hs-mc-container')?.remove()
+  // The node ref softTwitchNav re-adopts from points at the panel removed on
+  // the line above: its tab bar, observers and feed state are all torn down
+  // here, so a later nav must not hand that husk back as the live panel.
+  _hsMcContainerNode = null
   tabBarElement = null
   overlayElement = null
   inputBarElement = null
@@ -250,20 +265,7 @@ function fullSpaReinit() {
   // ids (module-load registrations: bootstrap's ctx-death detector, emotes'
   // DOM-scan poller) are kept — they're not re-registered by init(). The
   // spa-reinit setTimeout below is registered AFTER this drain, so it survives.
-  _timers.intervals = _timers.intervals.filter((id) => {
-    if (_timers.persistent.has(id)) return true
-    try {
-      clearInterval(id)
-    } catch {}
-    return false
-  })
-  _timers.timeouts = _timers.timeouts.filter((id) => {
-    if (_timers.persistent.has(id)) return true
-    try {
-      clearTimeout(id)
-    } catch {}
-    return false
-  })
+  drainChannelTimers()
   // Null the sentinels whose observers/timers were just disconnected/cleared
   // above. Their "already running" guards (if (columnObserver) return,
   // if (!mcCosmeticsTimer), if (_persistMentionsState.timer) return, etc.)
@@ -277,16 +279,33 @@ function fullSpaReinit() {
   _persistMentionsState.timer = null
   _persistYtTimers.clear()
   _persistTabSeenTimer = null
+  // Same for the timers whose work is the panel itself (the tab bar's live
+  // dots, the heat ticker on its tabs, the discover and pinned views' refresh):
+  // the drain cleared them, init() builds a new panel, and its "already
+  // running" guard has to read false for that panel to start them again.
+  liveStatusInterval = null
+  _tabCounterTimer = null
+  discoverPollTimer = null
+  pinnedPollTimer = null
+  // The native-chat tap's observer was disconnected with the rest above, but
+  // twitch can hand back the very same chat node, and _tapBind skips "this
+  // container and an observer" — a dead observer read as a live one, and the
+  // tap stayed dark. Nulled, init()'s startNativeTap binds a fresh one. The
+  // tap's own timers are page timers and keep running through all of this.
+  _tapObserver = null
+  _tapContainer = null
   mcInitialized = false // Allow init() to run again
 
   // Reset social tab state (stale on nav)
   feedLoaded = false
   feedLoading = false
   feedMessages = []
+  feedBookmarks.clear()
   feedPage = 1
   feedHasMore = true
   feedLastFetch = 0
   activeThread = null
+  feedThreadSync(null)
   _autoYtVideoId = null
   // Reset feed scroll listener flag (new DOM element)
   const oldMsgs = document.getElementById('hs-mc-messages')

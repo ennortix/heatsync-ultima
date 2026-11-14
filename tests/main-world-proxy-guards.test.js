@@ -1,5 +1,5 @@
 // Regression guards for the MAIN-world privileged-proxy security controls in
-// chrome/early-inject-main.js and the dev-only diagnostics in bootstrap.js.
+// src/content/early-inject-main.js and the dev-only diagnostics in bootstrap.js.
 //
 // early-inject-main.js is a document_start MAIN-world IIFE (COPY_FILES, not
 // bundled) that registers page-observable postMessage handlers at top level —
@@ -15,7 +15,7 @@ import { afterAll, describe, expect, setSystemTime, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-const SRC = readFileSync(join(import.meta.dir, '..', 'chrome', 'early-inject-main.js'), 'utf8')
+const SRC = readFileSync(join(import.meta.dir, '..', 'src', 'content', 'early-inject-main.js'), 'utf8')
 const BOOT = readFileSync(join(import.meta.dir, '..', 'src', 'multichat', 'bootstrap.js'), 'utf8')
 
 // ── Behavioral: the real _proxyAllowed sliding-window limiter ─────────────────
@@ -26,8 +26,7 @@ describe('_proxyAllowed sliding-window limiter (extracted from real source)', ()
   })
   // Run the ACTUAL shipped function, not a re-implementation, so a semantic
   // regression in the limiter is caught here.
-  // biome-ignore lint/security/noGlobalEval: intentionally executing the real _proxyAllowed extracted from source (test-only, input is our own committed file)
-  const _proxyAllowed = (0, eval)(`(${m[0]})`)
+  const _proxyAllowed = new Function(`return (${m[0]})`)()
   afterAll(() => setSystemTime()) // restore real clock
 
   test('allows exactly `max` calls per window, blocks the rest', () => {

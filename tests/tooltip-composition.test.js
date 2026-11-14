@@ -12,6 +12,11 @@ import { join } from 'node:path'
 const ROOT = join(import.meta.dir, '..')
 const MODS = readFileSync(join(ROOT, 'src', 'lib', 'modifiers.js'), 'utf8')
 const EMOTES = readFileSync(join(ROOT, 'src', 'multichat', 'emotes.js'), 'utf8')
+// lib/palette.js is concatenated ahead of the overlay modules in the real bundle (build.js
+// LIB_ORDER), exports stripped, same scope — load it the same way here
+const PALETTE = readFileSync(join(ROOT, 'src', 'lib', 'palette.js'), 'utf8')
+  .replace(/^export /gm, '')
+  .replace(/^import .*$/gm, '')
 const TIPS = readFileSync(join(ROOT, 'src', 'multichat', 'tooltips.js'), 'utf8')
 
 const modsApi = new Function(
@@ -52,7 +57,8 @@ describe('the wrapper carries the recipe', () => {
 
 describe('provider colouring', () => {
   const api = new Function(
-    `${TIPS.slice(TIPS.indexOf('const HS_TT_PROVIDER_COLOR'), TIPS.indexOf('/** One coloured chip'))}
+    `${PALETTE}
+${TIPS.slice(TIPS.indexOf('const HS_TT_PROVIDER_COLOR'), TIPS.indexOf('/** One coloured chip'))}
      return { HS_TT_PROVIDER_COLOR, hsTtModProvider }`,
   )()
 
@@ -70,9 +76,9 @@ describe('provider colouring', () => {
     expect(api.hsTtModProvider('c!#00aaff')).toBe('bttv')
   })
   test('brand colours match the source chips used elsewhere', () => {
-    expect(api.HS_TT_PROVIDER_COLOR['7tv']).toBe('#29d8f6')
-    expect(api.HS_TT_PROVIDER_COLOR.bttv).toBe('#d50014')
-    expect(api.HS_TT_PROVIDER_COLOR.ffz).toBe('#0086c8')
+    expect(api.HS_TT_PROVIDER_COLOR['7tv']).toBe('#00ffff')
+    expect(api.HS_TT_PROVIDER_COLOR.bttv).toBe('#ff0000')
+    expect(api.HS_TT_PROVIDER_COLOR.ffz).toBe('#ffffff')
   })
 })
 

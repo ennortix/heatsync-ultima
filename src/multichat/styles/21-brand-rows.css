@@ -1,0 +1,50 @@
+/* Filled rows — the ONE row layer for every heatsync surface (site + extension: the
+   extension mirrors this file byte for byte). Written against the shared vocabulary the
+   renderers emit:
+     hs-filled            a row that wears a fill; never takes part in striping
+     hs-fill-<name>       olive stream events · purple new people · navy support ·
+                          teal channel points + the broadcaster's voice · green mods · red needs you ·
+                          rule: the dim twin of the colour a rule chose (--hs-rule-bg)
+     hs-row-label         the label text of a filled row (colour = the fill's label colour)
+     hs-name-cut          the sender's name on a plain black cutout, so it reads as in chat
+   Tokens: brand-tokens.css (generated from shared/brand/tokens.json). A surface that must
+   differ sets ONE token (--brand-row-pad-x, …) with a comment saying why. */
+.hs-filled {
+    border-left: 0;
+    padding: var(--brand-row-pad-y) var(--brand-row-pad-x);
+    line-height: var(--brand-row-line);
+    color: #ffffff; /* contrast rule: every fill is dim, so ALL body text on one is white */
+}
+.hs-row-mention { color: #ffffff; }
+/* a label that is its own line above the message: the row's size, the label's line */
+.hs-filled .hs-row-label { font-size: inherit; line-height: var(--brand-label-line); }
+.hs-filled + .hs-filled { border-top: var(--brand-row-gap) solid #000000; }
+.hs-fill-olive  { background: var(--brand-fill-olive);  --hs-label: var(--brand-label-olive); }
+.hs-fill-purple { background: var(--brand-fill-purple); --hs-label: var(--brand-label-purple); }
+.hs-fill-navy   { background: var(--brand-fill-navy);   --hs-label: var(--brand-label-navy); }
+.hs-fill-teal   { background: var(--brand-fill-teal);   --hs-label: var(--brand-label-teal); }
+.hs-fill-green  { background: var(--brand-fill-green);  --hs-label: var(--brand-label-green); }
+.hs-fill-red    { background: var(--brand-fill-red);    --hs-label: var(--brand-label-red); }
+.hs-fill-rule   { background: var(--hs-rule-bg, var(--brand-zebra)); --hs-label: #ffffff; }
+.hs-row-label   { color: var(--hs-label); }
+/* Contrast rule, once, no per-colour maths: on ANY filled row (and the red mention row) the body text, links, dim / reply-context
+   text and @mentions are white; links are underlined, mentions bold (VT320 emphasis, never a colour).
+   Only the row label (above) keeps its family colour; the name keeps its black cutout. */
+:is(.hs-filled, .hs-row-mention) :is(.hs-link, .hs-mention, .hs-reply-ctx, .hs-reply-ctx *):not(.hs-name-cut *, .hs-row-label) {
+    color: #ffffff !important;
+    -webkit-text-fill-color: #ffffff !important;
+}
+:is(.hs-filled, .hs-row-mention) .hs-link:not(.hs-name-cut *, .hs-row-label) { text-decoration: underline !important; }
+:is(.hs-filled, .hs-row-mention) .hs-mention:not(.hs-name-cut *) { font-weight: 700; }
+.hs-name-cut {
+    display: inline-block;
+    vertical-align: baseline; /* top rode up to the line box's top when an emote made the line taller */
+    padding: 0 var(--brand-cut-pad-x);
+    background: #000000;
+}
+
+/* The mention row (a mention of you, or a reply to you): the dark red fill IS the "you were pinged" signal.
+   It is a filled row (hs-filled hs-fill-red), so it never takes part in striping. */
+.hs-row-mention { background: var(--brand-fill-red) !important; }
+/* the session-first edge: a chatter you have not seen since this tab opened — a yellow bar on the left */
+.hs-row-seen { box-shadow: inset 2px 0 0 var(--brand-yellow); }

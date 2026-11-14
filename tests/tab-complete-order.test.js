@@ -21,6 +21,7 @@
 import { beforeEach, describe, expect, setSystemTime, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { mainSource } from './main-src.js'
 
 // ── carve compareAcMatches out of input.js ──────────────────────────────────
 const INPUT_SRC = readFileSync(join(import.meta.dir, '..', 'src', 'multichat', 'input.js'), 'utf8')
@@ -75,6 +76,19 @@ describe('compareAcMatches — never-used ordering (channel culture leads)', () 
   test('strong exact: a USED exact global escapes above channel fuzzy hits', () => {
     const frec = new Map([['Clap', 4]])
     expect(rank([emote('ClapHands', 0), emote('Clap', 2)], 'clap', frec)).toEqual(['Clap', 'ClapHands'])
+  })
+
+  test('kek / KEK: the channel emote beats a used global of the same name in another casing', () => {
+    // ennortix typed "kek" and wanted the channel's KEK — a habit on the
+    // lowercase lookalike must not lead.
+    const frec = new Map([['kek', 9]])
+    expect(rank([emote('kek', 2), emote('KEK', 0)], 'kek', frec)).toEqual(['KEK', 'kek'])
+    expect(rank([emote('kek', 2, 0, { remote: true }), emote('KEK', 0)], 'kek', frec)).toEqual(['KEK', 'kek'])
+  })
+
+  test('two same-name exacts that are both off-channel still go by habit', () => {
+    const frec = new Map([['kek', 9]])
+    expect(rank([emote('KEK', 2), emote('kek', 1)], 'kek', frec)).toEqual(['kek', 'KEK'])
   })
 
   test('exact channel/own emote is strong without any usage', () => {
@@ -252,13 +266,13 @@ describe('emote frecency store', () => {
   })
 })
 
-// ── native-chat hook (chrome/autocomplete-hook.js) parity guards ────────────
+// ── native-chat hook (src/content/autocomplete-hook.js) parity guards ────────────
 // The MAIN-world hook can't import emotes.js/input.js, so its frecency store
 // and all three of its completion sorts (getMatches dropdown, remote-merge
 // cycle, local cycle rebuild) duplicate the logic by design. These guards
 // keep the copies from drifting — the original kko bug shipped exactly
 // because two sort sites disagreed.
-const HOOK_SRC = readFileSync(join(import.meta.dir, '..', 'chrome', 'autocomplete-hook.js'), 'utf8')
+const HOOK_SRC = readFileSync(join(import.meta.dir, '..', 'src', 'content', 'autocomplete-hook.js'), 'utf8')
 
 describe('autocomplete-hook.js — stays in lockstep with the multichat', () => {
   test('shares the frecency localStorage key and half-life with emotes.js', () => {
@@ -290,6 +304,13 @@ describe('autocomplete-hook.js — stays in lockstep with the multichat', () => 
     expect(HOOK_SRC).not.toContain('const frecCycle = readEmoteFrecency()')
   })
 
+  test('every sort that ranks exacts puts the channel emote first among same-name exacts', () => {
+    // two sorts in autocomplete-hook.js (dropdown + local cycle rebuild) and kick's
+    expect(HOOK_SRC.match(/\(a\.(_tier|tier) === 0\) !== \(b\.\1 === 0\)/g)?.length).toBe(2)
+    const KICK_SRC = readFileSync(join(import.meta.dir, '..', 'src', 'content', 'kick-autocomplete-hook.js'), 'utf8')
+    expect(KICK_SRC).toContain('(a.tier === 0) !== (b.tier === 0)')
+  })
+
   test('inserts keep feeding both stores (MRU list for the picker + frecency)', () => {
     const s = HOOK_SRC.indexOf('function recordRecentEmoteMru(')
     const body = HOOK_SRC.slice(s, s + 700)
@@ -311,7 +332,7 @@ describe('autocomplete-hook.js — stays in lockstep with the multichat', () => 
 })
 
 describe('moment ¶ shift-click paste (main.js) — in-chat visibility loop', () => {
-  const MAIN_SRC = readFileSync(join(import.meta.dir, '..', 'src', 'multichat', 'main.js'), 'utf8')
+  const MAIN_SRC = mainSource()
   test('shift-click pastes into the input, never auto-sends, and appends to a draft', () => {
     const s = MAIN_SRC.indexOf("if (m.type === 'moment')")
     const body = MAIN_SRC.slice(s, s + 3000)
@@ -320,6 +341,6 @@ describe('moment ¶ shift-click paste (main.js) — in-chat visibility loop', ()
     expect(body).toContain('e.preventDefault()')
     expect(body).toContain('restoreWysiwygText(input, next)')
     expect(body).not.toContain('sendMessage(')
-    expect(body).toContain('shift-click to paste into chat')
+    expect(body).toContain("t('mc_moment_permalink')")
   })
 })

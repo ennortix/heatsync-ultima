@@ -31,6 +31,22 @@ function resolveSendTargets(sendTargets, linkedPlatforms) {
 }
 
 /**
+ * The composer's send tag: which platforms a send from this channel reaches,
+ * in T, K, Y order. Built on resolveSendTargets (the same call sendMessage
+ * makes) so the tag can never disagree with where the send goes. Fewer than
+ * two linked platforms → [] (nothing to disambiguate, no tag).
+ * @param {{twitch?: boolean, kick?: boolean, youtube?: boolean}|null|undefined} sendTargets
+ * @param {{twitch?: boolean, kick?: boolean, youtube?: boolean}} linkedPlatforms
+ * @returns {Array<'twitch'|'kick'|'youtube'>}
+ */
+function sendTagPlatforms(sendTargets, linkedPlatforms) {
+  const all = ['twitch', 'kick', 'youtube']
+  if (all.filter((p) => linkedPlatforms?.[p]).length < 2) return []
+  const resolved = resolveSendTargets(sendTargets, linkedPlatforms)
+  return all.filter((p) => resolved[p])
+}
+
+/**
  * Compute the next sendTargets object after toggling one platform on/off.
  * Seeds from "all currently linked platforms" the first time a channel's
  * sendTargets is touched, so flipping one platform never implicitly turns
@@ -74,6 +90,33 @@ function extractYoutubeVideoId(url) {
 // the send rejected outright rather than truncated, so we treat it as a hard
 // wall and skip the prepend rather than risk the send itself failing.
 const YT_CHAT_MAX_LEN = 200
+
+/** Per-platform chat message caps (chars). Twitch and Kick both allow 500. */
+const CHAT_MAX_LEN = { twitch: 500, kick: 500, youtube: YT_CHAT_MAX_LEN }
+
+/**
+ * The "n/limit" counter: silent until the line is within 10% of the cap (the
+ * site's warning band), yellow there, red once over. Counts what goes on the
+ * wire — trimmed, like every send path.
+ * @returns {{text: string, level: 'warn'|'over'}|null}
+ */
+function charCountLabel(len, limit) {
+  if (!(limit > 0) || !(len > limit * 0.9)) return null
+  return { text: `${len}/${limit}`, level: len > limit ? 'over' : 'warn' }
+}
+
+/**
+ * The composer's length cap for what the next send reaches: the tightest cap
+ * among the active legs (a mirrored youtube leg is rejected past 200, not
+ * truncated). No leg known → the 500 default.
+ * @param {{twitch?: boolean, kick?: boolean, youtube?: boolean}|null|undefined} legs
+ * @returns {number}
+ */
+function composerCharLimit(legs) {
+  let lim = 500
+  for (const p of ['twitch', 'kick', 'youtube']) if (legs?.[p]) lim = Math.min(lim, CHAT_MAX_LEN[p])
+  return lim
+}
 
 /**
  * YouTube live chat has no reply-threading API — sending the bare text drops

@@ -1,0 +1,854 @@
+/* card.css — the one user-card stylesheet, shared by every card surface
+ * (hover peek, pinned full card, profile-page header, popout, and mirrored
+ * into the extension's panel/tooltip). Replaces profile-card-pro.css,
+ * profile-card.css, the dead .profile-preview-* rules and the chatter-card
+ * block in messages.css, and the card overrides in mobile.css.
+ *
+ * Doctrine: square (no border-radius — status dots are the only round
+ * exception), 1px #ffffff border, dense 20px sheet rows, dt dim/dd fg,
+ * links white, live green, mod/vip gold, danger red, ZERO orange, hover
+ * AND :active AND :focus-visible = white bg/black text, text >=13px (meta
+ * <=11px only), zero gradients/glow/motion. !important only where noted —
+ * beating a host rule that predates this file.
+ */
+
+.hs-card {
+  --hs-card-fg: #ffffff;
+  --hs-card-dim: #ffffff;
+  --hs-card-border: #ffffff;
+  --hs-card-link: #ffffff;
+  --hs-card-live: #00ff00;
+  --hs-card-gold: #ffff00;
+  --hs-card-magenta: #ff00ff;
+  --hs-card-danger: #ff0000;
+  --hs-card-twitch: #c8a8ff;
+  --hs-card-bg: #000000;
+
+  display: flex;
+  flex-direction: column;
+  background: var(--hs-card-bg);
+  color: var(--hs-card-fg);
+  border: 1px solid var(--hs-card-border);
+  border-radius: 0;
+  font-size: 15px;
+  line-height: 20px; /* 15px monospace, integer px */
+  width: 320px;
+  max-width: 92vw;
+  animation: none;
+}
+
+/* Floating variants (hover peek / pinned full) — host sets top/left via
+ * CSSOM after measuring the mounted element; this just establishes the
+ * positioning context + stacking. */
+.hs-card-peek,
+.hs-card-full {
+  position: fixed;
+  z-index: 2147483647;
+  pointer-events: auto;
+}
+
+/* Whole-card navigation (search results — click-delegation.js's
+ * setupProfileCardClickHandler, driven off this attribute). The card itself
+ * is the click target here, so it needs the doctrine's own hover/active/
+ * focus-visible treatment same as any other interactive element — it had
+ * none at all. */
+.hs-card[data-clickable="true"] {
+  cursor: pointer;
+}
+.hs-card[data-clickable="true"]:focus-visible { outline: none; }
+/* Only the clickable part turns white — the body (identity, stats, note,
+ * recent lines). The nav row and action buttons sit outside it, so they keep
+ * their own hover and never light up with it. */
+.hs-card[data-clickable="true"] .hs-card-body:hover,
+.hs-card[data-clickable="true"]:active .hs-card-body,
+.hs-card[data-clickable="true"]:focus-visible .hs-card-body {
+  background: #ffffff;
+  color: #000000;
+}
+
+/* Embedded variants — inline on a profile page / extension panel. No fixed
+ * positioning; the host's layout owns placement. */
+.hs-card-page,
+.hs-card-panel {
+  position: relative;
+  width: 100%;
+  max-width: 460px;
+}
+
+/* ── the 'page' variant's layout inside profile-view.js's .profile-header
+ * wrapper — consolidated here (was scattered across mobile.css/profiles.css/
+ * emotes.css as a BARE `.hs-card` match, which also matched the floating
+ * peek/full popovers and clobbered their `position:fixed`, leaving a pinned
+ * card invisible on phones). Scoped to `.hs-card-page` only now. Card
+ * styling lives in this one file — nothing outside it should target
+ * `.hs-card`/`.hs-card-*`. ──────────────────────────────────────────── */
+@media (min-width: 769px) {
+  /* 2px to match the visual weight of a fit-content card. */
+  .profile-header .hs-card-page {
+    border: 2px solid #ffffff !important;
+  }
+  /* This is the profile HEADER, not a popover — it belongs at the content
+   * column's width (its own .profile-header wrapper is already width:100%,
+   * profiles.css), not the base rule's 460px popover cap. peek/full/panel
+   * keep that cap; unaffected (this selector is .hs-card-page only). The
+   * action row (already a full-width flex row) and everything else in the
+   * card follow this width automatically — no separate "full-width actions"
+   * rule needed. */
+  .hs-card-page {
+    max-width: none;
+  }
+}
+@media (max-width: 768px) {
+  .hs-card-page,
+  #messages-container > .hs-card-page:first-child,
+  #messages-container .hs-card-page,
+  body .hs-card-page,
+  html .hs-card-page {
+    order: 0 !important; /* container is a plain column on mobile — header flows first */
+    position: relative !important;
+    top: auto !important;
+    bottom: auto !important;
+    left: 0 !important;
+    right: auto !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 100% !important;
+    margin: 0 !important;
+    z-index: 10 !important; /* low, so the page still scrolls under fixed chrome */
+    background: #000000 !important;
+    display: flex !important;
+    flex-wrap: wrap !important;
+    align-items: flex-start !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    min-height: fit-content !important;
+    height: auto !important;
+    max-height: none !important;
+    box-sizing: border-box !important;
+    padding: 6px !important;
+    overflow: visible !important;
+  }
+  .profile-header .hs-card-page {
+    border: 2px solid #ffffff !important;
+  }
+  /* Search/trending result rows keep their rank gutter — the header-card
+   * min-width:100% treatment above is meant for the profile PAGE card only;
+   * inside .trending-profile-row (flex: [40px rank][card]) it pushes the
+   * card 40px past the right viewport edge. */
+  #messages-container .trending-profile-row .hs-card-page,
+  .trending-profile-row .hs-card-page {
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    flex: 1 1 0 !important;
+  }
+  /* Emote-inventory page: sticky header overrides "flows first" above. */
+  #messages-container:has(.emote-inventory-container) > .hs-card-page,
+  #messages-container:has(.emote-inventory-container) .hs-card-page {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 100 !important;
+    background: #000000 !important;
+    order: unset !important;
+    flex-shrink: 0 !important;
+  }
+}
+
+.hs-card-empty,
+.hs-card-chatter {
+  padding: 8px 10px;
+  min-width: 200px;
+}
+.hs-card-chatter .hs-card-name {
+  font-size: 15px;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.hs-card-plat {
+  font-size: 15px;
+  color: var(--hs-card-dim);
+}
+.hs-card-meta {
+  font-size: 15px;
+  color: var(--hs-card-dim);
+  margin-top: 2px;
+}
+
+/* ── hero banner ──────────────────────────────────────────────────────── */
+/* Collapsed until a banner actually resolves — most accounts have none, and
+ * a permanent 48px black strip with nothing in it read as a dead/broken
+ * element, not a banner slot. profile-renderer.js's applyBannersIn only adds
+ * .hs-card-hero-loaded once the image has actually finished loading (a real
+ * <img> onload, not just a resolved URL), so this never flashes an empty
+ * loading state either — it snaps straight from 0 to 48px with the image
+ * already painted. That's the one allowed layout jump ("the banner
+ * appearing"); nothing else should move when it happens. */
+.hs-card-hero {
+  position: relative;
+  width: 100%;
+  height: 0;
+  overflow: hidden;
+  background: #000000;
+  flex-shrink: 0;
+}
+.hs-card-hero.hs-card-hero-loaded {
+  height: 48px;
+}
+.hs-card-hero-img {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+}
+.hs-card-hero-scrim {
+  /* Flat, not a gradient — doctrine bans gradients even here. A single
+   * translucent black wash still separates the banner from the identity
+   * row without a blend. */
+  position: absolute;
+  inset: 0;
+  background: transparent;
+}
+
+/* On the inline variants (profile page, extension panel) the banner is the
+ * backdrop of the TOP section — identity, stats, the logs row — and nothing
+ * below it. card-render.js puts the hero inside .hs-card-top for exactly this.
+ * Only the text carries a black ground, so it reads on any image; the note,
+ * recent lines and buttons below sit on the card's own black. */
+.hs-card-top {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  position: relative;
+}
+.hs-card-top.hs-card-has-hero {
+  /* full-bleed: out to the card edge over the body's own padding */
+  margin: -8px -10px 0;
+  padding: 8px 10px 4px;
+}
+.hs-card-top > .hs-card-hero.hs-card-hero-loaded {
+  position: absolute;
+  inset: 0;
+  height: auto;
+  z-index: 0;
+}
+.hs-card-top.hs-card-has-hero > :not(.hs-card-hero) {
+  position: relative;
+  z-index: 1;
+}
+.hs-card-top.hs-card-has-hero :is(.hs-card-name, .hs-card-pronouns, .hs-card-plus, .hs-card-sheet-row, .hs-card-badges, .hs-card-bio) {
+  background: #000000;
+}
+
+/* ── body ─────────────────────────────────────────────────────────────── */
+.hs-card-body {
+  padding: 8px 10px 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow-y: auto;
+}
+
+.hs-card-identity {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+/* No overlap — the avatar used to straddle the banner's bottom edge via a
+ * negative margin, which had two failure modes, both real bugs, not
+ * theoretical: (1) .hs-card-body's own overflow-y:auto clips anything a
+ * negative margin pulls above its content edge, cutting the avatar's own
+ * top off (the 'page'/'full' variant bug — a real banner, not the
+ * collapsed 0-height case this rule used to gate on); (2) .hs-card-hero's
+ * blurred banner paints in normal DOM order, so the "straddle" was really
+ * the banner winning the overlap, not the avatar. Simplest fix is the
+ * correct one: no overlap at all. The avatar sits fully below the banner
+ * at the body's own top padding, square and predictable — never
+ * conditional on whether a banner loaded. */
+.hs-card-avatar {
+  width: 40px;
+  height: 40px;
+  /* --hs-card-accent (data-accent on the root, host-applied via CSSOM once
+   * resolved — e.g. from a channel banner fetch) rings the avatar in the
+   * streamer's own color; falls back to the plain border when unset. */
+  border: 1px solid var(--hs-card-accent, var(--hs-card-border));
+  background: #000;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+/* ── host-only chat-badge chip row (native + 7TV/BTTV/FFZ/Chatterino) ──── */
+.hs-card-badges {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+.hs-card-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--hs-card-fg); /* host overwrites via CSSOM from data-color */
+}
+/* a #tag is magenta on every surface — its card title too */
+.hs-card-tag .hs-card-name { color: var(--hs-card-magenta); }
+.hs-card-pronouns,
+.hs-card-plus {
+  font-size: 15px;
+  color: var(--hs-card-dim);
+}
+/* core/reset.css's blanket `img { height: auto }` beats the <img width=16
+ * height=16> attributes card-render.js stamps on this (a CSS declaration
+ * always wins over an HTML presentation attribute, whatever its
+ * specificity) — with no height of its own, the badge rendered at its
+ * SOURCE image's native size (~32px), not the 16px the markup asked for.
+ * Explicit here, not left to the attribute. */
+.hs-card-flair {
+  width: 16px;
+  height: 16px;
+  vertical-align: middle;
+}
+/* Ember (tenure achievement) chip — the one achievement the card still
+ * shows (see card-model.js). Gold, not orange — same token as the mutual/
+ * mutual-sub sheet rows. */
+.hs-card-ember {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 4px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--hs-card-gold);
+  background: #000000;
+  border: 1px solid var(--hs-card-gold);
+  vertical-align: middle;
+  cursor: default;
+}
+
+.hs-card-bio {
+  font-size: 15px;
+  color: var(--hs-card-fg);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  /* Bio emotes render via the same .emote-hover-wrapper system as chat
+   * (renderBio → parseInlineText) — its own height comes from the GLOBAL
+   * --emote-max-height (32px), not a card-scoped size. Scoped override,
+   * same 20px cap as the recent-log emotes; the custom property cascades
+   * into .emote-hover-wrapper's `height` and img.emote's `max-height`
+   * calc() below for free. */
+  --emote-max-height: 20px;
+}
+/* .chat-message/.message ancestor is what the doctrine's measured -8px
+ * targets (emotes.css) — bio has neither, so without this the wrapper falls
+ * through to its OWN base rule's `vertical-align: text-bottom !important`,
+ * a keyword, not the measured length the sheet-row/recent-log emotes get.
+ * Same measurement method, same result: real Chrome, this wrapper's own
+ * 20px inline-block box against 13px Cozette text, swept until centred —
+ * see .hs-card-log-body's identical -12px note above (independent of
+ * line-height, so one number covers this 13px/17px context too). */
+.hs-card-bio .emote-hover-wrapper {
+  vertical-align: -12px !important;
+}
+/* Own-profile inline bio edit trigger (click-delegation.js setupBioEditHandler) */
+.hs-card-bio .bio-edit-trigger {
+  color: var(--hs-card-link);
+  cursor: pointer;
+}
+.hs-card-bio .bio-edit-trigger:hover,
+.hs-card-bio .bio-edit-trigger:active,
+.hs-card-bio .bio-edit-trigger:focus-visible {
+  background: #ffffff;
+  color: #000000;
+}
+
+/* ── host-only socials row (e.g. a Kick bio's twitter/instagram/tiktok/…) ── */
+.hs-card-socials {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 15px;
+}
+.hs-card-socials span {
+  color: var(--hs-card-dim);
+}
+
+/* ── nav row: the card's only links ─────────────────────────────────────
+ * Navbar form — square flush cells, no gaps, 13px, white-bg/black-text on
+ * hover AND active. Sits at the card's bottom edge; platform cells keep their
+ * brand tone until hovered. */
+.hs-card-nav {
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 15px;
+  border-top: 1px solid var(--hs-card-border);
+}
+.hs-card-nav-cell {
+  flex: 1 1 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-height: 24px;
+  padding: 0 8px;
+  color: var(--hs-card-link);
+  text-decoration: none;
+  border-radius: 0;
+  box-shadow: inset 0 0 0 1px var(--hs-card-border);
+}
+.hs-card-nav-cell:hover,
+.hs-card-nav-cell:active,
+.hs-card-nav-cell:focus-visible,
+.hs-card-nav-cell[data-tone]:hover,
+.hs-card-nav-cell[data-tone]:active,
+.hs-card-nav-cell[data-tone]:focus-visible {
+  background: #ffffff;
+  color: #000000;
+  outline: none;
+}
+.hs-card-nav-cell[data-tone="ttv"] { color: var(--hs-card-twitch); }
+.hs-card-nav-cell[data-tone="kick"] { color: #00ff00; }
+.hs-card-nav-cell[data-tone="yt"] { color: #ff0000; }
+/* The white plate swallows the body text of a card with no banner — name,
+ * stat labels and values are white (or a tone colour) on nothing. A banner card
+ * puts every one of those on its own black chip, so it is left alone. The ember
+ * chip is a black chip on any card, so it keeps its gold. */
+.hs-card[data-clickable="true"] .hs-card-body:hover .hs-card-top:not(.hs-card-has-hero) *:not(.hs-card-ember),
+.hs-card[data-clickable="true"]:active .hs-card-body .hs-card-top:not(.hs-card-has-hero) *:not(.hs-card-ember),
+.hs-card[data-clickable="true"]:focus-visible .hs-card-body .hs-card-top:not(.hs-card-has-hero) *:not(.hs-card-ember) {
+  color: #000000 !important;
+}
+/* One flex item per label — see hk()/hkShort()'s own doc comment. */
+.hs-card-label { display: inline; }
+.hs-card-hk { text-decoration: underline; }
+.hs-card-live {
+  color: var(--hs-card-live);
+  font-size: 15px;
+}
+.hs-card-verified { color: var(--hs-card-link); font-size: 15px; }
+
+/* ── property sheet ───────────────────────────────────────────────────── */
+.hs-card-sheet {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 18px;
+  row-gap: 0;
+}
+.hs-card-sheet-row {
+  display: flex;
+  /* centre, not baseline: the mutuals value carries 14px avatars, and baseline
+     alignment let them pull the label 13px below the 20px row — under the
+     action buttons (profile/ennortix, 2026-10-23). */
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+  white-space: nowrap;
+  /* a row wraps whole to the next line; it never squeezes its own value */
+  flex-shrink: 0;
+}
+.hs-card-sheet-row dt {
+  color: var(--hs-card-dim);
+  font-size: 15px;
+}
+/* label: value — the colon ties a number to its label, so "age 10y followers 2"
+   cannot be read as "age 10y followers" + "2". */
+.hs-card-sheet-row dt::after { content: ":"; }
+.hs-card-sheet-row dd {
+  margin: 0;
+  color: var(--hs-card-fg);
+  font-size: 15px;
+  font-weight: 700;
+}
+.hs-card-channel-sheet {
+  border-top: 1px solid var(--hs-card-border);
+  padding-top: 4px;
+}
+
+/* tone → color. Heat steps white → yellow → red (the site ladder) — never orange. */
+.hs-card-sheet-row[data-tone="partner"] dd,
+.hs-card-sheet-row[data-tone="admin"] dd { color: var(--hs-card-magenta); }
+.hs-card-sheet-row[data-tone="affiliate"] dd,
+.hs-card-sheet-row[data-tone="staff"] dd { color: var(--hs-card-gold); }
+.hs-card-sheet-row[data-tone="heat-cold"] dd { color: #ffffff; }
+.hs-card-sheet-row[data-tone="heat-spark"] dd { color: #ffffff; font-weight: 700; }
+.hs-card-sheet-row[data-tone="heat-warm"] dd { color: #ffff00; }
+.hs-card-sheet-row[data-tone="heat-hot"] dd { color: #ffff00; font-weight: 700; }
+.hs-card-sheet-row[data-tone="heat-erupting"] dd { color: #ff0000; font-weight: 700; }
+.hs-card-sheet-row[data-tone="heat-mythic"] dd { color: #ff0000; font-weight: 700; outline: 1px solid #ff0000; outline-offset: -1px; }
+.hs-card-sheet-row[data-tone="you-follow"] dd,
+.hs-card-sheet-row[data-tone="you-sub"] dd { color: #00ffff; }
+.hs-card-sheet-row[data-tone="they-follow"] dd,
+.hs-card-sheet-row[data-tone="they-sub"] dd { color: #ff00ff; }
+.hs-card-sheet-row[data-tone="mutual"] dd,
+.hs-card-sheet-row[data-tone="mutual-sub"] dd { color: var(--hs-card-gold); }
+.hs-card-sheet-row[data-tone="ch"] dd { color: var(--hs-card-fg); }
+.hs-card-sheet-row[data-tone="dim"] dd { color: var(--hs-card-dim); }
+.hs-card-sheet-row[data-tone="note"] { height: auto; flex-wrap: wrap; }
+
+.hs-card-mutual-av {
+  /* the site resets img to block, which stacked the count under the avatar */
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 1px solid var(--hs-card-border);
+  margin-right: -4px;
+  vertical-align: middle;
+}
+.hs-card-mutual-n { font-size: 15px; color: var(--hs-card-dim); margin-left: 6px; }
+
+/* ── note ─────────────────────────────────────────────────────────────── */
+.hs-card-note-text { color: var(--hs-card-fg); }
+.hs-card-note-textarea {
+  width: 100%;
+  min-height: 40px;
+  margin: 2px 0;
+  padding: 4px 6px;
+  font: inherit;
+  font-size: 15px;
+  resize: vertical;
+  appearance: none;
+  border-radius: 0;
+}
+/* base.css's universal `textarea:focus { border-color: #ff8700 }` — orange,
+ * same specificity, later in the cascade than this file's own import.
+ * Zero orange on the card, no exceptions. */
+.hs-card-note-textarea:focus {
+  border-color: var(--hs-card-link) !important;
+}
+.hs-card-note-edit,
+.hs-card-action {
+  font: inherit;
+  background: transparent;
+  color: var(--hs-card-dim);
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  appearance: none;
+  border-radius: 0;
+}
+.hs-card-note-edit:hover,
+.hs-card-note-edit:active,
+.hs-card-note-edit:focus-visible {
+  background: #ffffff;
+  color: #000000;
+  outline: none;
+}
+
+/* ── recent logs ──────────────────────────────────────────────────────── */
+.hs-card-recent {
+  border-top: 1px solid var(--hs-card-border);
+  padding-top: 4px;
+}
+.hs-card-recent-head {
+  display: flex;
+  justify-content: space-between;
+  font-size: 15px;
+  color: var(--hs-card-dim);
+  margin-bottom: 2px;
+}
+.hs-card-log-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 15px;
+  height: 20px; /* same dense rhythm as .hs-card-sheet-row */
+  line-height: 20px;
+}
+.hs-card-log-ts { flex-shrink: 0; font-size: 15px; color: var(--hs-card-dim); }
+/* dim: the channel tag is a label for the line, not the line (--hs-dim in the
+ * extension, --dim-gray on the site — one #808080, defined in each palette) */
+.hs-card-log-ch { flex-shrink: 0; color: var(--hs-dim, var(--dim-gray)); font-size: 15px; }
+/* Single line, ellipsis on overflow — was `white-space: normal` +
+ * word-break, which let a full-size (unbounded) emote wrap the row onto a
+ * second line and made every row a different height. min-width: 0 is load-
+ * bearing: a flex item's default min-width is its content's natural width,
+ * which is unbounded here (the text) and defeats text-overflow entirely
+ * without it. */
+.hs-card-log-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--hs-card-fg);
+}
+/* Emotes in a recent-log line sit ON the text line, not at chat size — a
+ * bare 28-32px emote (main.css's blanket `.emote` rule) pushed the row
+ * height past the 20px it was given and wrapped onto a second line.
+ * vertical-align is a MEASURED integer, not `middle`: Cozette's 13px
+ * x-height is fractional, so `middle` grows the line box by a fraction and
+ * smears the bitmap glyphs (see emotes.css's own -8px note for the method).
+ * Measured here the same way — real Chrome, a 20px-capped emote against a
+ * reference text run, sweeping vertical-align until the two centres
+ * matched — at both the 20px (this row) and 17px (.hs-card-bio) line-
+ * heights this card actually uses; the same integer centred at both,
+ * confirming a length is independent of line-height and only depends on
+ * font metrics, which do not change here. */
+.hs-card-log-body img.emote,
+.hs-card-log-body img.hs-mc-emote,
+.hs-card-log-body .hs-archive-emote {
+  max-height: 24px !important;
+  height: 24px !important;
+  width: auto !important;
+  margin: 0 1px !important;
+  vertical-align: -7px !important;
+  /* positioned, so the emote sits above the next line's box: a 24px emote on a
+   * 20px line otherwise has its lower edge under the row below, which eats the
+   * hover (and the click) there */
+  position: relative;
+}
+/* A line heard live (extension) comes from the chat renderer, which wraps each
+ * emote in a fixed-width box sized for chat — flatten it so the 24px cap above
+ * is what sizes the emote. */
+.hs-card-log-body .hs-mc-emote-wrapper {
+  display: inline;
+  width: auto !important;
+  height: auto !important;
+}
+/* links in a log line (defused to spans — the card row is not a link) read blue */
+.hs-card-log-body .hs-mc-link { color: #8888ff; cursor: pointer; }
+/* clickable convention: white plate, art darkened (the emote menu acts on these) */
+.hs-card-log-body img.emote:not(.zw):hover,
+.hs-card-log-body .hs-archive-emote:not(.zw):hover,
+.hs-card-log-body img.hs-cl-emote:not(.zw):hover {
+  background: #fff;
+  filter: brightness(0.2);
+  cursor: pointer;
+}
+/* an emote line gets the 24px it needs, so it never crowds its neighbours */
+.hs-card-log-row:has(.hs-card-log-body img) { height: 24px; }
+/* Zero-width overlay emotes (server-rendered message_html, e.g. a modifier
+ * stacked on a base emote) stack via a negative margin sized to the emote's
+ * own width — chat-logs.css's -28px assumes its 28px height; this row's
+ * emotes are capped to 20px, so the overlay offset scales down with it. */
+.hs-card-log-body img.emote.zw,
+.hs-card-log-body .hs-archive-emote.zw {
+  margin-left: -24px !important;
+  /* an overlay lies over its base emote and would swallow its hover */
+  pointer-events: none;
+}
+
+/* base emote + zero-width overlays share one grid cell (see chat-logs.css) */
+.hs-card-log-body .hs-emote-nest {
+  display: inline-grid;
+  line-height: 0;
+  margin: 0 1px;
+  vertical-align: -7px;
+}
+.hs-card-log-body .hs-emote-nest > .hs-archive-emote {
+  grid-area: 1 / 1;
+  place-self: center;
+  margin: 0 !important;
+  vertical-align: top !important;
+}
+.hs-card-log-body .hs-emote-nest > .zwo { pointer-events: none; }
+
+/* ── mod actions (host-only — ctx.modGroups) ─────────────────────────────
+ * Danger stays red (ban), everything else the same reverse-video hover as
+ * every other button in this file. Not shown in peek (see card-render.js). */
+.hs-card-mod {
+  border-top: 1px solid var(--hs-card-border);
+  padding-top: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.hs-card-mod-reason {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--hs-card-bg);
+  color: var(--hs-card-fg);
+  border: 1px solid var(--hs-card-border);
+  border-radius: 0;
+  padding: 2px 5px;
+  font: inherit;
+  font-size: 15px;
+  outline: none;
+}
+.hs-card-mod-reason:focus-visible {
+  border-color: var(--hs-card-fg);
+}
+.hs-card-mod-ch {
+  font-size: 15px;
+  color: var(--hs-card-dim);
+}
+.hs-card-mod-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.hs-card-mod-btn {
+  font: inherit;
+  font-size: 15px;
+  background: transparent;
+  color: var(--hs-card-fg);
+  border: 1px solid var(--hs-card-border);
+  border-radius: 0;
+  padding: 2px 6px;
+  cursor: pointer;
+}
+.hs-card-mod-btn:hover,
+.hs-card-mod-btn:active,
+.hs-card-mod-btn:focus-visible {
+  background: #ffffff;
+  color: #000000;
+  outline: none;
+}
+.hs-card-mod-btn:disabled {
+  color: var(--hs-card-dim);
+  cursor: default;
+}
+.hs-card-mod-btn-danger {
+  color: var(--hs-card-danger);
+}
+
+/* ── actions ──────────────────────────────────────────────────────────── */
+.hs-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  border-top: 1px solid var(--hs-card-border);
+  /* Same rhythm as .hs-card-nav/.hs-card-recent (border + padding-top) —
+   * this row sits OUTSIDE .hs-card-body (its own action-bar chrome spans
+   * the full card width), so it gets none of that container's `gap`
+   * automatically and needs its own top padding to match. */
+  padding-top: 4px;
+}
+.hs-card-action {
+  flex: 1 1 auto;
+  min-height: 24px;
+  padding: 4px 8px;
+  text-align: center;
+  font-size: 15px;
+  appearance: none; /* iOS/older Safari rounds+shades a bare <button> */
+  border-radius: 0;
+}
+/* A cell grid needs visible seams, not just a hover invert to tell one
+ * action from the next — a bare row of buttons with no border between them
+ * read as one smear of text. */
+.hs-card-action:not(:first-child) {
+  border-left: 1px solid var(--hs-card-border);
+}
+.hs-card-action:hover,
+.hs-card-action:active,
+.hs-card-action:focus-visible {
+  background: #ffffff;
+  color: #000000;
+  outline: none;
+}
+.hs-card-action.hs-card-active { color: var(--hs-card-danger); }
+.hs-card-action[data-hs-card-action="report"] { color: var(--hs-card-danger); }
+
+/* ── close (×) — 'full' variant only, see card-render.js closeButtonHtml.
+ * Desktop: small, top-right of the pinned popover. Phone media query below
+ * bumps it to a real ≥44px touch target. `.hs-card-full` is itself the
+ * positioned ancestor (position:fixed above), so this needs no wrapper. */
+.hs-card-close {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 20px;
+  height: 20px;
+  min-width: 20px;
+  min-height: 20px;
+  border: none;
+  border-left: 1px solid var(--hs-card-border);
+  border-bottom: 1px solid var(--hs-card-border);
+  border-radius: 0;
+  background: var(--hs-card-bg);
+  color: var(--hs-card-fg);
+  font-size: 15px; /* bitmap grid — 13px/26px only, see tests/unit/bitmap-grid-client.test.ts */
+  line-height: 1;
+  padding: 0;
+  appearance: none; /* iOS/older Safari rounds+shades a bare <button> */
+  cursor: pointer;
+  z-index: 1;
+}
+.hs-card-close:hover,
+.hs-card-close:active,
+.hs-card-close:focus-visible {
+  background: #ffffff;
+  color: #000000;
+  outline: none;
+}
+
+/* ── phone: full card takes the entire screen, not a bottom sheet ────── */
+@media (max-width: 768px), (pointer: coarse) {
+  .hs-card-full {
+    position: fixed;
+    inset: 0 !important; /* beats the host's measured desktop top/left — mobile ignores anchor position entirely */
+    width: 100%;
+    max-width: 100%;
+    height: 100vh; /* fallback for a browser with no dvh support */
+    height: 100dvh;
+    max-height: none;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    border: none !important; /* edge-to-edge — nothing behind it to separate from */
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    padding-left: env(safe-area-inset-left, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
+  }
+  .hs-card-close {
+    /* Absolute offsets ignore the container's own padding, so the safe
+     * area has to be restated here too — see .hs-card-full's padding
+     * above for the scrollable content half of this same guard. */
+    top: env(safe-area-inset-top, 0px);
+    right: env(safe-area-inset-right, 0px);
+    width: 44px;
+    height: 44px;
+    font-size: 26px; /* bitmap grid — 13px/26px only */
+  }
+  /* The full-screen card used to scroll hero+body+actions as ONE column —
+   * a short profile left the actions row floating mid-screen with a dead
+   * gap below it, since nothing told it to sit at the bottom. margin-top:
+   * auto pushes it there when the column has slack; position:sticky keeps
+   * it there once hero+body grow past one screen and start scrolling (the
+   * scroll container is .hs-card-full itself — this is a flex child of it,
+   * not nested, so "nearest scrolling ancestor" for sticky purposes is the
+   * same element). Desktop is untouched (this whole block is phone-only). */
+  .hs-card-actions {
+    margin-top: auto;
+    position: sticky;
+    bottom: 0;
+    background: var(--hs-card-bg);
+  }
+  .hs-card-action {
+    min-height: 44px; /* real touch target, not the desktop 24px */
+  }
+}
+/* no ambient hover on touch — the peek never opens there (see card-time /
+ * card-model host wiring). Touch only, not width: page zoom narrows a desktop
+ * viewport below 768px, and a mouse at 200% still hovers. */
+@media (pointer: coarse) {
+  .hs-card-peek { display: none; }
+}
+
+
+/* Host toggles this on <html> while a phone full-screen card is open —
+ * the card scrolls internally; the page underneath must not (iOS rubber-
+ * band would otherwise flash a gap around the fixed card's edges). See
+ * hover-previews.js _mountCard/_dismissCard. */
+html.hs-card-scroll-lock,
+html.hs-card-scroll-lock body {
+  overflow: hidden !important;
+  height: 100%;
+}
+
+/* A clickable card: the whole plate goes white under the cursor, banner
+   included. the body hover alone left a banner image showing
+   behind black chips, so the hero image drops and the chips take the plate. */
+.hs-card[data-clickable="true"] .hs-card-body:hover .hs-card-hero-img,
+.hs-card[data-clickable="true"]:active .hs-card-body .hs-card-hero-img {
+    background-image: none !important;
+}
+.hs-card[data-clickable="true"] .hs-card-body:hover .hs-card-hero,
+.hs-card[data-clickable="true"] .hs-card-body:hover .hs-card-top.hs-card-has-hero :is(.hs-card-name, .hs-card-pronouns, .hs-card-plus, .hs-card-sheet-row, .hs-card-badges, .hs-card-bio),
+.hs-card[data-clickable="true"]:active .hs-card-body .hs-card-hero,
+.hs-card[data-clickable="true"]:active .hs-card-body .hs-card-top.hs-card-has-hero :is(.hs-card-name, .hs-card-pronouns, .hs-card-plus, .hs-card-sheet-row, .hs-card-badges, .hs-card-bio) {
+    background: #ffffff;
+}
+.hs-card[data-clickable="true"] .hs-card-body:hover .hs-card-top.hs-card-has-hero *:not(.hs-card-ember):not([class*="hsp-"]) {
+    color: #000000 !important;
+}

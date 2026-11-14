@@ -41,8 +41,9 @@
 import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { mainSource } from './main-src.js'
 
-const MAIN_SRC = readFileSync(join(import.meta.dir, '..', 'src', 'multichat', 'main.js'), 'utf8')
+const MAIN_SRC = mainSource()
 const INPUT_SRC = readFileSync(join(import.meta.dir, '..', 'src', 'multichat', 'input.js'), 'utf8')
 
 function fnBody(src, marker, span = 2400) {
@@ -95,7 +96,7 @@ describe('resolveMentionColor (main.js) — stamp + index + queue on resolve', (
     expect(body).toContain('row._hsMentionEls.push(a)')
   })
   test('populates knownUserIds via the existing platform-keyed setKnownColor, not a bespoke write', () => {
-    expect(body).toContain("setKnownColor(lower, c || knownColors.get(lower) || '#fff', resolvedUid, 'twitch')")
+    expect(body).toContain("setKnownColor(lower, knownColors.get(lower) || c || '#fff', resolvedUid, 'twitch', false)")
   })
   test('queues the paint/cosmetics batch via the sole choke point (queueMcCosmeticsLookup), never queuePaintLookup directly', () => {
     expect(body).toContain('queueMcCosmeticsLookup(resolvedUid)')

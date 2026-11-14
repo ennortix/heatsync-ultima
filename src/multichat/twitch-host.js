@@ -13,7 +13,7 @@ let _ttvPpStyleObserver = null
 let _ttvPpLastSeen = null
 function pinTwitchPersistentPlayer() {
   if (hostPlatform !== 'twitch' || isKick) return
-  const pp = document.querySelector('.persistent-player')
+  const pp = hsQuery('twitch:persistent-player', '.persistent-player')
   if (!pp) return
   // For non-right chatPosition, the player must inset around the chat
   // strip. applyChatPosition's first call fires before .persistent-player
@@ -38,7 +38,7 @@ function pinTwitchPersistentPlayer() {
   // (~185×104) on the channel-home page. Pinning it top:0/left:0 makes it
   // float awkwardly in the corner instead of where Twitch positioned it.
   // Skip pinning when .channel-root--home is present.
-  if (document.querySelector('.channel-root--home')) {
+  if (hsQuery('twitch:channel-root-home', '.channel-root--home')) {
     // Also clear any prior pin we may have applied before going offline.
     if (pp.style.top === '0px' || pp.style.left === '0px') {
       pp.style.removeProperty('top')
@@ -50,7 +50,7 @@ function pinTwitchPersistentPlayer() {
   // .persistent-player into Twitch's floating mini-player mode — no
   // .channel-root is present. Pinning top:0/left:0 breaks the mini-player
   // corner position; clear any stale overrides and let Twitch own it.
-  if (!document.querySelector('.channel-root, [class*="channel-root"]')) {
+  if (!hsQuery('twitch:channel-root', '.channel-root, [class*="channel-root"]')) {
     if (pp.style.top === '0px') pp.style.removeProperty('top')
     if (pp.style.left === '0px') pp.style.removeProperty('left')
     return
@@ -74,13 +74,13 @@ function pinTwitchPersistentPlayer() {
       if (chatPosition !== 'right' || theatreMode) return
       // Same offline guard inside the style observer — Twitch's React may
       // re-render mid-session (live → offline) and we'd otherwise re-pin.
-      if (document.querySelector('.channel-root--home')) return
+      if (hsQuery('twitch:channel-root-home', '.channel-root--home')) return
       // Same mini-player guard as the mount path: browsing away from a live
       // stream floats the player bottom-right with Twitch's own top offset
       // (> 200px by design). Re-pinning it here shoved the mini-player above
       // the viewport, putting its close button out of reach. Clear any pin
       // we already applied so the float lands where Twitch wants it.
-      if (!document.querySelector('.channel-root, [class*="channel-root"]')) {
+      if (!hsQuery('twitch:channel-root', '.channel-root, [class*="channel-root"]')) {
         if (pp.style.top === '0px') pp.style.removeProperty('top')
         if (pp.style.left === '0px') pp.style.removeProperty('left')
         return
@@ -159,7 +159,13 @@ function watchTwitchPersistentPlayer() {
         }
       })
     })
-    _ttvPpObserver.observe(document.body, { childList: true, subtree: true })
+    // #root is Twitch's own React app root — present from document_start
+    // (early-inject-main.js already relies on it), and narrower than body:
+    // it never fires on <head> mutations from ads/analytics scripts.
+    _ttvPpObserver.observe(document.getElementById('root') || document.documentElement, {
+      childList: true,
+      subtree: true,
+    })
     cleanup.trackObserver(_ttvPpObserver)
   }
   if (_ttvPpLastSeen?.isConnected) armDetachWatch()
@@ -174,7 +180,7 @@ function watchTwitchPersistentPlayer() {
 // (persistent-player inset, channel-root padding) updates too.
 function updateTwitchSideNavWidth() {
   if (hostPlatform !== 'twitch') return
-  const nav = document.querySelector('.side-nav')
+  const nav = hsQuery('twitch:side-nav', '.side-nav')
   const w = nav?.getBoundingClientRect?.().width
   const next = w && w > 0 ? Math.round(w) : TWITCH_SIDE_NAV_WIDTH
   if (next === _twitchSideNavW) return
@@ -187,6 +193,30 @@ function updateTwitchSideNavWidth() {
   }
 }
 
+// Page zoom and window resizes change how wide the chat may be. applyChatWidth
+// re-fits it (and gives back a width an earlier, narrower viewport took); push
+// the result to everything that reads chatWidth.
+let _twitchChatRefitTimer = null
+function scheduleTwitchChatRefit() {
+  if (hostPlatform !== 'twitch') return
+  if (_twitchChatRefitTimer) cleanup.clearTimeout(_twitchChatRefitTimer)
+  _twitchChatRefitTimer = cleanup.setTimeout(() => {
+    _twitchChatRefitTimer = null
+    const before = chatWidth
+    try {
+      applyChatWidth()
+    } catch (_) {}
+    if (chatWidth === before) return
+    setRootVar('--hs-chat-w', `${chatWidth}px`)
+    try {
+      positionChatResizeHandle()
+    } catch (_) {}
+    try {
+      _updateMcLayout()
+    } catch (_) {}
+  }, 80)
+}
+
 let _twitchTopNavObs = null
 // Twitch's top nav (.top-nav) is 50px tall and lives in a sibling DOM tree
 // that paints above HS's chat container — even though HS has z-index 9999,
@@ -197,7 +227,7 @@ let _twitchTopNavObs = null
 // so the offset auto-collapses and chat reclaims the full viewport.
 function updateTwitchTopNavHeight() {
   if (hostPlatform !== 'twitch') return
-  const nav = document.querySelector('.top-nav')
+  const nav = hsQuery('twitch:top-nav', '.top-nav')
   let h = 0
   if (nav) {
     const r = nav.getBoundingClientRect()
@@ -223,7 +253,7 @@ function setupTwitchTopNavObserver() {
     } catch (_) {}
     _twitchTopNavObs = null
   }
-  const nav = document.querySelector('.top-nav')
+  const nav = hsQuery('twitch:top-nav', '.top-nav')
   if (nav && typeof ResizeObserver !== 'undefined') {
     _twitchTopNavObs = new ResizeObserver(() => updateTwitchTopNavHeight())
     _twitchTopNavObs.observe(nav)
@@ -292,12 +322,9 @@ function softTwitchNav(prevLiveCh) {
     // Re-apply hs-native-hidden to the new chat-shell + chat-room + stream-
     // chat. Without this the body.hs-mc-navigating guard would be the only
     // thing hiding native chat — once we drop that class native chat blooms.
-    // Gated: skip re-hide when the user has chosen nativeVisible so they
-    // keep native chat visible across SPA navigations.
-    if (!nativeVisible)
-      try {
-        setNativeChatHidden(true)
-      } catch (_) {}
+    try {
+      setNativeChatHidden(true)
+    } catch (_) {}
     // Resume sticky-bottom on every channel switch — the panel persists
     // across SPA nav, so without this reset the new channel inherits the
     // previous channel's mid-scroll position and live messages stack
@@ -359,12 +386,11 @@ function softTwitchNav(prevLiveCh) {
     // tested. Plus a chat-shell mutation observer continuously re-applies
     // hs-native-hidden in case React swaps the chat-room__content node.
     const reHide = new MutationObserver(() => {
-      if (!nativeVisible)
-        try {
-          setNativeChatHidden(true)
-        } catch (_) {}
+      try {
+        setNativeChatHidden(true)
+      } catch (_) {}
     })
-    const target = document.querySelector(`.chat-shell, ${CONFIG.SELECTORS.TWITCH_CHAT_SHELL}`)
+    const target = hsQuery('twitch:chat-shell', `.chat-shell, ${CONFIG.SELECTORS.TWITCH_CHAT_SHELL}`)
     if (target) {
       reHide.observe(target, { childList: true })
       cleanup.trackObserver(reHide)
@@ -400,12 +426,19 @@ function softTwitchNav(prevLiveCh) {
   }
   const tryReparent = () => {
     if (done) return true
-    const chatShell = document.querySelector('.chat-shell, [class*="chat-shell"]')
+    const chatShell = hsQuery('twitch:chat-shell', `.chat-shell, ${CONFIG.SELECTORS.TWITCH_CHAT_SHELL}`)
     const c = document.getElementById('hs-mc-container')
     if (chatShell && c && !chatShell.contains(c)) {
       chatShell.appendChild(c)
       try {
         updateTwitchNoChannelClass()
+      } catch (_) {}
+      // A panel first mounted on a page with no right column (/directory)
+      // bailed out of setupResizeHandle, and soft nav never re-runs init —
+      // the channel landed on had no resize bar until a reload.
+      try {
+        setupResizeHandle()
+        if (chatPosition && chatPosition !== 'right') hidePlatformResizeHandles(true)
       } catch (_) {}
       done = true
       finish()
@@ -417,7 +450,8 @@ function softTwitchNav(prevLiveCh) {
   const obs = new MutationObserver(() => {
     if (tryReparent()) cleanup.untrackObserver(obs)
   })
-  obs.observe(document.documentElement, { childList: true, subtree: true })
+  // #root — see armBodyWatch above for why it's the right stable ancestor here.
+  obs.observe(document.getElementById('root') || document.documentElement, { childList: true, subtree: true })
   cleanup.trackObserver(obs)
   cleanup.setTimeout(
     () => {

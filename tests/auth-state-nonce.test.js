@@ -10,10 +10,9 @@
 // mismatch check so a MISSING state is also rejected.
 
 import { describe, expect, test } from 'bun:test'
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { bgSource } from './bg-src.js'
 
-const BG = readFileSync(join(import.meta.dir, '..', 'chrome', 'background.js'), 'utf8')
+const BG = bgSource()
 
 describe('set_auth_token state-nonce enforcement', () => {
   const idx = BG.indexOf("message.type === 'set_auth_token'")

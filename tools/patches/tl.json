@@ -1,6 +1,6 @@
 {
   "manifest_name": "heatsync",
-  "manifest_description": "Isang panel para sa live chat ng Twitch, Kick + YouTube. Plus libreng 5000-slot na emote inventory na kasama mo sa bawat channel",
+  "manifest_description": "Isang panel para sa live chat ng Twitch, Kick + YouTube. Plus libreng 5,000-slot na emote inventory na kasama mo sa bawat channel",
   "common_loading": "naglo-load...",
   "common_extension_updated": "Na-update ang extension — i-refresh ang page",
   "common_no_matches": "walang nakitang resulta",
@@ -42,7 +42,6 @@
   "welcome_step2_desc": "magdagdag ng anumang larawan — 5000 slots, lahat ng format suportado",
   "welcome_step3_title": "gamitin sa chat",
   "welcome_step3_desc": "i-click ang heatsync button sa Twitch/Kick chat para makita ang iyong emotes",
-  "welcome_cta": "magsimula",
   "welcome_privacy": "privacy",
   "welcome_source": "source code",
   "btn_auth_login": "mag-login",

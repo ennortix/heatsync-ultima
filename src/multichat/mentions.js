@@ -15,9 +15,22 @@ let mentionAliases = new Set()
 let _mentionReList = null
 let _mentionReKey = ''
 
+// user_info → alias set + the per-platform self names (self-identity.js)
+function setMentionAliases(ui) {
+  mentionAliases = new Set()
+  if (ui?.username) mentionAliases.add(ui.username.toLowerCase())
+  if (ui?.kick_username) mentionAliases.add(ui.kick_username.toLowerCase())
+  if (ui?.youtube_username) mentionAliases.add(ui.youtube_username.toLowerCase())
+  if (ui?.twitch_username) mentionAliases.add(ui.twitch_username.toLowerCase())
+  setSelfHsNames(ui)
+}
+
 function getMentionTargets() {
   const out = []
   if (currentUsername) out.push(currentUsername)
+  // Signed into kick but not heatsync: no user_info aliases, so the kick
+  // session's own username is the only name that makes "@you" ping.
+  if (selfKickName && !out.includes(selfKickName)) out.push(selfKickName)
   // currentUsername is null on cross-origin tabs (youtube.com/kick.com popout
   // — twitch storage unreachable). authState.nick is the twitch nick from the
   // auth-irc handshake and works everywhere; without it, "@you" tags on the
@@ -100,14 +113,15 @@ if (!_onceGuardsMentions.notifStorageListener) {
   })
 }
 
-function fireNotification(title, body, tag, icon) {
+function fireNotification(title, body, tag, icon, onClick) {
   if (!notificationsEnabled) return
   if (notificationPermission === 'denied') return
   try {
     const iconUrl = icon || api.runtime.getURL('icon-48.png')
     const n = new Notification(title, { body, icon: iconUrl, tag, silent: false })
     n.onclick = () => {
-      window.focus()
+      if (onClick) onClick()
+      else window.focus()
       n.close()
     }
     cleanup.setTimeout(() => n.close(), 8000)
@@ -135,104 +149,35 @@ async function resolveNotifIcon(name, platform, knownAvatar) {
   }
 }
 
-// Mention audio cue — pure Web Audio synth (no asset shipped, can't fail to
-// load). Two-tone 880→1175 Hz ping with quick decay envelope. Volume gated by
-// ui_settings.mentionSoundVolume (0..1, default 0.3). 0 = silent.
-let _mentionAudioCtx = null
-function _getMentionAudioCtx() {
-  if (_mentionAudioCtx) return _mentionAudioCtx
-  try {
-    const AC = window.AudioContext || window.webkitAudioContext
-    if (!AC) return null
-    _mentionAudioCtx = new AC()
-    return _mentionAudioCtx
-  } catch {
-    return null
-  }
-}
-function playMentionPing(volume) {
-  if (!(volume > 0)) return
-  const ctx = _getMentionAudioCtx()
-  if (!ctx) return
-  try {
-    if (ctx.state === 'suspended') {
-      try {
-        ctx.resume()
-      } catch {}
-    }
-    const now = ctx.currentTime
-    const gain = ctx.createGain()
-    gain.gain.setValueAtTime(0, now)
-    gain.gain.linearRampToValueAtTime(Math.min(1, volume) * 0.35, now + 0.01)
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.3)
-    gain.connect(ctx.destination)
-    const o1 = ctx.createOscillator()
-    o1.type = 'sine'
-    o1.frequency.setValueAtTime(880, now)
-    o1.connect(gain)
-    o1.start(now)
-    o1.stop(now + 0.32)
-    const o2 = ctx.createOscillator()
-    o2.type = 'sine'
-    o2.frequency.setValueAtTime(1175, now + 0.08)
-    o2.connect(gain)
-    o2.start(now + 0.08)
-    o2.stop(now + 0.32)
-  } catch {}
+// Audio cues — the engine (presets, picked files, rate limit, suspended-context
+// handling) is sounds.js; this file owns the settings it reads and the two ways
+// a cue gets asked for. Both run every message through the same player, so a
+// raid of matching messages is rate-limited there, once.
+//
+// @mention sound: ui_settings.mentionSound (a preset, or 'custom' = the file in
+// hs_sfx_mention) at ui_settings.mentionSoundVolume (0..1, default 0.3, 0 =
+// silent). `preview` plays it now, unthrottled — the settings controls use it.
+function playMentionPing(volume, opts) {
+  // junk in storage must never mute a mention: anything unknown plays the ping
+  const picked = opts?.name || mentionSound
+  const name = picked === SFX_CUSTOM || SFX_PRESETS[picked] ? picked : 'ping'
+  return sfxPlay({ name, key: SFX_MENTION_KEY, volume, buf: opts?.buf }, 'mention', !!opts?.preview)
 }
 
-// Filter-rule highlight cues — same pure Web Audio synth, a few named presets so
-// a highlight rule can carry an optional audible tag. Throttled (one per 1.2s)
-// so a burst of matches can't machine-gun. Shares ui_settings.mentionSoundVolume
-// (one "chat sounds" knob); 0 = silent. Unknown name → no-op.
-const FILTER_SOUND_PRESETS = {
-  ping: [
-    { f: 880, t0: 0, d: 0.32 },
-    { f: 1175, t0: 0.08, d: 0.24 },
-  ],
-  blip: [{ f: 1320, t0: 0, d: 0.12 }],
-  knock: [
-    { f: 200, t0: 0, d: 0.1 },
-    { f: 200, t0: 0.13, d: 0.1 },
-  ],
-  chime: [
-    { f: 660, t0: 0, d: 0.18 },
-    { f: 880, t0: 0.09, d: 0.18 },
-    { f: 1318, t0: 0.18, d: 0.26 },
-  ],
+// Settings controls: hear the @mention sound now. The slider passes the volume
+// it just set; the sound select passes the name it just picked (the module copy
+// of either only catches up on the storage event, after this runs).
+function previewMentionSound(volume, name) {
+  return playMentionPing(volume ?? mentionSoundVolume, { name, preview: true })
 }
-let _lastFilterSoundMs = 0
-function playFilterRuleSound(name) {
-  const preset = FILTER_SOUND_PRESETS[name]
-  if (!preset) return
-  const volume = mentionSoundVolume
-  if (!(volume > 0)) return
-  const now = Date.now()
-  if (now - _lastFilterSoundMs < 1200) return // throttle bursty matches
-  _lastFilterSoundMs = now
-  const ctx = _getMentionAudioCtx()
-  if (!ctx) return
-  try {
-    if (ctx.state === 'suspended') {
-      try {
-        ctx.resume()
-      } catch {}
-    }
-    const t = ctx.currentTime
-    for (const tone of preset) {
-      const gain = ctx.createGain()
-      gain.gain.setValueAtTime(0, t + tone.t0)
-      gain.gain.linearRampToValueAtTime(Math.min(1, volume) * 0.35, t + tone.t0 + 0.01)
-      gain.gain.exponentialRampToValueAtTime(0.0001, t + tone.t0 + tone.d)
-      gain.connect(ctx.destination)
-      const o = ctx.createOscillator()
-      o.type = 'sine'
-      o.frequency.setValueAtTime(tone.f, t + tone.t0)
-      o.connect(gain)
-      o.start(t + tone.t0)
-      o.stop(t + tone.t0 + tone.d + 0.02)
-    }
-  } catch {}
+
+// Highlight-rule cue: the rule's own sound at its own volume, or — for a rule
+// that never set one — the shared mentionSoundVolume, exactly as before rules
+// had volumes. `verdict` is evaluateFilterRules()'s result (filter-rules.js).
+function playFilterRuleSound(verdict) {
+  if (!verdict?.sound) return
+  const volume = verdict.soundVolume == null ? mentionSoundVolume : verdict.soundVolume / 100
+  return sfxPlay({ name: verdict.sound, key: sfxRuleKey(verdict.soundId), volume }, 'rule', false)
 }
 
 // Tab title flash — when an @mention arrives while the tab is unfocused,
@@ -264,7 +209,7 @@ function _titleFlashStart(fromUser) {
     return
   }
   let on = false
-  _titleFlashTimer = cleanup.setInterval(() => {
+  _titleFlashTimer = cleanup.setPageInterval(() => {
     if (document.hasFocus()) {
       _titleFlashStop()
       return
@@ -288,41 +233,57 @@ if (!_onceGuardsMentions.titleFlashFocusWired) {
   )
 }
 
-// User-tunable settings — volume + flash toggle. Hydrated from sync
-// ui_settings; sync onChanged keeps them current cross-tab. Defaults: sound
-// 0.3, flash on.
+// User-tunable settings — sound, volume, when the sound plays + flash toggle.
+// Hydrated from sync ui_settings; sync onChanged keeps them current cross-tab.
+// Defaults: ping, 0.3, only when away, flash on.
+let mentionSound = 'ping'
 let mentionSoundVolume = 0.3
 let mentionTitleFlash = true
+// 'away' = the mention sound only plays while this window is not focused (how it
+// always worked); 'always' = every mention, focused or not
+let mentionSoundWhen = 'away'
+function readMentionUi(ui) {
+  if (typeof ui.mentionSoundVolume === 'number') mentionSoundVolume = Math.max(0, Math.min(1, ui.mentionSoundVolume))
+  if (typeof ui.mentionSound === 'string') mentionSound = ui.mentionSound
+  if (typeof ui.mentionTitleFlash === 'boolean') mentionTitleFlash = ui.mentionTitleFlash
+  if (ui.mentionSoundWhen === 'away' || ui.mentionSoundWhen === 'always') mentionSoundWhen = ui.mentionSoundWhen
+}
 api.storage.sync
   .get(['ui_settings'])
-  .then((stored) => {
-    const ui = stored?.ui_settings || {}
-    if (typeof ui.mentionSoundVolume === 'number') mentionSoundVolume = Math.max(0, Math.min(1, ui.mentionSoundVolume))
-    if (typeof ui.mentionTitleFlash === 'boolean') mentionTitleFlash = ui.mentionTitleFlash
-  })
+  .then((stored) => readMentionUi(stored?.ui_settings || {}))
   .catch(() => {})
 if (!_onceGuardsMentions.mentionAudioStorageListener) {
   _onceGuardsMentions.mentionAudioStorageListener = true
   cleanup.addListener(api.storage.onChanged, (changes, area) => {
-    if (area === 'sync' && changes.ui_settings?.newValue) {
-      const ui = changes.ui_settings.newValue
-      if (typeof ui.mentionSoundVolume === 'number')
-        mentionSoundVolume = Math.max(0, Math.min(1, ui.mentionSoundVolume))
-      if (typeof ui.mentionTitleFlash === 'boolean') mentionTitleFlash = ui.mentionTitleFlash
-    }
+    if (area === 'sync' && changes.ui_settings?.newValue) readMentionUi(changes.ui_settings.newValue)
   })
 }
 
-function notifyMention(msg) {
+// A highlight rule with "also notify me" counts as a mention without a heatsync
+// login: it lands in the mentions tab, flashes the tab title and shows the
+// desktop notice, exactly like an @you. Same gates as a real mention — the
+// mentions switch, and a blocked user never pings. `verdict` is the row's
+// evaluateFilterRules() result; own messages never get one.
+function ruleAlertsMention(msg, verdict) {
+  if (!verdict?.notify) return false
+  if (!isEnabled('mentions')) return false
+  if (typeof isUserBlocked === 'function' && isUserBlocked(msg.user, msg.platform)) return false
+  return true
+}
+
+// viaRule: the alert is a highlight rule's "also notify me", not an @you — the
+// rule already played its own sound on arrival, so the mention ping stays out of it.
+function notifyMention(msg, viaRule) {
+  // Screen reader: the quiet "mentions only" mode says these and nothing else
+  // (sr-announce.js). First, and whatever the window's focus — it is not a popup.
+  srAnnounceMention(msg)
   // Always evaluate audio + title-flash even when system notif disabled — they
   // have their own gates. The original "return if notifs off" check killed the
   // tab-title flash for users who didn't want OS popups but did want a visual
   // cue. Each cue is independently configurable.
   const unfocused = !document.hasFocus()
-  if (unfocused) {
-    playMentionPing(mentionSoundVolume)
-    if (mentionTitleFlash) _titleFlashStart(msg.user || '')
-  }
+  if (!viaRule && (unfocused || mentionSoundWhen === 'always')) playMentionPing(mentionSoundVolume)
+  if (unfocused && mentionTitleFlash) _titleFlashStart(msg.user || '')
   if (!notificationsEnabled || !unfocused) return
   const channel = msg.channel ? ` in #${msg.channel}` : ''
   const title = `${msg.user}${channel}`
@@ -337,17 +298,20 @@ function notifyStreamEvent(channel, eventType, game, platform) {
   if (document.hasFocus()) return
   let title, body
   if (eventType === 'stream:online') {
-    title = `${channel} went live`
+    title = t('mc_mn_went_live', [channel])
     body = game || ''
   } else if (eventType === 'stream:update') {
-    title = `${channel} switched game`
+    title = t('mc_mn_switched_game', [channel])
     body = game || ''
   } else {
     return
   }
   // The event is about the streamer — show their pfp, not the logo.
   resolveNotifIcon(channel, platform, null).then((icon) =>
-    fireNotification(title, body, `hs-stream-${channel}-${Date.now()}`, icon),
+    // Click lands on the streamer's page: their tab if one is open, else a new one.
+    fireNotification(title, body, `hs-stream-${channel}-${Date.now()}`, icon, () =>
+      safeSendMessage({ type: 'focus_channel_tab', platform: platform || 'twitch', channel }),
+    ),
   )
 }
 
@@ -416,4 +380,59 @@ function scanExistingMentions() {
     log('Found', found, 'existing mentions')
     updateTabIndicator('mentions')
   }
+}
+
+// A heatsync notification (background.js shapeHsNotif) as a row in the mentions
+// tab: a reply to your post, an @ in a post, a fixed report. Rust shows the same in
+// its notifs tab; the ext used to keep only the toolbar count.
+const HS_NOTIF_KINDS = new Set(['reply', 'mention', 'feedback_fixed'])
+function hsNotifText(d) {
+  const who = d.anon ? `${t('mc_ircx_anonymous')}: ` : ''
+  if (d.kind === 'reply') {
+    const to = t(
+      d.op === true ? 'mc_mention_reply_post' : d.op === false ? 'mc_mention_reply_reply' : 'mc_mention_reply_you',
+    )
+    return `${who}${d.text ? `${to}: ${d.text}` : to}`
+  }
+  if (d.kind === 'feedback_fixed') return d.text || t('mc_mention_fixed')
+  return `${who}${d.text || t('mc_mention_in_post')}`
+}
+
+function hsNotifIn(d) {
+  if (!isEnabled('mentions') || !HS_NOTIF_KINDS.has(d.kind)) return
+  const msg = {
+    type: 'inline-notif',
+    kind: d.kind,
+    postId: d.id || '',
+    text: hsNotifText(d),
+    user: 'heatsync',
+    platform: 'heatsync',
+    channel: 'heatsync',
+    time: d.time || Date.now(),
+    id: `hsn-${d.time || Date.now()}-${d.id || ''}`,
+  }
+  mentionsBuffer.push(msg)
+  if (mentionsBuffer.length > MAX_BUFFER + 50) mentionsBuffer.splice(0, mentionsBuffer.length - MAX_BUFFER)
+  persistMentions()
+  notifyMention(msg)
+  noteSeenEvent('mentions', msg.time)
+  if (currentTab === 'mentions') {
+    bumpSeen('mentions')
+    hsNotifsRead()
+    if (!appendMessage(msg, 'mentions')) renderMessages('mentions')
+  } else {
+    updateTabIndicator('mentions')
+  }
+}
+
+// the server marks them read for every device; rows stay, just no longer unread
+function hsNotifsRead() {
+  let any = false
+  for (const m of mentionsBuffer) {
+    if (m.type === 'inline-notif' && !m.read) {
+      m.read = true
+      any = true
+    }
+  }
+  if (any) safeSendMessage({ type: 'notifs_read' })
 }

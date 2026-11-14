@@ -10,6 +10,7 @@ import { join } from 'node:path'
 const ROOT = join(import.meta.dir, '..')
 const EMOTES = readFileSync(join(ROOT, 'src', 'multichat', 'emotes.js'), 'utf8')
 const INPUT = readFileSync(join(ROOT, 'src', 'multichat', 'input.js'), 'utf8')
+const IRCSRC = readFileSync(join(ROOT, 'src', 'multichat', 'irc.js'), 'utf8')
 
 function extractFn(src, name) {
   const marker = `function ${name}(`
@@ -19,13 +20,13 @@ function extractFn(src, name) {
   return src.slice(start, end + 2)
 }
 
-// pool: name -> entry, standing in for lookupEmoteRenderOrder's resolution.
+// pool: name -> entry, standing in for lookupEmoteWireOrder's resolution.
 function make(pool) {
   return new Function(
     'pool',
     `const KICK_EMOTE_ID_RE = ${String(EMOTES.match(/const KICK_EMOTE_ID_RE = (.+)/)[1])}
      const KICK_MAX_MESSAGE = 500
-     const lookupEmoteRenderOrder = (n) => pool[n] || null
+     const lookupEmoteWireOrder = (n) => pool[n] || null
      ${extractFn(EMOTES, 'kickifyEmoteText')}
      return kickifyEmoteText`,
   )(pool)
@@ -76,7 +77,7 @@ describe('kickifyEmoteText', () => {
   })
 
   test('a message already over the limit is still expanded (kick rejects either way)', () => {
-    const huge = ('KEKW ' + 'y'.repeat(100) + ' ').repeat(6).trim()
+    const huge = `KEKW ${'y'.repeat(100)} `.repeat(6).trim()
     expect(huge.length).toBeGreaterThan(500)
     expect(f(huge)).toContain('[emote:37226:KEKW]')
   })
@@ -97,6 +98,8 @@ describe('wiring', () => {
 describe('echo matching survives the rewrite', () => {
   const mk = () =>
     new Function(`
+      const DUP_BYPASS_CHAR = '\\u{E0000}'
+      ${extractFn(IRCSRC, 'stripDupBypass')}
       ${extractFn(INPUT, '_unkickEmotes')}
       ${extractFn(INPUT, '_echoTextMatches')}
       return { _unkickEmotes, _echoTextMatches }
@@ -139,13 +142,17 @@ describe('INVALID_EMOTE degrades to plain words', () => {
 
   function makeSender(responses) {
     const seen = []
-    const fatal = SEND.split('\n').find((l) => l.startsWith('const KICK_FATAL_SEND_ERRORS'))
+    // a multi-line statement: from its const to the closing `])`
+    const fatalAt = SEND.indexOf('const KICK_FATAL_SEND_ERRORS')
+    const fatal = SEND.slice(fatalAt, SEND.indexOf('])', fatalAt) + 2)
     const backoff = SEND.split('\n').find((l) => l.startsWith('const KICK_SEND_RETRY_BACKOFF_MS'))
+    const neverLanded = SEND.split('\n').find((l) => l.startsWith('const KICK_NEVER_LANDED'))
     const fn = new Function(
       'seen',
       'responses',
       `${fatal}
        ${backoff}
+       ${neverLanded}
        const _unkickEmotes = (s) => String(s).replace(/\\[emote:\\d+:([^\\]]+)\\]/g, '$1')
        const resolveKickChannelId = async () => 84407
        const _kickSendOnce = async (id, body, reply) => { seen.push({ body, reply }); return responses.shift() }
@@ -157,7 +164,13 @@ describe('INVALID_EMOTE degrades to plain words', () => {
   }
 
   test('a rejected emote is stripped and the message still delivers', async () => {
-    const { fn, seen } = makeSender([{ ok: false, error: '400: {"message":"INVALID_EMOTE_ERROR"}' }, { ok: true }])
+    // code is the machine-readable field the relay sets from kick's raw body
+    // (see src/content/content.js kickSendErrorCode) — the retry decision never
+    // parses the human-readable `error` text.
+    const { fn, seen } = makeSender([
+      { ok: false, error: 'kick rejected the message (400)', status: 400, code: 'invalid_emote' },
+      { ok: true },
+    ])
     expect(await fn('mellen', 'hi [emote:999:Ghost] there')).toBe(true)
     expect(seen).toHaveLength(2)
     expect(seen[0].body).toBe('hi [emote:999:Ghost] there')
@@ -167,9 +180,9 @@ describe('INVALID_EMOTE degrades to plain words', () => {
 
   test('the de-tokenized resend does not consume a retry slot', async () => {
     const { fn, seen } = makeSender([
-      { ok: false, error: '400: INVALID_EMOTE_ERROR' },
-      { ok: false, error: '500: server' },
-      { ok: false, error: '500: server' },
+      { ok: false, error: 'kick rejected the message (400)', status: 400, code: 'invalid_emote' },
+      { ok: false, error: 'kick rate limited — wait a moment', status: 429 },
+      { ok: false, error: 'kick rate limited — wait a moment', status: 429 },
       { ok: true },
     ])
     expect(await fn('mellen', 'x [emote:1:A]')).toBe(true)
@@ -178,7 +191,10 @@ describe('INVALID_EMOTE degrades to plain words', () => {
 
   test('a message with no tokens is not looped on INVALID_EMOTE', async () => {
     // nothing to strip — must fall through to normal retry, never spin
-    const { fn, seen } = makeSender([{ ok: false, error: '400: INVALID_EMOTE_ERROR' }, { ok: true }])
+    const { fn, seen } = makeSender([
+      { ok: false, error: 'kick rejected the message (400)', status: 400, code: 'invalid_emote' },
+      { ok: true },
+    ])
     expect(await fn('mellen', 'plain words')).toBe(true)
     expect(seen[1].body).toBe('plain words')
   })

@@ -1,6 +1,6 @@
 {
   "manifest_name": "heatsync",
-  "manifest_description": "Um painel para o chat em direto da Twitch, Kick + YouTube. Mais um inventário gratuito de 5000 emotes que o segue em qualquer canal",
+  "manifest_description": "Um painel para o chat em direto da Twitch, Kick + YouTube. Mais um inventário gratuito de 5 000 emotes que o segue em qualquer canal",
   "common_loading": "a carregar...",
   "common_extension_updated": "Extensão atualizada — atualiza a página",
   "common_no_matches": "sem resultados",
@@ -42,7 +42,6 @@
   "welcome_step2_desc": "adiciona qualquer imagem — 5000 slots, todos os formatos suportados",
   "welcome_step3_title": "usa-os no chat",
   "welcome_step3_desc": "carrega no botão heatsync no chat de Twitch/Kick para aceder aos teus emotes",
-  "welcome_cta": "começar",
   "welcome_privacy": "privacidade",
   "welcome_source": "código-fonte",
   "btn_auth_login": "iniciar sessão",

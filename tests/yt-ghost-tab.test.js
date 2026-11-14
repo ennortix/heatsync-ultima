@@ -1,32 +1,5 @@
 import { expect, test } from 'bun:test'
-import { identityYtLiveUrl, isValidTwitchLogin, resolveYtLiveLabel } from '../src/lib/utils.js'
-
-// ── isValidTwitchLogin ────────────────────────────────────────────────────────
-// reconcileAutoTabs gate: BG's open-channel set is twitch IRC interest —
-// yt videoIds that leaked in pre-fix must never become ephemeral tabs.
-
-test('isValidTwitchLogin: real twitch logins pass', () => {
-  expect(isValidTwitchLogin('nl_kripp')).toBe(true)
-  expect(isValidTwitchLogin('zackrawrr')).toBe(true)
-  expect(isValidTwitchLogin('a')).toBe(true)
-  expect(isValidTwitchLogin('x'.repeat(25))).toBe(true)
-})
-
-test('isValidTwitchLogin: hyphenated yt videoIds are rejected', () => {
-  // videoIds may carry '-' — never valid in a twitch login
-  expect(isValidTwitchLogin('dqw4w9wgxcq')).toBe(true) // hyphen-free id passes (indistinguishable — upstream join fix owns this case)
-  expect(isValidTwitchLogin('abc-def_123')).toBe(false)
-  expect(isValidTwitchLogin('-jfkfpfyjrd')).toBe(false)
-})
-
-test('isValidTwitchLogin: junk is rejected', () => {
-  expect(isValidTwitchLogin('')).toBe(false)
-  expect(isValidTwitchLogin(null)).toBe(false)
-  expect(isValidTwitchLogin(undefined)).toBe(false)
-  expect(isValidTwitchLogin('JfKfPfyJRdk')).toBe(false) // openSet is lowercased; raw mixed case never valid
-  expect(isValidTwitchLogin('x'.repeat(26))).toBe(false)
-  expect(isValidTwitchLogin('has space')).toBe(false)
-})
+import { identityYtLiveUrl, resolveYtLiveLabel } from '../src/lib/utils.js'
 
 // ── resolveYtLiveLabel ────────────────────────────────────────────────────────
 // Live-tab composer label on yt pages: raw videoId → resolved channel name,
@@ -40,6 +13,21 @@ test('resolveYtLiveLabel: videoId swaps to resolved channel name', () => {
       resolvedName: 'Lofi Girl',
     }),
   ).toBe('Lofi Girl')
+})
+
+test('resolveYtLiveLabel: a premiere never gets a status echo, so the uploader on the page names it', () => {
+  expect(
+    resolveYtLiveLabel('zpBEomubNSs', {
+      isYtVideoPage: true,
+      autoVideoId: 'zpBEomubNSs',
+      resolvedName: '',
+      pageName: 'Control Players Unite',
+    }),
+  ).toBe('Control Players Unite')
+  // the server's own name still wins when it is there
+  expect(
+    resolveYtLiveLabel('zpBEomubNSs', { isYtVideoPage: true, autoVideoId: null, resolvedName: 'CPU', pageName: 'x' }),
+  ).toBe('CPU')
 })
 
 test('resolveYtLiveLabel: unresolved videoId yields empty (generic prompt), never the raw id', () => {

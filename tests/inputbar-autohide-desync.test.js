@@ -32,16 +32,15 @@
  */
 
 import { beforeEach, describe, expect, test } from 'bun:test'
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { mainSource } from './main-src.js'
 
-const SRC = readFileSync(join(import.meta.dir, '..', 'src', 'multichat', 'main.js'), 'utf8')
-const start = SRC.indexOf('  function syncInputBarVisible(')
-const end = SRC.indexOf('  function createOverlay(')
+const SRC = mainSource()
+const start = SRC.indexOf('function syncInputBarVisible(')
+const end = SRC.indexOf('function createOverlay(')
 if (start === -1 || end === -1 || end <= start) throw new Error('carve markers not found')
 const CARVE = SRC.slice(start, end)
 
-const predSrc = SRC.slice(SRC.indexOf('  function tabSendsToChat('), SRC.indexOf('  // The DOM class is the truth'))
+const predSrc = SRC.slice(SRC.indexOf('function tabSendsToChat('), SRC.indexOf('// The DOM class is the truth'))
 const makePredicates = (liveChannel, channelIds) =>
   new Function('getLiveChannel', 'getChannelById', `${predSrc}; return { tabSendsToChat, tabAcceptsInput }`)(
     () => liveChannel,
@@ -100,6 +99,7 @@ function build({ autoHide = true, visibleFlag = true, hidden = false, keepUntil 
      let _keepComposerOpenUntil = initialKeepUntil
      let _composerStickyUntil = 0
      const replyState = null
+     const quoteState = null
      ${CARVE}
      return {
        showInputBar,
@@ -111,7 +111,10 @@ function build({ autoHide = true, visibleFlag = true, hidden = false, keepUntil 
     document,
     {},
     { now: () => now },
-    { setTimeout: (fn, ms) => timers.push({ fn, at: now + ms }) },
+    {
+      setTimeout: (fn, ms) => timers.push({ fn, at: now + ms }),
+      setPageTimeout: (fn, ms) => timers.push({ fn, at: now + ms }),
+    },
     () => opts.autoHide,
     () => opts.canInput,
     'somechannel',
@@ -222,11 +225,11 @@ import { join as _join } from 'node:path'
 
 describe('send path settles the composer', () => {
   const SRC = _readFileSync(_join(import.meta.dir, '..', 'src', 'multichat', 'input.js'), 'utf8')
-  const sendStart = SRC.indexOf('async function sendMessage()')
+  const sendStart = SRC.indexOf('async function sendMessage(retry)')
   const sendTail = SRC.slice(sendStart, SRC.indexOf('--- Kick send path', sendStart))
   const settle = SRC.slice(
     SRC.indexOf('function settleComposerAfterSend('),
-    SRC.indexOf('async function sendMessage()'),
+    SRC.indexOf('async function sendMessage(retry)'),
   )
 
   test('sendMessage settles the composer after clearing it', () => {

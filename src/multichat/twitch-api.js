@@ -35,40 +35,31 @@ function renderQuickLinks() {
   const isBroadcaster = !!(ch && own && own === ch)
   const isMod = isBroadcaster || _twitchIsMod
 
-  // Static SVG strings parsed once per item — no user input ever reaches
-  // here (icons + labels are all from the SECTIONS list below). We use
-  // DOMParser instead of innerHTML to satisfy the security-reminder hook.
-  function svgNode(svgStr) {
-    const doc = new DOMParser().parseFromString(svgStr, 'image/svg+xml')
-    return doc.documentElement
+  function glyphNode(ch) {
+    const el = document.createElement('span')
+    el.className = 'hs-glyph'
+    el.setAttribute('aria-hidden', 'true')
+    el.textContent = ch
+    return el
   }
 
+  // unicode glyphs, drawn as text (icons are never svg)
   const ICONS = {
-    sub: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 20 20" fill="currentColor"><path d="M10 2l2.39 4.84 5.34.78-3.86 3.77.91 5.31L10 14.27l-4.78 2.51.91-5.31L2.27 7.62l5.34-.78L10 2z"/></svg>',
-    clip: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 20 20"><path fill="currentColor" d="M18 7h-2V5a2 2 0 00-2-2H6a2 2 0 00-2 2v2H2v4l8 6 8-6V7zM6 5h8v2H6V5z"/></svg>',
-    popout:
-      '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 20 20"><path fill="currentColor" d="M4 4h6v2H6v8h8v-4h2v6H4V4zm8 0h4v4h-2V6.41l-4.3 4.3-1.4-1.42L12.58 6H11V4z"/></svg>',
-    shield:
-      '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 20 20"><path fill="currentColor" d="M10 2l6 2.7V9c0 4.4-2.5 8.3-6 10-3.5-1.7-6-5.6-6-10V4.7L10 2z"/></svg>',
-    dashboard:
-      '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 20 20"><path fill="currentColor" d="M3 3h6v6H3V3zm8 0h6v6h-6V3zM3 11h6v6H3v-6zm8 4h6v2h-6v-2zm0-4h6v2h-6v-2z"/></svg>',
-    settings:
-      '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 20 20"><path fill="currentColor" d="M10 6.5A3.5 3.5 0 1010 13.5 3.5 3.5 0 0010 6.5zm6.5 3.5a6.5 6.5 0 00-.1-1.1l2-1.5-1.5-2.6-2.3.8c-.6-.5-1.3-.9-2-1.2L12.2 2h-3l-.4 2.4c-.7.3-1.4.7-2 1.2l-2.3-.8L3 7.4l2 1.5a6.6 6.6 0 000 2.2L3 12.6l1.5 2.6 2.3-.8c.6.5 1.3.9 2 1.2l.4 2.4h3l.4-2.4c.7-.3 1.4-.7 2-1.2l2.3.8 1.5-2.6-2-1.5c.1-.4.1-.7.1-1.1z"/></svg>',
-    chart:
-      '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 20 20"><path fill="currentColor" d="M3 17V3h2v14h12v2H3zm4-3V8h2v6H7zm4 0V5h2v9h-2zm4 0V10h2v4h-2z"/></svg>',
-    people:
-      '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 20 20"><path fill="currentColor" d="M7 8a3 3 0 100-6 3 3 0 000 6zm6 1a2 2 0 100-4 2 2 0 000 4zM1 17v-1c0-2.5 4-4 6-4s6 1.5 6 4v1H1zm12-1c0-1.2-.8-2.2-2-2.9.6-.1 1.3-.1 2-.1 2 0 5 1 5 3v1h-5v-1z"/></svg>',
-    cash: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 20 20"><path fill="currentColor" d="M10 2a8 8 0 100 16 8 8 0 000-16zm.5 12.5v1h-1v-1c-1.4-.2-2.5-1-2.7-2.5H8c.1.6.5 1 1.5 1 .8 0 1.5-.3 1.5-1 0-.5-.3-.8-1.5-1.1-1.5-.4-2.8-.9-2.8-2.4 0-1.1 1-1.9 2.3-2.1V5h1v1.4c1.2.2 2.2.8 2.5 2.1H11c-.1-.5-.5-1-1.5-1-.7 0-1.5.3-1.5.9 0 .6.4.9 1.5 1.2 1.7.5 2.8 1 2.8 2.4 0 1.2-1 2-2.3 2.4z"/></svg>',
-    video:
-      '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 20 20"><path fill="currentColor" d="M2 5h12v10H2V5zm14 2l4-2v10l-4-2V7z"/></svg>',
-    calendar:
-      '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 20 20"><path fill="currentColor" d="M4 4h2V2h2v2h4V2h2v2h2v14H4V4zm0 4v8h12V8H4z"/></svg>',
-    info: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 20 20"><path fill="currentColor" d="M10 2a8 8 0 100 16 8 8 0 000-16zm0 4a1 1 0 110 2 1 1 0 010-2zm-1 4h2v6H9v-6z"/></svg>',
-    user: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 20 20"><path fill="currentColor" d="M10 10a4 4 0 100-8 4 4 0 000 8zm0 2c-3 0-7 1.5-7 4.5V18h14v-1.5c0-3-4-4.5-7-4.5z"/></svg>',
-    gift: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 20 20"><path fill="currentColor" d="M3 8v10h14V8H3zm0-3h14v2H3V5zm5-3a2 2 0 012 2 2 2 0 012-2 2 2 0 010 4h-4a2 2 0 010-4z"/></svg>',
-    lock: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 20 20"><path fill="currentColor" d="M5 9V7a5 5 0 0110 0v2h1v9H4V9h1zm2 0h6V7a3 3 0 00-6 0v2z"/></svg>',
-    arrow:
-      '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>',
+    sub: '★',
+    clip: '✂',
+    popout: '⧉',
+    shield: '⛨',
+    dashboard: '▦',
+    settings: '⚙',
+    people: '☰',
+    cash: '$',
+    video: '▶',
+    calendar: '▤',
+    info: 'ℹ',
+    user: '☺',
+    gift: '✦',
+    lock: '⚿',
+    arrow: '›',
   }
 
   const SECTIONS = [
@@ -76,110 +67,133 @@ function renderQuickLinks() {
       label: null,
       show: true,
       items: [
-        { action: 'sub', accent: '#e91916', icon: ICONS.sub, label: 'subscribe', direct: true },
-        { action: 'popout', accent: '#4a90d9', icon: ICONS.popout, label: 'popout chat', direct: true },
+        { action: 'sub', accent: '#ff0000', icon: ICONS.sub, label: t('mc_twapi_ql_subscribe'), direct: true },
+        { action: 'popout', accent: '#ffffff', icon: ICONS.popout, label: t('popup_btn_popout'), direct: true },
       ],
     },
     {
-      label: 'mod tools',
+      label: t('content_card_mod_tools'),
       show: isMod,
       items: [
         {
-          accent: '#00c8af',
+          accent: '#00ffff',
           icon: ICONS.shield,
-          label: 'mod view (chat, automod, blocked terms)',
+          label: t('mc_twapi_ql_mod_view'),
           url: (c) => `https://www.twitch.tv/moderator/${c}`,
           opts: 'width=1200,height=800',
         },
       ],
     },
     {
-      label: 'broadcaster',
+      label: t('mc_twapi_ql_broadcaster'),
       show: isBroadcaster,
       items: [
         {
           accent: HS_PLAT_COLORS.twitch,
           icon: ICONS.dashboard,
-          label: 'creator dashboard',
+          label: t('mc_twapi_ql_creator'),
           url: (c) => `https://dashboard.twitch.tv/u/${c}/home`,
           opts: 'width=1200,height=800',
         },
         {
           accent: HS_PLAT_COLORS.twitch,
           icon: ICONS.video,
-          label: 'stream manager',
+          label: t('mc_twapi_ql_stream_mgr'),
           url: (c) => `https://dashboard.twitch.tv/u/${c}/stream-manager`,
           opts: 'width=1200,height=800',
         },
         {
           accent: HS_PLAT_COLORS.twitch,
           icon: ICONS.settings,
-          label: 'moderation settings (automod, blocked terms)',
+          label: t('mc_twapi_ql_mod_settings'),
           url: (c) => `https://dashboard.twitch.tv/u/${c}/settings/moderation`,
           opts: 'width=1000,height=750',
         },
         {
           accent: HS_PLAT_COLORS.twitch,
           icon: ICONS.settings,
-          label: 'channel settings',
+          label: t('mc_twapi_ql_chan_settings'),
           url: (c) => `https://dashboard.twitch.tv/u/${c}/settings/channel`,
           opts: 'width=1000,height=750',
         },
         {
           accent: HS_PLAT_COLORS.twitch,
           icon: ICONS.people,
-          label: 'community (mods, vips, follows)',
+          label: t('mc_twapi_ql_community'),
           url: (c) => `https://dashboard.twitch.tv/u/${c}/community`,
           opts: 'width=1000,height=750',
         },
         {
           accent: HS_PLAT_COLORS.twitch,
           icon: ICONS.cash,
-          label: 'monetization',
+          label: t('mc_twapi_ql_monetization'),
           url: (c) => `https://dashboard.twitch.tv/u/${c}/monetization`,
           opts: 'width=1000,height=750',
         },
+      ],
+    },
+    {
+      label: t('mc_twapi_ql_chan_pages'),
+      show: !!ch,
+      items: [
         {
-          accent: HS_PLAT_COLORS.twitch,
-          icon: ICONS.chart,
-          label: 'analytics',
-          url: (c) => `https://dashboard.twitch.tv/u/${c}/analytics/stream-summary`,
-          opts: 'width=1200,height=800',
+          accent: '#ffffff',
+          icon: ICONS.info,
+          label: t('mc_twapi_ql_about'),
+          url: (c) => `https://www.twitch.tv/${c}/about`,
+        },
+        {
+          accent: '#ffffff',
+          icon: ICONS.video,
+          label: t('mc_twapi_ql_videos'),
+          url: (c) => `https://www.twitch.tv/${c}/videos`,
+        },
+        {
+          accent: '#ffffff',
+          icon: ICONS.video,
+          label: t('mc_twapi_ql_clips'),
+          url: (c) => `https://www.twitch.tv/${c}/clips`,
+        },
+        {
+          accent: '#ffffff',
+          icon: ICONS.calendar,
+          label: t('mc_twapi_ql_schedule'),
+          url: (c) => `https://www.twitch.tv/${c}/schedule`,
         },
       ],
     },
     {
-      label: 'channel pages',
-      show: !!ch,
-      items: [
-        { accent: '#888', icon: ICONS.info, label: 'about page', url: (c) => `https://www.twitch.tv/${c}/about` },
-        { accent: '#888', icon: ICONS.video, label: 'videos', url: (c) => `https://www.twitch.tv/${c}/videos` },
-        { accent: '#888', icon: ICONS.video, label: 'clips', url: (c) => `https://www.twitch.tv/${c}/clips` },
-        { accent: '#888', icon: ICONS.calendar, label: 'schedule', url: (c) => `https://www.twitch.tv/${c}/schedule` },
-      ],
-    },
-    {
-      label: 'your account',
+      label: t('mc_twapi_ql_account'),
       show: true,
       items: [
-        { accent: '#888', icon: ICONS.gift, label: 'drops / inventory', url: () => 'https://www.twitch.tv/inventory' },
         {
-          accent: '#888',
+          accent: '#ffffff',
+          icon: ICONS.gift,
+          label: t('mc_twapi_ql_drops'),
+          url: () => 'https://www.twitch.tv/inventory',
+        },
+        {
+          accent: '#ffffff',
           icon: ICONS.sub,
-          label: 'my subscriptions',
+          label: t('mc_twapi_ql_my_subs'),
           url: () => 'https://www.twitch.tv/subscriptions',
         },
         {
-          accent: '#888',
+          accent: '#ffffff',
           icon: ICONS.user,
-          label: 'following directory',
+          label: t('mc_twapi_ql_following'),
           url: () => 'https://www.twitch.tv/directory/following',
         },
-        { accent: '#888', icon: ICONS.settings, label: 'twitch settings', url: () => 'https://www.twitch.tv/settings' },
         {
-          accent: '#888',
+          accent: '#ffffff',
+          icon: ICONS.settings,
+          label: t('mc_twapi_ql_tw_settings'),
+          url: () => 'https://www.twitch.tv/settings',
+        },
+        {
+          accent: '#ffffff',
           icon: ICONS.lock,
-          label: 'privacy + security',
+          label: t('mc_twapi_ql_privacy'),
           url: () => 'https://www.twitch.tv/settings/security',
         },
       ],
@@ -208,7 +222,7 @@ function renderQuickLinks() {
 
       const iconWrap = document.createElement('div')
       iconWrap.className = 'hs-mc-menu-icon'
-      iconWrap.appendChild(svgNode(item.icon))
+      iconWrap.appendChild(glyphNode(item.icon))
       el.appendChild(iconWrap)
 
       const text = document.createElement('div')
@@ -219,7 +233,7 @@ function renderQuickLinks() {
       text.appendChild(title)
       el.appendChild(text)
 
-      const arrow = svgNode(ICONS.arrow)
+      const arrow = glyphNode(ICONS.arrow)
       arrow.setAttribute('class', 'hs-mc-menu-arrow')
       el.appendChild(arrow)
 
@@ -352,9 +366,81 @@ async function setTwitchChatMode(channelLogin, mode, value) {
   return { ok: false, error: 'twitch did not apply it (mod rights?)' }
 }
 
-// Back-compat wrapper — followers-only was the one mode already wired.
-async function setTwitchFollowersMode(channelLogin, minutes) {
-  return setTwitchChatMode(channelLogin, 'followers', minutes)
+// ─── Your chat color ────────────────────────────────────────────────────────
+// `/color` — GQL `updateChatColor(input: {color: String!})` (schema-probed
+// 2026-10-17: the mutation exists, takes `color`, and answers Unauthenticated
+// without a token). Like the chat modes, twitch's GQL accepts what it does not
+// understand, so success is only claimed after reading `user.chatColor` back.
+// The 15 colors every account can pick, and the hex twitch reads each back as.
+const TWITCH_NAMED_COLORS = {
+  blue: ['Blue', 0x0000ff],
+  blueviolet: ['BlueViolet', 0x8a2be2],
+  cadetblue: ['CadetBlue', 0x5f9ea0],
+  chocolate: ['Chocolate', 0xd2691e],
+  coral: ['Coral', 0xff7f50],
+  dodgerblue: ['DodgerBlue', 0x1e90ff],
+  firebrick: ['Firebrick', 0xb22222],
+  goldenrod: ['GoldenRod', 0xdaa520],
+  green: ['Green', 0x008000],
+  hotpink: ['HotPink', 0xff69b4],
+  orangered: ['OrangeRed', 0xff4500],
+  red: ['Red', 0xff0000],
+  seagreen: ['SeaGreen', 0x2e8b57],
+  springgreen: ['SpringGreen', 0x00ff7f],
+  yellowgreen: ['YellowGreen', 0x9acd32],
+}
+const _twHex = (n) => `#${n.toString(16).padStart(6, '0').toUpperCase()}`
+
+// arg: a color name (case and spacing ignored) or #rrggbb. Returns
+// { ok, hex } | { ok:false, error }. Hex needs Turbo/Prime — twitch refuses it
+// otherwise, which the read-back turns into an honest message.
+async function setTwitchChatColor(arg, login) {
+  const raw = String(arg || '').trim()
+  const hexIn = /^#?([0-9a-f]{6})$/i.exec(raw)
+  const named = TWITCH_NAMED_COLORS[raw.toLowerCase().replace(/[\s_-]/g, '')]
+  if (!hexIn && !named) {
+    return {
+      ok: false,
+      error: `unknown color — try one of: ${Object.values(TWITCH_NAMED_COLORS)
+        .map((c) => c[0].toLowerCase())
+        .join(' ')}`,
+    }
+  }
+  const want = hexIn ? `#${hexIn[1].toUpperCase()}` : _twHex(named[1])
+  const me = String(login || '').toLowerCase()
+  if (!me) return { ok: false, error: 'not logged into twitch' }
+  const readBack = async () => {
+    try {
+      const data = await twitchGql(`{ user(login: "${me}") { chatColor } }`)
+      return String(data?.data?.user?.chatColor || '').toUpperCase()
+    } catch {
+      return ''
+    }
+  }
+  // twitch's own client sends the name; a hex goes through as written.
+  for (const color of hexIn ? [want] : [named[0], want]) {
+    try {
+      const res = await gqlMutation(
+        'mutation($input: UpdateChatColorInput!) { updateChatColor(input: $input) { __typename } }',
+        { input: { color } },
+      )
+      const err = res?.errors?.[0]?.message || res?.data?.errors?.[0]?.message
+      if (err) {
+        if (/unauthenticated/i.test(err)) return { ok: false, error: 'not logged into twitch' }
+        continue
+      }
+    } catch (e) {
+      return { ok: false, error: e?.message || 'failed' }
+    }
+    for (let attempt = 0; attempt < 2; attempt++) {
+      if (attempt) await new Promise((r) => setTimeout(r, 400))
+      if ((await readBack()) === want.toUpperCase()) return { ok: true, hex: want }
+    }
+  }
+  return {
+    ok: false,
+    error: hexIn ? 'twitch did not take it — custom hex colors need turbo or prime' : 'twitch did not apply it',
+  }
 }
 
 function makeCoinSvg(size) {
@@ -372,24 +458,25 @@ function makeCoinSvg(size) {
 
 function outcomeColor(color) {
   const map = {
-    PINK: '#f5009b',
-    BLUE: '#387aff',
+    PINK: '#ff00ff',
+    BLUE: '#ffffff',
     ORANGE: '#fff',
-    GREEN: '#00c853',
-    TEAL: '#00bcd4',
-    PURPLE: '#9c27b0',
-    YELLOW: '#fdd835',
-    LIGHT_BLUE: '#4fc3f7',
-    RED: '#e53935',
-    BROWN: '#795548',
+    GREEN: '#00ff00',
+    TEAL: '#00ffff',
+    PURPLE: '#ff00ff',
+    YELLOW: '#ffff00',
+    LIGHT_BLUE: '#00ffff',
+    RED: '#ff0000',
+    BROWN: '#ffff00',
   }
-  return map[color] || '#387aff'
+  return map[color] || '#ffffff'
 }
 
 function makePointIcon(size, cpImage) {
   if (cpImage) {
     const img = document.createElement('img')
     img.src = cpImage
+    img.decoding = 'async'
     img.width = size
     img.height = size
     img.style.verticalAlign = '-2px'
@@ -477,7 +564,7 @@ function renderPrediction(pred, balance, channelId, isMod, cpImage, cpName) {
       banner.appendChild(amt)
       const label = document.createElement('span')
       label.className = 'hs-mc-pred-result-label'
-      label.textContent = ' won'
+      label.textContent = ` ${t('mc_twapi_won')}`
       banner.appendChild(label)
     } else {
       const amt = document.createElement('span')
@@ -486,7 +573,7 @@ function renderPrediction(pred, balance, channelId, isMod, cpImage, cpName) {
       banner.appendChild(amt)
       const label = document.createElement('span')
       label.className = 'hs-mc-pred-result-label'
-      label.textContent = ' lost'
+      label.textContent = ` ${t('mc_twapi_lost')}`
       banner.appendChild(label)
     }
     wrapper.appendChild(banner)
@@ -563,8 +650,11 @@ function renderPrediction(pred, balance, channelId, isMod, cpImage, cpName) {
 
     const stats = document.createElement('div')
     stats.className = 'hs-mc-pred-outcome-stats'
-    let statsText = `${formatPoints(points)} pts \u00b7 ${userCount} bettor${userCount !== 1 ? 's' : ''}`
-    if (isBetOn) statsText += ` \u00b7 your bet: ${formatPoints(userBet.points)}`
+    let statsText = t(userCount === 1 ? 'mc_twapi_stats_one' : 'mc_twapi_stats_many', [
+      formatPoints(points),
+      String(userCount),
+    ])
+    if (isBetOn) statsText += ` \u00b7 ${t('mc_twapi_your_bet', [formatPoints(userBet.points)])}`
     stats.textContent = statsText
     card.appendChild(stats)
 
@@ -589,14 +679,14 @@ function renderPrediction(pred, balance, channelId, isMod, cpImage, cpName) {
         maxBtn.dataset.outcome = outcome.id
         maxBtn.dataset.points = balance
         maxBtn.style.setProperty('--oc', color)
-        maxBtn.textContent = 'max'
+        maxBtn.textContent = t('mc_twapi_max')
         betRow.appendChild(maxBtn)
       }
 
       const customInput = document.createElement('input')
       customInput.className = 'hs-mc-pred-bet-custom'
       customInput.type = 'text'
-      customInput.placeholder = 'amt'
+      customInput.placeholder = t('mc_twapi_amt')
       customInput.dataset.outcome = outcome.id
       if (balance != null && balance <= 0) customInput.disabled = true
       betRow.appendChild(customInput)
@@ -605,7 +695,7 @@ function renderPrediction(pred, balance, channelId, isMod, cpImage, cpName) {
       goBtn.className = 'hs-mc-pred-bet-go'
       goBtn.dataset.outcome = outcome.id
       goBtn.style.setProperty('--oc', color)
-      goBtn.textContent = 'bet'
+      goBtn.textContent = t('mc_twapi_bet')
       if (balance != null && balance <= 0) goBtn.disabled = true
       betRow.appendChild(goBtn)
 
@@ -637,7 +727,7 @@ function renderPrediction(pred, balance, channelId, isMod, cpImage, cpName) {
     const notice = document.createElement('div')
     notice.className = 'hs-mc-pred-mod-notice'
     const betOutcome = pred.outcomes.find((o) => o.id === userBet.outcomeId)
-    notice.textContent = `you bet ${formatPoints(userBet.points)} on ${betOutcome?.title || '?'} \u2014 pick the actual winner`
+    notice.textContent = t('mc_twapi_mod_notice', [formatPoints(userBet.points), betOutcome?.title || '?'])
     wrapper.appendChild(notice)
   }
 
@@ -795,7 +885,7 @@ function renderRewards(rewards, balance, channelId) {
     card.dataset.channelId = channelId
     if (reward.isUserInputRequired) card.dataset.textRequired = '1'
     if (reward.prompt) card.dataset.prompt = reward.prompt
-    card.style.setProperty('--rc', reward.backgroundColor || '#9146ff')
+    card.style.setProperty('--rc', reward.backgroundColor || HS_PLAT_COLORS.twitch)
 
     const imgUrl = reward.image?.url || reward.defaultImage?.url || ''
     if (imgUrl) {
@@ -836,7 +926,10 @@ function renderRewards(rewards, balance, channelId) {
       else if (!reward.isInStock) reason.textContent = t('mc_reward_out_of_stock')
       else if (onCooldown) {
         const secs = Math.ceil((new Date(reward.cooldownExpiresAt).getTime() - now) / 1000)
-        reason.textContent = secs > 60 ? `${Math.ceil(secs / 60)}m cooldown` : `${secs}s cooldown`
+        reason.textContent =
+          secs > 60
+            ? t('mc_twapi_cooldown_m', [String(Math.ceil(secs / 60))])
+            : t('mc_twapi_cooldown_s', [String(secs)])
         reason.dataset.cooldownEnds = new Date(reward.cooldownExpiresAt).getTime()
       }
       info.appendChild(reason)
@@ -947,7 +1040,8 @@ function attachRewardHandlers() {
         cleanup.clearInterval(iv)
         return
       }
-      el.textContent = secs > 60 ? `${Math.ceil(secs / 60)}m cooldown` : `${secs}s cooldown`
+      el.textContent =
+        secs > 60 ? t('mc_twapi_cooldown_m', [String(Math.ceil(secs / 60))]) : t('mc_twapi_cooldown_s', [String(secs)])
     }, 1000)
   })
 }
@@ -1028,15 +1122,15 @@ function attachPredictionHandlers() {
 
   // Human-readable prediction error messages
   const predErrorMsg = (code) => {
-    if (!code) return 'failed'
+    if (!code) return t('mc_twapi_failed')
     const c = code.toUpperCase()
-    if (c.includes('EVENT_MANAGER') || c.includes('OWNER')) return "can't bet on own"
-    if (c.includes('ACCEPT') || c.includes('TOS')) return 'try again'
-    if (c.includes('NOT_FOUND')) return 'prediction ended'
-    if (c.includes('LOCKED')) return 'betting locked'
-    if (c.includes('INSUFFICIENT') || c.includes('BALANCE')) return 'not enough points'
-    if (c.includes('ALREADY')) return 'already bet'
-    if (c.includes('FORBIDDEN')) return 'no permission'
+    if (c.includes('EVENT_MANAGER') || c.includes('OWNER')) return t('mc_twapi_err_own')
+    if (c.includes('ACCEPT') || c.includes('TOS')) return t('mc_twapi_err_retry')
+    if (c.includes('NOT_FOUND')) return t('mc_pred_ended')
+    if (c.includes('LOCKED')) return t('mc_twapi_err_locked')
+    if (c.includes('INSUFFICIENT') || c.includes('BALANCE')) return t('mc_twapi_err_points')
+    if (c.includes('ALREADY')) return t('mc_twapi_err_already')
+    if (c.includes('FORBIDDEN')) return t('mc_error_no_permission')
     return code.toLowerCase().slice(0, 15)
   }
 
@@ -1084,7 +1178,7 @@ function attachPredictionHandlers() {
         btn.textContent = predErrorMsg(result.error)
         btn.title = result.error
         setTimeout(() => {
-          btn.textContent = 'bet'
+          btn.textContent = t('mc_twapi_bet')
           btn.disabled = false
           btn.title = ''
         }, 3000)
@@ -1121,7 +1215,7 @@ function attachPredictionHandlers() {
         btn.closest('.hs-mc-prediction')?.dataset.eventId ||
         container.querySelector('.hs-mc-prediction')?.dataset.eventId
       if (!eventId) {
-        btn.textContent = 'no event'
+        btn.textContent = t('mc_twapi_no_event')
         return
       }
       btn.disabled = true
@@ -1158,12 +1252,12 @@ function attachPredictionHandlers() {
         btn.closest('.hs-mc-prediction')?.dataset.eventId ||
         container.querySelector('.hs-mc-prediction')?.dataset.eventId
       if (!eventId) {
-        btn.textContent = 'no event'
+        btn.textContent = t('mc_twapi_no_event')
         return
       }
       const outcomeId = btn.dataset.outcome
       if (!outcomeId) {
-        btn.textContent = 'no outcome'
+        btn.textContent = t('mc_twapi_no_outcome')
         return
       }
       btn.disabled = true
@@ -1204,7 +1298,7 @@ function attachPredictionHandlers() {
         btn.closest('.hs-mc-prediction')?.dataset.eventId ||
         container.querySelector('.hs-mc-prediction')?.dataset.eventId
       if (!eventId) {
-        btn.textContent = 'no event'
+        btn.textContent = t('mc_twapi_no_event')
         return
       }
       btn.disabled = true
@@ -1287,7 +1381,7 @@ function attachPredictionHandlers() {
       e.stopPropagation()
       const channelId = container.querySelector('[data-channel-id]')?.dataset.channelId
       if (!channelId) {
-        btn.textContent = 'no channel'
+        btn.textContent = t('mc_twapi_no_channel')
         return
       }
       const form = btn.closest('.hs-mc-pred-create-form')
@@ -1349,7 +1443,7 @@ function attachPredictionHandlers() {
     const update = () => {
       const remaining = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000))
       if (remaining <= 0) {
-        el.textContent = 'closing...'
+        el.textContent = t('mc_twapi_closing_dots')
         el.classList.add('hs-mc-pred-locked')
         return
       }
@@ -1446,7 +1540,7 @@ function _startBannerTimer(el, endsAt) {
   const update = () => {
     const remaining = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000))
     if (remaining <= 0) {
-      el.textContent = 'closing'
+      el.textContent = t('mc_twapi_closing')
       return
     }
     const m = Math.floor(remaining / 60)
@@ -1465,6 +1559,10 @@ function _startBannerTimer(el, endsAt) {
 }
 
 function updateChatBanners(predResult, pollData) {
+  // One hook keeps the full-area view current: this already runs on every
+  // prediction/poll fetch and every pubsub update, so the view needs no second
+  // polling loop of its own.
+  if (typeof refreshPredViewIfOpen === 'function') refreshPredViewIfOpen()
   const msgsEl = document.getElementById('hs-mc-messages')
   if (!msgsEl) return
   // The banner is an absolute overlay hosted OUTSIDE the scroller (a sibling
@@ -1504,7 +1602,18 @@ function updateChatBanners(predResult, pollData) {
   banner.className = 'hs-mc-chat-banner'
   banner.innerHTML = ''
 
-  const goToTwitch = (_e) => {
+  // Clicking the banner opens the predictions/polls surface over the chat area.
+  // It used to click the `live` TAB, which just switched channels and left the
+  // actual prediction UI where it was — three clicks deep inside the emote
+  // picker's twitch sub-tab. The banner is the thing you can see, so it is the
+  // thing that should open it.
+  const openPredictions = (_e) => {
+    if (typeof openPredView === 'function') {
+      openPredView(
+        _predictionChannel || (typeof getActiveTwitchChannel === 'function' ? getActiveTwitchChannel() : null),
+      )
+      return
+    }
     const twitchTab = document.querySelector('[data-tab="live"]')
     if (twitchTab) twitchTab.click()
   }
@@ -1514,7 +1623,7 @@ function updateChatBanners(predResult, pollData) {
     const row = document.createElement('div')
     row.className = 'hs-mc-chat-banner-item hs-mc-chat-banner-pred'
     row.style.cursor = 'pointer'
-    row.addEventListener('click', goToTwitch)
+    row.addEventListener('click', openPredictions)
 
     // Build: 🔮 title · outcome1 45% vs outcome2 55% · [your bet: 100] · 2:30
     row.innerHTML = '<span class="hs-mc-chat-banner-icon">\u{1F52E}</span>'
@@ -1529,7 +1638,7 @@ function updateChatBanners(predResult, pollData) {
     let text = `${pred.title} \u00b7 ${parts.join(' vs ')}`
     if (userBet) {
       const betOutcome = pred.outcomes.find((o) => o.id === userBet.outcomeId)
-      text += ` \u00b7 bet: ${formatPoints(userBet.points)}${betOutcome ? ` ${betOutcome.title}` : ''}`
+      text += ` \u00b7 ${t('mc_twapi_banner_bet', [formatPoints(userBet.points), betOutcome ? betOutcome.title : '']).trim()}`
     }
     info.textContent = text
     row.appendChild(info)
@@ -1556,7 +1665,7 @@ function updateChatBanners(predResult, pollData) {
     const row = document.createElement('div')
     row.className = 'hs-mc-chat-banner-item hs-mc-chat-banner-poll'
     row.style.cursor = 'pointer'
-    row.addEventListener('click', goToTwitch)
+    row.addEventListener('click', openPredictions)
 
     row.innerHTML = '<span class="hs-mc-chat-banner-icon">\u{1F4CA}</span>'
 
@@ -1654,9 +1763,9 @@ function buildTwSubtabBar() {
   const bar = document.createElement('div')
   bar.className = 'hs-mc-tw-subtabs'
   const items = [
-    { id: 'predictions', label: 'events', paths: HS_TW_ICON_PRED_PATHS },
-    { id: 'bits', label: 'bits', paths: HS_TW_ICON_BITS_PATHS },
-    { id: 'links', label: 'quick links', paths: HS_TW_ICON_LINKS_PATHS },
+    { id: 'predictions', label: t('mc_twapi_tab_events'), paths: HS_TW_ICON_PRED_PATHS },
+    { id: 'bits', label: t('mc_twapi_tab_bits'), paths: HS_TW_ICON_BITS_PATHS },
+    { id: 'links', label: t('mc_twapi_tab_links'), paths: HS_TW_ICON_LINKS_PATHS },
   ]
   for (const it of items) {
     const btn = document.createElement('button')
@@ -1689,6 +1798,11 @@ async function renderTwitchTab() {
   const channel = getActiveTwitchChannel()
   container.textContent = ''
 
+  const native = document.createElement('div')
+  native.className = 'hs-mc-pred-links'
+  native.appendChild(nativeChatRow())
+  container.appendChild(native)
+
   // Sub-tab bar always at top
   container.appendChild(buildTwSubtabBar())
 
@@ -1701,7 +1815,7 @@ async function renderTwitchTab() {
     empty.className = 'hs-mc-pred-empty'
     const msg = document.createElement('div')
     msg.className = 'hs-mc-pred-empty-text'
-    msg.textContent = 'no channel detected'
+    msg.textContent = t('mc_twapi_no_channel_detected')
     empty.appendChild(msg)
     content.appendChild(empty)
     stopPredictionPoll()
@@ -1726,7 +1840,7 @@ async function renderTwitchTab() {
   const predSlot = document.createElement('div')
   predSlot.className = 'hs-mc-pred-loading'
   predSlot.dataset.predSlot = '1'
-  predSlot.textContent = 'loading...'
+  predSlot.textContent = t('common_loading')
   const pollSlot = document.createElement('div')
   pollSlot.dataset.pollSlot = '1'
   const rewardsSlot = document.createElement('div')
@@ -1807,17 +1921,17 @@ function renderBitsSubtab(parent, channel) {
   const panel = document.createElement('div')
   panel.className = 'hs-mc-cheer-panel hs-mc-cheer-inline'
   panel.setAttribute('role', 'region')
-  panel.setAttribute('aria-label', `Cheer bits to ${channel}`)
+  panel.setAttribute('aria-label', t('mc_twapi_cheer_to', [channel]))
 
   const header = document.createElement('div')
   header.className = 'hs-mc-cheer-header'
   const title = document.createElement('div')
   title.className = 'hs-mc-cheer-title'
-  title.textContent = `cheer bits to ${channel}`
+  title.textContent = t('mc_twapi_cheer_to', [channel])
   const balance = document.createElement('div')
   balance.className = 'hs-mc-cheer-balance'
   const bal = hsReadNativeBitsBalance()
-  balance.textContent = bal ? `balance: ${bal}` : 'balance: —'
+  balance.textContent = t('mc_twapi_balance', [bal || '\u2014'])
   header.appendChild(title)
   header.appendChild(balance)
   panel.appendChild(header)
@@ -1825,7 +1939,7 @@ function renderBitsSubtab(parent, channel) {
   const launchBtn = document.createElement('button')
   launchBtn.type = 'button'
   launchBtn.className = 'hs-mc-cheer-send hs-mc-cheer-launch'
-  launchBtn.textContent = 'open cheer modal'
+  launchBtn.textContent = t('mc_twapi_cheer_open')
   launchBtn.addEventListener('click', () => {
     // Open twitch's full chat popout in a separate window. The popout is a
     // complete twitch chat UI (chat-input + bits button + cheer modal + everything)
@@ -1973,12 +2087,12 @@ function stopPredictionPoll() {
 // tags a chat message with bits>0, the `cheer<N>` token in the visible text
 // should render as the tier-appropriate cheermote + colored bits amount.
 const HS_CHEER_TIERS = [
-  { min: 100000, tier: 100000, color: '#f43021' },
-  { min: 10000, tier: 10000, color: '#fa0d72' },
-  { min: 5000, tier: 5000, color: '#0099fe' },
-  { min: 1000, tier: 1000, color: '#1db2a5' },
-  { min: 100, tier: 100, color: '#9c3ee8' },
-  { min: 1, tier: 1, color: '#979797' },
+  { min: 100000, tier: 100000, color: '#ff0000' },
+  { min: 10000, tier: 10000, color: '#ff00ff' },
+  { min: 5000, tier: 5000, color: '#ffffff' },
+  { min: 1000, tier: 1000, color: '#00ffff' },
+  { min: 100, tier: 100, color: '#ff00ff' },
+  { min: 1, tier: 1, color: '#ffffff' },
 ]
 function hsCheerTier(amount) {
   for (const t of HS_CHEER_TIERS) if (amount >= t.min) return t
@@ -2004,11 +2118,11 @@ function renderCheermotesInText(html, totalBits) {
     parts[i] = seg.replace(/(?<![#@])\bcheer(\d+)\b/gi, (match, n) => {
       const amount = parseInt(n, 10)
       if (!amount || amount < 1) return match
-      const t = hsCheerTier(amount)
-      const url = `https://d3aqoihi2n8ty8.cloudfront.net/actions/cheer/dark/animated/${t.tier}/2.gif`
+      const tier = hsCheerTier(amount)
+      const url = `https://d3aqoihi2n8ty8.cloudfront.net/actions/cheer/dark/animated/${tier.tier}/2.gif`
       return (
-        `<img class="hs-mc-cheermote" src="${url}" alt="cheer${amount}" title="${amount} bits" loading="lazy">` +
-        `<span class="hs-mc-cheer-amt" style="color:${t.color}">${amount}</span>`
+        `<img class="hs-mc-cheermote" src="${url}" alt="cheer${amount}" title="${t('mc_twapi_bits_title', [String(amount)])}" loading="lazy" decoding="async">` +
+        `<span class="hs-mc-cheer-amt" style="color:${tier.color}">${amount}</span>`
       )
     })
   }
@@ -2097,10 +2211,10 @@ async function buildChatStatusPanel(channel) {
       m = mins % 60
     const uptime = h ? `${h}h ${m}m` : `${m}m`
     const viewers = (stream.viewersCount || 0).toLocaleString('en-US')
-    sub.textContent = `LIVE · ${uptime} · ${viewers} viewers`
+    sub.textContent = t('mc_twapi_live_status', [uptime, viewers])
     sub.classList.add('live')
   } else {
-    sub.textContent = 'OFFLINE'
+    sub.textContent = t('mc_twapi_offline')
     sub.classList.add('off')
   }
   panel.appendChild(sub)
@@ -2123,7 +2237,7 @@ async function buildChatStatusPanel(channel) {
 
   const modesHeader = document.createElement('div')
   modesHeader.className = 'hs-mc-status-section'
-  modesHeader.textContent = 'chat modes'
+  modesHeader.textContent = t('mc_cm_title')
   panel.appendChild(modesHeader)
 
   const grid = document.createElement('div')
@@ -2132,14 +2246,14 @@ async function buildChatStatusPanel(channel) {
   if (rs) {
     // followersOnly: -1 = off, 0 = on no min, N>0 = N min req
     const followerOn = rs.followersOnly != null && rs.followersOnly >= 0
-    const followerDetail = followerOn && rs.followersOnly > 0 ? `${rs.followersOnly} min` : null
+    const followerDetail = followerOn && rs.followersOnly > 0 ? `${rs.followersOnly} ${t('mc_cm_min')}` : null
     const slowOn = rs.slow != null && rs.slow > 0
     const modes = [
-      ['emote-only', rs.emoteOnly === true],
-      ['follower-mode', followerOn, followerDetail],
-      ['sub-mode', rs.subsOnly === true],
-      ['slow-mode', slowOn, slowOn ? `${rs.slow}s` : null],
-      ['unique-chat', rs.r9k === true],
+      [t('mc_cm_emote'), rs.emoteOnly === true],
+      [t('mc_cm_follower'), followerOn, followerDetail],
+      [t('mc_cm_sub'), rs.subsOnly === true],
+      [t('mc_cm_slow'), slowOn, slowOn ? `${rs.slow}${t('mc_cm_secs')}` : null],
+      [t('mc_cm_unique'), rs.r9k === true],
     ]
     for (const [label, on, detail] of modes) {
       const row = document.createElement('div')
@@ -2149,7 +2263,7 @@ async function buildChatStatusPanel(channel) {
       k.textContent = label
       const v = document.createElement('span')
       v.className = `hs-mc-status-val ${on ? 'on' : 'off'}`
-      v.textContent = on ? (detail ? `on (${detail})` : 'on') : 'off'
+      v.textContent = on ? (detail ? `${t('mc_cm_on')} (${detail})` : t('mc_cm_on')) : t('mc_cm_off')
       row.appendChild(k)
       row.appendChild(v)
       grid.appendChild(row)
@@ -2157,7 +2271,89 @@ async function buildChatStatusPanel(channel) {
   } else {
     const empty = document.createElement('div')
     empty.className = 'hs-mc-status-note'
-    empty.textContent = '(modes unknown — channel not joined yet)'
+    empty.textContent = t('mc_cm_unknown')
+    grid.appendChild(empty)
+  }
+  panel.appendChild(grid)
+  // mods (and the broadcaster) get the real settings + live toggles; everyone
+  // else keeps the read-only rows above
+  const modeStatus = document.createElement('div')
+  modeStatus.className = 'hs-mc-status-note hs-cm-status'
+  modeStatus.setAttribute('role', 'status')
+  modeStatus.hidden = true
+  panel.appendChild(modeStatus)
+  cmMountControls(grid, modeStatus, ch).catch(() => {})
+  return panel
+}
+
+// /status for a kick channel: kick's own public channel record (same endpoint the
+// profile card reads), never a twitch lookup of the kick slug. Kick exposes the
+// room's modes as on/off, so that is all the rows say. null when it can't be read.
+async function buildKickStatusPanel(slug) {
+  const ch = (slug || '').toString().toLowerCase()
+  if (!ch || !/^[a-z0-9_-]{2,40}$/.test(ch)) return null
+  let d = null
+  try {
+    const res = await fetch(`https://kick.com/api/v2/channels/${encodeURIComponent(ch)}`, { credentials: 'omit' })
+    d = res.ok ? await res.json().catch(() => null) : null
+  } catch (_) {}
+  if (!d?.slug && !d?.id) return null
+
+  const panel = document.createElement('div')
+  panel.className = 'hs-mc-status-panel'
+  const line = (cls, text) => {
+    const el = document.createElement('div')
+    el.className = cls
+    el.textContent = text
+    panel.appendChild(el)
+    return el
+  }
+  line('hs-mc-status-title', `#${d.user?.username || d.slug || ch}`)
+  const live = d.livestream
+  if (live) {
+    const mins = Math.max(
+      0,
+      Math.floor((Date.now() - new Date(String(live.created_at).replace(' ', 'T') + 'Z').getTime()) / 60000),
+    )
+    const up = Number.isFinite(mins) ? (mins >= 60 ? `${Math.floor(mins / 60)}h ${mins % 60}m` : `${mins}m`) : ''
+    const viewers = (live.viewer_count || 0).toLocaleString('en-US')
+    line(
+      'hs-mc-status-sub live',
+      up ? t('mc_twapi_live_status', [up, viewers]) : t('mc_twapi_live_status_nouptime', [viewers]),
+    )
+    if (live.session_title) line('hs-mc-status-streamtitle', `"${live.session_title}"`)
+    const game = live.categories?.[0]?.name
+    if (game) line('hs-mc-status-meta', game)
+  } else {
+    line('hs-mc-status-sub off', t('mc_twapi_offline'))
+  }
+  line('hs-mc-status-section', t('mc_cm_title'))
+  const grid = document.createElement('div')
+  grid.className = 'hs-mc-status-modes'
+  const cr = d.chatroom
+  if (cr) {
+    const modes = [
+      [t('mc_cm_emote'), cr.emotes_mode?.enabled === true || cr.emotes_mode === true],
+      [t('mc_cm_follower'), cr.followers_mode?.enabled === true || cr.followers_mode === true],
+      [t('mc_cm_sub'), cr.subscribers_mode?.enabled === true || cr.subscribers_mode === true],
+      [t('mc_cm_slow'), cr.slow_mode?.enabled === true || cr.slow_mode === true],
+    ]
+    for (const [label, on] of modes) {
+      const row = document.createElement('div')
+      row.className = 'hs-mc-status-row'
+      const k = document.createElement('span')
+      k.className = 'hs-mc-status-key'
+      k.textContent = label
+      const v = document.createElement('span')
+      v.className = `hs-mc-status-val ${on ? 'on' : 'off'}`
+      v.textContent = on ? t('mc_cm_on') : t('mc_cm_off')
+      row.append(k, v)
+      grid.appendChild(row)
+    }
+  } else {
+    const empty = document.createElement('div')
+    empty.className = 'hs-mc-status-note'
+    empty.textContent = t('mc_cm_unknown')
     grid.appendChild(empty)
   }
   panel.appendChild(grid)
@@ -2181,25 +2377,75 @@ function getOwnTwitchLogin() {
 
 // Twitch IRC badge rendering
 const BADGE_STYLES = {
-  broadcaster: { label: 'LIVE', bg: '#e91916', fg: '#fff' },
-  moderator: { label: 'MOD', bg: '#00ad03', fg: '#fff' },
-  vip: { label: 'VIP', bg: '#e005b9', fg: '#fff' },
-  subscriber: { label: 'SUB', bg: '#8205b4', fg: '#fff' },
-  predictions: { label: 'PRED', bg: '#1f69ff', fg: '#fff' },
-  premium: { label: 'PRIME', bg: '#0d6efd', fg: '#fff' },
-  admin: { label: 'ADMIN', bg: '#faaf19', fg: '#000' },
-  staff: { label: 'STAFF', bg: '#faaf19', fg: '#000' },
-  global_mod: { label: 'GMOD', bg: '#00ad03', fg: '#fff' },
-  partner: { label: '✓', bg: '#9146ff', fg: '#fff' },
-  'bits-leader': { label: 'BITS', bg: '#ffd700', fg: '#000' },
-  'sub-gifter': { label: 'GIFT', bg: '#8205b4', fg: '#fff' },
-  artist: { label: 'ART', bg: '#ff6b35', fg: '#fff' },
-  turbo: { label: 'T+', bg: '#6441a5', fg: '#fff' },
-  founder: { label: 'FND', bg: '#8205b4', fg: '#fff' },
+  broadcaster: { label: 'LIVE', bg: '#000000', fg: '#ff0000' },
+  moderator: { label: 'MOD', bg: HS_MOD_GREEN, fg: '#ffffff' },
+  vip: { label: 'VIP', bg: '#000000', fg: '#ff00ff' },
+  subscriber: { label: 'SUB', bg: '#000000', fg: '#ff00ff' },
+  predictions: { label: 'PRED', bg: '#000000', fg: '#8888ff' },
+  premium: { label: 'PRIME', bg: '#000000', fg: '#8888ff' },
+  admin: { label: 'ADMIN', bg: '#000000', fg: '#ffff00' },
+  staff: { label: 'STAFF', bg: '#000000', fg: '#ffff00' },
+  global_mod: { label: 'GMOD', bg: '#000000', fg: '#fff' },
+  partner: { label: '✓', bg: '#000000', fg: HS_PLAT_COLORS.twitch },
+  'bits-leader': { label: 'BITS', bg: '#000000', fg: '#ffff00' },
+  'sub-gifter': { label: 'GIFT', bg: '#000000', fg: '#ff00ff' },
+  artist: { label: 'ART', bg: '#000000', fg: '#ffff00' },
+  turbo: { label: 'T+', bg: '#000000', fg: '#ff00ff' },
+  founder: { label: 'FND', bg: '#000000', fg: '#ff00ff' },
   // Kick badges (underscore variants)
-  sub_gifter: { label: 'GIFT', bg: '#8205b4', fg: '#fff' },
-  og: { label: 'OG', bg: '#53fc18', fg: '#000' },
-  verified: { label: '✓', bg: '#53fc18', fg: '#000' },
+  sub_gifter: { label: 'GIFT', bg: '#000000', fg: '#ff00ff' },
+  og: { label: 'OG', bg: '#000000', fg: '#00ff00' },
+  verified: { label: '✓', bg: '#000000', fg: '#00ff00' },
+}
+
+// Terse chip text for the `textBadges` setting, and for the involuntary text
+// fallback below. Kept identical to the site's BADGE_SHORT
+// (heatsync client/chat/badge-text.js) — the same role has to read the same on
+// both surfaces, and the two repos share no code, so this table IS the
+// contract. A name absent here falls back to its BADGE_STYLES label lowercased;
+// BADGE_STYLES stays the allowlist either way, so a channel-specific badge
+// (whose name is the channel's own id) renders nothing rather than a truncated
+// blob like `ench` for `enchantedbigboiboxers`.
+const BADGE_SHORT = {
+  broadcaster: 'bc',
+  owner: 'bc',
+  moderator: 'mod',
+  vip: 'vip',
+  staff: 'staff',
+  admin: 'admin',
+  global_mod: 'gmod',
+  partner: 'ptnr',
+  verified: 'vrfd',
+  subscriber: 'sub',
+  member: 'mbr',
+  founder: 'fdr',
+  premium: 'prime',
+  turbo: 'turbo',
+  og: 'og',
+  'sub-gifter': 'gift',
+  sub_gifter: 'gift',
+  'sub-gift-leader': 'gift',
+  bits: 'bits',
+  'bits-leader': 'bits',
+  'anonymous-cheerer': 'bits',
+  predictions: 'pred',
+  'hype-train': 'hype',
+  moments: 'mmnt',
+  artist: 'art',
+  'artist-badge': 'art',
+  'game-developer': 'dev',
+  'clip-champ': 'clip',
+  'glhf-pledge': 'glhf',
+  no_audio: 'noaud',
+  no_video: 'novid',
+  'first-msg': 'new',
+}
+
+// Chip text for a badge we have colours for. BADGE_SHORT first so both surfaces
+// agree; otherwise the style table's own label, lowercased to match the rest of
+// the UI's copy.
+function badgeChipText(name) {
+  return BADGE_SHORT[name] || (BADGE_STYLES[name]?.label || '').toLowerCase()
 }
 
 // Semantic background for a known badge type, applied to the <img> so the 18px
@@ -2222,6 +2468,147 @@ const badgesFetchedChannels = new Set()
 // Sorted numeric version lists per "channel:setID" — for nearest-tier fallback
 // (e.g. user has subscriber/5 but channel only defines 0,3,6 → use 3).
 const channelBadgeVersions = new Map()
+// helix/GQL badge titles, same keys as twitchBadgeUrls ("set/version" or "channel:set/version")
+const twitchBadgeTitles = new Map()
+
+// The maps above fill from a network round trip, so after a refresh every row first drew its
+// badge as a text chip (SUB, MOD) and swapped to the picture seconds later — one big shift, and
+// no badges at all when the fetch lagged or failed. They are saved (7 days) and read back before
+// the first row renders. Not marked fetched: each channel still re-fetches, and the answer
+// overwrites what was saved.
+const HS_BADGE_ART_STORE = 'hs_badge_art_v1'
+const HS_BADGES_TTL = 7 * 24 * 60 * 60 * 1000
+const HS_BADGES_MAX = 2500
+let _badgeSaveTimer = null
+function scheduleBadgeSave() {
+  if (_badgeSaveTimer) return
+  _badgeSaveTimer = setTimeout(() => {
+    _badgeSaveTimer = null
+    try {
+      browser.storage.local
+        .set({
+          [HS_BADGE_ART_STORE]: {
+            at: Date.now(),
+            urls: [...twitchBadgeUrls].slice(-HS_BADGES_MAX),
+            titles: [...twitchBadgeTitles].slice(-HS_BADGES_MAX),
+          },
+        })
+        .catch(() => {})
+    } catch (_) {}
+  }, 3000)
+}
+async function hydrateTwitchBadges() {
+  try {
+    const blob = (await browser.storage.local.get(HS_BADGE_ART_STORE))?.[HS_BADGE_ART_STORE]
+    if (!blob || Date.now() - (blob.at || 0) > HS_BADGES_TTL) return
+    const channels = new Set()
+    for (const [k, url] of blob.urls || []) {
+      if (typeof k !== 'string' || typeof url !== 'string' || !/^https:\/\//.test(url) || twitchBadgeUrls.has(k))
+        continue
+      twitchBadgeUrls.set(k, url)
+      const colon = k.indexOf(':')
+      if (colon > 0) channels.add(k.slice(0, colon))
+    }
+    for (const [k, t] of blob.titles || [])
+      if (typeof t === 'string' && !twitchBadgeTitles.has(k)) twitchBadgeTitles.set(k, t)
+    for (const ch of channels) rebuildChannelBadgeVersions(ch)
+  } catch (_) {}
+}
+
+// Unknown badge versions: twitch adds badges (sub tiers, events, globals) faster
+// than a channel's cached set turns over. A row naming a set/version the set
+// lacks renders nothing (never another version's art), notes the miss, and the
+// first miss of a (channel, key) inside BADGE_ASK_WINDOW_MS schedules ONE
+// debounced refetch of that channel's set. The timestamp is the negative: kept
+// whether or not the refetch found the version, so a badge twitch still does
+// not list is asked about once per window, not once per row.
+const BADGE_ASK_WINDOW_MS = 10 * 60 * 1000
+const BADGE_ASK_DEBOUNCE_MS = 1500
+function createBadgeRefetcher({
+  refetch,
+  now = Date.now,
+  debounceMs = BADGE_ASK_DEBOUNCE_MS,
+  windowMs = BADGE_ASK_WINDOW_MS,
+}) {
+  const asked = new Map()
+  const pending = new Set()
+  let timer = 0
+  const flush = () => {
+    timer = 0
+    const chans = [...pending]
+    pending.clear()
+    for (const c of chans) Promise.resolve(refetch(c)).catch(() => {})
+  }
+  return {
+    note(channel, key) {
+      const t = now()
+      const id = `${channel}|${key}`
+      const last = asked.get(id)
+      if (last !== undefined && t - last < windowMs) return false
+      asked.set(id, t)
+      if (asked.size > 500) for (const [k, v] of asked) if (t - v >= windowMs) asked.delete(k)
+      pending.add(channel)
+      if (!timer) timer = setTimeout(flush, debounceMs)
+      return true
+    },
+  }
+}
+
+// Fold a GQL badge list into the maps under `prefix` ('' global, 'chan:' channel).
+// Returns whether anything new or changed landed.
+function mergeBadgeRows(prefix, badges) {
+  let changed = false
+  for (const b of badges || []) {
+    if (!b?.setID) continue
+    const key = `${prefix}${b.setID}/${b.version}`
+    if (b.imageURL && twitchBadgeUrls.get(key) !== b.imageURL) {
+      twitchBadgeUrls.set(key, b.imageURL)
+      changed = true
+    }
+    if (b.title) twitchBadgeTitles.set(key, b.title)
+  }
+  return changed
+}
+
+function rebuildChannelBadgeVersions(channelLogin) {
+  const versionsBySet = new Map()
+  const prefix = `${channelLogin}:`
+  for (const key of twitchBadgeUrls.keys()) {
+    if (!key.startsWith(prefix)) continue
+    const slash = key.lastIndexOf('/')
+    const v = parseInt(key.slice(slash + 1), 10)
+    if (!Number.isFinite(v)) continue
+    const setID = key.slice(prefix.length, slash)
+    let arr = versionsBySet.get(setID)
+    if (!arr) versionsBySet.set(setID, (arr = []))
+    arr.push(v)
+  }
+  for (const [setID, arr] of versionsBySet) {
+    arr.sort((a, b) => a - b)
+    channelBadgeVersions.set(`${channelLogin}:${setID}`, arr)
+  }
+}
+
+async function refetchBadgeSet(channelLogin) {
+  const safe = channelLogin.replace(/[^a-z0-9_]/g, '')
+  if (!safe) return
+  const [chan, glob] = await Promise.allSettled([
+    twitchGql(`{ user(login:"${safe}") { broadcastBadges { imageURL(size: NORMAL) setID version title } } }`),
+    twitchGql('{ badges { imageURL(size: NORMAL) setID version title } }'),
+  ])
+  let changed = false
+  if (chan.status === 'fulfilled') {
+    const rows = chan.value?.data?.user?.broadcastBadges
+    if (mergeBadgeRows(`${channelLogin}:`, rows)) changed = true
+    if (rows?.length) rebuildChannelBadgeVersions(channelLogin)
+  }
+  if (glob.status === 'fulfilled' && mergeBadgeRows('', glob.value?.data?.badges)) changed = true
+  // repaint just that channel's rows; the in-place patch also fills in titles
+  if (changed) scheduleBadgeSave()
+  if (changed && typeof updateNativeBadgesInPlace === 'function') updateNativeBadgesInPlace(channelLogin)
+}
+
+const badgeRefetcher = createBadgeRefetcher({ refetch: refetchBadgeSet })
 
 function findNearestChannelBadgeVersion(channel, name, version) {
   const versions = channelBadgeVersions.get(`${channel}:${name}`)
@@ -2335,6 +2722,22 @@ function gqlProxy(operation, variables, opts) {
   })
 }
 
+// content.js (native twitch rows, same isolated world) draws the badges of the chat history it backfills
+// from these: it asks for a url, and hears when more sets have landed.
+try {
+  window.__hsBadgeKit = {
+    urlFor: (channel, name, version) => resolveBadgeImageUrl(false, channel, name, version),
+    titleFor: resolveBadgeTitle,
+    // the sets are otherwise fetched only when the overlay mounts; native chat asks for them itself
+    load: (channel) => Promise.allSettled([fetchGlobalBadges(), fetchChannelBadges(channel)]),
+  }
+} catch (_) {}
+function announceBadges() {
+  try {
+    window.dispatchEvent(new Event('hs-badges-loaded'))
+  } catch (_) {}
+}
+
 async function fetchGlobalBadges() {
   if (globalBadgesFetched) return
   globalBadgesFetched = true
@@ -2343,7 +2746,7 @@ async function fetchGlobalBadges() {
     // pick up global badges too — direct fetch to gql.twitch.tv from kick.com
     // origin fails silently (CORS/Origin headers), leaving moderator/vip/
     // broadcaster/premium badges as text-only "MOD" / "VIP" / "LIVE" chips.
-    const data = await twitchGql('{ badges { imageURL(size: NORMAL) setID version } }')
+    const data = await twitchGql('{ badges { imageURL(size: NORMAL) setID version title } }')
     const badges = data?.data?.badges
     if (!badges) {
       globalBadgesFetched = false
@@ -2351,12 +2754,15 @@ async function fetchGlobalBadges() {
     }
     for (const b of badges) {
       twitchBadgeUrls.set(`${b.setID}/${b.version}`, b.imageURL)
+      if (b.title) twitchBadgeTitles.set(`${b.setID}/${b.version}`, b.title)
     }
     log('Loaded global badges:', twitchBadgeUrls.size)
+    scheduleBadgeSave()
     // Patch live rows in-place instead of bumping epoch + full rebuild.
     // updateNativeBadgesInPlace upgrades text-fallback spans to imgs without
     // tearing down any row, so avatars/emotes never reload = no flash.
     if (typeof updateNativeBadgesInPlace === 'function') updateNativeBadgesInPlace(null)
+    announceBadges()
   } catch (e) {
     globalBadgesFetched = false
     log('Failed to fetch global badges:', e.message)
@@ -3076,7 +3482,7 @@ async function fetchPoll(channelLogin) {
     // 2. Check persistent storage (survives reloads, no 15s TTL)
     //    activePoll is persisted-query-only — no public GQL query exists
     try {
-      const stored = await chrome.storage.local.get('hs_active_poll')
+      const stored = await browser.storage.local.get('hs_active_poll')
       const entry = stored?.hs_active_poll
       if (entry?.poll && entry.channelId === _twitchChannelId) {
         const poll = _refreshPollTiming(entry.poll)
@@ -3214,7 +3620,7 @@ function renderPoll(poll, channelId, isMod) {
   // Total votes
   const meta = document.createElement('div')
   meta.className = 'hs-mc-poll-meta'
-  meta.textContent = `${totalVotes} vote${totalVotes !== 1 ? 's' : ''}`
+  meta.textContent = t(totalVotes === 1 ? 'mc_twapi_votes_one' : 'mc_twapi_votes_many', [String(totalVotes)])
   section.appendChild(meta)
 
   // Choices
@@ -3270,7 +3676,7 @@ function renderPoll(poll, channelId, isMod) {
       voteBtn.className = 'hs-mc-poll-vote-btn'
       voteBtn.dataset.pollId = poll.id
       voteBtn.dataset.choiceId = choice.id
-      voteBtn.textContent = 'vote'
+      voteBtn.textContent = t('mc_twapi_vote')
       row.appendChild(voteBtn)
     }
 
@@ -3375,7 +3781,7 @@ function optimisticPollVoteUpdate(pollSection, choiceId) {
   }
 
   const total = entries.reduce((s, v) => s + v.votes, 0) || 1
-  if (metaEl) metaEl.textContent = `${total} vote${total !== 1 ? 's' : ''}`
+  if (metaEl) metaEl.textContent = t(total === 1 ? 'mc_twapi_votes_one' : 'mc_twapi_votes_many', [String(total)])
 
   for (const { choice, votes, pctEl, nameEl, voteBtn, isTarget } of entries) {
     const pct = Math.round((votes / total) * 100)
@@ -3410,7 +3816,7 @@ function attachPollHandlers() {
         btn.textContent = '!'
         btn.title = result.error
         setTimeout(() => {
-          btn.textContent = 'vote'
+          btn.textContent = t('mc_twapi_vote')
           btn.disabled = false
           btn.title = ''
         }, 2000)
@@ -3477,7 +3883,7 @@ function attachPollHandlers() {
       const createWrap = btn.closest('.hs-mc-poll-create')
       const channelId = createWrap?.dataset.channelId
       if (!channelId) {
-        btn.textContent = 'no channel'
+        btn.textContent = t('mc_twapi_no_channel')
         return
       }
       const form = btn.closest('.hs-mc-poll-create-form')
@@ -3585,7 +3991,7 @@ async function fetchChannelBadges(channelLogin) {
   try {
     // Fetch channel badges (GQL broadcastBadges) + FFZ in parallel
     const [gqlResp, ffzResp] = await Promise.allSettled([
-      twitchGql(`{ user(login:"${safe}") { broadcastBadges { imageURL(size: NORMAL) setID version } } }`),
+      twitchGql(`{ user(login:"${safe}") { broadcastBadges { imageURL(size: NORMAL) setID version title } } }`),
       fetch(`https://api.frankerfacez.com/v1/room/${safe}`, { credentials: 'omit', signal: AbortSignal.timeout(5000) }),
     ])
 
@@ -3597,6 +4003,7 @@ async function fetchChannelBadges(channelLogin) {
         for (const b of badges) {
           if (b.imageURL) {
             twitchBadgeUrls.set(`${channelLogin}:${b.setID}/${b.version}`, b.imageURL)
+            if (b.title) twitchBadgeTitles.set(`${channelLogin}:${b.setID}/${b.version}`, b.title)
             populated = true
           }
           const v = parseInt(b.version, 10)
@@ -3648,6 +4055,9 @@ async function fetchChannelBadges(channelLogin) {
         for (const key of twitchBadgeUrls.keys()) {
           if (key.startsWith(`${oldest}:`)) twitchBadgeUrls.delete(key)
         }
+        for (const key of twitchBadgeTitles.keys()) {
+          if (key.startsWith(`${oldest}:`)) twitchBadgeTitles.delete(key)
+        }
         for (const key of ffzBadgeKeys) {
           if (key.startsWith(`${oldest}:`)) ffzBadgeKeys.delete(key)
         }
@@ -3656,10 +4066,12 @@ async function fetchChannelBadges(channelLogin) {
         }
       }
       log('Loaded channel badges for', channelLogin)
+      scheduleBadgeSave()
       // Patch rows for this channel in-place: no epoch bump, no full rebuild,
       // no image-reload flash. Other tabs are invalidated via _dropAllTabCaches
       // inside updateNativeBadgesInPlace so they rebuild fresh on next switch.
       if (typeof updateNativeBadgesInPlace === 'function') updateNativeBadgesInPlace(channelLogin)
+      announceBadges()
     } else {
       // No data populated — schedule retry after backoff
       if (badgesFailedAt.size >= BADGES_FAILED_MAX) {
@@ -3792,34 +4204,81 @@ function resolveBadgeImageUrl(isKick, channel, name, version) {
     const nearest = findNearestChannelBadgeVersion(channel, name, version)
     if (nearest != null) url = twitchBadgeUrls.get(`${channel}:${name}/${nearest}`)
   }
-  return url || twitchBadgeUrls.get(`${name}/${version}`) || twitchBadgeUrls.get(`${name}/1`) || null
+  // No `${name}/1` last resort: twitch's version 1 is a different badge from
+  // the one asked for (a tier, an event). Unknown renders nothing and refetches.
+  return url || twitchBadgeUrls.get(`${name}/${version}`) || null
+}
+
+// helix title for the exact set/version (channel's own wins over global).
+function resolveBadgeTitle(channel, name, version) {
+  return (
+    (channel && twitchBadgeTitles.get(`${channel}:${name}/${version}`)) ||
+    twitchBadgeTitles.get(`${name}/${version}`) ||
+    null
+  )
+}
+
+// A twitch badge the loaded sets cannot place: queue one refetch. Only once both
+// sets have landed — before that every badge "misses" and the normal fetches
+// are already on their way.
+function noteBadgeMiss(channel, name, version) {
+  if (!channel || !globalBadgesFetched || !badgesFetchedChannels.has(channel)) return
+  badgeRefetcher.note(channel, `${name}/${version}`)
+}
+
+// The badges a row carries are a "name/version,name/version" string on the wire,
+// but a persisted or re-tapped row can hold an array, a Set or a list of
+// {setID, version} objects. One of those reaching renderBadges threw
+// ".split is not a function" out of renderMessages, which aborted the whole
+// panel mount (the popout stayed hidden at opacity 0). Take every shape; a
+// shape it cannot read draws no badges instead of no panel.
+function badgesToString(b) {
+  if (!b) return ''
+  if (typeof b === 'string') return b
+  const list = Array.isArray(b) ? b : b instanceof Set ? [...b] : null
+  if (!list) return ''
+  return list
+    .map((x) =>
+      typeof x === 'string' ? x : x && (x.setID || x.name) ? `${x.setID || x.name}/${x.version ?? '1'}` : '',
+    )
+    .filter(Boolean)
+    .join(',')
 }
 
 function renderBadges(badgesStr, channel, platform) {
+  badgesStr = badgesToString(badgesStr)
   if (!badgesStr) return ''
   const isKick = platform === 'kick'
   return badgesStr
     .split(',')
     .map((badge) => {
       const [name, version] = badge.split('/')
-      const url = resolveBadgeImageUrl(isKick, channel, name, version)
+      // Text mode skips the image path entirely — no url lookup, no request.
+      // _patchBadgesInRoot (cosmetics.js) is gated on the same flag, so the
+      // late badge-fetch retro-paint can't swap these chips back to images
+      // behind the setting's back.
+      const url = textBadgesEnabled ? null : resolveBadgeImageUrl(isKick, channel, name, version)
+      if (!url && !isKick && !textBadgesEnabled) noteBadgeMiss(channel, name, version)
       if (url) {
         // Semantic bg so the slot shows the badge color even before/without the
         // image (FFZ = padded chip for a transparent icon; native = bg behind).
         const isFFZ = channel && ffzBadgeKeys.has(`${channel}:${name}`)
         const bgStyle = badgeBgStyle(name, isFFZ)
-        const label = BADGE_STYLES[name]?.label || name
+        const label = (!isKick && resolveBadgeTitle(channel, name, version)) || BADGE_STYLES[name]?.label || name
         // NOT loading="lazy": badges are 18px and always at the row start next
         // to visible text. When the async channel-badge fetch lands and the
         // retro-paint (_patchBadgesInRoot) swaps the green text fallback for
         // this img, a lazy img wouldn't paint until the next reflow — so the
         // mod/vip/sub badge vanished until a new message or channel switch.
-        return `<img class="hs-mc-badge-img" data-badge="${escapeHtml(name)}/${escapeHtml(version)}" src="${escapeHtml(safeUrl(url) || '')}" alt="${escapeHtml(name)}" title="${escapeHtml(label)}" decoding="async" width="18" height="18" style="width:18px;height:18px;${bgStyle}">`
+        return `<img class="hs-mc-badge-img" data-badge="${escapeHtml(name)}/${escapeHtml(version)}" src="${escapeHtml(safeUrl(url) || '')}" alt="${escapeHtml(label)}" title="${escapeHtml(label)}" decoding="async" width="18" height="18" style="width:18px;height:18px;${bgStyle}">`
       }
-      // Text fallback
+      // Text chip — the deliberate `textBadges` render, and the fallback when a
+      // badge has no image url yet.
       const style = BADGE_STYLES[name]
       if (!style) return ''
-      return `<span class="hs-mc-badge" data-badge="${escapeHtml(name)}/${escapeHtml(version)}" style="background:${style.bg};color:${style.fg}" title="${escapeHtml(style.label)}">${style.label}</span>`
+      const text = badgeChipText(name)
+      if (!text) return ''
+      return `<span class="hs-mc-badge" data-badge="${escapeHtml(name)}/${escapeHtml(version)}" style="background:${style.bg};color:${style.fg}" title="${escapeHtml(style.label)}">${escapeHtml(text)}</span>`
     })
     .join('')
 }
@@ -3831,18 +4290,19 @@ function renderThirdPartyBadges(userId) {
   // updateThirdPartyBadgesInPlace dedup against rows already carrying the badge,
   // so a late bulk-map arrival patches cold rows in place instead of forcing a
   // full rebuild (the "loads then shifts" flash on channel switch).
-  const bttv = getSetting('bttvBadges') ? mcBttvBadgeMap.get(userId) : null
+  const thirdParty = getSetting('thirdPartyBadges')
+  const bttv = thirdParty ? mcBttvBadgeMap.get(userId) : null
   if (bttv) {
     html += `<img class="hs-mc-badge-img hs-mc-bttv-badge" src="${escapeHtml(safeUrl(bttv.url) || '')}" alt="${escapeHtml(bttv.description)}" title="${escapeHtml(bttv.description)}" decoding="async" width="18" height="18" style="width:18px;height:18px;">`
   }
-  const ffzList = getSetting('ffzBadges') ? mcFfzBadgeMap.get(userId) : null
+  const ffzList = thirdParty ? mcFfzBadgeMap.get(userId) : null
   if (ffzList) {
     for (const b of ffzList) {
       const safeColor = /^#[0-9a-fA-F]{3,8}$/.test(b.color) ? b.color : ''
-      html += `<img class="hs-mc-badge-img hs-mc-ffz-badge" src="${escapeHtml(safeUrl(b.url) || '')}" alt="${escapeHtml(b.title)}" title="${escapeHtml(b.title)}" decoding="async" width="18" height="18" style="width:18px;height:18px;${safeColor ? `background:${safeColor};` : ''}">`
+      html += `<img class="hs-mc-badge-img hs-mc-ffz-badge" src="${escapeHtml(safeUrl(b.url) || '')}" alt="${escapeHtml(b.title)}" title="${escapeHtml(b.title)}" decoding="async" width="18" height="18" style="width:18px;height:18px;${safeColor ? `background:${escapeHtml(safeColor)};` : ''}">`
     }
   }
-  const chat = getSetting('chatterinoBadges') ? mcChatterinoBadgeMap.get(userId) : null
+  const chat = thirdParty ? mcChatterinoBadgeMap.get(userId)?.at(-1) : null
   if (chat) {
     html += `<img class="hs-mc-badge-img hs-mc-chatterino-badge" src="${escapeHtml(safeUrl(chat.url) || '')}" alt="Chatterino" title="${escapeHtml(chat.tooltip || 'Chatterino')}" decoding="async" width="18" height="18" style="width:18px;height:18px;">`
   }
@@ -3874,7 +4334,18 @@ function renderThirdPartyBadges(userId) {
 const _followageCache = new Map() // "user:channel" → { result, ts }
 const FOLLOWAGE_CACHE_TTL = 300000 // 5min
 
-async function lookupFollowage(username, channelLogin) {
+// Direct-GQL followage — the fallback path for a `POST /api/card` response
+// whose `followage` part came back degraded (Twitch integrity-gated the
+// follow field for the server's own IP; its nulls are "couldn't see", not
+// "not following"). Rides the viewer's OWN session integrity via the
+// in-page GQL proxy instead, so it still resolves. /api/card already covers
+// the non-degraded case server-side (server/routes/card.ts's
+// resolveCardFollowage) — this is the one request card-fetch's degraded
+// check kicks off, not a general-purpose followage lookup anymore (the old
+// standalone `/api/twitch/followage`-then-fallback `lookupFollowage` this
+// replaced is gone; every card surface fetches followage as part of the one
+// `/api/card` round trip now).
+async function gqlFollowageDirect(username, channelLogin) {
   if (!username || !channelLogin) return null
   if (username.toLowerCase() === channelLogin.toLowerCase()) return null
   const key = `${username.toLowerCase()}:${channelLogin.toLowerCase()}`
@@ -3882,28 +4353,6 @@ async function lookupFollowage(username, channelLogin) {
   if (cached && Date.now() - cached.ts < FOLLOWAGE_CACHE_TTL) return cached.result
 
   try {
-    // Try server-side API first (works everywhere, including multichat on heatsync.org)
-    const resp =
-      typeof apiFetch === 'function'
-        ? await apiFetch(
-            `/api/twitch/followage?user=${encodeURIComponent(username)}&channel=${encodeURIComponent(channelLogin)}`,
-          )
-        : null
-    if (resp?.ok && resp.data) {
-      const d = resp.data
-      const result = {
-        followedAt: d.followedAt || null,
-        followerCount: d.followerCount ?? null,
-        channelFollowedAt: d.channelFollowedAt || null,
-      }
-      _followageCache.set(key, { result, ts: Date.now() })
-      if (_followageCache.size > 500) {
-        _followageCache.delete(_followageCache.keys().next().value)
-      }
-      return result
-    }
-
-    // Fallback: direct GQL proxy (works on Twitch tabs with MAIN world script)
     const safeUser = username.replace(/[^a-z0-9_]/gi, '')
     const safeChan = channelLogin.replace(/[^a-z0-9_]/gi, '')
     const data = await gqlProxy(null, null, {
@@ -3997,7 +4446,7 @@ async function _resolveTwitchChannelIdInner(channelLogin) {
     // Relay via the background SW — a direct heatsync.org fetch from this
     // ISOLATED content-script context gets 503'd by the CF edge bot-check
     // (the origin never sees it), so the fallback would always dead-end.
-    const resp = await chrome.runtime.sendMessage({ type: 'resolve_twitch_id', login: lc })
+    const resp = await browser.runtime.sendMessage({ type: 'resolve_twitch_id', login: lc })
     const id = resp?.id
     if (id && /^\d+$/.test(String(id))) {
       _cacheChannelId(String(id))
@@ -4036,8 +4485,8 @@ async function _modActionMutationInner(searchTerm, resultField, rawQuery, variab
       args: { searchTerm, resultField, rawQuery, variables },
     })
     if (resp?.ok && resp.result) return resp.result
-    if (resp?.error === 'no_twitch_tab') return { error: 'open a twitch.tv tab to use mod actions' }
-    if (resp?.error === 'stale_twitch_tab') return { error: 'refresh your twitch.tv tab (extension was updated)' }
+    if (resp?.error === 'no_twitch_tab') return { error: t('mc_mod_no_twitch_tab') }
+    if (resp?.error === 'stale_twitch_tab') return { error: t('mc_mod_stale_twitch_tab') }
     return { error: resp?.error || 'relay failed' }
   }
   const apolloResult = await apolloMutate({ searchTerm, variables, resultField, rawQuery })

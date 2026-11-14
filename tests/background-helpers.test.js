@@ -30,8 +30,9 @@
 
 import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
+import { bgSource } from './bg-src.js'
 
-const BG_SRC = readFileSync(new URL('../chrome/background.js', import.meta.url), 'utf8')
+const BG_SRC = bgSource()
 
 /** Extract `function name(...) { ... }` up to its closing brace on its own line. */
 function extractFn(name) {
@@ -245,6 +246,13 @@ describe('bgIrcParseLine — reply-parent-user-id threading (background.js live 
     const msg = bgIrcParseLine(raw, 'chan')
     expect(msg.replyTo.userId).toBe('')
   })
+  test('own reply from another client, parent given by login only → still a reply', () => {
+    const raw =
+      '@display-name=mellen9999;user-id=1;id=own1;reply-parent-msg-id=85aef2f5-0000;reply-parent-user-login=wollip :mellen9999!mellen9999@mellen9999.tmi.twitch.tv PRIVMSG #nl_kripp :@wollip test sry'
+    const msg = bgIrcParseLine(raw, 'nl_kripp')
+    expect(msg.replyTo?.user).toBe('wollip')
+    expect(msg.replyTo.id).toBe('85aef2f5-0000')
+  })
   test('no reply tags at all → replyTo is null', () => {
     const raw = '@display-name=Bob :bob!bob@bob.tmi.twitch.tv PRIVMSG #chan :hi'
     expect(bgIrcParseLine(raw, 'chan').replyTo).toBeNull()
@@ -256,8 +264,8 @@ describe('bgIrcParseLine — reply-parent-user-id threading (background.js live 
 // background.js's own duplicate of sanitizeUiSettings/UI_SYNC_BLOCKLIST/
 // DEVICE_LOCAL_KEYS/OVERFLOW_MIRROR_KEYS/LARGE_KEY_SYNC_MAX (kept in parity
 // with src/lib/utils.js by build.js's checkUiSyncBlocklistParity guard) feeds
-// this splitter, used by the ui-state:update / settings:patch handlers to
-// route large blocklist prefs (keywordHighlights/chatFilterRules) to their
+// this splitter, used by the ui-state:update handler to
+// route large blocklist prefs (chatFilterRules) to their
 // chrome.storage.local overflow keys instead of chrome.storage.sync.
 
 const splitIncomingUiStateSrc =
@@ -273,14 +281,13 @@ describe('splitIncomingUiState', () => {
     expect(overflow).toEqual({})
   })
 
-  test('keywordHighlights/chatFilterRules go to `overflow` under their mirror key names', () => {
+  test('chatFilterRules goes to `overflow` under its mirror key name', () => {
     const { sync, overflow } = splitIncomingUiState({
       zebra: true,
-      keywordHighlights: 'foo\nbar',
       chatFilterRules: '[]',
     })
     expect(sync).toEqual({ zebra: true })
-    expect(overflow).toEqual({ keyword_highlights: 'foo\nbar', chat_filter_rules: '[]' })
+    expect(overflow).toEqual({ chat_filter_rules: '[]' })
   })
 
   test('platformFilters (device-local) is dropped entirely — not in sync or overflow', () => {
@@ -290,7 +297,7 @@ describe('splitIncomingUiState', () => {
   })
 
   test('oversized large-key value is dropped, not adopted', () => {
-    const { overflow } = splitIncomingUiState({ keywordHighlights: 'x'.repeat(32769) })
+    const { overflow } = splitIncomingUiState({ chatFilterRules: 'x'.repeat(32769) })
     expect(overflow).toEqual({})
   })
 
@@ -301,14 +308,14 @@ describe('splitIncomingUiState', () => {
 
   test('non-string large-key values are dropped — overflow bucket is string-only', () => {
     const { overflow } = splitIncomingUiState({
-      keywordHighlights: { __proto__: { polluted: true }, sneaky: 'object' },
+      platformFilters: { __proto__: { polluted: true }, sneaky: 'object' },
       chatFilterRules: ['not', 'a', 'string'],
     })
     expect(overflow).toEqual({})
   })
 
   test('numeric/boolean large-key values are dropped too', () => {
-    const { overflow } = splitIncomingUiState({ keywordHighlights: 42, chatFilterRules: true })
+    const { overflow } = splitIncomingUiState({ chatFilterRules: true })
     expect(overflow).toEqual({})
   })
 
@@ -969,7 +976,7 @@ describe('bgIrcSafeChannel (JOIN/PART interpolate raw IRC lines)', () => {
 // ── emote CDN allowlist parity: background.js ↔ early-inject-main.js ─────────
 
 describe('EMOTE_CDN allowlist parity across worlds', () => {
-  const EARLY_SRC = readFileSync(new URL('../chrome/early-inject-main.js', import.meta.url), 'utf8')
+  const EARLY_SRC = readFileSync(new URL('../src/content/early-inject-main.js', import.meta.url), 'utf8')
   const earlyRe = EARLY_SRC.match(/const EMOTE_CDN_RE\s*=\s*\n?\s*(\/\^https[^\n]*\/)/)
   const bgRe = BG_SRC.match(/const EMOTE_CDN_PATTERN\s*=\s*\n?\s*(\/\^https[^\n]*\/)/)
 
@@ -1087,5 +1094,198 @@ describe('getCachedHealth — stale kill-switch fails open', () => {
     }
     const h = makeHealthHarness(stored)
     expect(await h.getCachedHealth()).toEqual(stored.hs_health)
+  })
+})
+
+// ── Surface check-in buffer ─────────────────────────────────────────────────
+//
+// The names that ride the health poll so the server can tell whether a live
+// install ever opens the social surface. These live in storage rather than
+// memory because an MV3 service worker is evicted freely, and undercounting
+// here would understate exactly the surface being measured — so the buffer's
+// round-trip is pinned rather than assumed.
+
+const surfaceSrcs = [
+  extractConstLine('SURFACE_NAMES'),
+  extractConstLine('SURFACE_KEY'),
+  `async ${extractFn('noteSurfaceOpen')}`,
+  `async ${extractFn('takePendingSurfaces')}`,
+  `async ${extractFn('clearPendingSurfaces')}`,
+].join('\n')
+
+function makeSurfaceHarness(initial = {}) {
+  const store = { ...initial }
+  const browser = {
+    storage: {
+      local: {
+        get: async (keys) => {
+          const out = {}
+          for (const k of keys) if (k in store) out[k] = store[k]
+          return out
+        },
+        set: async (obj) => Object.assign(store, obj),
+        remove: async (k) => {
+          delete store[k]
+        },
+      },
+    },
+  }
+  const api = new Function(
+    'browser',
+    `${surfaceSrcs}\nreturn { noteSurfaceOpen, takePendingSurfaces, clearPendingSurfaces, SURFACE_KEY }`,
+  )(browser)
+  return { ...api, store }
+}
+
+describe('surface check-in buffer', () => {
+  test('a noted surface survives to the next poll', async () => {
+    const h = makeSurfaceHarness()
+    await h.noteSurfaceOpen('feed')
+    expect(await h.takePendingSurfaces()).toEqual(['feed'])
+  })
+
+  test('the same surface twice is stored once', async () => {
+    const h = makeSurfaceHarness()
+    await h.noteSurfaceOpen('feed')
+    await h.noteSurfaceOpen('feed')
+    expect(await h.takePendingSurfaces()).toEqual(['feed'])
+  })
+
+  test('a name off the allowlist is never stored', async () => {
+    const h = makeSurfaceHarness()
+    await h.noteSurfaceOpen('evil')
+    await h.noteSurfaceOpen('')
+    expect(await h.takePendingSurfaces()).toEqual([])
+    expect(h.store[h.SURFACE_KEY]).toBeUndefined()
+  })
+
+  test('clearing removes only what was sent', async () => {
+    const h = makeSurfaceHarness()
+    await h.noteSurfaceOpen('feed')
+    const sent = await h.takePendingSurfaces()
+    // opened while the request was in flight
+    await h.noteSurfaceOpen('dm')
+    await h.clearPendingSurfaces(sent)
+    expect(await h.takePendingSurfaces()).toEqual(['dm'])
+  })
+
+  test('clearing the last name drops the key entirely', async () => {
+    const h = makeSurfaceHarness()
+    await h.noteSurfaceOpen('feed')
+    await h.clearPendingSurfaces(['feed'])
+    expect(h.store[h.SURFACE_KEY]).toBeUndefined()
+    expect(await h.takePendingSurfaces()).toEqual([])
+  })
+
+  test('junk already in storage is filtered on the way out', async () => {
+    const h = makeSurfaceHarness({ hs_surfaces_pending: ['feed', 'evil', 42] })
+    expect(await h.takePendingSurfaces()).toEqual(['feed'])
+  })
+
+  test('a corrupted value reads as empty instead of throwing', async () => {
+    const h = makeSurfaceHarness({ hs_surfaces_pending: 'not-an-array' })
+    expect(await h.takePendingSurfaces()).toEqual([])
+  })
+})
+
+// ── resolve7TVEmoteSet — 7TV v3 "missing emote_set" API change ─────────────
+//
+// SevenTV/Extension#1253: GET /v3/users/:platform/:id can now return
+// emote_set: null with emote_set_id: null (genuinely no active set) or
+// emote_set: null with emote_set_id: "<id>" still present (has a set, must
+// fetch /v3/emote-sets/:id separately). Every background.js call site that
+// reads a user-lookup response's emote_set goes through this helper so the
+// fallback is tested once here instead of three times against live fetch.
+
+const resolveSetSrc = `async ${extractFn('resolve7TVEmoteSet')}`
+
+function makeResolveSetHarness(fetchWithTimeout) {
+  return new Function('fetchWithTimeout', `${resolveSetSrc}\nreturn { resolve7TVEmoteSet }`)(fetchWithTimeout)
+}
+
+describe('resolve7TVEmoteSet', () => {
+  test('inline emote_set present → returned as-is, no follow-up fetch', async () => {
+    const fetchWithTimeout = () => {
+      throw new Error('should not fetch when emote_set is inline')
+    }
+    const h = makeResolveSetHarness(fetchWithTimeout)
+    const set = { id: 'inline-set', emotes: [] }
+    expect(await h.resolve7TVEmoteSet({ emote_set: set, emote_set_id: 'inline-set' })).toBe(set)
+  })
+
+  test('emote_set null + emote_set_id null → null (genuinely no active set)', async () => {
+    const fetchWithTimeout = () => {
+      throw new Error('should not fetch when emote_set_id is also null')
+    }
+    const h = makeResolveSetHarness(fetchWithTimeout)
+    expect(await h.resolve7TVEmoteSet({ emote_set: null, emote_set_id: null })).toBeNull()
+    expect(await h.resolve7TVEmoteSet({})).toBeNull()
+  })
+
+  test('emote_set null + emote_set_id set → fetches /v3/emote-sets/:id and returns it', async () => {
+    const calls = []
+    const fetchWithTimeout = async (url) => {
+      calls.push(url)
+      return { ok: true, json: async () => ({ id: 'set-abc', emotes: [{ id: 'e1', name: 'PogU' }] }) }
+    }
+    const h = makeResolveSetHarness(fetchWithTimeout)
+    const set = await h.resolve7TVEmoteSet({ emote_set: null, emote_set_id: 'set-abc' })
+    expect(calls).toEqual(['https://7tv.io/v3/emote-sets/set-abc'])
+    expect(set).toEqual({ id: 'set-abc', emotes: [{ id: 'e1', name: 'PogU' }] })
+  })
+
+  test('a failed follow-up fetch throws (caller treats it as the same transient failure a failed user-lookup already is)', async () => {
+    const fetchWithTimeout = async () => ({ ok: false, status: 503, body: { cancel: () => {} } })
+    const h = makeResolveSetHarness(fetchWithTimeout)
+    await expect(h.resolve7TVEmoteSet({ emote_set: null, emote_set_id: 'set-abc' })).rejects.toThrow()
+  })
+})
+
+// ── isValidSyncedChannel (multichat:config from another device) ─────────────
+
+const { isValidSyncedChannel } = new Function(`${extractFn('isValidSyncedChannel')}\nreturn { isValidSyncedChannel }`)()
+
+describe('isValidSyncedChannel', () => {
+  test('accepts what the website syncs: a bare youtube handle beside twitch + kick', () => {
+    expect(
+      isValidSyncedChannel({ id: 't', twitch: 'drdisrespect', kick: 'drdisrespect', youtube: 'drdisrespect' }),
+    ).toBe(true)
+    expect(isValidSyncedChannel({ id: 't', youtube: 'lofigirl' })).toBe(true)
+    expect(isValidSyncedChannel({ id: 't', youtube: '@lofigirl' })).toBe(true)
+  })
+  test('still accepts a pasted youtube url', () => {
+    expect(isValidSyncedChannel({ id: 't', youtube: 'https://www.youtube.com/@lofigirl/live' })).toBe(true)
+  })
+  test('rejects line breaks and non-youtube urls', () => {
+    expect(isValidSyncedChannel({ id: 't', youtube: 'lofigirl\r\nJOIN #x' })).toBe(false)
+    expect(isValidSyncedChannel({ id: 't', youtube: 'https://evil.example/x' })).toBe(false)
+    expect(isValidSyncedChannel({ id: 't', twitch: 'bad name' })).toBe(false)
+    expect(isValidSyncedChannel({ id: 't', kick: 'x\ny' })).toBe(false)
+    expect(isValidSyncedChannel(null)).toBe(false)
+  })
+})
+
+describe('isStaleConfigRev (M9: a late stale read never lays old tabs back)', () => {
+  const isStaleConfigRev = new Function(`${extractFn('isStaleConfigRev')}; return isStaleConfigRev`)()
+  test('an older rev than the one applied is dropped; equal or newer applies', () => {
+    const seen = { user: null, rev: -1 }
+    expect(isStaleConfigRev(seen, 'a', 5)).toBe(false)
+    expect(isStaleConfigRev(seen, 'a', 4)).toBe(true)
+    expect(isStaleConfigRev(seen, 'a', 5)).toBe(false)
+    expect(isStaleConfigRev(seen, 'a', 6)).toBe(false)
+    expect(isStaleConfigRev(seen, 'a', 5)).toBe(true)
+  })
+  test('no stamp always applies and leaves the mark alone', () => {
+    const seen = { user: 'a', rev: 9 }
+    expect(isStaleConfigRev(seen, 'a', undefined)).toBe(false)
+    expect(seen.rev).toBe(9)
+  })
+  test('another account starts fresh', () => {
+    const seen = { user: 'a', rev: 9 }
+    expect(isStaleConfigRev(seen, 'b', 1)).toBe(false)
+    expect(seen).toEqual({ user: 'b', rev: 1 })
+  })
+  test('the config handler gates on it', () => {
+    expect(BG_SRC).toContain('!isStaleConfigRev(mcConfigRevSeen, currentUsername, msg.rev)')
   })
 })

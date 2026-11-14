@@ -43,11 +43,10 @@
  */
 
 import { describe, expect, test } from 'bun:test'
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
 import * as mods from '../src/lib/modifiers.js'
 import { userKey } from '../src/lib/user-key.js'
 import { escapeHtml, outsideTags } from '../src/lib/utils.js'
+import { mainSource } from './main-src.js'
 
 globalThis.escapeHtml = escapeHtml
 // these transforms skip whole <a>…</a> spans via the shared helper
@@ -71,6 +70,12 @@ globalThis.mentionColor = () => '#fff' // shared stub — both processEmotes' fa
 // Deterministic stub — real paintPhaseNow (lib/paint-spec.js) is Date.now()-based,
 // which this file doesn't test (see tests/paint-spec.test.js for that).
 globalThis.paintPhaseNow = () => '1720000000.000s'
+// The real one: it is a pure validator, and the painted-name styles below embed its output.
+// the bundle hands paints.js these as free variables (lib/paint-core.js)
+const paintCore = await import('../src/lib/paint-core.js')
+globalThis.UNDERLAY_NAME_MIN_LUM = paintCore.UNDERLAY_NAME_MIN_LUM
+globalThis.CONTRAST_EPS = paintCore.CONTRAST_EPS
+globalThis.hsNameColourDecl = (await import('../src/multichat/paints.js')).hsNameColourDecl
 
 // ── processEmotes (real import — emotes.js is already ESM-importable) ───────
 const { channelEmoteCaches, emoteCache, processEmotes } = await import('../src/multichat/emotes.js')
@@ -80,7 +85,7 @@ const { channelEmoteCaches, emoteCache, processEmotes } = await import('../src/m
 // it can't be imported directly. Extract the exact source text via markers
 // (same eval-harness pattern as tests/background-helpers.test.js) and run it
 // in an isolated scope with its real free-variable dependencies stubbed.
-const MAIN_SRC = readFileSync(join(import.meta.dir, '..', 'src', 'multichat', 'main.js'), 'utf8')
+const MAIN_SRC = mainSource()
 
 function sliceBetween(startMarker, endMarker) {
   const s = MAIN_SRC.indexOf(startMarker)
@@ -92,7 +97,7 @@ function sliceBetween(startMarker, endMarker) {
 
 const highlightSrc = sliceBetween(
   'function highlightMentionsInHtml(html, platform) {',
-  '\n  // DOM-node twin of highlightHashtagsInHtml',
+  '\n// DOM-node twin of highlightHashtagsInHtml',
 )
 
 const { highlightMentionsInHtml } = new Function(
@@ -100,8 +105,11 @@ const { highlightMentionsInHtml } = new Function(
 )()
 
 globalThis.knownUserIds = new Map()
+// taggedName is its own unit (bare-mention-gating.test.js); identity here
+globalThis.taggedName = (n) => n
 globalThis.userKey = userKey
 globalThis.mcUserCosmetics = new Map()
+globalThis.mcCosmeticsNeedLookup = (uid) => !globalThis.mcUserCosmetics.has(uid)
 globalThis.queueMcCosmeticsLookup = () => {}
 globalThis.getMcPaintStyle = () => null
 // Plus tenure ("+5mo"/"+3y") rides the same mention render site but is a

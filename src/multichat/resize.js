@@ -46,10 +46,32 @@ function getTwitchMaxChatWidth() {
   if (hostPlatform !== 'twitch') return MAX_CHAT_WIDTH
   const vw = window.innerWidth || document.documentElement.clientWidth || 1280
   const tabStrip = tabPosition === 'left' || tabPosition === 'right' ? 90 : 0
-  const floor = chatPosition && chatPosition !== 'right' ? 300 : TWITCH_MIN_MAIN_WIDTH
+  let floor = chatPosition && chatPosition !== 'right' ? 300 : TWITCH_MIN_MAIN_WIDTH
   const navW = typeof _twitchSideNavW === 'number' && _twitchSideNavW > 0 ? _twitchSideNavW : TWITCH_SIDE_NAV_WIDTH
+  // Page zoom shrinks the CSS viewport (1280px at 300% is 426px). A fixed 600px
+  // floor then leaves the chat 10px wide: the page is past twitch's narrow
+  // breakpoint whatever we do, so holding the floor only deletes the chat.
+  // Past that point the player and the chat split what is left.
+  floor = Math.min(floor, Math.floor((vw - navW - tabStrip) / 2))
   const max = vw - navW - floor - tabStrip
   return Math.max(MIN_CHAT_WIDTH, Math.min(MAX_CHAT_WIDTH, max))
+}
+
+// A width the viewport squeezed (zoom, a narrower window) is not a width the
+// user chose. Clamp it, remember what it was, and give it back when the
+// viewport widens again. A drag in between changes chatWidth, which drops the
+// memory. Returns the width to use.
+let _chatWidthSqueezedFrom = 0
+let _chatWidthSqueezedTo = 0
+function fitChatWidth(max) {
+  if (_chatWidthSqueezedFrom && chatWidth === _chatWidthSqueezedTo) chatWidth = _chatWidthSqueezedFrom
+  _chatWidthSqueezedFrom = 0
+  if (chatWidth > max) {
+    _chatWidthSqueezedFrom = chatWidth
+    _chatWidthSqueezedTo = max
+    chatWidth = max
+  }
+  return chatWidth
 }
 
 /**
@@ -66,7 +88,7 @@ function getTwitchMaxChatWidth() {
 // Shared drag-ghost style — identical across the twitch/kick/yt resize
 // handles. One spec to keep in sync (orange tint, 3px left edge, z 99998).
 const buildGhostCss = (rect, w0) =>
-  `position:fixed;top:${rect.top}px;right:0;height:${rect.height}px;width:${w0}px;background:rgba(255,255,255,0.06);border-left:3px solid #fff;pointer-events:none;z-index:99998;will-change:width;`
+  `position:fixed;top:${rect.top}px;right:0;height:${rect.height}px;width:${w0}px;background:#000000;border-left:3px solid #fff;pointer-events:none;z-index:99998;will-change:width;`
 function setupResizeHandle() {
   const rightCol = document.querySelector('.right-column.right-column--beside')
   if (!rightCol || document.getElementById('hs-mc-resize-handle')) return
@@ -188,8 +210,6 @@ function setupResizeHandle() {
 }
 
 function applyChatWidth(cachedRightCol) {
-  // Native chat shown: don't resize the right-column (races native chat layout).
-  if (typeof getSetting === 'function' && getSetting('nativeVisible')) return
   const rightCol = cachedRightCol || document.querySelector('.right-column')
   if (!rightCol) return
   // No-channel pages (/videos, /directory, …) body-mount the panel as a
@@ -197,6 +217,7 @@ function applyChatWidth(cachedRightCol) {
   // it so twilight-main reclaims the width — otherwise users see a 306px
   // gap between page content and the floating chat.
   if (document.body.classList.contains('hs-twitch-no-channel')) {
+    fitChatWidth(MAX_CHAT_WIDTH) // nothing squeezes a fixed overlay: give back any earlier squeeze
     rightCol.style.setProperty('width', '0', 'important')
     rightCol.style.setProperty('min-width', '0', 'important')
     rightCol.style.setProperty('max-width', '0', 'important')
@@ -205,6 +226,7 @@ function applyChatWidth(cachedRightCol) {
   // C button took chat off the right edge — don't restore native width here
   // or the right-column reclaims its 340px and the player snaps back.
   if (chatPosition && chatPosition !== 'right') {
+    fitChatWidth(MAX_CHAT_WIDTH)
     rightCol.style.setProperty('width', '0', 'important')
     rightCol.style.setProperty('min-width', '0', 'important')
     rightCol.style.setProperty('max-width', '0', 'important')
@@ -240,7 +262,7 @@ function applyChatWidth(cachedRightCol) {
   // .channel-root__main below Twitch's narrow-layout threshold and
   // teleport the persistent-player off-screen.
   const tMax = getTwitchMaxChatWidth()
-  if (chatWidth > tMax) chatWidth = tMax
+  fitChatWidth(tMax)
   const isVertical = tabPosition === 'left' || tabPosition === 'right'
   const colWidth = chatWidth + (isVertical ? 90 : 0)
 
@@ -294,7 +316,7 @@ function saveChatHeight() {
 }
 async function loadChatHeight() {
   try {
-    const data = await chrome.storage.local.get(['hs_chat_height'])
+    const data = await browser.storage.local.get(['hs_chat_height'])
     if (data.hs_chat_height) {
       chatHeight = Math.max(MIN_CHAT_HEIGHT, Math.min(getMaxChatHeight(), data.hs_chat_height))
       // Mirror loadChatWidth: push CSS var + reposition the unified handle so
@@ -331,7 +353,7 @@ let _cHandleRetryTimer = null
 let _cHandleRetryCount = 0
 function _armCHandleMountRetry() {
   if (_cHandleRetryTimer || _cHandleRetryCount >= 20) return
-  _cHandleRetryTimer = cleanup.setTimeout(
+  _cHandleRetryTimer = cleanup.setPageTimeout(
     () => {
       _cHandleRetryTimer = null
       _cHandleRetryCount++
@@ -472,7 +494,7 @@ function ensureChatResizeHandle() {
       // and inline-style writes on YT player wrappers thrash IMA SDK.
       ghost = document.createElement('div')
       ghost.id = 'hs-c-resize-ghost'
-      const baseStyle = 'position:fixed;background:rgba(255,255,255,0.06);pointer-events:none;z-index:99997;'
+      const baseStyle = 'position:fixed;background:#000000;pointer-events:none;z-index:99997;'
       if (chatPosition === 'right') {
         ghost.style.cssText =
           baseStyle +
@@ -553,9 +575,9 @@ function ensureChatResizeHandle() {
     // Final commit — single reflow for the player + React tree.
     if (axis === 'x') chatWidth = pendingW
     else chatHeight = pendingH
-    document.documentElement.style.setProperty('--hs-chat-w', `${chatWidth}px`)
-    document.documentElement.style.setProperty('--hs-chat-h', `${chatHeight}px`)
-    applyChatPosition()
+    setRootVar('--hs-chat-w', `${chatWidth}px`)
+    setRootVar('--hs-chat-h', `${chatHeight}px`)
+    applyChatPosition({ settled: true })
     requestAnimationFrame(() => {
       try {
         publishPanelWidth()
@@ -588,10 +610,6 @@ function ensureChatResizeHandle() {
   return handle
 }
 function positionChatResizeHandle() {
-  // Native chat shown: leave the resize handle alone — CSS hides it
-  // (body.hs-native-visible). If we set display:none here during the collapse,
-  // it'd persist as a stale inline style after toggling back to HS mode.
-  if (typeof getSetting === 'function' && getSetting('nativeVisible')) return
   const handle = ensureChatResizeHandle()
   ;['top', 'bottom', 'left', 'right', 'width', 'height'].forEach((p) => {
     handle.style.removeProperty(p)
@@ -710,7 +728,7 @@ function hidePlatformResizeHandles(hide) {
 
 async function loadChatWidth() {
   try {
-    const data = await chrome.storage.local.get(['hs_chat_width'])
+    const data = await browser.storage.local.get(['hs_chat_width'])
     if (data.hs_chat_width) {
       chatWidth = data.hs_chat_width
       // Sync the CSS var driving every chat-position rule + reposition the
@@ -806,7 +824,8 @@ function applyYouTubeChatWidth() {
   // here would un-hide it and render two orange bars.
   // Full freedom — only clamp to viewport so the chat can't escape it.
   const ytMax = Math.max(MIN_CHAT_WIDTH, window.innerWidth - 10)
-  chatWidth = Math.min(ytMax, Math.max(MIN_CHAT_WIDTH, chatWidth))
+  fitChatWidth(ytMax)
+  chatWidth = Math.max(MIN_CHAT_WIDTH, chatWidth)
   secondary.style.setProperty('width', `${chatWidth}px`, 'important')
   secondary.style.setProperty('min-width', `${chatWidth}px`, 'important')
   secondary.style.setProperty('max-width', `${chatWidth}px`, 'important')

@@ -7,6 +7,8 @@
 //   bun scripts/publish.js --chrome-only --publish
 //   bun scripts/publish.js --firefox-only --publish
 //   bun scripts/publish.js --cws-auth                # one-time: mint a CWS_REFRESH_TOKEN
+//   bun scripts/publish.js --sync-summaries --publish   # push _locales summaries to AMO only
+//   bun scripts/publish.js --sync-previews <dir> --publish  # replace AMO screenshots with <dir>/*.png
 //
 // safe by default: without --publish, nothing is ever uploaded — every network
 // call to a store api is skipped and logged instead. --dry-run forces that same
@@ -17,12 +19,13 @@
 
 import { execFileSync } from 'node:child_process'
 import { createHmac } from 'node:crypto'
-import { chmodSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import { homedir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 import { createInterface } from 'node:readline/promises'
 import { fileURLToPath } from 'node:url'
+import { amoFetchWithRetry, amoHealthy } from './lib/amo-retry.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = dirname(__dirname)
@@ -50,6 +53,8 @@ function parseArgs(argv) {
     publish: flags.has('--publish'),
     cwsAuth: flags.has('--cws-auth'),
     setCreds: flags.has('--set-creds'),
+    syncSummaries: flags.has('--sync-summaries'),
+    syncPreviews: value('sync-previews'),
   }
   if (opts.chromeOnly && opts.firefoxOnly) {
     console.error('error: --chrome-only and --firefox-only are mutually exclusive')
@@ -99,10 +104,11 @@ create/edit ${path} (chmod 600) with:
 
 2. chrome web store api
    a. Google Cloud Console -> project -> enable "Chrome Web Store API"
-   b. APIs & Services -> Credentials -> Create Credentials -> OAuth client ID -> type "Desktop app"
+   b. APIs & Services -> Credentials -> Create Credentials -> OAuth client ID -> type "Web application"
+      add http://127.0.0.1:8976 as an Authorized redirect URI
    c. paste Client ID / Client Secret into CWS_CLIENT_ID / CWS_CLIENT_SECRET
    d. bun scripts/publish.js --cws-auth
-      (prints a consent url, paste the code back — writes CWS_REFRESH_TOKEN for you, never printed)
+      (opens the consent flow, catches the redirect on 127.0.0.1:8976 — writes CWS_REFRESH_TOKEN for you, never printed)
 
 3. chmod 600 ${path}
 `)
@@ -203,7 +209,7 @@ async function cwsAuthFlow() {
   const map = parseEnvFile(path) || {}
   if (!map.CWS_CLIENT_ID || !map.CWS_CLIENT_SECRET) {
     console.error(`CWS_CLIENT_ID / CWS_CLIENT_SECRET not found in ${path}`)
-    console.error('create a Google Cloud OAuth client (type "Desktop app") and add both keys first')
+    console.error('create a Google Cloud OAuth client (type "Web application", redirect URI http://127.0.0.1:8976) and add both keys first')
     console.error('see README.md "releasing" for the exact steps')
     process.exit(1)
   }
@@ -319,7 +325,21 @@ function composeReleaseNotes() {
       .trim()
       .split('\n')
       .filter(Boolean)
-    const prevTag = tags[0]
+    // The tag for THIS release may already exist: the repo's own convention is
+    // a `chore: release X` commit tagged and pushed BEFORE publishing, because
+    // the approval notes tell a reviewer to `git checkout v<ver>`. A tag that
+    // points at HEAD would make the range empty and ship the placeholder as the
+    // public release notes, which is what happened on the first release that
+    // followed that order.
+    const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT }).toString().trim()
+    const atHead = (tag) => {
+      try {
+        return execFileSync('git', ['rev-list', '-n', '1', tag], { cwd: ROOT }).toString().trim() === head
+      } catch {
+        return false
+      }
+    }
+    const prevTag = tags.find((t) => !atHead(t))
     if (!prevTag) return placeholder
     const log = execFileSync('git', ['log', `${prevTag}..HEAD`, '--oneline', '--no-merges'], { cwd: ROOT })
       .toString()
@@ -466,12 +486,21 @@ function amoJwt(issuer, secret) {
   return `${head}.${payload}.${sig}`
 }
 
+// Retries 5xx and network errors; 4xx still fails fast. A fresh JWT is minted
+// per attempt because AMO caps them at five minutes and the backoff can outlast
+// that. Every caller below throws on !res.ok, so without this one 503 from a
+// wobbling AMO ends the whole submission — which is exactly what happened on
+// 2026-08-20.
 async function amoRequest(method, url, creds, { body, headers } = {}) {
-  return fetch(url, {
-    method,
-    headers: { Authorization: `JWT ${amoJwt(creds.AMO_JWT_ISSUER, creds.AMO_JWT_SECRET)}`, ...headers },
-    body,
-  })
+  return amoFetchWithRetry(
+    () =>
+      fetch(url, {
+        method,
+        headers: { Authorization: `JWT ${amoJwt(creds.AMO_JWT_ISSUER, creds.AMO_JWT_SECRET)}`, ...headers },
+        body,
+      }),
+    { label: 'firefox', log: console.log },
+  )
 }
 
 async function amoUploadZip(creds, zipPath) {
@@ -536,6 +565,100 @@ async function amoAttachSource(creds, versionId, sourceZipPath) {
   }
 }
 
+// AMO's store-listing "summary" per locale is separate from the extension's
+// own manifest description, set once by hand through AMO's dashboard and
+// never touched again — a stale summary (old "unlimited emotes" pitch, wrong
+// product name) can sit live for months after the real copy moved on. Source
+// of truth for what the product actually says is src/_locales/*/messages.json
+// manifest_description — push it with --sync-summaries after a release that
+// changes the copy (not during one: it shares AMO's write throttle).
+//
+// Chrome's _locales directory names mostly match AMO's locale codes 1:1
+// (ru, uk, ko, pl, fi, hu, sk, cs, el, he, …). The few that don't: Chrome
+// spells regional variants with an underscore (pt_BR), AMO wants a hyphen
+// (pt-BR); AMO's "default" locale is en-US, not bare en.
+const AMO_LOCALE_OVERRIDES = {
+  en: 'en-US',
+  pt_BR: 'pt-BR',
+  pt_PT: 'pt-PT',
+  zh_CN: 'zh-CN',
+  zh_TW: 'zh-TW',
+  no: 'nb-NO',
+  es: 'es-ES',
+  sv: 'sv-SE',
+}
+
+function readLocaleSummaries() {
+  const localesDir = join(ROOT, 'src', '_locales')
+  const summaries = {}
+  for (const dir of readdirSync(localesDir, { withFileTypes: true })) {
+    if (!dir.isDirectory()) continue
+    const msgPath = join(localesDir, dir.name, 'messages.json')
+    if (!existsSync(msgPath)) continue
+    let messages
+    try {
+      messages = JSON.parse(readFileSync(msgPath, 'utf8'))
+    } catch {
+      continue
+    }
+    const desc = messages.manifest_description?.message
+    if (!desc) continue
+    const amoLocale = AMO_LOCALE_OVERRIDES[dir.name] || dir.name.replace('_', '-')
+    summaries[amoLocale] = desc
+  }
+  return summaries
+}
+
+// summary/description are addon-level (not per-version) metadata — PATCH the
+// addon resource directly. Deliberately non-fatal: a listing-copy hiccup
+// must never block the actual version submission that follows it.
+async function amoUpdateLocaleSummaries(creds) {
+  const summaries = readLocaleSummaries()
+  if (!Object.keys(summaries).length) {
+    console.warn('  firefox: no locale summaries found under src/_locales — skipping AMO summary push')
+    return
+  }
+  // AMO accepts only its own locale list, and answers a bad code with one 400
+  // naming it ("The language code \"ar\" is invalid.") — the whole PATCH fails,
+  // so one unsupported _locales dir used to leave every locale stale. Drop what
+  // it names and retry; bounded by the locale count.
+  const skipped = []
+  try {
+    for (let attempt = 0; attempt <= Object.keys(summaries).length; attempt++) {
+      const res = await amoRequest('PATCH', `https://addons.mozilla.org/api/v5/addons/addon/${AMO_SLUG}/`, creds, {
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ summary: summaries }),
+      })
+      if (res.ok) {
+        const count = Object.keys(summaries).length
+        console.log(
+          `  firefox: synced ${count} locale summaries to AMO from src/_locales` +
+            (skipped.length ? ` (amo has no locale for: ${skipped.join(', ')})` : ''),
+        )
+        return
+      }
+      const data = await res.json().catch(() => ({}))
+      const bad = invalidAmoLocales(data).filter((code) => code in summaries)
+      if (res.status !== 400 || !bad.length) throw new Error(`${res.status} ${JSON.stringify(data)}`)
+      for (const code of bad) {
+        delete summaries[code]
+        skipped.push(code)
+      }
+    }
+    throw new Error('gave up after dropping every rejected locale')
+  } catch (e) {
+    console.warn(`  firefox: AMO summary sync failed (non-fatal, listing copy may be stale): ${e.message}`)
+  }
+}
+
+/** Locale codes AMO's 400 body calls invalid. */
+function invalidAmoLocales(body) {
+  const msgs = Array.isArray(body?.summary) ? body.summary : []
+  const out = []
+  for (const m of msgs) for (const hit of String(m).matchAll(/language code "([^"]+)" is invalid/g)) out.push(hit[1])
+  return out
+}
+
 async function doFirefox(zipPath, sourceZipPath, creds, willPublish, ver) {
   if (!existsSync(zipPath)) throw new Error(`missing ${zipPath} — build failed?`)
   if (!existsSync(sourceZipPath)) throw new Error(`missing ${sourceZipPath} — build failed?`)
@@ -546,6 +669,21 @@ async function doFirefox(zipPath, sourceZipPath, creds, willPublish, ver) {
     )
     return { status: 'dry-run' }
   }
+
+  // Ask AMO whether it is up before pushing a 10MB zip at it. Their heartbeat
+  // is the only probe that tracked the 2026-08-20 outage — the addon read API
+  // and the upload endpoint both came back while validation was still down.
+  if (!(await amoHealthy())) {
+    throw new Error(
+      'amo is not healthy (https://addons.mozilla.org/__heartbeat__ is not 200) — ' +
+        'mozilla is having an outage, not us. re-run when it answers 200.',
+    )
+  }
+
+  // no summary sync here: AMO's write throttle (3/min, 10/hour per user) is
+  // shared by addon PATCH and version create, and the summary sync's
+  // drop-a-bad-locale retries burned it before the version could be created.
+  // listing copy goes out on its own: publish.js --sync-summaries
 
   console.log(`  firefox: uploading ${basename(zipPath)} to amo (channel=listed)…`)
   const uuid = await amoUploadZip(creds, zipPath)
@@ -593,12 +731,61 @@ function printSummary(ver, results, willPublish) {
   if (!willPublish) console.log('\nnothing was uploaded — re-run with --publish for a real release')
 }
 
+// Screenshots are addon-level too. Upload the new set first, then delete the
+// old one, so a failure halfway leaves extra shots on the listing, never none.
+// Files go up in name order (01-…, 02-…), which AMO keeps as display order.
+function readPreviewFiles(dir) {
+  if (!existsSync(dir)) throw new Error(`no such dir: ${dir}`)
+  const files = readdirSync(dir)
+    .filter((f) => f.toLowerCase().endsWith('.png'))
+    .sort()
+  if (!files.length) throw new Error(`no .png files in ${dir}`)
+  return files.map((f) => join(dir, f))
+}
+
+async function amoReplacePreviews(creds, files) {
+  const base = `https://addons.mozilla.org/api/v5/addons/addon/${AMO_SLUG}/`
+  const current = await amoRequest('GET', base, creds)
+  if (!current.ok) throw new Error(`firefox: read addon ${current.status}`)
+  const oldIds = ((await current.json()).previews || []).map((p) => p.id)
+  for (const [i, file] of files.entries()) {
+    const form = new FormData()
+    form.append('image', new Blob([readFileSync(file)], { type: 'image/png' }), basename(file))
+    form.append('position', String(i))
+    const res = await amoRequest('POST', `${base}previews/`, creds, { body: form })
+    if (!res.ok) throw new Error(`firefox: upload ${basename(file)} ${res.status} ${await res.text()}`)
+    console.log(`  firefox: uploaded ${basename(file)}`)
+  }
+  for (const id of oldIds) {
+    const res = await amoRequest('DELETE', `${base}previews/${id}/`, creds)
+    if (!res.ok) throw new Error(`firefox: delete old preview ${id} ${res.status}`)
+  }
+  console.log(`  firefox: listing now shows ${files.length} screenshots (${oldIds.length} old removed)`)
+}
+
 // ── main ─────────────────────────────────────────────────────────────────────
 
 async function main() {
   const opts = parseArgs(process.argv.slice(2))
   if (opts.setCreds) return setCredsFlow()
   if (opts.cwsAuth) return cwsAuthFlow()
+  // Listing copy only — no build, no version. Same safe-by-default rule as a
+  // release: without --publish it only says what it would push.
+  if (opts.syncSummaries) {
+    if (!opts.publish || opts.dryRun) {
+      console.log(`[dry-run] would sync ${Object.keys(readLocaleSummaries()).length} AMO locale summaries (pass --publish)`)
+      return
+    }
+    return amoUpdateLocaleSummaries(loadCreds(REQUIRED_KEYS.filter((k) => k.startsWith('AMO_'))))
+  }
+  if (opts.syncPreviews) {
+    const files = readPreviewFiles(opts.syncPreviews)
+    if (!opts.publish || opts.dryRun) {
+      console.log(`[dry-run] would replace AMO screenshots with: ${files.map((f) => basename(f)).join(', ')} (pass --publish)`)
+      return
+    }
+    return amoReplacePreviews(loadCreds(REQUIRED_KEYS.filter((k) => k.startsWith('AMO_'))), files)
+  }
 
   // Only demand the keys for the store(s) actually being published — a
   // chrome-only release must not block on absent AMO keys (and vice versa).

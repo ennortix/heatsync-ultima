@@ -7,6 +7,129 @@ const _onceGuardsSocial = {}
 
 let _autoYtVideoId = null // videoId for this tab's __live_yt_auto__ subscription (cross-tab filter)
 
+// The heatsync-feed half of listenForSocialEvents' dispatch — the events the
+// `feed` subsystem actually owns. Kept as a set so the gate is one lookup and
+// a new feed event has one obvious place to be declared.
+const _FEED_EVENTS = new Set([
+  'new-message',
+  'message-edited',
+  'message-deleted',
+  'message-updated',
+  'heat-updated',
+  'message_moderated',
+  'reaction:added',
+  'reaction:removed',
+  'vote:updated',
+])
+
+// heat:updated → every cached copy of the post. Only numbers are adopted (a
+// string would reach the renderer's innerHTML-adjacent heat formatting).
+function feedApplyHeat(d) {
+  const heat = Number(d?.newHeat)
+  if (!Number.isFinite(heat)) return false
+  const copies = feedCachedCopies(d.messageId)
+  for (const m of copies) {
+    m.heat = heat
+    const max = Number(d.newMaxHeat)
+    if (Number.isFinite(max)) m.max_heat = max
+  }
+  return copies.length > 0
+}
+
+// heat can move many times a second on a hot post: one repaint per beat
+let _feedHeatTimer = null
+function feedHeatRepaintSoon() {
+  if (_feedHeatTimer) return
+  _feedHeatTimer = cleanup.setPageTimeout(() => {
+    _feedHeatTimer = null
+    if (currentTab === 'feed') renderFeed()
+  }, 500)
+}
+
+// A cached post by id: the open thread's OP / replies first, then the feed.
+function feedFindMsg(id) {
+  if (!id) return null
+  if (activeThread?.op?.base36_id === id) return activeThread.op
+  return activeThread?.replies?.find((r) => r.base36_id === id) || feedMessages.find((m) => m.base36_id === id) || null
+}
+
+// Every cached object for a post id. The open thread and the feed list hold
+// separate copies of the same post, so a vote landed on one is invisible to
+// the other until it refetches.
+function feedCachedCopies(id) {
+  if (!id) return []
+  const out = []
+  if (activeThread?.op?.base36_id === id) out.push(activeThread.op)
+  for (const r of activeThread?.replies || []) if (r.base36_id === id) out.push(r)
+  for (const m of feedMessages) if (m.base36_id === id) out.push(m)
+  return out
+}
+
+// The one place a youtube stream gets subscribed. Eight call sites across four
+// modules sent this message raw and only three of them checked the switch, so
+// turning youtube chat off still opened a relay subscription for every saved
+// channel and pulled its emote set — proven live, not read from the source.
+// A gate that every caller has to remember is not a gate; this is the
+// chokepoint, so no future caller can forget it.
+//
+// `emoteChannel` is the bucket the channel's 7TV/BTTV youtube emotes load
+// under. Omit it where the caller never fetched them.
+const _ytHistoryAsked = new Set()
+function ytSubscribe(channelId, url, emoteChannel) {
+  if (gateAtBoot('chat-youtube') === false) return false
+  const emit = (u) => {
+    try {
+      browser.runtime.sendMessage({ type: 'youtube_ws_subscribe', url: u, channelId }).catch(() => {})
+    } catch (_) {}
+  }
+  emit(url)
+  hsYtOriginRoom(channelId, url)
+  if (emoteChannel) {
+    safeSendMessage({ type: 'join_channel', platform: 'youtube', channel: emoteChannel, channelId: url })
+  }
+  // Asking for a stream's chat IS joining it: the tab reads "connecting…" until this settles, and a
+  // youtube-only tab has no twitch/kick join to settle it.
+  trackJoin(channelId === '__live_yt_auto__' ? 'live' : channelId, Promise.resolve())
+  // A premiere has no server feed to backfill from: its rows live in YouTube's own chat frame, which
+  // may have read them before this overlay was listening. Ask it to play them again.
+  try {
+    const pageVid = new URLSearchParams(location.search).get('v')
+    if (pageVid && String(url).includes(pageVid) && !_ytHistoryAsked.has(pageVid)) {
+      _ytHistoryAsked.add(pageVid) // once per video: the watchdog re-subscribes on a timer
+      safeSendMessage({ type: 'youtube_history_request' })
+    }
+  } catch (_) {}
+  // Channel-shaped URLs (/channel/UC…/live, /@handle/live) need a live
+  // videoId lookup the SERVER can no longer do: youtube serves datacenter
+  // IPs a stale non-live page (observed 2026-08-23), so its resolver
+  // dead-ends and the subscribe above silently no-ops. The BG fetches the
+  // page from this browser's residential IP — when it finds a live video,
+  // re-emit with the concrete watch URL (the server keys pollers by
+  // videoId, so the unresolvable first emit is harmless). Every subscribe
+  // path — boot, soft-nav rearm, silence-watchdog rejoin, override apply —
+  // funnels through this chokepoint, and the watchdog's periodic
+  // re-subscribe makes it self-healing: a streamer who goes live
+  // mid-session is picked up on the next rejoin pass.
+  if (/\/(channel\/|@|c\/|user\/)[^/]+\/live\/?$/i.test(url || '')) {
+    try {
+      chrome.runtime
+        .sendMessage({ type: 'yt_resolve_live_video', url })
+        .then((r) => {
+          if (!r?.ok || !r.isLive || !r.videoId) return
+          // Open the __live_yt_auto__ videoId gate NOW — the youtube:status
+          // 'connected' echo is missed whenever the server poller already
+          // exists for a busy stream (fires per-poller-start), which left
+          // the gate shut and every [Y] message rejected. We resolved this
+          // id ourselves; it is exactly as authoritative as the echo.
+          if (channelId === '__live_yt_auto__' && !_autoYtVideoId) _autoYtVideoId = r.videoId
+          emit(`https://www.youtube.com/watch?v=${r.videoId}`)
+        })
+        .catch(() => {})
+    } catch (_) {}
+  }
+  return true
+}
+
 // Re-arm the __live_yt_auto__ binding for the current URL channel: drop the
 // previous channel's subscription/buffer/watchdog state, then re-subscribe
 // from getLivePlatformNames(). Shared by twitch/kick soft SPA nav — the yt
@@ -33,27 +156,174 @@ function rearmLiveYtAuto() {
   _autoYtVideoId = null
   if (gateAtBoot('chat-youtube') === false) return
   const names = getLivePlatformNames()
+  autoResolveLiveIdentity()
   if (!names.youtube) return
   ytSubscribedUrls.set('__live_yt_auto__', names.youtube)
   ytChanLastSeen.set('__live_yt_auto__', Date.now())
-  chrome.runtime
-    .sendMessage({
-      type: 'youtube_ws_subscribe',
-      url: names.youtube,
-      channelId: '__live_yt_auto__',
-    })
-    .catch(() => {})
-  // Fetch the new channel's yt emote set too, keyed by the bare url-channel
-  // name so a linked channel's emotes merge into one bucket (mirrors init's
-  // sibling send after its own youtube_ws_subscribe).
+  // Emote bucket is the bare url-channel name, so a linked channel's emotes
+  // merge into one bucket (mirrors init's sibling send).
   const urlCh = getCurrentChannel()?.toLowerCase()
-  if (urlCh) {
-    safeSendMessage({
-      type: 'join_channel',
-      platform: 'youtube',
-      channel: urlCh,
-      channelId: names.youtube || null,
+  ytSubscribe('__live_yt_auto__', names.youtube, urlCh || '')
+}
+
+// Zero-config cross-platform. Twitch/kick merge by same-name, but a
+// simulcaster whose handles DIVERGE (twitch zackrawrr / kick asmongold) is
+// invisible to that guess — heatsync's identity record knows the verified
+// pair, so the resolved counterpart replaces the guess (below an explicit
+// override). Youtube has no safe
+// name guess (a fabricated @handle resolves to whoever owns it — see the
+// yt-handle-bleed rule in getLivePlatformNames), so the link has to come
+// from heatsync's identity record. When no explicit override exists,
+// resolve the channel's linked youtube automatically: a fresh install
+// landing in a simulcaster's chat gets [Y] flowing with zero setup, same
+// as [T]/[K]. Explicit overrides always win — this only runs when
+// getLivePlatformNames().youtube is empty and re-checks after the async
+// hop. resolveIdentity brings its own cache + inflight dedupe; the
+// negative cache here stops re-asking for channels with no link on every
+// soft nav.
+const _autoYtNegative = new Map() // urlCh -> ts of last definitive "no link"
+const AUTO_YT_NEGATIVE_TTL_MS = 10 * 60 * 1000
+
+// Swap the same-name guess for the verified handle on the other platform:
+// part the guessed channel, join the real one, keep the live tab's names in
+// step (getLivePlatformNames reads liveIdentityMap). An explicit override for
+// that platform always wins. Runs after an async hop, so the page channel is
+// re-checked first.
+function applyLiveIdentityCounterpart(urlCh, ri) {
+  const next = liveIdentityCounterpart(hostPlatform, urlCh, ri)
+  const prev = liveIdentityMap[urlCh] || { twitch: '', kick: '' }
+  if (prev.twitch === next.twitch && prev.kick === next.kick) return
+  liveIdentityMap[urlCh] = next
+  if (getCurrentChannel()?.toLowerCase() !== urlCh) return
+  const overrides = livePlatformMap[urlCh] || {}
+  if (!overrides.kick && (next.kick || prev.kick)) {
+    try {
+      kickChat?.part?.(next.kick ? urlCh : prev.kick)
+      kickChat?.join?.(next.kick || urlCh)
+    } catch (_) {}
+  }
+  if (!overrides.twitch && (next.twitch || prev.twitch)) {
+    try {
+      irc?.part?.(next.twitch ? urlCh : prev.twitch)
+      irc?.join?.(next.twitch || urlCh)
+    } catch (_) {}
+  }
+  try {
+    renderMessages(currentTab)
+  } catch (_) {}
+}
+
+async function autoResolveLiveIdentity() {
+  if (typeof hostPlatform !== 'undefined' && hostPlatform === 'yt') return // already on youtube
+  const urlCh = getCurrentChannel()?.toLowerCase()
+  if (!urlCh || typeof resolveIdentity !== 'function') return
+  const neg = _autoYtNegative.get(urlCh)
+  if (neg && Date.now() - neg < AUTO_YT_NEGATIVE_TTL_MS) return
+  let ri = null
+  try {
+    ri = await resolveIdentity(urlCh, { platform: hostPlatform === 'kick' ? 'kick' : 'twitch' })
+  } catch (_) {
+    return
+  }
+  applyLiveIdentityCounterpart(urlCh, ri)
+  if (gateAtBoot('chat-youtube') === false) return
+  const p = ri?.ok ? ri.profile : null
+  const handle = p?.youtube_username ? String(p.youtube_username).replace(/^@/, '') : ''
+  // channel id first — immutable, and the /channel/<UC…>/live form can't be
+  // squatted the way a handle can
+  const url = p?.youtube_channel_id
+    ? `https://www.youtube.com/channel/${encodeURIComponent(p.youtube_channel_id)}/live`
+    : handle
+      ? `https://www.youtube.com/@${encodeURIComponent(handle)}/live`
+      : ''
+  if (!url) {
+    // only a definitive answer (profile with no link, or a 404) gets
+    // negative-cached — transient failures stay retryable
+    if (p || ri?.notFound) {
+      _autoYtNegative.set(urlCh, Date.now())
+      // heatsync has no youtube link for this channel — the browser can read
+      // the streamer's published socials (twitch integrity-walls that query
+      // for the server's DC IP), so report what the channel itself publishes
+      if (hostPlatform === 'twitch') maybeCrowdReportSocials(urlCh)
+    }
+    return
+  }
+  // Async-hop guards: still the same channel, still no explicit override,
+  // and nothing else armed the slot meanwhile.
+  if (getCurrentChannel()?.toLowerCase() !== urlCh) return
+  if (getLivePlatformNames().youtube) return
+  if (ytSubscribedUrls.get('__live_yt_auto__')) return
+  ytSubscribedUrls.set('__live_yt_auto__', url)
+  ytChanLastSeen.set('__live_yt_auto__', Date.now())
+  ytSubscribe('__live_yt_auto__', url, urlCh)
+  try {
+    renderMessages(currentTab)
+  } catch (_) {}
+}
+
+// Crowd identity capture. When heatsync has no youtube link for the current
+// twitch channel, read the channel's OWN published socials via GQL (browser
+// IPs pass twitch's integrity check; the server's DC IP does not) and report
+// any youtube link to the server, which verifies the youtube side (about-page
+// backlink to twitch.tv/<login>) plus a multi-user quorum before it ever
+// persists — a single report is a vote, never a fact. Requires a heatsync
+// session (anonymous votes would make the quorum meaningless), and stamps a
+// per-channel throttle even on "no link found" so soft-navs don't re-run the
+// GQL query every visit.
+const CROWD_REPORT_TTL_MS = 7 * 24 * 60 * 60 * 1000
+const CROWD_REPORT_MAP_MAX = 200
+async function maybeCrowdReportSocials(urlCh) {
+  try {
+    if (!hsAuthToken) return
+    if (typeof twitchGql !== 'function') return
+    const store = await api.storage.local.get('hs_crowd_reported')
+    const map = store?.hs_crowd_reported || {}
+    const last = map[urlCh]
+    if (last && Date.now() - last < CROWD_REPORT_TTL_MS) return
+    const safe = String(urlCh).toLowerCase()
+    if (!/^[a-z0-9_]{2,25}$/.test(safe)) return
+    let socials = null
+    try {
+      const data = await twitchGql(`{ user(login: "${safe}") { channel { socialMedias { name title url } } } }`)
+      socials = data?.data?.user?.channel?.socialMedias
+    } catch (_) {
+      return // transient (bridge asleep, network) — retry on a later visit
+    }
+    if (!Array.isArray(socials)) return
+    const ytLinks = socials.filter((s) => {
+      const raw = String(s?.url || '')
+      if (!raw) return false
+      try {
+        const h = new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`).hostname.replace(/^(www|m)\./, '')
+        return h === 'youtube.com' || h === 'youtu.be'
+      } catch (_) {
+        return false
+      }
     })
+    // simulcasters often publish a main channel AND a dedicated live channel
+    // (kaicenat: "youtube" + "Youtube Live") — the live one is the chat we
+    // want, so a live-titled link beats position
+    const yt = ytLinks.find((s) => /\blive\b/i.test(`${s?.title || ''} ${s?.name || ''}`)) || ytLinks[0]
+    // definitive answer either way — stamp the throttle before the report so
+    // a flaky POST can't turn one channel into a per-nav GQL hammer
+    map[safe] = Date.now()
+    const keys = Object.keys(map)
+    if (keys.length > CROWD_REPORT_MAP_MAX) {
+      keys
+        .sort((a, b) => map[a] - map[b])
+        .slice(0, keys.length - CROWD_REPORT_MAP_MAX)
+        .forEach((k) => {
+          delete map[k]
+        })
+    }
+    await api.storage.local.set({ hs_crowd_reported: map })
+    if (!yt) return
+    apiFetch('/api/identity/crowd-report', {
+      method: 'POST',
+      body: { twitch: safe, youtube: String(yt.url).slice(0, 200) },
+    })
+  } catch (_) {
+    // best-effort background capture — never let it surface
   }
 }
 
@@ -81,8 +351,19 @@ function clearYtPace(channelId) {
   _ytPaceLastEmit.delete(channelId)
 }
 
-// Heat tier display — big scaling numbers + color glow + row effects, no emoji
-// Matches website colors.js: #444 → #888 → #aaa → #ccc → #eee → #fff
+// Heat ladder — the site's VT320 ramp (client/config/colors.js): white plain →
+// white bold (10+) → yellow (50+) → yellow bold (250+) → red bold (1000+) →
+// outlined red + blink (5000+, the only tier that blinks). Hue steps, never
+// fades; no glow, no shadow.
+function heatLadder(heat) {
+  if (heat >= 5000) return { color: '#ff0000', box: true, bold: true, blink: true }
+  if (heat >= 1000) return { color: '#ff0000', bold: true }
+  if (heat >= 250) return { color: '#ffff00', bold: true }
+  if (heat >= 50) return { color: '#ffff00', bold: false }
+  if (heat >= 10) return { color: '#ffffff', bold: true }
+  return { color: '#ffffff', bold: false }
+}
+
 function formatHeat(heat) {
   if (heat >= 1000) {
     const k = heat / 1000
@@ -92,9 +373,18 @@ function formatHeat(heat) {
   return String(heat)
 }
 
-// pinned warm/orange by doctrine — heat FX ramp, not a semantic var
+// inline style for a heat numeral: tier hue/weight/reverse, optional size scale
+function heatLadderStyle(heat, size) {
+  const t = heatLadder(heat)
+  let style = `color:${t.color};font-weight:${t.bold ? 700 : 400};`
+  if (t.box) style += `outline:1px solid ${t.color};outline-offset:1px;`
+  if (t.blink) style += 'animation:hs-blink 1s steps(1) infinite;'
+  if (size) style += `font-size:${size}px;line-height:1;`
+  return style
+}
+
 function getHeatNumberStyle(heat, isReply) {
-  let fontSize, color, textShadow, animation
+  let fontSize
   if (isReply) {
     if (heat > 500) fontSize = 20
     else if (heat > 100) fontSize = 18
@@ -108,58 +398,17 @@ function getHeatNumberStyle(heat, isReply) {
     else if (heat > 10) fontSize = 18
     else fontSize = 14
   }
-  if (heat > 500) {
-    color = '#fff'
-    textShadow =
-      '0 0 6px rgba(255,255,255,1),0 0 15px rgba(255,200,100,1),0 0 30px rgba(255,135,0,0.9),0 0 50px rgba(255,80,0,0.6)'
-    animation = 'hs-heat-breathe 2s ease-in-out infinite'
-  } else if (heat > 100) {
-    color = '#eee'
-    textShadow = '0 0 6px rgba(255,170,50,0.9),0 0 16px rgba(255,135,0,0.6),0 0 30px rgba(255,80,0,0.3)'
-  } else if (heat > 50) {
-    color = '#fff'
-    textShadow = '0 0 6px rgba(255,135,0,0.7),0 0 14px rgba(255,135,0,0.3)'
-  } else if (heat > 10) {
-    color = heat > 30 ? '#aaa' : '#888'
-    textShadow = heat > 30 ? '0 0 4px rgba(204,102,0,0.3)' : undefined
-  } else {
-    color = '#444'
-    textShadow = undefined
-  }
-  let style = `font-size:${fontSize}px;color:${color};font-weight:900;line-height:1;`
-  if (textShadow) style += `text-shadow:${textShadow};`
-  if (animation) style += `animation:${animation};`
-  return style
+  return heatLadderStyle(heat, fontSize)
 }
 
-// pinned warm/orange by doctrine — heat FX ramp, not a semantic var
+// Row border: width thickens with the tier, hue comes from the ladder.
 function getHeatDisplay(heat) {
   if (!heat || heat <= 0) return null
-  let border = '#444',
-    borderWidth = 2,
-    bg = ''
-  if (heat >= 500) {
-    border = '#fff'
-    borderWidth = 4
-    bg = 'rgba(60,20,0,0.15)'
-  } else if (heat >= 100) {
-    border = '#eee'
-    borderWidth = 3
-    bg = 'rgba(50,15,0,0.10)'
-  } else if (heat >= 25) {
-    border = '#fff'
-    borderWidth = 3
-    bg = 'rgba(40,12,0,0.07)'
-  } else if (heat >= 10) {
-    border = '#fff'
-    borderWidth = 2
-  } else {
-    border = '#444'
-    borderWidth = 2
-  }
+  const t = heatLadder(heat)
+  const border = t.color
+  const borderWidth = heat >= 500 ? 4 : heat >= 100 ? 3 : 2
   const suffix = heat >= 10 ? '°' : ''
-  const breathe = heat >= 500
-  return { suffix, border, borderWidth, bg, breathe }
+  return { suffix, border, borderWidth, bg: '' }
 }
 
 // Feed & notifications state
@@ -167,13 +416,23 @@ let feedMessages = []
 let feedLoaded = false
 let feedLoading = false
 let feedPage = 1
+// Rows on screen: a fresh feed paints one screenful, the rest of the buffer is built when
+// the reader scrolls to it (a channel-less page opens on the feed and nobody asked for 30 posts)
+const FEED_FIRST_PAINT = 8
+const FEED_REVEAL_STEP = 12
+let feedRendered = 0
 let feedHasMore = true
 let feedLastFetch = 0 // Timestamp of last feed fetch
 let feedFromHotFallback = false // true when /following was empty + we showed /hot instead
+// /hot itself had nothing carrying heat and served newest-first instead (server sets
+// `fallback`). The banner must not call those posts hot — that is the one thing the
+// fallback exists to avoid.
+let feedFallbackIsCold = false
 const FEED_STALE_MS = 120000 // 2 minutes
 
 // Feed scroll state — handler ref for teardown only, infinite-scroll trigger
 let _feedVirtualScrollHandler = null
+let _feedFillObserver = null // asks for more rows when the pane grows taller than the rows built
 
 // Stream events injected inline into per-channel buffers (no dedicated tab)
 const activityEvents = []
@@ -199,8 +458,10 @@ let activeThread = null // { id, op, replies[] } — when set, feed shows thread
 // back handler in main.js. A dedicated slot (not prevTab, which settings clobbers).
 let threadReturnTab = null
 let replyState = null // { msgId, user, channel } when replying to a message
+let quoteState = null // { permalink, user, text, channel, platform } when quoting a live row into a new thread
 let hsAuthToken = null // Heatsync auth state (loaded from storage)
 let hsCurrentUsername = null // Heatsync username (loaded from storage user_info)
+let hsCurrentUserId = null // Heatsync account id (same source) — tells my own live frames from others'
 // Batch keys the signed-in HS account resolves as (server-computed, from
 // /api/auth/me via user_info). null = unknown (old server / logged out) —
 // consumers must fail open. [] = account has no resolvable platform identity.
@@ -212,22 +473,20 @@ async function loadHsUsername() {
     const data = await api.storage.local.get('user_info')
     const ui = data?.user_info
     hsCurrentUsername = ui?.username?.toLowerCase() || null
+    hsCurrentUserId = ui?.id ? String(ui.id) : null
     hsSenderKeys = Array.isArray(ui?.sender_keys) ? ui.sender_keys : null
     // Cross-platform mention aliases: any name across Twitch/Kick/YT counts as
     // a mention of the user, even if the chat is on a different platform.
     // ui.username (heatsync core name) is always included so bare-name mentions
     // resolve even when getCurrentUsername() returns null (e.g. logged-out Kick
     // tab) and no platform aliases are configured.
-    mentionAliases = new Set()
-    if (ui?.username) mentionAliases.add(ui.username.toLowerCase())
-    if (ui?.kick_username) mentionAliases.add(ui.kick_username.toLowerCase())
-    if (ui?.youtube_username) mentionAliases.add(ui.youtube_username.toLowerCase())
-    if (ui?.twitch_username) mentionAliases.add(ui.twitch_username.toLowerCase())
+    setMentionAliases(ui)
     // Your own paint/tenure/colour jump the cosmetics queue and your picked
     // colour seeds now — otherwise your name waits behind the whole channel.
     primeSelfHsCosmetics(ui)
   } catch (_) {
     hsCurrentUsername = null
+    hsCurrentUserId = null
     hsSenderKeys = null
   }
 }
@@ -251,15 +510,15 @@ function showFeedEditUI(div, msg) {
   ta.maxLength = 500
   ta.rows = 2
   ta.style.cssText =
-    'flex:1;background:#000;color:#fff;border:1px solid #808080;padding:4px;font-family:inherit;font-size:13px;resize:vertical;'
+    'flex:1;background:#000;color:#fff;border:1px solid #ffffff;padding:4px;font-family:inherit;font-size:13px;resize:vertical;'
   const saveBtn = document.createElement('button')
-  saveBtn.textContent = 'save'
+  saveBtn.textContent = t('mc_mr_save')
   saveBtn.style.cssText =
     'background:#fff;color:#000;border:none;padding:4px 8px;font-family:inherit;font-size:13px;cursor:pointer;'
   const cancelBtn = document.createElement('button')
-  cancelBtn.textContent = 'cancel'
+  cancelBtn.textContent = t('mc_mr_cancel')
   cancelBtn.style.cssText =
-    'background:#000;color:#fff;border:1px solid #808080;padding:4px 8px;font-family:inherit;font-size:13px;cursor:pointer;'
+    'background:#000;color:#fff;border:1px solid #ffffff;padding:4px 8px;font-family:inherit;font-size:13px;cursor:pointer;'
   const errEl = document.createElement('div')
   errEl.style.cssText = 'font-size:13px;color:var(--hs-danger);margin-top:2px;'
   form.append(ta, saveBtn, cancelBtn)
@@ -288,7 +547,7 @@ function showFeedEditUI(div, msg) {
   saveBtn.addEventListener('click', async () => {
     const newContent = ta.value.trim()
     if (!newContent) {
-      errEl.textContent = 'content cannot be empty'
+      errEl.textContent = t('mc_social_edit_empty')
       return
     }
     if (newContent === original) {
@@ -296,7 +555,7 @@ function showFeedEditUI(div, msg) {
       return
     }
     saveBtn.disabled = true
-    saveBtn.textContent = 'saving...'
+    saveBtn.textContent = t('mc_social_saving')
     errEl.textContent = ''
     const resp = await apiFetch(`/api/messages/${encodeURIComponent(msg.base36_id)}`, {
       method: 'PATCH',
@@ -310,15 +569,15 @@ function showFeedEditUI(div, msg) {
       // Re-render entire feed to pick up sanitized content + emote refs
       if (typeof renderFeed === 'function') renderFeed()
     } else {
-      errEl.textContent = resp?.data?.error || resp?.error || 'edit failed'
+      errEl.textContent = resp?.data?.error || resp?.error || t('mc_social_edit_failed')
       saveBtn.disabled = false
-      saveBtn.textContent = 'save'
+      saveBtn.textContent = t('mc_mr_save')
     }
   })
 }
 
 async function deleteFeedPost(msg) {
-  if (!confirm('delete this post?')) return
+  if (!confirm(t('mc_social_confirm_delete'))) return
   const resp = await apiFetch(`/api/messages/${encodeURIComponent(msg.base36_id)}`, {
     method: 'DELETE',
   })
@@ -371,6 +630,8 @@ async function loadHsAuth() {
   } catch (_) {
     hsAuthToken = false
   }
+  if (typeof _refreshKickHostSession === 'function') _refreshKickHostSession()
+  if (typeof updateInputPlaceholder === 'function') updateInputPlaceholder()
   loadHsUsername()
 
   // Watch for auth changes (login/logout on heatsync.org)
@@ -382,11 +643,7 @@ async function loadHsAuth() {
         const ui = changes.user_info.newValue
         hsCurrentUsername = ui?.username?.toLowerCase() || null
         hsSenderKeys = Array.isArray(ui?.sender_keys) ? ui.sender_keys : null
-        mentionAliases = new Set()
-        if (ui?.username) mentionAliases.add(ui.username.toLowerCase())
-        if (ui?.kick_username) mentionAliases.add(ui.kick_username.toLowerCase())
-        if (ui?.youtube_username) mentionAliases.add(ui.youtube_username.toLowerCase())
-        if (ui?.twitch_username) mentionAliases.add(ui.twitch_username.toLowerCase())
+        setMentionAliases(ui)
         primeSelfHsCosmetics(ui)
       }
       if (changes.auth_token_encrypted || changes.auth_token) {
@@ -394,6 +651,8 @@ async function loadHsAuth() {
         hsAuthToken = !!(changes.auth_token_encrypted?.newValue || changes.auth_token?.newValue)
         if (wasAuthed !== hsAuthToken) {
           log('Auth state changed:', hsAuthToken ? 'logged in' : 'logged out')
+          if (typeof _refreshKickHostSession === 'function') _refreshKickHostSession()
+          if (typeof updateInputPlaceholder === 'function') updateInputPlaceholder()
           // On login, replay any whispers that failed with auth errors so the
           // user doesn't have to manually retry each one.
           if (!wasAuthed && hsAuthToken && typeof retryAuthFailedWhispers === 'function') {
@@ -403,6 +662,7 @@ async function loadHsAuth() {
           // tab open re-fetches with new auth.
           feedLoaded = false
           feedMessages = []
+          feedBookmarks.clear()
           discoverLoaded = false
           discoverLoading = false
           discoverTags = []
@@ -513,6 +773,10 @@ function ingestReplayYtMsg(targetChannelId, ytMsg) {
   }
   persistYt(targetChannelId)
   const tabId = targetChannelId === '__live_yt_auto__' ? 'live' : targetChannelId
+  // Count before the branch — heat is about the channel, so the tab you're
+  // looking at counts too, and updateTabIndicator never fires for it.
+  bumpTabActivity(tabId, currentTab === tabId)
+  refreshTabCounter(tabId)
   if (currentTab !== tabId) {
     updateTabIndicator(tabId)
     return
@@ -547,26 +811,26 @@ function dispatchYtStreamEvent(targetChannelId, msg) {
     toggleKey = 'ytSuperchat'
     eventClass = 'event-yt-superchat'
     const comment = (msg.text || '').trim()
-    text = `superchat ${msg.amount || ''}`.trim() + (comment ? `: ${comment}` : '')
+    text = t('mc_social_yt_superchat', [msg.amount || '']).trim() + (comment ? `: ${comment}` : '')
   } else if (msg.msgType === 'supersticker') {
     toggleKey = 'ytSupersticker'
     eventClass = 'event-yt-supersticker'
-    text = `super sticker ${msg.amount || ''}`.trim()
+    text = t('mc_social_yt_sticker', [msg.amount || '']).trim()
   } else if (msg.msgType === 'membership') {
     if (classifyYtMembership(systemMsg) === 'milestone') {
       toggleKey = 'ytMilestone'
       eventClass = 'event-yt-milestone'
-      text = systemMsg || 'membership milestone'
+      text = systemMsg || t('mc_social_yt_milestone')
     } else {
       toggleKey = 'ytMembership'
       eventClass = 'event-yt-membership'
-      text = 'became a member'
+      text = t('mc_social_yt_member')
     }
   } else if (msg.msgType === 'giftpurchase') {
     toggleKey = 'ytGiftMemberships'
     eventClass = 'event-yt-gift'
     const count = parseYtGiftCount(systemMsg)
-    text = `gifted ${count} membership${count === 1 ? '' : 's'}`
+    text = t(count === 1 ? 'mc_social_yt_gift_one' : 'mc_social_yt_gift_n', [String(count)])
   } else {
     return
   }
@@ -621,25 +885,25 @@ function dispatchYtStreamEvent(targetChannelId, msg) {
 }
 
 // Buffer-insert + visible render for ONE paced (live) YT message. Critical:
-// stamp ytMsg.ord = Date.now() AT THE MOMENT OF EMIT (not at WS arrival) —
-// WITHOUT touching ytMsg.time, which stays YouTube's true send timestamp for
-// the whole life of the object (set once from the wire payload). Without a
-// fresh ord, every msg in a 5-sec poll batch would share the same real
-// timestamp and the chrono sort would lump them adjacent, then the next
-// twitch msg slots in below — visible as a YT clump at the bottom of chat.
+// stamp ytMsg.ord AT THE MOMENT OF EMIT (not at WS arrival) — WITHOUT
+// touching ytMsg.time, which stays YouTube's true send timestamp for the
+// whole life of the object (set once from the wire payload). Without a fresh
+// ord, every msg in a 5-sec poll batch would share the same real timestamp
+// and the chrono sort would lump them adjacent, then the next twitch msg
+// slots in below — visible as a YT clump at the bottom of chat.
 // With per-emit ord, each YT msg's DISPLAY position naturally interleaves
 // with the live twitch arrivals that happen between pacer drains, while
 // `time` stays available for anything that needs the real send time
 // (dedup, analytics, a future "show real timestamps" toggle).
 function commitPacedYtMsg(targetChannelId, ytMsg) {
-  // Monotonic per-channel commit clock — two msgs draining in the same ms
-  // would otherwise share (user, ord, text-prefix) and produce identical
-  // stableMsgIds, which the render-diff treats as one key and the dup-set
-  // dedup throws away the second display. +1 each collision keeps the key
-  // unique while still slotting close to real-time in the chrono sort.
-  const lastEmit = _ytPaceLastEmit.get(targetChannelId)
-  const now = Date.now()
-  ytMsg.ord = lastEmit?.time && now <= lastEmit.time ? lastEmit.time + 1 : now
+  // The shared visual clock (visualNowOrd, src/lib/utils.js) — the same one
+  // twitch and kick stamp through, so all three platforms now hand out ords
+  // from ONE monotonic space instead of YT keeping a private per-channel
+  // clock beside them. It carries over what the private clock guaranteed:
+  // anchored to Date.now(), and +1 on collision so two msgs draining in the
+  // same ms can't share (user, ord, text-prefix), produce identical
+  // stableMsgIds, and have the render-diff throw the second display away.
+  ytMsg.ord = visualNowOrd()
   if (!channelYtMessages.has(targetChannelId)) channelYtMessages.set(targetChannelId, [])
   const buf = channelYtMessages.get(targetChannelId)
   // Ordered insert on `ord` (the paced-commit clock above), not `time` — see
@@ -674,7 +938,11 @@ function commitPacedYtMsg(targetChannelId, ytMsg) {
     }
   }
   persistYt(targetChannelId)
+  if (typeof chatLogsLive === 'function') chatLogsLive(ytMsg)
   const tabId = targetChannelId === '__live_yt_auto__' ? 'live' : targetChannelId
+  // Count before the branch — see ingestReplayYtMsg above.
+  bumpTabActivity(tabId, currentTab === tabId)
+  refreshTabCounter(tabId)
   if (currentTab === tabId) {
     if (!appendMessage(ytMsg, tabId)) renderMessages(tabId)
   } else {
@@ -693,6 +961,69 @@ function paceDelayFor(channelId, nextMsg) {
   const realDelta = nextMsg.time - last.msgTime
   if (realDelta <= 0) return YT_PACE_MIN_MS
   return Math.max(YT_PACE_MIN_MS, Math.min(YT_PACE_MAX_MS, realDelta))
+}
+
+/**
+ * A youtube moderation removal: specific message ids, and/or every message by
+ * an author who was banned (youtube removes their backlog too).
+ *
+ * Marks `cleared` rather than deleting, matching twitch and kick — the row goes
+ * grey and stays readable, which is what a mod needs to see. Three places have
+ * to agree or the message comes back:
+ *   - the channel buffer, so re-renders and tab switches keep it cleared
+ *   - the pace queue, because a message deleted before it drains would
+ *     otherwise arrive on screen a moment later looking untouched
+ *   - the rows already rendered, patched in place like _applyModNoticeDim does
+ */
+function applyYtDeletion(d) {
+  const ids = new Set(d.messageIds || [])
+  const authors = new Set(d.authorChannelIds || [])
+  if (!ids.size && !authors.size) return
+  // authorChannelId is not stored bare on a buffered message — it survives as
+  // the namespaced paint uid (`yt_UC…`, social.js builds it), so read it back.
+  const authorOf = (m) => (m.hsPaintUid ? String(m.hsPaintUid).replace(/^yt_/, '') : '')
+  // a row does not carry the channel id, so a banned author's rows are found by
+  // name; a deleted message is only itself
+  const users = new Set()
+  const clear = (m) => {
+    const banned = authors.size > 0 && authors.has(authorOf(m))
+    if (banned && m.user) users.add(String(m.user).toLowerCase())
+    if (m.cleared || !(banned || (m.id && ids.has(m.id)))) return
+    m.cleared = true
+    m.clearedReason = 'deleted'
+  }
+  for (const buf of channelYtMessages.values()) for (const m of buf) clear(m)
+  for (const q of _ytPaceQueue.values()) for (const m of q) clear(m)
+  const msgsEl = document.getElementById('hs-mc-messages')
+  // a twitch row carries no platform: the same name there is someone else
+  for (const row of msgsEl?.querySelectorAll('.hs-mc-msg') || []) {
+    if (row.dataset.msgPlatform !== 'youtube') continue
+    if (ids.has(row.dataset.msgId) || users.has((row.dataset.msgUser || '').toLowerCase()))
+      markClearedRow(row, 'deleted')
+  }
+  refoldSimulcastRows(msgsEl)
+}
+
+// A youtube mod action heatsync took: its gray notice in the acted-on row's own
+// tab, and the mod log. YouTube's moderation never echoes through a chat
+// handler (youtube_delete only greys rows), so this is the only line it gets —
+// twitch and kick record theirs in their handlers (modLogStore.record(msg)).
+// The tab is found from the row's own message id: yt actions are message-scoped.
+// Returns false when the row is no longer buffered (nothing to attach it to).
+function ingestYtModNotice(notice, msgId) {
+  for (const [tabId, buf] of channelYtMessages) {
+    const row = buf.find((m) => m.id === msgId)
+    if (!row) continue
+    notice.channel = row.channel
+    modLogStore.record(notice)
+    commitPacedYtMsg(tabId, notice)
+    // grey what youtube just removed: the message, or everything by a banned/timed-out author
+    const author = row.hsPaintUid ? String(row.hsPaintUid).replace(/^yt_/, '') : ''
+    if (notice.noticeType === 'delete_message_success') applyYtDeletion({ messageIds: [msgId] })
+    else if (notice.noticeType !== 'unban_success' && author) applyYtDeletion({ authorChannelIds: [author] })
+    return true
+  }
+  return false
 }
 
 // Drain ONE message from the pace queue, schedule next based on the real
@@ -754,12 +1085,290 @@ function enqueueYtForPacing(targetChannelId, ytMsg) {
 }
 
 // Listen for social events from background (new messages, notifications)
+// Single youtube chat message — shared by the per-message relay ('youtube_chat_message',
+// still used by youtube-content.js's same-tab native-tap copies) and each item of a
+// server-relay batch ('youtube_chat_batch'). Extracted so a 20-msg poll doesn't rebuild
+// this per-message; the batch loop below calls it once per item instead.
+function handleYoutubeChatMsg(msg) {
+  let targetChannelId = msg.channelId
+  // Same-tab native-tap copies (youtube-content.js broadcasts reach this
+  // overlay directly, not just background) stamp channelId with the RAW
+  // 11-char videoId — they never went through background's videoId→channel
+  // map. Untreated, they land in an orphan buffer nothing renders AND
+  // consume an isSentEcho credit meant for the server relay copy (the
+  // yt-only own-message swallow). Retarget to the owning config channel —
+  // own messages then render instantly and the later server copy dies in
+  // isYtDuplicate (same bucket, same innertube id). Unowned videoIds are
+  // dropped BEFORE any credit/dedup state is touched.
+  // The page's own video with no tab of its own IS the watching tab — a message tagged with its bare
+  // videoId (a premiere's frame relay, an own echo) belongs there.
+  if (
+    targetChannelId &&
+    targetChannelId !== '__live_yt_auto__' &&
+    hostPlatform === 'yt' &&
+    !config.channels.some((c) => c.id === targetChannelId) && // a tab of its own for it keeps it
+    targetChannelId ===
+      (location.href.match(/[?&]v=([a-zA-Z0-9_-]{11})/) || location.href.match(/\/live\/([a-zA-Z0-9_-]{11})/))?.[1]
+  ) {
+    targetChannelId = '__live_yt_auto__'
+  }
+  if (
+    targetChannelId &&
+    targetChannelId !== '__live_yt_auto__' &&
+    /^[a-zA-Z0-9_-]{11}$/.test(targetChannelId) &&
+    !config.channels.some((c) => c.id === targetChannelId)
+  ) {
+    let mapped = null
+    try {
+      if (typeof youtubeLinks !== 'undefined') {
+        for (const [chId, link] of youtubeLinks) {
+          if (link?.videoId === targetChannelId) {
+            mapped = chId
+            break
+          }
+        }
+      }
+    } catch {}
+    if (!mapped) {
+      const byUrl = config.channels.find((c) => typeof c.youtube === 'string' && c.youtube.includes(targetChannelId))
+      if (byUrl) mapped = byUrl.id
+    }
+    if (!mapped) return
+    targetChannelId = mapped
+  }
+  // Filter __live_yt_auto__ messages: only accept this stream's chat
+  // (prevents cross-tab leak — e.g. a stale videoId's chat bleeding in).
+  // Derive the allowed videoId straight from the page URL when we're ON a
+  // youtube watch/live page — that's authoritative and always available, so
+  // the gate no longer depends on a status-echo or a subscribe-time var that
+  // can be missed (which left it shut and the 'live' tab empty). Falls back
+  // to _autoYtVideoId off-page. The videoId-match still blocks other streams.
+  if (targetChannelId === '__live_yt_auto__') {
+    // The background fans a youtube stream's chat out to every open tab. Only a page that asked for
+    // this stream (it subscribed its own watching tab to it) takes it in: a twitch popout of a
+    // channel with no youtube link never did, and must not mix another tab's premiere into its chat.
+    if (!ytSubscribedUrls.get('__live_yt_auto__')) return
+    const pageVid =
+      (location.href.match(/[?&]v=([a-zA-Z0-9_-]{11})/) || location.href.match(/\/live\/([a-zA-Z0-9_-]{11})/))?.[1] ||
+      _autoYtVideoId
+    if (!pageVid) return // not on a watch page and no confirmed sub — reject
+    if (msg.videoId && msg.videoId !== pageVid) return // wrong stream
+    if (!_autoYtVideoId) _autoYtVideoId = pageVid // heal for downstream reads
+  }
+  // Touch the YT watchdog clock AFTER the videoId gate but before dedup —
+  // dup msgs still prove the BG-server pipe is alive, but a stale stream's
+  // rejected traffic must not keep the watchdog fed (it would mask a new
+  // subscription that failed and never let the 180s rescue fire).
+  try {
+    touchYtChannel(targetChannelId)
+  } catch {}
+  // Event renderers (superchat/supersticker/membership/gift purchase) skip
+  // the normal chat-row path entirely and go out as toggleable stream-event
+  // banners instead — see dispatchYtStreamEvent for what's excluded and why.
+  if (
+    msg.msgType === 'superchat' ||
+    msg.msgType === 'supersticker' ||
+    msg.msgType === 'membership' ||
+    msg.msgType === 'giftpurchase'
+  ) {
+    dispatchYtStreamEvent(targetChannelId, msg)
+    return
+  }
+
+  // Dedup against message buffer + pace queue (survives WS reconnects
+  // unlike 5s hash; id-exact when the server's innertube id is present)
+  if (targetChannelId && isYtDuplicate(msg.user, msg.text, targetChannelId, msg.id)) return
+
+  // Resolve a Twitch-channel name for emote lookup. YT-relayed messages
+  // belong to a streamer who likely also has Twitch/Kick channel emotes
+  // (BTTV/FFZ/7TV) configured under their Twitch handle. Without this
+  // hint, processEmotes only sees globals + the user's heatsync inventory,
+  // missing per-channel emotes for the linked streamer.
+  let ytChannelHint = null
+  // Channel-emote cache key when the display hint can't double as one.
+  // A yt-ONLY channel's emotes are broadcast under the CONFIG id —
+  // join_channel sends { channel: id } and channel_emotes_update echoes
+  // it back as channelOwner — and auto-live is keyed by the BG's
+  // yt_ensure_channel_emotes derivation: videoId, else @handle from the
+  // page URL (channel /live pages carry no ?v=). Neither is fit to
+  // display (raw video/config id), so it rides a separate emoteChannel
+  // field; the old twitch||kick||null hint left these messages on the
+  // dead 'youtube' key and channel emotes never resolved. Lowercased to
+  // match _buildChannelEmoteCache's key normalization.
+  let ytEmoteKey = null
+  if (targetChannelId && targetChannelId !== '__live_yt_auto__') {
+    const linkedCh = config.channels.find((c) => c.id === targetChannelId)
+    if (linkedCh) {
+      ytChannelHint = linkedCh.twitch || linkedCh.kick || null
+      if (!ytChannelHint) ytEmoteKey = String(linkedCh.id).toLowerCase()
+    }
+  } else if (targetChannelId === '__live_yt_auto__') {
+    const vid = msg.videoId || _autoYtVideoId || ''
+    const handle = location.href.match(/youtube\.com\/@([\w.-]{3,30})/)?.[1]
+    ytEmoteKey = (vid || (handle ? `@${handle}` : '')).toLowerCase() || null
+  }
+
+  const ytMsg = {
+    // innertube message id when the server relays one — gives yt messages
+    // a REAL identity: stableMsgId stops falling back to user:time:text
+    // (whose time gets rewritten per pace-commit, defeating render dedup)
+    id: msg.id || undefined,
+    user: msg.user,
+    text: msg.text,
+    // feeds sanitizeColor()/COLOR_RE downstream — must stay literal hex, no var()
+    color: msg.color || '#ff0000',
+    channel: ytChannelHint || 'youtube',
+    // Cache key for channel-emote lookup when channel itself isn't one
+    // (yt-only config channels + auto-live). Render uses it over channel.
+    emoteChannel: ytEmoteKey || undefined,
+    originKey: hsYtOriginKeyOf(targetChannelId),
+    time: msg.time,
+    platform: 'youtube',
+    emotes: msg.emotes || [],
+    msgType: msg.msgType || 'text',
+    amount: msg.amount || '',
+    scColor: msg.scColor || '',
+    sticker: msg.sticker || null,
+    avatar: msg.avatar || undefined,
+    badges: msg.badges || undefined,
+    systemMsg: msg.systemMsg || undefined,
+    // Namespaced heatsync paint uid from the author's UC… id. Same contract
+    // as kick's kickNamePaintUid path: NEVER via queueMcCosmeticsLookup
+    // (twitch-space only) — queued directly below.
+    hsPaintUid: /^UC[A-Za-z0-9_-]{22}$/.test(msg.authorChannelId || '') ? `yt_${msg.authorChannelId}` : undefined,
+    // Server-enriched third-party emote refs — render sender inventory
+    // emotes without a per-sender fetch. Server-fed only. See emote-enrich.ts.
+    hsEmotes: msg.hsEmotes || undefined,
+  }
+  if (ytMsg.hsPaintUid && typeof queuePaintLookup === 'function') queuePaintLookup(ytMsg.hsPaintUid)
+
+  // Echo dedup + host-platform badge attribution (matches IRC/kick
+  // handlers). Without this, a triple-target send would render TWO
+  // copies of the user's own message — the dedup'd twitch/kick echo
+  // PLUS the unfiltered YT echo. peekSentHost ensures the badge
+  // reflects where the user actually typed FROM.
+  // Recorded before the dual-send drop (which only keeps one copy on screen): the server
+  // still needs THIS leg's message id, or every other viewer sees it as a second line.
+  if (isSelf(ytMsg, 'youtube')) hsWitnessOwnEcho('youtube', ytMsg.originKey, ytMsg.id, peekSentId(ytMsg.text))
+  if (isSentEcho(ytMsg.text, 'youtube', ytMsg)) return
+  claimYtSendingRow(ytMsg.text) // the real line is about to render: its optimistic twin leaves
+  // Gated on peekSentHost alone — currentUsername is null on cross-origin
+  // tabs (youtube.com/kick.com popout), matching the IRC/kick handlers.
+  {
+    const sentHost = peekSentHost(ytMsg.text)
+    if (sentHost) {
+      // retagged to the host platform, the row still came from youtube: its origin is keyed by
+      // that, and the fold counts it as the youtube leg (not a second twitch/kick one)
+      ytMsg.badgePlatform = 'youtube'
+      ytMsg.platform = sentHost === 'yt' ? 'youtube' : sentHost
+      // YouTube has no reply threading, so the bar can ONLY come from what
+      // we remembered at send time — the @mention prepend is all that ships
+      // on the wire. Same ownership proof as twitch/kick.
+      if (typeof restoreOwnReplyBar === 'function') restoreOwnReplyBar(ytMsg)
+    }
+  }
+
+  // Same pipeline as Twitch/Kick handlers: filter rules → mention → stats.
+  // The rule VERDICT is kept, not just its .hide: a highlight rule can carry
+  // a sound, and folding the call into the if-condition threw that away —
+  // so a keyword alert fired on twitch and kick and was silently mute on
+  // youtube.
+  const _frOwnYt = isSelf(ytMsg, 'youtube')
+  let _frYt = null
+  if (!_frOwnYt) {
+    _frYt = evaluateFilterRules(ytMsg, targetChannelId !== '__live_yt_auto__' ? targetChannelId : null)
+    if (_frYt.hide) return
+  }
+  // A replay is history: the backfill a surface gets on subscribe (up to 200
+  // buffered lines, bgYtReplayToTab) renders, and alerts nothing — no sound, no
+  // mention, no desktop notice or screen-reader line, no stats, no unread. The
+  // same rule twitch and kick keep by never routing history through their
+  // handlers (tests/handler-parity.test.js).
+  if (!msg.replay) {
+    // Highlight-rule audio cue — once, on live youtube arrival.
+    if (_frYt?.sound && typeof playFilterRuleSound === 'function') playFilterRuleSound(_frYt)
+    // a highlight rule's "also notify me" lands in the mentions tab too, no login needed
+    const _mentReal = isMention(ytMsg)
+    const _mentRule = !_mentReal && ruleAlertsMention(ytMsg, _frYt)
+    const isMent = _mentReal || _mentRule
+    bumpStreamStats(ytChannelHint || ytEmoteKey, ytMsg, _mentReal)
+    if (isMent) {
+      mentionsBuffer.push(ytMsg)
+      if (mentionsBuffer.length > MAX_BUFFER + 50) mentionsBuffer.splice(0, mentionsBuffer.length - MAX_BUFFER)
+      persistMentions()
+      notifyMention(ytMsg, _mentRule)
+      noteSeenEvent('mentions', ytMsg.time || Date.now())
+      if (currentTab === 'mentions') {
+        bumpSeen('mentions')
+        if (!appendMessage(ytMsg, 'mentions')) renderMessages('mentions')
+      } else {
+        updateTabIndicator('mentions')
+      }
+    }
+  }
+
+  if (targetChannelId && targetChannelId !== 'global') {
+    // Instant-live signal for YT-only tabs (no Twitch handle = no helix
+    // truth available, so first chat msg is our best signal). Tabs with
+    // a Twitch or Kick handle defer to the live-status poll — otherwise
+    // a YT replay/buffered msg would override the offline-Twitch truth.
+    if (targetChannelId !== '__live_yt_auto__') {
+      try {
+        const ch = config.channels.find((c) => c.id === targetChannelId)
+        const isYtOnly = ch && !ch.twitch && !ch.kick && ch.youtube
+        if (isYtOnly) {
+          const tabEl = document.querySelector(`#hs-mc-tabbar .hs-mc-tab[data-tab="${CSS.escape(targetChannelId)}"]`)
+          if (tabEl && tabEl.dataset.live !== 'true') tabEl.dataset.live = 'true'
+        }
+      } catch {}
+    }
+    // Backfill replay: bypass per-channel pacing entirely. Each msg has
+    // its real YT timestamp, so fairMerge places it at the correct
+    // chronological position scattered through the existing twitch/kick
+    // history — no "all at once" flash because they're not appearing
+    // at the bottom; they slot in at their real-time positions. Pacing
+    // here would just delay the correct render.
+    if (msg.replay) {
+      ingestReplayYtMsg(targetChannelId, ytMsg)
+    } else {
+      enqueueYtForPacing(targetChannelId, ytMsg)
+    }
+  } else if (targetChannelId === 'global') {
+    // Surface unresolved-routing drops so future regressions don't go silent.
+    // Real cause is on background side: videoId→channelId map missed an entry.
+    console.warn('[heatsync-ext] yt msg dropped — channelId=global, videoId=', msg.videoId, 'user=', msg.user)
+  }
+}
+
 function listenForSocialEvents() {
   // Guard: only register once (survives SPA reinit via chrome listener persistence)
   if (_onceGuardsSocial.socialListener) return
   _onceGuardsSocial.socialListener = true
+  // A fresh content script has no thread view: clear any room a previous page
+  // life left registered for this tab (reload, extension update).
+  safeSendMessage({ type: 'feed_thread', room: null })
 
   cleanup.addListener(chrome.runtime?.onMessage, (msg) => {
+    // One listener, three subsystems — so each family checks its OWN switch
+    // here instead of the whole registration hanging off one gate. Gating the
+    // registration was wrong in both directions: `feed` off killed youtube
+    // chat, and widening that to `feed || chat-youtube` then meant
+    // `chat-youtube` off no longer turned youtube chat off. Proven live, not
+    // read: with the chat subsystems off the overlay still rendered a
+    // broadcast message.
+    //
+    // chat_origin_broadcast / seen_update / dm_new stay ungated on purpose —
+    // no subsystem names them ([H] send-origin tagging, cross-client seen
+    // state, DMs), and the old feed-gated registration killed all three as a
+    // side effect of a switch that says "feed".
+    if (_FEED_EVENTS.has(msg?.type) && gateAtBoot('feed') === false) return
+    if (typeof msg?.type === 'string' && msg.type.startsWith('youtube_') && gateAtBoot('chat-youtube') === false) {
+      return
+    }
+    if (msg.type === 'hs_notif') {
+      if (msg.data) hsNotifIn(msg.data)
+      return
+    }
     if (msg.type === 'chat_origin_broadcast' && msg.text) {
       // Heatsync.org chat-tile sent a chat — record the origin so the
       // upcoming platform echo gets tagged [H] via peekSentHost. Same
@@ -771,6 +1380,12 @@ function listenForSocialEvents() {
         // through this very extension, so it usually wins the race).
         retroFoldOwnEchoes()
       } catch (_) {}
+      return
+    }
+    if (msg.type === 'ws_connected') return hsOriginsReseed()
+    if (msg.type === 'chat_origin' && msg.id) {
+      // a line in a joined room was sent through heatsync (any sender): flip its mark
+      hsOriginLive(msg)
       return
     }
     if (msg.type === 'seen_update') {
@@ -823,29 +1438,26 @@ function listenForSocialEvents() {
         if (feedLoaded && !alreadyBuffered) renderFeed()
       } else {
         updateTabIndicator('feed')
-        // Inline notification in chat (routed through toggle system)
-        const row = buildFeedInlineNotif(msg.data)
-        if (row) injectInlineNotif(row.notifType, row.msg)
       }
+      // Inline notification in chat (routed through toggle system) — whichever
+      // tab is open. It used to be the else branch above, so a post that
+      // arrived while the feed tab was showing never became a chat row, and
+      // the chat tab read as if it had not happened until a reload rebuilt it.
+      // injectInlineNotif buffers for every channel and only paints a chat tab.
+      const row = buildFeedInlineNotif(msg.data)
+      if (row) injectInlineNotif(row.notifType, row.msg)
     }
     if (msg.type === 'dm_new' && msg.data) {
-      // Server-pushed Twitch whispers must route through handleIncomingWhisper
-      // so the dedup key (whisper_id) matches the EventSub path. Using
-      // handleIncomingDm here would produce a second timeline entry because
-      // its dedup checks data.id (hs db row) != eventsub entry's id (whisper_id).
-      if (msg.data.platform === 'twitch') {
-        handleIncomingWhisper({
-          user: msg.data.from_display_name || msg.data.from_twitch_login || 'unknown',
-          userId: msg.data.from_twitch_id,
-          text: msg.data.content,
-          color: msg.data.from_color || '#fff',
-          time: msg.data.created_at ? new Date(msg.data.created_at).getTime() : Date.now(),
-          id: msg.data.external_message_id || msg.data.id || '',
-        })
-      } else {
-        handleIncomingDm(msg.data)
-      }
+      // a server-pushed twitch whisper joins the whisper chokepoint (whispers.js)
+      if (msg.data.platform === 'twitch') handleServerWhisperPush(msg.data)
+      else handleIncomingDm(msg.data)
     }
+    if (msg.type === 'message_moderated' && msg.data) {
+      if (feedApplyModeration(msg.data) && currentTab === 'feed') feedHeatRepaintSoon()
+    }
+    if (msg.type === 'dm_thread_message' && msg.data) handleDmThreadMessage(msg.data)
+    if (msg.type === 'dm_thread_update') handleDmThreadUpdate()
+    if (msg.type === 'dm_typing' && msg.data) handleDmTyping(msg.data.userId)
     if (msg.type === 'message-edited' && msg.data) {
       const d = msg.data.message_id ? msg.data : msg.data.data
       const id = d?.message_id
@@ -882,6 +1494,7 @@ function listenForSocialEvents() {
       if (activeThread) {
         if (activeThread.op?.base36_id === id) {
           activeThread = null
+          feedThreadSync(null)
         } else if (activeThread.replies) {
           const ri = activeThread.replies.findIndex((r) => r.base36_id === id)
           if (ri >= 0) activeThread.replies.splice(ri, 1)
@@ -889,218 +1502,24 @@ function listenForSocialEvents() {
       }
       if (currentTab === 'feed') renderFeed()
     }
+    if (msg.type === 'youtube_delete' && msg.data) {
+      applyYtDeletion(msg.data)
+    }
     if (msg.type === 'youtube_chat_message') {
-      let targetChannelId = msg.channelId
-      // Same-tab native-tap copies (youtube-content.js broadcasts reach this
-      // overlay directly, not just background) stamp channelId with the RAW
-      // 11-char videoId — they never went through background's videoId→channel
-      // map. Untreated, they land in an orphan buffer nothing renders AND
-      // consume an isSentEcho credit meant for the server relay copy (the
-      // yt-only own-message swallow). Retarget to the owning config channel —
-      // own messages then render instantly and the later server copy dies in
-      // isYtDuplicate (same bucket, same innertube id). Unowned videoIds are
-      // dropped BEFORE any credit/dedup state is touched.
-      if (
-        targetChannelId &&
-        targetChannelId !== '__live_yt_auto__' &&
-        /^[a-zA-Z0-9_-]{11}$/.test(targetChannelId) &&
-        !config.channels.some((c) => c.id === targetChannelId)
-      ) {
-        let mapped = null
-        try {
-          if (typeof youtubeLinks !== 'undefined') {
-            for (const [chId, link] of youtubeLinks) {
-              if (link?.videoId === targetChannelId) {
-                mapped = chId
-                break
-              }
-            }
-          }
-        } catch {}
-        if (!mapped) {
-          const byUrl = config.channels.find(
-            (c) => typeof c.youtube === 'string' && c.youtube.includes(targetChannelId),
-          )
-          if (byUrl) mapped = byUrl.id
-        }
-        if (!mapped) return
-        targetChannelId = mapped
-      }
-      // Filter __live_yt_auto__ messages: only accept this stream's chat
-      // (prevents cross-tab leak — e.g. a stale videoId's chat bleeding in).
-      // Derive the allowed videoId straight from the page URL when we're ON a
-      // youtube watch/live page — that's authoritative and always available, so
-      // the gate no longer depends on a status-echo or a subscribe-time var that
-      // can be missed (which left it shut and the 'live' tab empty). Falls back
-      // to _autoYtVideoId off-page. The videoId-match still blocks other streams.
-      if (targetChannelId === '__live_yt_auto__') {
-        const pageVid =
-          (location.href.match(/[?&]v=([a-zA-Z0-9_-]{11})/) ||
-            location.href.match(/\/live\/([a-zA-Z0-9_-]{11})/))?.[1] || _autoYtVideoId
-        if (!pageVid) return // not on a watch page and no confirmed sub — reject
-        if (msg.videoId && msg.videoId !== pageVid) return // wrong stream
-        if (!_autoYtVideoId) _autoYtVideoId = pageVid // heal for downstream reads
-      }
-      // Touch the YT watchdog clock AFTER the videoId gate but before dedup —
-      // dup msgs still prove the BG-server pipe is alive, but a stale stream's
-      // rejected traffic must not keep the watchdog fed (it would mask a new
-      // subscription that failed and never let the 180s rescue fire).
-      try {
-        touchYtChannel(targetChannelId)
-      } catch {}
-      // Event renderers (superchat/supersticker/membership/gift purchase) skip
-      // the normal chat-row path entirely and go out as toggleable stream-event
-      // banners instead — see dispatchYtStreamEvent for what's excluded and why.
-      if (
-        msg.msgType === 'superchat' ||
-        msg.msgType === 'supersticker' ||
-        msg.msgType === 'membership' ||
-        msg.msgType === 'giftpurchase'
-      ) {
-        dispatchYtStreamEvent(targetChannelId, msg)
-        return
-      }
-
-      // Dedup against message buffer + pace queue (survives WS reconnects
-      // unlike 5s hash; id-exact when the server's innertube id is present)
-      if (targetChannelId && isYtDuplicate(msg.user, msg.text, targetChannelId, msg.id)) return
-
-      // Resolve a Twitch-channel name for emote lookup. YT-relayed messages
-      // belong to a streamer who likely also has Twitch/Kick channel emotes
-      // (BTTV/FFZ/7TV) configured under their Twitch handle. Without this
-      // hint, processEmotes only sees globals + the user's heatsync inventory,
-      // missing per-channel emotes for the linked streamer.
-      let ytChannelHint = null
-      // Channel-emote cache key when the display hint can't double as one.
-      // A yt-ONLY channel's emotes are broadcast under the CONFIG id —
-      // join_channel sends { channel: id } and channel_emotes_update echoes
-      // it back as channelOwner — and auto-live is keyed by the BG's
-      // yt_ensure_channel_emotes derivation: videoId, else @handle from the
-      // page URL (channel /live pages carry no ?v=). Neither is fit to
-      // display (raw video/config id), so it rides a separate emoteChannel
-      // field; the old twitch||kick||null hint left these messages on the
-      // dead 'youtube' key and channel emotes never resolved. Lowercased to
-      // match _buildChannelEmoteCache's key normalization.
-      let ytEmoteKey = null
-      if (targetChannelId && targetChannelId !== '__live_yt_auto__') {
-        const linkedCh = config.channels.find((c) => c.id === targetChannelId)
-        if (linkedCh) {
-          ytChannelHint = linkedCh.twitch || linkedCh.kick || null
-          if (!ytChannelHint) ytEmoteKey = String(linkedCh.id).toLowerCase()
-        }
-      } else if (targetChannelId === '__live_yt_auto__') {
-        const vid = msg.videoId || _autoYtVideoId || ''
-        const handle = location.href.match(/youtube\.com\/@([\w.-]{3,30})/)?.[1]
-        ytEmoteKey = (vid || (handle ? `@${handle}` : '')).toLowerCase() || null
-      }
-
-      const ytMsg = {
-        // innertube message id when the server relays one — gives yt messages
-        // a REAL identity: stableMsgId stops falling back to user:time:text
-        // (whose time gets rewritten per pace-commit, defeating render dedup)
-        id: msg.id || undefined,
-        user: msg.user,
-        text: msg.text,
-        // feeds sanitizeColor()/COLOR_RE downstream — must stay literal hex, no var()
-        color: msg.color || '#ff0000',
-        channel: ytChannelHint || 'youtube',
-        // Cache key for channel-emote lookup when channel itself isn't one
-        // (yt-only config channels + auto-live). Render uses it over channel.
-        emoteChannel: ytEmoteKey || undefined,
-        time: msg.time,
-        platform: 'youtube',
-        emotes: msg.emotes || [],
-        msgType: msg.msgType || 'text',
-        amount: msg.amount || '',
-        scColor: msg.scColor || '',
-        sticker: msg.sticker || null,
-        avatar: msg.avatar || undefined,
-        badges: msg.badges || undefined,
-        systemMsg: msg.systemMsg || undefined,
-        // Namespaced heatsync paint uid from the author's UC… id. Same contract
-        // as kick's kickNamePaintUid path: NEVER via queueMcCosmeticsLookup
-        // (twitch-space only) — queued directly below.
-        hsPaintUid: /^UC[A-Za-z0-9_-]{22}$/.test(msg.authorChannelId || '') ? `yt_${msg.authorChannelId}` : undefined,
-        // Server-enriched third-party emote refs — render sender inventory
-        // emotes without a per-sender fetch. Server-fed only. See emote-enrich.ts.
-        hsEmotes: msg.hsEmotes || undefined,
-      }
-      if (ytMsg.hsPaintUid && typeof queuePaintLookup === 'function') queuePaintLookup(ytMsg.hsPaintUid)
-
-      // Echo dedup + host-platform badge attribution (matches IRC/kick
-      // handlers). Without this, a triple-target send would render TWO
-      // copies of the user's own message — the dedup'd twitch/kick echo
-      // PLUS the unfiltered YT echo. peekSentHost ensures the badge
-      // reflects where the user actually typed FROM.
-      if (isSentEcho(ytMsg.text, 'youtube')) return
-      // Gated on peekSentHost alone — currentUsername is null on cross-origin
-      // tabs (youtube.com/kick.com popout), matching the IRC/kick handlers.
-      {
-        const sentHost = peekSentHost(ytMsg.text)
-        if (sentHost) ytMsg.platform = sentHost === 'yt' ? 'youtube' : sentHost
-      }
-
-      // Same pipeline as Twitch/Kick handlers: automod + filter rules → mention → stats
-      if (
-        ytMsg.user?.toLowerCase() !== currentUsername?.toLowerCase() &&
-        (shouldAutomod(ytMsg.text) ||
-          evaluateFilterRules(ytMsg, targetChannelId !== '__live_yt_auto__' ? targetChannelId : null).hide)
-      )
-        return
-      const isMent = isMention(ytMsg)
-      bumpStreamStats(ytChannelHint || ytEmoteKey, ytMsg, isMent)
-      if (isMent) {
-        mentionsBuffer.push(ytMsg)
-        if (mentionsBuffer.length > MAX_BUFFER + 50) mentionsBuffer.splice(0, mentionsBuffer.length - MAX_BUFFER)
-        persistMentions()
-        notifyMention(ytMsg)
-        noteSeenEvent('mentions', ytMsg.time || Date.now())
-        if (currentTab === 'mentions') {
-          bumpSeen('mentions')
-          if (!appendMessage(ytMsg, 'mentions')) renderMessages('mentions')
-        } else {
-          updateTabIndicator('mentions')
-        }
-      }
-
-      if (targetChannelId && targetChannelId !== 'global') {
-        // Instant-live signal for YT-only tabs (no Twitch handle = no helix
-        // truth available, so first chat msg is our best signal). Tabs with
-        // a Twitch or Kick handle defer to the live-status poll — otherwise
-        // a YT replay/buffered msg would override the offline-Twitch truth.
-        if (targetChannelId !== '__live_yt_auto__') {
-          try {
-            const ch = config.channels.find((c) => c.id === targetChannelId)
-            const isYtOnly = ch && !ch.twitch && !ch.kick && ch.youtube
-            if (isYtOnly) {
-              const tabEl = document.querySelector(
-                `#hs-mc-tabbar .hs-mc-tab[data-tab="${CSS.escape(targetChannelId)}"]`,
-              )
-              if (tabEl && tabEl.dataset.live !== 'true') tabEl.dataset.live = 'true'
-            }
-          } catch {}
-        }
-        // Backfill replay: bypass per-channel pacing entirely. Each msg has
-        // its real YT timestamp, so fairMerge places it at the correct
-        // chronological position scattered through the existing twitch/kick
-        // history — no "all at once" flash because they're not appearing
-        // at the bottom; they slot in at their real-time positions. Pacing
-        // here would just delay the correct render.
-        if (msg.replay) {
-          ingestReplayYtMsg(targetChannelId, ytMsg)
-        } else {
-          enqueueYtForPacing(targetChannelId, ytMsg)
-        }
-      } else if (targetChannelId === 'global') {
-        // Surface unresolved-routing drops so future regressions don't go silent.
-        // Real cause is on background side: videoId→channelId map missed an entry.
-        console.warn('[heatsync-ext] yt msg dropped — channelId=global, videoId=', msg.videoId, 'user=', msg.user)
+      handleYoutubeChatMsg(msg)
+    }
+    if (msg.type === 'youtube_chat_batch' && Array.isArray(msg.messages)) {
+      for (const item of msg.messages) {
+        handleYoutubeChatMsg({ channelId: msg.channelId, videoId: msg.videoId, replay: msg.replay, ...item })
       }
     }
     if (msg.type === 'youtube_msg_deleted') {
       // Mark all rendered messages from this user (for the matching channel)
-      // as cleared so they get the dim+strikethrough treatment that Twitch/Kick
-      // moderator deletions already get.
+      // as cleared so they get the same grey-but-readable treatment twitch and
+      // kick moderator deletions get. DOM-tap sourced and keyed off USER only —
+      // the server path (youtube_delete) is the precise one, matching specific
+      // message ids and a banned author's channel id. Both exist because either
+      // source can be the only one live.
       const u = (msg.user || '').toLowerCase()
       if (!u) return
       const msgsEl = document.getElementById('hs-mc-messages')
@@ -1118,7 +1537,7 @@ function listenForSocialEvents() {
                 '.hs-mc-msg .hs-mc-user:not(.hs-mc-mention)[data-platform="yt"], .hs-mc-msg .hs-mc-user:not(.hs-mc-mention)[data-platform="youtube"]',
               )
               .forEach((a) => {
-                if (a.dataset.username === u) a.closest('.hs-mc-msg')?.classList.add('hs-mc-msg-cleared')
+                if (a.dataset.username === u) markClearedRow(a.closest('.hs-mc-msg'), 'deleted')
               })
           })
           .catch(() => {})
@@ -1138,6 +1557,7 @@ function listenForSocialEvents() {
         flagBuf(buf)
       })
       flagBuf(mentionsBuffer)
+      refoldSimulcastRows(msgsEl)
     }
     if (msg.type === 'youtube_status') {
       const targetChannelId = msg.channelId
@@ -1184,9 +1604,9 @@ function listenForSocialEvents() {
             // generic "live" to the real channel — so the auto-live tab reads as
             // a selection ("lofigirl"), not a blank tab with chat pouring in.
             // Runs regardless of the active tab (the label is always visible).
-            if (typeof updateLiveTabLabel === 'function') {
+            if (typeof syncLiveTab === 'function') {
               try {
-                updateLiveTabLabel()
+                syncLiveTab()
               } catch {}
             }
             if (currentTab === 'live') {
@@ -1214,7 +1634,7 @@ function listenForSocialEvents() {
                   tabEl.textContent = link.channelName
                 }
               }
-            } else if (msg.status === 'ended' || msg.status === 'error') {
+            } else if (msg.status === 'ended' || msg.status === 'error' || msg.status === 'not-live') {
               if (isYtOnly) tabEl.dataset.live = 'false'
             }
           }
@@ -1257,6 +1677,12 @@ function listenForSocialEvents() {
             if (msgsEl) {
               for (const el of msgsEl.querySelectorAll('.hs-mc-empty[data-hs-yt-status]')) el.remove()
             }
+          } else if (msg.status === 'chat-off' || msg.status === 'no-slot') {
+            // said in plain words, one row that 'connected' clears: a silent tab here reads as a broken one
+            upsertNotice(
+              t(msg.status === 'chat-off' ? 'mc_social_yt_chat_off' : 'mc_social_yt_no_slot'),
+              'var(--hs-warn)',
+            )
           } else if (msg.status === 'error') {
             // Drop noise: rate-limit, "not currently live / chat disabled",
             // AND "could not resolve youtube url" (the expected outcome when
@@ -1273,11 +1699,29 @@ function listenForSocialEvents() {
               // Always prefix with "youtube:" — without it, error text looks
               // like it's about whatever stream the user is watching, not
               // the YouTube subscription that actually failed.
-              upsertNotice(`youtube: ${errText || 'connection error'}`, 'var(--hs-danger)')
+              upsertNotice(t('mc_social_yt_error', [errText || t('mc_social_yt_conn_error')]), 'var(--hs-danger)')
             }
           }
         }
       }
+    }
+    if (msg.type === 'profile_updated') return void pcRefreshCardFor([msg.userId])
+    if (msg.type === 'mod_warned')
+      return void HsNotifs.emit('mod-warning', { text: t('mc_notif_mod_warned', [msg.reason]) })
+    if (msg.type === 'user-log:removed') return void chatLogsServerRemoved(msg.data)
+    if (msg.type === 'user-log') {
+      chatLogsServerLive(msg.data)
+      return
+    }
+    if (msg.type === 'reaction:added' || msg.type === 'reaction:removed' || msg.type === 'vote:updated') {
+      if (msg.data) feedOnFrame(msg.data)
+      return
+    }
+    if (msg.type === 'heat-updated' && msg.data) {
+      if (feedApplyHeat(msg.data) && currentTab === 'feed') feedHeatRepaintSoon()
+    }
+    if (msg.type === 'dm_message_deleted' && msg.data) {
+      dropDmFromTimeline(msg.data.messageId)
     }
     if (msg.type === 'message-updated' && msg.data) {
       const uid = msg.data.base36_id
@@ -1299,7 +1743,7 @@ function isOpMsg(m) {
   return m.is_op != null ? !!m.is_op : !m.reply_to || m.reply_to === ''
 }
 
-// The last feed OP surfaced as an inline row in chat — what /opr replies to.
+// The last feed OP surfaced as an inline row in chat — what /re replies to.
 // Set from ONE place (buildFeedInlineNotif) so anything that can put an [OP]
 // in front of you is automatically a valid reply target, including your own.
 let lastInlineFeedOpId = null
@@ -1322,6 +1766,52 @@ const INLINE_ROW_DEDUP_MS = 120_000
  * @returns {{notifType: string, msg: object}|null} null when the row carries
  *   no usable timestamp (the renderer needs one for its ts column)
  */
+/**
+ * What a post carries beyond its text, as the short tag the chat row shows:
+ * "gif" / "img" / "vid", with a count in front for more than one. A chat row
+ * is one line of text — a thumbnail would change its height under the scroll —
+ * so the row says THAT there is media and the click (>>id, the whole row)
+ * opens the thread where it is drawn. null when the post is text only.
+ */
+function inlineMediaTag(f) {
+  const items =
+    Array.isArray(f.media) && f.media.length ? f.media : f.media_url ? [{ url: f.media_url, type: f.media_type }] : []
+  // withheld by the server (media_held): no urls to read the kind from, still media
+  if (!items.length) {
+    if (!(f.has_media && Array.isArray(f.media_held) && f.media_held.length)) return null
+    const n = f.media_count > 1 ? `${f.media_count} ` : ''
+    return f.media_type === 'video' ? `${n}vid` : `${n}${f.media_count > 1 ? 'media' : 'img'}`
+  }
+  const kind = (it) => {
+    if (it.type === 'video') return 'vid'
+    // .webp is not claimed as a gif: the url cannot say whether it moves.
+    return /\.(gif|apng)(\?|$)/i.test(String(it.url || '')) ? 'gif' : 'img'
+  }
+  const kinds = new Set(items.map(kind))
+  const label = kinds.size === 1 ? [...kinds][0] : 'media'
+  return items.length > 1 ? `${items.length} ${label}` : label
+}
+
+/**
+ * The picture the [img] tag shows on hover: the first item's url (a video's
+ * thumbnail), absolute. null for a post still being scanned — the tag then
+ * stays plain text. A flagged post keeps its url: the peek is held at hover
+ * time behind the viewer's toggles (img-view.js), from the row's mediaCats.
+ */
+function inlineMediaPreview(f) {
+  if (f.moderation_pending) return null
+  const it =
+    Array.isArray(f.media) && f.media.length
+      ? f.media[0]
+      : f.media_url
+        ? { url: f.media_url, type: f.media_type }
+        : null
+  if (!it) return null
+  const url = it.type === 'video' ? it.thumbnail_url || f.thumbnail_url : it.url
+  if (typeof url !== 'string' || !url) return null
+  return url.startsWith('/') ? `https://heatsync.org${url}` : /^https:\/\//i.test(url) ? url : null
+}
+
 function buildFeedInlineNotif(f) {
   if (!f) return null
   const t = new Date(f.created_at).getTime()
@@ -1355,6 +1845,9 @@ function buildFeedInlineNotif(f) {
       emote_refs: f.emote_refs,
       is_op: f.is_op,
       is_thread_op: f.is_thread_op,
+      mediaTag: inlineMediaTag(f),
+      mediaSrc: inlineMediaPreview(f),
+      mediaCats: f.media_held || f.moderation_result?.flaggedCategories || null,
     },
   }
 }
@@ -1390,19 +1883,43 @@ async function fetchFeed(append = false) {
   }
   let msgs = (resp.data?.messages || []).filter((m) => m.username !== 'Anonymous' && isOpMsg(m))
   let usedHotFallback = false
+  let hotWasCold = false
 
   // Following empty → fallback to /api/messages/hot (heat-sorted, last 30d) so
   // the tab shows SOMETHING discoverable instead of an empty wall. Only on the
-  // initial page (append=false) — paginating shouldn't trigger fallback. Auth
-  // gate stays the same since the empty-card has the login CTA.
-  if (!append && msgs.length === 0 && hsAuthToken) {
+  // initial page (append=false) — paginating shouldn't trigger fallback.
+  //
+  // NO auth gate. There used to be one (`&& hsAuthToken`), on the reasoning that
+  // a logged-out user gets the empty card's login CTA instead. That was sound
+  // while it lasted: /api/messages/hot itself returned [] for weeks, so the gate
+  // was choosing between a login card and a blank wall, and the card won. It now
+  // serves 30 real rows anonymously (fixed 2026-08-16, server-side), so the
+  // choice is between a login card and actual content, and the card loses.
+  //
+  // A logged-out session is EVERY brand-new install — someone who just did the
+  // hard part and installed a browser extension. Demanding OAuth before showing
+  // them a single post is the highest-friction possible first screen, and it is
+  // the opposite of what every other heatsync surface promises ("no account
+  // needed" — see server/lib/ssr-theme.ts archiveCta). The ask isn't lost: the
+  // fallback banner below carries the login nudge for logged-out sessions, so
+  // they get the proof AND the CTA instead of the CTA alone.
+  //
+  // Anon rows are safe to show here — the server scrubs them (lib/scrub-identity,
+  // verified by ~/scripts/hs-anon-probe.py).
+  if (!append && msgs.length === 0) {
     try {
       const hotResp = await apiFetch('/api/messages/hot?limit=30&hours=720', { auth: true })
       if (hotResp.ok) {
-        const hotMsgs = (hotResp.data?.messages || []).filter((m) => m.username !== 'Anonymous' && isOpMsg(m))
+        // No anon filter here, deliberately: this path runs only when the follows feed
+        // came back empty, i.e. on every new install, and its whole job is to avoid a
+        // blank wall. Dropping anon posts threw away ~a sixth of everything available.
+        // The server serves anon rows fully scrubbed (lib/scrub-identity) — verified by
+        // ~/scripts/hs-anon-probe.py — so there is nothing to hide from here.
+        const hotMsgs = (hotResp.data?.messages || []).filter((m) => isOpMsg(m))
         if (hotMsgs.length > 0) {
           msgs = hotMsgs.map((m) => Object.assign({}, m, { _fromHotFallback: true }))
           usedHotFallback = true
+          hotWasCold = hotResp.data?.fallback === true
         }
       }
     } catch (_) {}
@@ -1422,13 +1939,18 @@ async function fetchFeed(append = false) {
       feedMessages = msgs
     }
     feedPage = 1
+    feedRendered = 0
     feedFromHotFallback = usedHotFallback
+    feedFallbackIsCold = hotWasCold
   }
   // Clamp after bulk load — push-path uses .pop() cap but server can return >150 in one fetch.
   if (feedMessages.length > 150) feedMessages.length = 150
   // Hot fallback returns sorted-by-heat from past 30d — never paginate that;
-  // would conflict with the heat ranking on subsequent pages.
-  feedHasMore = usedHotFallback ? false : (resp.data?.pagination?.hasMore ?? msgs.length >= 30)
+  // would conflict with the heat ranking on subsequent pages. At the 150 cap
+  // the clamp above discards everything further fetches return, so hasMore
+  // must go false with it or the scroll sentinel fetches-and-drops forever.
+  feedHasMore =
+    usedHotFallback || feedMessages.length >= 150 ? false : (resp.data?.pagination?.hasMore ?? msgs.length >= 30)
   feedLoaded = true
   feedLastFetch = Date.now()
   // Seed latestAt.live from the newest post we just got. Without this, the
@@ -1443,7 +1965,11 @@ async function fetchFeed(append = false) {
     }, 0)
     if (newestTs > 0) noteSeenEvent('live', newestTs)
   }
-  if (currentTab === 'feed') renderFeed()
+  feedBookmarksLoad(msgs)
+  if (currentTab === 'feed') {
+    if (append) renderFeedAppend(feedRendered)
+    else renderFeed()
+  }
 }
 
 // Onboarding card shown when feed has no posts. Replaces the bare
@@ -1461,20 +1987,20 @@ function _renderFeedEmptyCard() {
   actions.className = 'hs-mc-empty-actions'
 
   if (!hsAuthToken) {
-    title.textContent = 'log in to see your home'
-    sub.textContent = 'follow people, post, share — alongside multichat'
+    title.textContent = t('mc_social_home_title')
+    sub.textContent = t('mc_social_home_sub')
 
     const loginBtn = document.createElement('a')
     loginBtn.className = 'hs-mc-empty-btn primary'
-    loginBtn.textContent = 'log in at heatsync.org'
-    loginBtn.href = 'https://heatsync.org/login'
+    loginBtn.textContent = t('mc_social_home_login')
+    loginBtn.href = HS_LOGIN_URL
     loginBtn.target = '_blank'
     loginBtn.rel = 'noopener noreferrer'
     actions.appendChild(loginBtn)
 
     const note = document.createElement('div')
     note.className = 'hs-mc-empty-note'
-    note.textContent = 'no account needed for multichat — pick a channel tab above'
+    note.textContent = t('mc_social_home_note')
 
     card.appendChild(title)
     card.appendChild(sub)
@@ -1483,20 +2009,20 @@ function _renderFeedEmptyCard() {
     return card
   }
 
-  title.textContent = 'no posts'
-  sub.textContent = 'follow people or post something to populate this tab'
+  title.textContent = t('mc_social_no_posts')
+  sub.textContent = t('mc_social_no_posts_sub')
 
   const importBtn = document.createElement('button')
   importBtn.className = 'hs-mc-empty-btn primary'
-  importBtn.textContent = 'import follows from twitch'
+  importBtn.textContent = t('mc_social_import_follows')
   importBtn.addEventListener('click', async () => {
     if (importBtn.disabled) return
     importBtn.disabled = true
-    importBtn.textContent = 'syncing…'
+    importBtn.textContent = t('mc_social_syncing')
     try {
       const r = await apiFetch('/api/sync-twitch-follows', { method: 'POST', auth: true })
       if (r?.ok && r?.data?.success) {
-        importBtn.textContent = `synced ${r.data.synced || 0} ✓`
+        importBtn.textContent = t('mc_social_synced', [String(r.data.synced || 0)])
         try {
           chrome.runtime.sendMessage({ type: 'refresh_followed_users' })
         } catch {}
@@ -1506,26 +2032,34 @@ function _renderFeedEmptyCard() {
         }, 1200)
       } else {
         importBtn.disabled = false
-        importBtn.textContent = (r?.error || r?.data?.error || 'try again').slice(0, 40)
+        importBtn.textContent = (r?.error || r?.data?.error || t('mc_social_try_again')).slice(0, 40)
       }
     } catch (_) {
       importBtn.disabled = false
-      importBtn.textContent = 'try again'
+      importBtn.textContent = t('mc_social_try_again')
     }
   })
   actions.appendChild(importBtn)
 
   const discoverBtn = document.createElement('button')
   discoverBtn.className = 'hs-mc-empty-btn'
-  discoverBtn.textContent = 'discover people →'
+  discoverBtn.textContent = t('mc_social_discover_people')
   discoverBtn.addEventListener('click', () => {
+    // discover is hidden by default; a tab you land on must be on the bar, so
+    // asking for it brings it back first.
+    const hidden = getSetting('hiddenTabs')
+    if (Array.isArray(hidden) && hidden.includes('discover'))
+      setSetting(
+        'hiddenTabs',
+        hidden.filter((id) => id !== 'discover'),
+      )
     if (typeof switchTab === 'function') switchTab('discover')
   })
   actions.appendChild(discoverBtn)
 
   const postBtn = document.createElement('button')
   postBtn.className = 'hs-mc-empty-btn'
-  postBtn.textContent = 'post something'
+  postBtn.textContent = t('mc_social_post_something')
   postBtn.addEventListener('click', () => {
     if (typeof showInputBar === 'function') showInputBar()
     const inp = document.getElementById('hs-mc-input')
@@ -1545,10 +2079,13 @@ function _feedVirtualTeardown(msgsEl) {
     msgsEl.removeEventListener('scroll', _feedVirtualScrollHandler)
   }
   _feedVirtualScrollHandler = null
+  _feedFillObserver?.disconnect()
+  _feedFillObserver = null
 }
 
 function renderFeed() {
-  if (typeof activeProfileCard !== 'undefined' && activeProfileCard) return
+  if (typeof imgViewOpen === 'function' && imgViewOpen()) return // a full-size picture owns the pane
+  if ((typeof activeProfileCard !== 'undefined' && activeProfileCard) || hsPanePanelOpen()) return
   const msgsEl = document.getElementById('hs-mc-messages')
   if (!msgsEl) return
 
@@ -1573,6 +2110,15 @@ function renderFeed() {
   if ((!feedLoaded || isStale) && !feedLoading) {
     _feedVirtualTeardown(msgsEl)
     msgsEl.textContent = ''
+    // a pane with no height (hidden, collapsed) is not being looked at: the first fetch waits
+    // for it to open, so a channel-less page that lands here costs nothing until then
+    if (!msgsEl.clientHeight && typeof ResizeObserver === 'function') {
+      _feedFillObserver = new ResizeObserver(() => {
+        if (msgsEl.clientHeight && currentTab === 'feed' && !mcSignal?.aborted) renderFeed()
+      })
+      _feedFillObserver.observe(msgsEl)
+      return
+    }
     const loading = document.createElement('div')
     loading.className = 'hs-mc-empty'
     loading.textContent = t('mc_social_loading_feed')
@@ -1584,7 +2130,12 @@ function renderFeed() {
   if (feedMessages.length === 0) {
     _feedVirtualTeardown(msgsEl)
     msgsEl.textContent = ''
-    msgsEl.appendChild(_renderFeedEmptyCard())
+    const emptyCard = _renderFeedEmptyCard()
+    // no saved tabs and no channel on the page: the temp tab is hidden, so the
+    // first-run "add streams" call to action lives here
+    if (typeof appendCockpitCta === 'function' && !config.channels?.length && !getLiveChannel())
+      appendCockpitCta(emptyCard)
+    msgsEl.appendChild(emptyCard)
     return
   }
 
@@ -1595,7 +2146,8 @@ function renderFeed() {
   // per-item height measurement (cumulative offsets, not i*h).
   _feedVirtualTeardown(msgsEl)
 
-  const items = feedMessages
+  const items = feedMessages.slice(0, Math.max(feedRendered, FEED_FIRST_PAINT))
+  feedRendered = items.length
   isProgrammaticScroll = true
   msgsEl.textContent = ''
   msgsEl.style.position = ''
@@ -1606,33 +2158,28 @@ function renderFeed() {
   // DOM construction (no innerHTML) — both strings are static, the hook flags
   // any innerHTML anyway.
   if (feedFromHotFallback) {
+    // One reverse-video line: reads as a section header, not a post, and the
+    // login ask rides along when there is no account to have follows on.
     const banner = document.createElement('div')
     banner.className = 'hs-mc-feed-fallback-banner'
-    // 13px + integer line-height: Cozette is bitmap-native at 13px — 12px
-    // rescales the glyphs (blurry), and 1.5 leading lands rows off the pixel
-    // grid. No faux-bold either (synthetic bold double-strikes bitmap glyphs);
-    // the #fff vs #bbb contrast carries the hierarchy.
     banner.style.cssText =
-      'padding:8px 10px;background:#1a1408;border-left:2px solid #808080;color:#e6e6e6;font-size:13px;margin-bottom:4px;line-height:18px'
-    const head = document.createElement('div')
-    head.style.cssText = 'color:#fff;margin-bottom:2px'
-    head.textContent = 'no posts from your follows'
-    const sub = document.createElement('div')
-    sub.style.cssText = 'color:#bbb'
-    sub.textContent = 'showing what is hot from the past 30 days — follow people to fill this with their posts'
-    banner.appendChild(head)
-    banner.appendChild(sub)
+      'padding:2px 10px;background:#ffffff;color:#000000;font-size:13px;margin-bottom:4px;line-height:18px'
+    banner.textContent = !hsAuthToken
+      ? t('mc_social_banner_hot_login')
+      : feedFallbackIsCold
+        ? t('mc_social_banner_newest')
+        : t('mc_social_banner_hot_month')
     frag.appendChild(banner)
   }
   let zebraCount = 0
   for (let i = 0; i < items.length; i++) {
     const div = buildFeedMessageDiv(items[i])
-    if (zebraEnabled && ++zebraCount % 2 === 0) div.classList.add('hs-mc-zebra')
+    if (zebraEnabled && ++zebraCount % 2 === 0) div.classList.add('hs-mc-zebra', 'hs-zebra')
     frag.appendChild(div)
   }
   msgsEl.appendChild(frag)
 
-  if (feedHasMore) {
+  if (feedHasMore || feedRendered < feedMessages.length) {
     const loader = document.createElement('div')
     loader.className = 'hs-mc-empty hs-feed-loader'
     loader.textContent = t('mc_social_scroll_more')
@@ -1657,10 +2204,88 @@ function renderFeed() {
     _feedInfiniteTimer = cleanup.setTimeout(() => {
       _feedInfiniteTimer = null
       const { scrollTop, scrollHeight, clientHeight } = msgsEl
-      if (scrollHeight - scrollTop - clientHeight < 100) fetchFeed(true)
+      if (scrollHeight - scrollTop - clientHeight < 100) feedMore()
     }, 200)
   }
   msgsEl.addEventListener('scroll', _feedVirtualScrollHandler, { signal: mcSignal, passive: true })
+  // a tall pane can hold the first rows without a scrollbar, so nothing would scroll to ask for
+  // more; a pane with no height yet (hidden, collapsed) builds nothing until it has one
+  if (typeof ResizeObserver === 'function') {
+    _feedFillObserver = new ResizeObserver(feedFillPane)
+    _feedFillObserver.observe(msgsEl)
+  }
+}
+
+/** More rows: build the next of the buffer, and only when it is all on screen ask the server. */
+function feedMore() {
+  if (feedRendered < feedMessages.length) {
+    renderFeedAppend(feedRendered, FEED_REVEAL_STEP)
+    return true
+  }
+  if (feedHasMore && !feedLoading) {
+    fetchFeed(true)
+    return true
+  }
+  return false
+}
+
+function feedFillPane() {
+  if (mcSignal?.aborted || currentTab !== 'feed' || activeThread) return
+  const el = document.getElementById('hs-mc-messages')
+  if (!el?.clientHeight || !el.querySelector('.hs-feed-loader') || el.scrollHeight - el.clientHeight >= 100) return
+  if (feedMore()) requestAnimationFrame(feedFillPane)
+}
+
+// Append-only render for infinite scroll. A full renderFeed() here rebuilt all
+// 150 rows (tearing down and re-fetching every embed iframe) and reset
+// scrollTop to 0 — yanking the reader to the top on every "load more". Only
+// the newly-fetched rows get built; scroll position is never touched.
+function renderFeedAppend(startIndex, step = Infinity) {
+  if (typeof imgViewOpen === 'function' && imgViewOpen()) return // a full-size picture owns the pane
+  if ((typeof activeProfileCard !== 'undefined' && activeProfileCard) || hsPanePanelOpen()) return
+  if (activeThread) return
+  const msgsEl = document.getElementById('hs-mc-messages')
+  if (!msgsEl) return
+  const newItems = feedMessages.slice(startIndex, startIndex + step)
+  feedRendered = startIndex + newItems.length
+  msgsEl.querySelector('.hs-feed-loader')?.remove()
+  if (newItems.length > 0) {
+    const frag = document.createDocumentFragment()
+    for (let i = 0; i < newItems.length; i++) {
+      const div = buildFeedMessageDiv(newItems[i])
+      // Continue the full render's 1-based zebra parity from startIndex.
+      if (zebraEnabled && (startIndex + i + 1) % 2 === 0) div.classList.add('hs-mc-zebra', 'hs-zebra')
+      frag.appendChild(div)
+    }
+    msgsEl.appendChild(frag)
+  }
+  if (feedHasMore || feedRendered < feedMessages.length) {
+    const loader = document.createElement('div')
+    loader.className = 'hs-mc-empty hs-feed-loader'
+    loader.textContent = t('mc_social_scroll_more')
+    msgsEl.appendChild(loader)
+  }
+  if (typeof resolvePendingFeedEmbeds === 'function') resolvePendingFeedEmbeds(msgsEl)
+}
+
+// A feed post's author link. A twitch author whose id chat has already
+// resolved gets the same paint (HeatSync first, then 7TV) their name wears in
+// chat and in a quoted post — one precedence everywhere, so a name never looks
+// different on his own post than when he is tagged. Anyone else, or an id not
+// resolved yet, keeps the plain colour; the lookup is queued so the next render
+// has it. Native (no-platform) and kick/yt authors stay plain: knownUserIds is
+// twitch-space only, and a bare name could belong to a different chatter.
+function feedAuthorLink(m) {
+  const name = m.username || 'anon'
+  const lower = name.toLowerCase()
+  // user_id + platform from the post itself name the paint id; user_color is
+  // already the right colour for a feed row (null = none → the shared palette).
+  const p = hsNameParts({ name, userId: m.user_id, platform: m.platform, colour: m.user_color, login: lower })
+  const cls = `hs-feed-user hs-mc-user${p.cls ? ` ${p.cls}` : ''}`
+  // data-uid stays twitch-id-space only (ID-SPACE SAFETY, paints.js); the
+  // namespaced kick_/yt_ ids ride data-hs-nuid in p.attrs
+  const uidAttr = hsNameIsTwitchSpace(p.uid) ? ` data-uid="${escapeHtml(p.uid)}"` : ''
+  return `<a href="https://heatsync.org/user/${encodeURIComponent(m.username)}" target="_blank" rel="noopener noreferrer" class="${cls}" data-username="${escapeHtml(lower)}" data-platform="${escapeHtml(m.platform || '')}"${uidAttr}${p.attrs} style="${escapeHtml(p.style)}">${p.inner}</a>`
 }
 
 function buildFeedMessageDiv(m, opUsername) {
@@ -1684,9 +2309,9 @@ function buildFeedMessageDiv(m, opUsername) {
   const avatarUrl = safeUrl(rawAvatar)
   // Number() coercion is the guard: a non-numeric server value (e.g. a string)
   // would slip past getHeatDisplay's NaN comparisons and reach innerHTML
-  // verbatim via formatHeat. Mirrors heatSpanHtml/heatSpanEl.
+  // verbatim via formatHeat. Mirrors heatSpanHtml.
   const heat = Number(m.heat) || 0
-  const replies = m.reply_count || 0
+  const replies = Number(m.reply_count) || 0
   // renderFeedContent sanitizes via escapeHtml + emote ref escaping
   const content = renderFeedContent(m.content, m.emote_refs)
 
@@ -1716,12 +2341,9 @@ function buildFeedMessageDiv(m, opUsername) {
   // message-element renderer (`!user_id || display_name === 'Anonymous'`).
   const isAnon = !m.user_id || m.username === 'Anonymous'
 
-  // Platform badge: [T]/[K]/[Y] (hidden for anonymous)
-  const platLabel =
-    m.platform === 'kick' ? '[K]' : m.platform === 'youtube' ? '[Y]' : m.platform === 'twitch' ? '[T]' : ''
-  const platBadge = platLabel
-    ? `<span class="hs-feed-tag" style="color:${HS_PLAT_COLORS[m.platform]}">${platLabel}</span>`
-    : ''
+  // Platform badge via platformMark; native heatsync posts carry no platform, so no badge
+  const feedMark = m.platform ? platformMark(m.platform) : null
+  const platBadge = feedMark ? `<span class="hs-feed-tag" style="color:${feedMark.color}">${feedMark.label}</span>` : ''
 
   const timeHtml = window._hsTimestampsEnabled !== false ? `<span class="hs-feed-time">${escapeHtml(time)}</span>` : ''
 
@@ -1731,7 +2353,6 @@ function buildFeedMessageDiv(m, opUsername) {
   if (hd) {
     let rowStyle = `border-left:${hd.borderWidth}px solid ${hd.border};`
     if (hd.bg) rowStyle += `background:${hd.bg};`
-    if (hd.breathe) div.className += ' hs-feed-heat-breathe'
     div.setAttribute('style', rowStyle)
   }
   const isReply = !!m.reply_to
@@ -1740,9 +2361,13 @@ function buildFeedMessageDiv(m, opUsername) {
   const heatSpan = hd
     ? `<span class="hs-feed-stat hs-feed-heat" style="${heatStyle}"><span class="hs-heat-n">${formatHeat(heat)}</span>${heatDeg}</span>`
     : ''
+  // Not inside a thread: there the >>id is the way in, and a 💬N that
+  // toggled the thread closed just dumped you back on the feed.
   const repliesSpan =
-    replies > 0 ? `<span class="hs-feed-stat hs-feed-replies" title="replies">💬${replies}</span>` : ''
-  const stats = [heatSpan, repliesSpan].filter(Boolean).join(' ')
+    replies > 0 && !inThread
+      ? `<span class="hs-feed-stat hs-feed-replies" title="${escapeHtml(t('mc_social_replies_title'))}">💬${replies}</span>`
+      : ''
+  const stats = [heatSpan, feedUpvoteHtml(m), repliesSpan].filter(Boolean).join(' ')
   const statsHtml = stats ? ` ${stats}` : ''
 
   const anonAvatar = avatarsEnabled
@@ -1755,15 +2380,16 @@ function buildFeedMessageDiv(m, opUsername) {
     : ''
   const tripcodeHtml = m.tripcode ? `<span class="hs-tripcode">${escapeHtml(m.tripcode)}</span>` : ''
   const userHtml = isAnon
-    ? `${anonAvatar}<span class="hs-feed-user" style="color:#808080">Anonymous</span>${tripcodeHtml}`
-    : `${userAvatar}<a href="https://heatsync.org/user/${encodeURIComponent(m.username)}" target="_blank" rel="noopener noreferrer" class="hs-feed-user hs-mc-user" data-username="${escapeHtml((m.username || 'anon').toLowerCase())}" style="color:${sanitizeColor(m.user_color || '#fff')}">${escapeHtml(m.username || 'anon')}</a>${tripcodeHtml}`
+    ? `${anonAvatar}<span class="hs-feed-user" style="color:#ffffff">${t('mc_social_anonymous')}</span>${tripcodeHtml}`
+    : `${userAvatar}${feedAuthorLink(m)}${tripcodeHtml}`
 
   // Media/embeds (img, video, iframe) — values inside are pre-sanitized via escapeHtml/safeUrl/sanitizeEmbedId
   const mediaHtml = buildFeedMediaHtml(m)
   // All interpolated parts are pre-sanitized: the meta fields via escapeHtml/safeUrl/
   // sanitizeColor/sanitizeEmbedId, and `content` via renderFeedContent (which neutralizes
   // literal '<' in the server payload, closing the server-HTML-trust vector).
-  div.innerHTML = `${timeHtml}${threadLink}${typeTag}${platBadge}${userHtml}${statsHtml}: <span class="hs-feed-body">${content}</span>${mediaHtml}`
+  div.innerHTML = `${timeHtml}${threadLink}${typeTag}${platBadge}${userHtml}${statsHtml}: <span class="hs-feed-body">${content}</span>${mediaHtml}${feedReactionsHtml(m)}`
+  feedEngageWire(div, m)
 
   // Wire host-CSP-safe fallbacks for avatar/media error handlers (no inline onerror=).
   attachFeedFallbacks(div)
@@ -1780,14 +2406,7 @@ function buildFeedMessageDiv(m, opUsername) {
       toggleThread(threadId, highlightId)
     })
   }
-  const repliesEl = div.querySelector('.hs-feed-replies')
-  if (repliesEl && replies > 0) {
-    repliesEl.style.cursor = 'pointer'
-    repliesEl.addEventListener('click', (e) => {
-      e.stopPropagation()
-      toggleThread(m.reply_to || m.base36_id)
-    })
-  }
+  // The reply count is a readout, not a door: >>id above is the one way in.
 
   // Click >>id post-links in message content
   div.querySelectorAll('.hs-post-link').forEach((link) => {
@@ -1813,8 +2432,8 @@ function buildFeedMessageDiv(m, opUsername) {
     if (body) {
       const badge = document.createElement('span')
       badge.className = 'hs-feed-edited'
-      badge.textContent = ' (edited)'
-      badge.style.cssText = 'color:#888;font-size:13px;font-style:italic;margin-left:4px;'
+      badge.textContent = ` ${t('mc_social_edited')}`
+      badge.style.cssText = 'color:#ffffff;font-size:13px;margin-left:4px;'
       body.appendChild(badge)
     }
   }
@@ -1830,14 +2449,21 @@ function buildFeedMessageDiv(m, opUsername) {
       const input = document.getElementById('hs-mc-input')
       if (!input) return
       const quote = `>>${qid} `
+      // always at the END: focus() restores the old caret (often mid-line), and
+      // repeated clicks would otherwise stack quotes at that spot
       if (wysiwygEnabled) {
         input.focus()
+        const range = document.createRange()
+        range.selectNodeContents(input)
+        range.collapse(false)
+        const sel = window.getSelection()
+        sel.removeAllRanges()
+        sel.addRange(range)
         document.execCommand('insertText', false, quote)
       } else {
-        const pos = input.selectionStart || input.value.length
-        input.value = input.value.slice(0, pos) + quote + input.value.slice(pos)
+        input.value += quote
         input.focus()
-        input.selectionStart = input.selectionEnd = pos + quote.length
+        input.selectionStart = input.selectionEnd = input.value.length
       }
     })
   }
@@ -1882,7 +2508,7 @@ function renderFeedEmote(name, url, source, hash, cwCat) {
   }
   // Blocked → dashed box (transparent px), never the real image. Matches chat's
   // blocked branch so the block actually hides the emote on re-render.
-  if (typeof blockedEmoteNames !== 'undefined' && blockedEmoteNames.has(name)) {
+  if (typeof emoteIsBlocked === 'function' ? emoteIsBlocked(name, { hash, url }) : blockedEmoteNames.has(name)) {
     return `<span class="hs-mc-emote-wrapper hs-state-blocked" data-emote-name="${dn}" data-state="blocked" data-source="heatsync"><img src="${HS_TRANSPARENT_PX}" alt="${dn}" title="${dn}" class="hs-mc-emote hs-emote-blocked" style="width:var(--hs-emote-size,32px);height:var(--hs-emote-size,32px)" data-emote-name="${dn}" data-state="blocked" data-source="heatsync"></span>`
   }
   const sanitizedUrl = escapeHtml(safeUrl(url))
@@ -1913,13 +2539,11 @@ function renderFeedContent(content, emoteRefs) {
       // href param + visible &amp;). The regex excludes <"/space so it's
       // attribute-safe verbatim. Only add the protocol for a bare domain.
       const url = /^https?:\/\//i.test(match) ? match : `https://${match}`
-      return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="hs-mc-link">${match}</a>`
+      return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="hs-mc-link hs-link">${match}</a>`
     })
     // Partial/defanged links ("watch?v=…", "heatsync (dot) org") — same
     // post-pass chat rows use; skips the anchors built above.
-    if (partialLinksEnabled) {
-      html = linkifyPartialLinks(html)
-    }
+    html = linkifyPartialLinks(html)
   }
   // Text formatting (bold, italic, spoilers, etc.) — skip <a>...</a> blocks so URL underscores aren't italicized.
   {
@@ -1943,8 +2567,13 @@ function renderFeedContent(content, emoteRefs) {
         return part.replace(/@([\w]{1,25})\b/g, (_m, name) => {
           const lower = name.toLowerCase()
           const isSelf = hsCurrentUsername === lower
-          const cls = isSelf ? 'hs-mention self' : 'hs-mention'
-          return `<a href="https://heatsync.org/user/${encodeURIComponent(name)}" target="_blank" rel="noopener noreferrer" class="${cls}" data-username="${escapeHtml(lower)}">@${escapeHtml(name)}</a>`
+          const href = `https://heatsync.org/user/${encodeURIComponent(name)}`
+          // your own mention keeps its inverted plate; everyone else's name
+          // wears the colour + paints they wear everywhere (looked up by name).
+          if (isSelf)
+            return `<a href="${href}" target="_blank" rel="noopener noreferrer" class="hs-mention self" data-username="${escapeHtml(lower)}">@${escapeHtml(name)}</a>`
+          const p = hsNameParts({ name: `@${name}`, login: lower, resolve: true })
+          return `<a href="${href}" target="_blank" rel="noopener noreferrer" class="hs-mention${p.cls ? ` ${p.cls}` : ''}" data-username="${escapeHtml(lower)}"${p.attrs} style="${escapeHtml(p.style)}">${p.inner}</a>`
         })
       })
       .join('')
@@ -1958,7 +2587,7 @@ function renderFeedContent(content, emoteRefs) {
         if (i % 2 === 1) return part
         // (?<!&) — part is already escaped; don't tag #x27 inside &#x27; etc.
         return part.replace(/(?<!&)#([a-zA-Z][a-zA-Z0-9_]{1,29})\b/g, (_m, tag) => {
-          return `<a href="https://heatsync.org/tags/${encodeURIComponent(tag)}" target="_blank" rel="noopener noreferrer" class="hs-hashtag" data-tag="${escapeHtml(tag)}">#${escapeHtml(tag)}</a>`
+          return `<a href="https://heatsync.org/feed/tags/${encodeURIComponent(tag)}" target="_blank" rel="noopener noreferrer" class="hs-hashtag" data-tag="${escapeHtml(tag)}">#${escapeHtml(tag)}</a>`
         })
       })
       .join('')
@@ -2006,7 +2635,7 @@ function renderFeedContent(content, emoteRefs) {
   // Local emote fallback: render 7TV/BTTV/FFZ/channel emotes the server can't
   // resolve (not in emote_refs — site only knows heatsync emotes). The extension
   // augments with the viewer's full local emote set, matching chat-tile rendering.
-  if (typeof lookupEmote === 'function') {
+  if (typeof lookupPublicEmote === 'function') {
     const refNames = emoteRefs && typeof emoteRefs === 'object' ? new Set(Object.keys(emoteRefs)) : null
     const parts = html.split(/(<[^>]+>)/)
     html = parts
@@ -2019,14 +2648,19 @@ function renderFeedContent(content, emoteRefs) {
           // the bare form when the qualified token misses.
           const bare = word.replace(/\([^)\s]*\)$/, '')
           if (bare !== word && refNames?.has(bare)) return word // handled by emote_refs pass
-          // Blocked emote dropped from caches — still box it, don't leak the name.
+          // Another author's bare word: channel + globals only. lookupEmote leads with the
+          // viewer's own inventory, which would draw MY emote on THEIR post (rule 4).
+          const em = lookupPublicEmote(word) || (bare !== word ? lookupPublicEmote(bare) : null)
+          // A blocked emote the caches no longer hold is still boxed (don't leak the name). One
+          // they do hold is judged by its own key in renderFeedEmote, so blocking one W never
+          // boxes another.
           if (
+            !em &&
             typeof blockedEmoteNames !== 'undefined' &&
             (blockedEmoteNames.has(word) || blockedEmoteNames.has(bare))
           ) {
             return renderFeedEmote(word, '', 'heatsync', '')
           }
-          const em = lookupEmote(word) || (bare !== word ? lookupEmote(bare) : null)
           // Own-inventory cwCats gate (viewer_show_* toggles) — lookupEmote's
           // first hit is viewerPersonalEmotes, which carries cwCats the same
           // way processEmotes' hsOwnCwHiddenCat check does for chat.
@@ -2077,7 +2711,7 @@ function formatTimeFromTs(ts) {
 // cross-origin, so a relative src silently 404s against twitch.tv/kick.com AND
 // safeUrl() throws on relative URLs (dropping the image). Prefix in place;
 // absolute URLs pass through untouched. Called from buildFeedMediaHtml (the
-// render chokepoint) so every surface — feed, thread, /logs — is covered.
+// render chokepoint) so every surface — feed, thread, /search/logs — is covered.
 function _absolutizeThreadMedia(m) {
   if (!m) return
   for (const k of ['media_url', 'thumbnail_url']) {
@@ -2102,6 +2736,7 @@ async function openThread(msgId, highlightId) {
   const op = feedMessages.find((m) => m.base36_id === msgId)
   const thread = { id: msgId, op: op || null, replies: [], loading: true, highlightId: highlightId || null }
   activeThread = thread
+  feedThreadSync(msgId)
   renderFeed()
   _renderFeedReplyChip(thread)
   if (typeof showInputBar === 'function') showInputBar()
@@ -2134,6 +2769,7 @@ async function openThread(msgId, highlightId) {
   }
   thread.loading = false
 
+  if (thread.op) feedBookmarksLoad([thread.op, ...thread.replies])
   renderFeed()
   // Re-render the chip: the fetched OP corrects [OP]/[RE] state for threads
   // that weren't in the feed cache when the chip first painted.
@@ -2153,6 +2789,7 @@ async function openThread(msgId, highlightId) {
 
 function closeThread() {
   activeThread = null
+  feedThreadSync(null)
   _clearFeedReplyChip()
   renderFeed()
 }
@@ -2183,17 +2820,14 @@ function _renderFeedReplyChip(thread) {
   ref.className = 'hs-mc-feed-reply-ref'
   const rawId = thread.op?.base36_id || thread.id || ''
   const displayId = String(rawId).replace(/^0+/, '') || '0'
-  ref.textContent = ` replying to >>${displayId}`
+  ref.textContent = ` ${t('mc_social_replying_to', [displayId])}`
   chip.appendChild(ref)
 
-  const cancel = document.createElement('button')
-  cancel.className = 'hs-mc-feed-reply-cancel'
-  cancel.textContent = '✕'
-  cancel.title = 'leave thread'
-  cancel.addEventListener('click', (e) => {
+  const cancel = hsXButton('hs-mc-feed-reply-cancel hs-x-inline', t('mc_social_leave_thread'), (e) => {
     e.preventDefault()
     closeThread()
   })
+  cancel.title = t('mc_social_leave_thread')
   chip.appendChild(cancel)
 
   bar.insertBefore(chip, bar.firstChild)
@@ -2223,7 +2857,7 @@ function renderThreadView(msgsEl) {
   if (at.op) {
     const opDiv = buildFeedMessageDiv(at.op, at.op?.username)
     opDiv.classList.add('hs-thread-op')
-    if (zebraEnabled && ++zebraCount % 2 === 0) opDiv.classList.add('hs-mc-zebra')
+    if (zebraEnabled && ++zebraCount % 2 === 0) opDiv.classList.add('hs-mc-zebra', 'hs-zebra')
     frag.appendChild(opDiv)
   }
 
@@ -2234,27 +2868,27 @@ function renderThreadView(msgsEl) {
   if (at.loading) {
     const loading = document.createElement('div')
     loading.className = 'hs-mc-empty'
-    loading.textContent = 'loading...'
-    loading.style.fontSize = '11px'
+    loading.textContent = t('common_loading')
+    loading.style.fontSize = '13px'
     container.appendChild(loading)
   } else if (at.error) {
     const err = document.createElement('div')
     err.className = 'hs-mc-empty'
     err.textContent = t('mc_social_thread_unavailable')
-    err.style.fontSize = '11px'
+    err.style.fontSize = '13px'
     container.appendChild(err)
   } else if (at.replies.length === 0) {
     const empty = document.createElement('div')
     empty.className = 'hs-mc-empty'
     empty.textContent = t('mc_social_no_replies')
-    empty.style.fontSize = '11px'
+    empty.style.fontSize = '13px'
     container.appendChild(empty)
   } else {
     for (const r of at.replies) {
       const replyDiv = buildFeedMessageDiv(r, at.op?.username)
       replyDiv.classList.add('hs-thread-reply')
       if (r.is_thread_op) replyDiv.classList.add('is-thread-op')
-      if (zebraEnabled && ++zebraCount % 2 === 0) replyDiv.classList.add('hs-mc-zebra')
+      if (zebraEnabled && ++zebraCount % 2 === 0) replyDiv.classList.add('hs-mc-zebra', 'hs-zebra')
       container.appendChild(replyDiv)
     }
   }
@@ -2318,6 +2952,49 @@ function _extractFeedBodyText(root) {
     .trim()
 }
 
+// ── feed emote vouching ──
+// A feed post is read by people who do not own the sender's emotes, and the
+// server stores only what the body says. Without emote_refs every 7TV/FFZ/BTTV
+// word in a post (an FFZ pick from the composer's search, say) rendered as
+// plain text for everyone but the sender. buildEmoteRefs is the site's own
+// builder (src/lib/emote-refs.js, byte copy), so a post from here vouches the
+// same way a post from heatsync.org does.
+//
+// Sources, in the order the composer itself resolves a word: an emote picked
+// from remote search this session (recentRemoteCompletions — url-only ref, no
+// hash yet), then whatever the composer knows (channel > owned > global). A
+// known emote with a real inventory hash goes through emotesMap so it keeps the
+// hash; anything else is registered as a url-only catalog ref. The server drops
+// a ref it dislikes, never the post, and the sanitizer re-checks every url.
+const FEED_REF_HASH_RE = /^[a-f0-9]{8,64}$/i
+function buildFeedEmoteRefs(text) {
+  if (!text) return null
+  const owned = new Map()
+  const names = new Set()
+  for (const word of String(text).split(/\s+/)) {
+    if (!word) continue
+    names.add(word)
+    if (word.length > 1 && word.endsWith('0')) names.add(word.slice(0, -1))
+  }
+  for (const name of names) {
+    const pick = typeof recentRemoteCompletions !== 'undefined' ? recentRemoteCompletions.get(name) : null
+    if (pick?.url && /^https:/i.test(pick.url)) {
+      registerRemoteEmoteRef({ name, url: pick.url, provider: pick.source, zeroWidth: !!pick.zeroWidth })
+      continue
+    }
+    const e = typeof lookupEmoteRenderOrder === 'function' ? lookupEmoteRenderOrder(name) : null
+    if (!e?.url || !/^https:/i.test(e.url)) continue
+    const provider = e.source || e.provider
+    if (typeof e.hash === 'string' && FEED_REF_HASH_RE.test(e.hash)) {
+      owned.set(name, { ...e, name, provider })
+    } else {
+      registerRemoteEmoteRef({ name, url: e.url, provider, zeroWidth: !!e.zeroWidth, width: e.width, height: e.height })
+    }
+  }
+  const refs = buildEmoteRefs(text, owned)
+  return Object.keys(refs).length ? refs : null
+}
+
 async function postFeedMessage(text, { topLevel = false, replyTo = null } = {}) {
   const input = document.getElementById('hs-mc-input')
   if (!input) return false
@@ -2349,11 +3026,13 @@ async function postFeedMessage(text, { topLevel = false, replyTo = null } = {}) 
   }
 
   const body = { content: text }
+  const emoteRefs = buildFeedEmoteRefs(text)
+  if (emoteRefs) body.emote_refs = emoteRefs
   if (mediaUrl) {
     body.media_url = mediaUrl
     body.media_type = mediaType
   }
-  // An explicit target wins over view state — /opr replies to the last [OP]
+  // An explicit target wins over view state — /re replies to the last [OP]
   // you saw in chat, which is usually NOT the thread you happen to have open.
   if (replyTo) {
     body.reply_to = replyTo
@@ -2403,7 +3082,7 @@ async function postFeedMessage(text, { topLevel = false, replyTo = null } = {}) 
     // nothing — the post landed, chat just never said so. force: your own
     // action's receipt isn't a notification about someone else, so the
     // per-type inline-notif toggle doesn't gate it.
-    if (posted && currentTab !== 'feed') {
+    if (posted) {
       // created_at defended: the row is unusable without a timestamp, and a
       // post the server hasn't stamped yet must still show up.
       const row = buildFeedInlineNotif({
@@ -2461,7 +3140,7 @@ function _discoverSetLoading(msgsEl) {
   msgsEl.textContent = ''
   const el = document.createElement('div')
   el.className = 'hs-mc-empty'
-  el.textContent = 'loading...'
+  el.textContent = t('common_loading')
   msgsEl.appendChild(el)
 }
 
@@ -2490,12 +3169,16 @@ async function fetchDiscover() {
     discoverTags = Array.isArray(tagsData) ? tagsData : tagsData.tags || []
     discoverProfiles = Array.isArray(profilesData) ? profilesData : profilesData.profiles || []
 
-    // Posts: pull recent feed, client-sort by heat, take top by heat>0
+    // Posts: rank by heat, but never render the section empty while real posts exist.
+    // Heat only accrues from a logged-in, non-self actor and halves every 12h, so at
+    // current traffic it is 0 on every row — this gate emptied Discover completely
+    // while 40 real posts sat in the response. Same rule as the server's
+    // lib/cold-start.ts: rank first, fall back to newest rather than show nothing.
+    // rawPosts arrives newest-first (sort=time), so the fallback keeps recency order.
     const rawPosts = postsResp?.ok ? postsResp.data?.messages || [] : []
-    discoverPosts = rawPosts
-      .filter((m) => m?.username && m.username !== 'Anonymous' && (m.heat || 0) > 0)
-      .sort((a, b) => (b.heat || 0) - (a.heat || 0))
-      .slice(0, 8)
+    const eligiblePosts = rawPosts.filter((m) => m?.username && m.username !== 'Anonymous')
+    const hotPosts = eligiblePosts.filter((m) => (m.heat || 0) > 0).sort((a, b) => (b.heat || 0) - (a.heat || 0))
+    discoverPosts = (hotPosts.length ? hotPosts : eligiblePosts).slice(0, 8)
 
     // Latch ONLY when a fetch actually succeeded. Setting this on failure made
     // an outage indistinguishable from a genuinely empty Discover AND blocked
@@ -2521,34 +3204,10 @@ function formatDiscoverCount(n) {
   return String(n)
 }
 
-// Compact heat tier styling — matches site canonical color tiers from getHeatNumberStyle,
-// but with fixed (small) size so discover rows stay dense.
-// Tiers: 0 → #444, 1-10 → #888, 10-30 → #888, 30-50 → #aaa, 50-100 → #ccc,
-//        100-500 → #eee, 500+ → #fff with breathe animation
-// pinned warm/orange by doctrine — heat FX ramp, not a semantic var
+// Compact heat numeral for discover rows — same ladder, fixed (small) size so
+// the rows stay dense.
 function discoverHeatStyle(heat) {
-  let color = '#444',
-    textShadow = '',
-    animation = ''
-  if (heat > 500) {
-    color = '#fff'
-    textShadow = '0 0 4px rgba(255,255,255,1),0 0 10px rgba(255,200,100,0.9),0 0 18px rgba(255,135,0,0.6)'
-    animation = 'hs-heat-breathe 2s ease-in-out infinite'
-  } else if (heat > 100) {
-    color = '#eee'
-    textShadow = '0 0 4px rgba(255,170,50,0.85),0 0 10px rgba(255,135,0,0.4)'
-  } else if (heat > 50) {
-    color = '#fff'
-    textShadow = '0 0 3px rgba(255,135,0,0.55)'
-  } else if (heat > 30) {
-    color = '#aaa'
-  } else if (heat > 10) {
-    color = '#888'
-  }
-  let style = `color:${color};font-weight:900;font-variant-numeric:tabular-nums;`
-  if (textShadow) style += `text-shadow:${textShadow};`
-  if (animation) style += `animation:${animation};`
-  return style
+  return `${heatLadderStyle(heat)}font-variant-numeric:tabular-nums;`
 }
 
 // Apply canonical row-level heat effects (border, bg tint, breathe class)
@@ -2558,39 +3217,14 @@ function applyDiscoverHeatRowEffects(row, heat) {
   row.style.borderLeftColor = hd.border
   row.style.borderLeftWidth = `${hd.borderWidth}px`
   if (hd.bg) row.style.background = hd.bg
-  if (hd.breathe) row.classList.add('hs-feed-heat-breathe')
 }
 
-// Canonical heat number — formatHeat + ° suffix at ≥ 10 + tier color/glow/breathe inline style.
-// The number and degree symbol render in separate sub-spans (.hs-heat-n and
-// .hs-heat-deg) so surfaces using a bitmap font can keep the digits crisp
-// while letting the ° fall back to a vector font that has a clean glyph.
 function heatSpanHtml(heat) {
   const h = Number(heat) || 0
   if (h <= 0) return ''
   const style = discoverHeatStyle(h)
   const suffix = h >= 10 ? '<span class="hs-heat-deg">°</span>' : ''
   return `<span class="hs-heat-num" style="${style}"><span class="hs-heat-n">${formatHeat(h)}</span>${suffix}</span>`
-}
-
-// Same, returned as a DOM node for createElement callers.
-function heatSpanEl(heat) {
-  const h = Number(heat) || 0
-  if (h <= 0) return null
-  const span = document.createElement('span')
-  span.className = 'hs-heat-num'
-  span.setAttribute('style', discoverHeatStyle(h))
-  const numSpan = document.createElement('span')
-  numSpan.className = 'hs-heat-n'
-  numSpan.textContent = formatHeat(h)
-  span.appendChild(numSpan)
-  if (h >= 10) {
-    const deg = document.createElement('span')
-    deg.className = 'hs-heat-deg'
-    deg.textContent = '°'
-    span.appendChild(deg)
-  }
-  return span
 }
 
 function renderDiscoverProfileRow(profile, username, rank, maxHeat, showRank = true) {
@@ -2600,7 +3234,7 @@ function renderDiscoverProfileRow(profile, username, rank, maxHeat, showRank = t
   row.target = '_blank'
   row.rel = 'noopener noreferrer'
 
-  const isLive = !!(profile.twitch_is_live || profile.kick_is_live)
+  const isLive = discoverIsLive(profile)
   if (isLive) row.classList.add('hs-discover-row-live')
 
   if (showRank) {
@@ -2613,8 +3247,11 @@ function renderDiscoverProfileRow(profile, username, rank, maxHeat, showRank = t
   const dot = document.createElement('span')
   dot.className = isLive ? 'hs-discover-live-dot' : 'hs-discover-live-spacer'
   if (isLive) {
-    const v = (profile.twitch_viewer_count || 0) + (profile.kick_viewer_count || 0)
-    dot.title = v > 0 ? `live · ${v.toLocaleString()} viewer${v === 1 ? '' : 's'}` : 'live'
+    const v = discoverViewers(profile)
+    dot.title =
+      v > 0
+        ? t(v === 1 ? 'mc_social_live_viewer' : 'mc_social_live_viewers', [v.toLocaleString()])
+        : t('mc_social_live')
   }
   row.appendChild(dot)
 
@@ -2627,6 +3264,7 @@ function renderDiscoverProfileRow(profile, username, rank, maxHeat, showRank = t
     img.src = avatarUrl
     img.alt = ''
     img.loading = 'lazy'
+    img.decoding = 'async'
     img.onerror = function () {
       this.style.visibility = 'hidden'
     }
@@ -2639,23 +3277,31 @@ function renderDiscoverProfileRow(profile, username, rank, maxHeat, showRank = t
 
   const nameEl = document.createElement('span')
   nameEl.className = 'hs-discover-profile-name'
-  nameEl.style.color = sanitizeColor(profile.userColor || profile.user_color || '#fff')
-  nameEl.textContent = profile.displayName || profile.display_name || username
+  // users.id from the profile row is already in the paint id space (kick_/yt_
+  // prefixed for those platforms); hsNameUid keeps a namespaced id as is.
+  hsNameApply(nameEl, {
+    name: profile.displayName || profile.display_name || username,
+    userId: profile.id ?? profile.user_id,
+    platform: profile.platform,
+    colour: profile.userColor || profile.user_color,
+    login: String(username || '').toLowerCase(),
+  })
   row.appendChild(nameEl)
 
   const plats = document.createElement('span')
   plats.className = 'hs-discover-platforms'
   if (profile.twitch_username) {
-    const t = document.createElement('a')
-    t.className = 'hs-plat hs-plat-t'
-    t.textContent = 'T'
-    t.href = `https://www.twitch.tv/${encodeURIComponent(profile.twitch_username)}`
-    t.target = '_blank'
-    t.rel = 'noopener noreferrer'
-    t.title = `twitch · @${profile.twitch_username}${profile.twitch_is_live ? ' · live' : ''}`
-    if (profile.twitch_is_live) t.classList.add('hs-plat-live')
-    t.addEventListener('click', (e) => e.stopPropagation())
-    plats.appendChild(t)
+    const tw = document.createElement('a')
+    tw.className = 'hs-plat hs-plat-t'
+    tw.textContent = 'T'
+    tw.href = `https://www.twitch.tv/${encodeURIComponent(profile.twitch_username)}`
+    tw.target = '_blank'
+    tw.rel = 'noopener noreferrer'
+    const twBase = t('mc_social_plat_at', ['twitch', profile.twitch_username])
+    tw.title = profile.twitch_is_live ? t('mc_social_plat_live', [twBase]) : twBase
+    if (profile.twitch_is_live) tw.classList.add('hs-plat-live')
+    tw.addEventListener('click', (e) => e.stopPropagation())
+    plats.appendChild(tw)
   }
   if (profile.kick_username) {
     const k = document.createElement('a')
@@ -2664,10 +3310,28 @@ function renderDiscoverProfileRow(profile, username, rank, maxHeat, showRank = t
     k.href = `https://kick.com/${encodeURIComponent(profile.kick_username)}`
     k.target = '_blank'
     k.rel = 'noopener noreferrer'
-    k.title = `kick · @${profile.kick_username}${profile.kick_is_live ? ' · live' : ''}`
+    const kBase = t('mc_social_plat_at', ['kick', profile.kick_username])
+    k.title = profile.kick_is_live ? t('mc_social_plat_live', [kBase]) : kBase
     if (profile.kick_is_live) k.classList.add('hs-plat-live')
     k.addEventListener('click', (e) => e.stopPropagation())
     plats.appendChild(k)
+  }
+  if (profile.youtube_username || profile.youtube_channel_id) {
+    const y = document.createElement('a')
+    y.className = 'hs-plat hs-plat-yt'
+    y.textContent = 'Y'
+    const ytHandle = profile.youtube_username ? String(profile.youtube_username).replace(/^@/, '') : ''
+    // channel id first — immutable, can't be squatted like a handle
+    y.href = profile.youtube_channel_id
+      ? `https://www.youtube.com/channel/${encodeURIComponent(profile.youtube_channel_id)}`
+      : `https://www.youtube.com/@${encodeURIComponent(ytHandle)}`
+    y.target = '_blank'
+    y.rel = 'noopener noreferrer'
+    const yBase = ytHandle ? t('mc_social_plat_at', ['youtube', ytHandle]) : 'youtube'
+    y.title = profile.youtube_is_live ? t('mc_social_plat_live', [yBase]) : yBase
+    if (profile.youtube_is_live) y.classList.add('hs-plat-live')
+    y.addEventListener('click', (e) => e.stopPropagation())
+    plats.appendChild(y)
   }
   if (plats.childNodes.length) row.appendChild(plats)
 
@@ -2680,12 +3344,9 @@ function renderDiscoverProfileRow(profile, username, rank, maxHeat, showRank = t
   bar.appendChild(fill)
   row.appendChild(bar)
 
-  // Canonical heat number — matches website / feed posts (formatHeat + ° suffix, tiered glow).
-  // Digits and ° are split into sub-spans so bitmap-font surfaces can render digits crisp
-  // while keeping the degree symbol on a vector font with a clean glyph.
   const heatEl = document.createElement('span')
   heatEl.className = 'hs-discover-heat'
-  heatEl.title = `${heat.toLocaleString()} heat`
+  heatEl.title = t('mc_social_heat_title', [heat.toLocaleString()])
   heatEl.setAttribute('style', discoverHeatStyle(heat))
   const numSpan = document.createElement('span')
   numSpan.className = 'hs-heat-n'
@@ -2708,7 +3369,7 @@ function renderDiscoverProfileRow(profile, username, rank, maxHeat, showRank = t
       const vEl = document.createElement('span')
       vEl.className = 'hs-discover-viewers'
       vEl.textContent = formatDiscoverCount(v)
-      vEl.title = `${v.toLocaleString()} viewers`
+      vEl.title = t('mc_social_viewers_title', [v.toLocaleString()])
       row.appendChild(vEl)
     }
   }
@@ -2742,9 +3403,9 @@ function renderDiscoverChipsBar() {
     return l
   }
 
-  bar.appendChild(makeLabel('platform'))
+  bar.appendChild(makeLabel(t('mc_social_platform')))
   bar.appendChild(
-    makeChip('all', 'all', discoverPlatformFilter, (v) => {
+    makeChip(t('mc_social_all'), 'all', discoverPlatformFilter, (v) => {
       discoverPlatformFilter = v
     }),
   )
@@ -2784,6 +3445,14 @@ function renderDiscoverChipsBar() {
   return bar
 }
 
+// live on any linked platform / viewers summed across them — youtube counts like the other two
+function discoverIsLive(p) {
+  return !!(p.twitch_is_live || p.kick_is_live || p.youtube_is_live)
+}
+function discoverViewers(p) {
+  return (p.twitch_viewer_count || 0) + (p.kick_viewer_count || 0) + (p.youtube_viewer_count || 0)
+}
+
 function profileMatchesPlatformFilter(p) {
   if (discoverPlatformFilter === 'all') return true
   if (discoverPlatformFilter === 't') return !!p.twitch_username
@@ -2807,7 +3476,7 @@ function sortProfilesByHeat(a, b) {
 function renderDiscoverPostRow(m) {
   const row = document.createElement('a')
   row.className = 'hs-discover-post-row'
-  row.href = `https://heatsync.org/m/${encodeURIComponent(m.base36_id)}`
+  row.href = buildPostPermalink(m.base36_id) || '#'
   row.target = '_blank'
   row.rel = 'noopener noreferrer'
 
@@ -2823,16 +3492,22 @@ function renderDiscoverPostRow(m) {
 
   if (m.platform) {
     const plat = document.createElement('span')
-    const code = m.platform === 'twitch' ? 't' : m.platform === 'kick' ? 'k' : m.platform === 'youtube' ? 'yt' : 'h'
+    const pm = platformMark(m.platform)
+    const code = { twitch: 't', kick: 'k', yt: 'yt', heatsync: 'h' }[pm.cls] || pm.cls
     plat.className = `hs-plat hs-plat-${code} hs-discover-post-plat`
-    plat.textContent = code === 'yt' ? 'Y' : code.toUpperCase()
+    plat.textContent = pm.letter
     meta.appendChild(plat)
   }
 
   const user = document.createElement('span')
   user.className = 'hs-discover-post-user'
-  user.style.color = sanitizeColor(m.user_color || '#fff')
-  user.textContent = m.username
+  hsNameApply(user, {
+    name: m.username || '',
+    userId: m.user_id,
+    platform: m.platform,
+    colour: m.user_color,
+    login: String(m.username || '').toLowerCase(),
+  })
   meta.appendChild(user)
 
   const spacer = document.createElement('span')
@@ -2842,7 +3517,7 @@ function renderDiscoverPostRow(m) {
   const heat = Number(m.heat || 0)
   const heatEl = document.createElement('span')
   heatEl.className = 'hs-discover-heat hs-discover-post-heat'
-  heatEl.title = `${heat.toLocaleString()} heat`
+  heatEl.title = t('mc_social_heat_title', [heat.toLocaleString()])
   heatEl.setAttribute('style', discoverHeatStyle(heat))
   const numSpan = document.createElement('span')
   numSpan.className = 'hs-heat-n'
@@ -2859,7 +3534,7 @@ function renderDiscoverPostRow(m) {
   if ((m.reply_count || 0) > 0) {
     const rep = document.createElement('span')
     rep.className = 'hs-discover-post-replies'
-    rep.title = `${m.reply_count} repl${m.reply_count === 1 ? 'y' : 'ies'}`
+    rep.title = t(m.reply_count === 1 ? 'mc_social_reply_one' : 'mc_social_replies_n', [String(m.reply_count)])
     rep.textContent = `${m.reply_count}r`
     meta.appendChild(rep)
   }
@@ -2872,7 +3547,7 @@ function renderDiscoverPostRow(m) {
   const snippet = String(m.content || '')
     .replace(/\s+/g, ' ')
     .trim()
-  txt.textContent = snippet || '(no text)'
+  txt.textContent = snippet || t('mc_social_no_text')
   row.appendChild(txt)
 
   // Canonical row-level heat tier effects (border tier, bg, breathe at 500+)
@@ -2914,7 +3589,7 @@ function makeDiscoverSection(titleText, subtitleText, metaText, extraClass) {
 }
 
 function renderDiscoverTab() {
-  if (typeof activeProfileCard !== 'undefined' && activeProfileCard) return
+  if ((typeof activeProfileCard !== 'undefined' && activeProfileCard) || hsPanePanelOpen()) return
   const msgsEl = document.getElementById('hs-mc-messages')
   if (!msgsEl) return
 
@@ -2938,15 +3613,13 @@ function renderDiscoverTab() {
   const filteredProfiles = discoverProfiles.filter(profileMatchesPlatformFilter)
   const filteredPosts = discoverPosts.filter(postMatchesPlatformFilter)
 
-  const liveProfiles = filteredProfiles
-    .filter((p) => p.twitch_is_live || p.kick_is_live)
-    .sort((a, b) => {
-      const av = (a.twitch_viewer_count || 0) + (a.kick_viewer_count || 0)
-      const bv = (b.twitch_viewer_count || 0) + (b.kick_viewer_count || 0)
-      if (av !== bv) return bv - av
-      return (b.stats?.total_heat || 0) - (a.stats?.total_heat || 0)
-    })
-  const restProfiles = filteredProfiles.filter((p) => !p.twitch_is_live && !p.kick_is_live).sort(sortProfilesByHeat)
+  const liveProfiles = filteredProfiles.filter(discoverIsLive).sort((a, b) => {
+    const av = discoverViewers(a)
+    const bv = discoverViewers(b)
+    if (av !== bv) return bv - av
+    return (b.stats?.total_heat || 0) - (a.stats?.total_heat || 0)
+  })
+  const restProfiles = filteredProfiles.filter((p) => !discoverIsLive(p)).sort(sortProfilesByHeat)
   const maxHeat = Math.max(...filteredProfiles.map((p) => p.stats?.total_heat ?? p.heat ?? 0), 1)
 
   // Filter chips
@@ -2959,7 +3632,7 @@ function renderDiscoverTab() {
   // ● LIVE NOW
   {
     const { section, body } = makeDiscoverSection(
-      'live now',
+      t('mc_social_live_now'),
       null,
       liveProfiles.length > 0 ? `${liveProfiles.length}` : '0',
       'hs-discover-section-live',
@@ -2967,7 +3640,7 @@ function renderDiscoverTab() {
     if (liveProfiles.length === 0) {
       const empty = document.createElement('div')
       empty.className = 'hs-discover-section-empty'
-      empty.textContent = 'no streams live right now'
+      empty.textContent = t('mc_social_no_streams')
       body.appendChild(empty)
       // Contextual nudge — if the user follows few/no people on heatsync, the
       // section will always look empty. Surface twitch import right at the
@@ -2982,25 +3655,25 @@ function renderDiscoverTab() {
             nudge.className = 'hs-discover-section-empty hs-discover-import-nudge'
             const a = document.createElement('a')
             a.href = '#'
-            a.textContent = 'import follows from twitch'
+            a.textContent = t('mc_social_import_follows')
             a.style.color = '#fff'
             a.style.textDecoration = 'none'
             a.addEventListener('click', async (e) => {
               e.preventDefault()
-              a.textContent = 'syncing…'
+              a.textContent = t('mc_social_syncing')
               try {
                 const r = await apiFetch('/api/sync-twitch-follows', { method: 'POST', auth: true })
                 if (r?.ok && r?.data?.success) {
-                  a.textContent = `synced ${r.data.synced} ✓`
+                  a.textContent = t('mc_social_synced', [String(r.data.synced)])
                   try {
                     chrome.runtime.sendMessage({ type: 'refresh_followed_users' })
                   } catch {}
                   cleanup.setTimeout(() => renderDiscoverTab(), 1500)
                 } else {
-                  a.textContent = (r?.error || r?.data?.error || 'failed').slice(0, 30)
+                  a.textContent = (r?.error || r?.data?.error || t('mc_social_failed')).slice(0, 30)
                 }
               } catch (_) {
-                a.textContent = 'failed'
+                a.textContent = t('mc_social_failed')
               }
             })
             nudge.appendChild(a)
@@ -3021,11 +3694,11 @@ function renderDiscoverTab() {
 
   // HOT POSTS
   {
-    const { section, body } = makeDiscoverSection('hot posts', null, null, 'hs-discover-section-posts')
+    const { section, body } = makeDiscoverSection(t('mc_social_hot_posts'), null, null, 'hs-discover-section-posts')
     if (filteredPosts.length === 0) {
       const empty = document.createElement('div')
       empty.className = 'hs-discover-section-empty'
-      empty.textContent = 'no posts match filter'
+      empty.textContent = t('mc_social_no_posts_filter')
       body.appendChild(empty)
     } else {
       for (const m of filteredPosts) {
@@ -3040,11 +3713,11 @@ function renderDiscoverTab() {
 
   // TAGS — always render, above the long leaderboard
   {
-    const { section, body } = makeDiscoverSection('tags', null, null, 'hs-discover-section-tags')
+    const { section, body } = makeDiscoverSection(t('mc_social_tags'), null, null, 'hs-discover-section-tags')
     if (discoverTags.length === 0) {
       const empty = document.createElement('div')
       empty.className = 'hs-discover-section-empty'
-      empty.textContent = 'none right now'
+      empty.textContent = t('mc_social_none_now')
       body.appendChild(empty)
     } else {
       const chips = document.createElement('div')
@@ -3054,7 +3727,7 @@ function renderDiscoverTab() {
         if (!name) continue
         const chip = document.createElement('a')
         chip.className = 'hs-discover-chip'
-        chip.href = `https://heatsync.org/tags/${encodeURIComponent(name)}`
+        chip.href = `https://heatsync.org/feed/tags/${encodeURIComponent(name)}`
         chip.target = '_blank'
         chip.rel = 'noopener noreferrer'
         chip.textContent = name
@@ -3074,12 +3747,17 @@ function renderDiscoverTab() {
 
   // LEADERBOARD — non-live profiles, multi-column when wide
   {
-    const { section, body } = makeDiscoverSection('leaderboard', null, null, 'hs-discover-section-trending')
+    const { section, body } = makeDiscoverSection(
+      t('mc_social_leaderboard'),
+      null,
+      null,
+      'hs-discover-section-trending',
+    )
     body.classList.add('hs-discover-leaderboard-body')
     if (restProfiles.length === 0) {
       const empty = document.createElement('div')
       empty.className = 'hs-discover-section-empty'
-      empty.textContent = 'no profiles match this filter'
+      empty.textContent = t('mc_social_no_profiles_filter')
       body.appendChild(empty)
     } else {
       let rank = 1
@@ -3118,7 +3796,7 @@ function _pinnedSetLoading(msgsEl) {
   msgsEl.textContent = ''
   const el = document.createElement('div')
   el.className = 'hs-mc-empty'
-  el.textContent = 'loading...'
+  el.textContent = t('common_loading')
   msgsEl.appendChild(el)
 }
 
@@ -3147,7 +3825,7 @@ async function fetchPinned() {
 }
 
 function renderPinnedTab() {
-  if (typeof activeProfileCard !== 'undefined' && activeProfileCard) return
+  if ((typeof activeProfileCard !== 'undefined' && activeProfileCard) || hsPanePanelOpen()) return
   const msgsEl = document.getElementById('hs-mc-messages')
   if (!msgsEl) return
 
@@ -3169,7 +3847,7 @@ function renderPinnedTab() {
   if (pinnedMessages.length === 0) {
     const empty = document.createElement('div')
     empty.className = 'hs-mc-empty'
-    empty.textContent = 'no pinned messages'
+    empty.textContent = t('mc_social_no_pinned')
     frag.appendChild(empty)
     msgsEl.appendChild(frag)
     return
@@ -3186,7 +3864,7 @@ function renderPinnedTab() {
     const row = document.createElement('a')
     row.className = 'hs-pinned-row'
     if (id) {
-      const url = safeUrl(`https://heatsync.org/m/${encodeURIComponent(id)}`)
+      const url = safeUrl(buildPostPermalink(id))
       if (url) {
         row.href = url
         row.target = '_blank'
@@ -3205,7 +3883,14 @@ function renderPinnedTab() {
     if (user) {
       const userSpan = document.createElement('span')
       userSpan.className = 'hs-pinned-user'
-      userSpan.textContent = user
+      const rawUser = String(m.user || m.username || m.display_name || '')
+      hsNameApply(userSpan, {
+        name: rawUser,
+        userId: m.user_id,
+        platform: m.platform,
+        colour: m.user_color,
+        login: String(m.username || m.user || '').toLowerCase(),
+      })
       meta.appendChild(userSpan)
     }
     if (timeStr) {
@@ -3234,7 +3919,7 @@ function renderPinnedTab() {
 // (no innerHTML), mirroring renderPinnedTab; display strings from mod-log.js's
 // unit-tested modLogLine().
 function renderModLogTab() {
-  if (typeof activeProfileCard !== 'undefined' && activeProfileCard) return
+  if ((typeof activeProfileCard !== 'undefined' && activeProfileCard) || hsPanePanelOpen()) return
   const msgsEl = document.getElementById('hs-mc-messages')
   if (!msgsEl) return
   msgsEl.textContent = ''
@@ -3242,7 +3927,7 @@ function renderModLogTab() {
   if (!log.length) {
     const empty = document.createElement('div')
     empty.className = 'hs-mc-empty'
-    empty.textContent = 'no mod actions yet'
+    empty.textContent = t('mc_social_no_mod_actions')
     msgsEl.appendChild(empty)
     return
   }
@@ -3267,8 +3952,16 @@ function renderModLogTab() {
     }
     const body = document.createElement('span')
     body.className = 'hs-modlog-body'
-    body.textContent = typeof modLogLine === 'function' ? modLogLine(e) : `${e.action} ${e.target}`
+    body.textContent = modLogLine(e, t)
     row.appendChild(body)
+    // who did it, when it is known (only actions taken through heatsync say)
+    const by = modLogBy(e, t)
+    if (by) {
+      const who = document.createElement('span')
+      who.className = 'hs-modlog-actor'
+      who.textContent = by
+      row.appendChild(who)
+    }
     frag.appendChild(row)
   }
   msgsEl.appendChild(frag)
@@ -3334,8 +4027,24 @@ function setupFeedPostLinkHover() {
   let _currentLink = null
   const MAX_DEPTH = 50
   // Both inline >>id refs AND the leading thread-link (left of the OP) get the
-  // same hover preview — a >>id is hoverable wherever it appears.
-  const LINK_SEL = '.hs-post-link, .hs-feed-thread-link'
+  // same hover preview — a >>id is hoverable wherever it appears. The bare id
+  // inside a thread (no >>) is a quote-insert button, not a reference: no hover.
+  const LINK_SEL = '.hs-post-link, .hs-feed-thread-link:not(.hs-quote-insert)'
+  let _hlRow = null
+  const _clearHl = () => {
+    _hlRow?.classList.remove('hs-feed-link-hl')
+    _hlRow = null
+  }
+  // The referenced post, when it is already visible in the list (its own row
+  // included — the leading >>id): outline it in place instead of opening a copy.
+  const _onScreenTarget = (_link, id) => {
+    const msgsEl = document.getElementById('hs-mc-messages')
+    const row = msgsEl?.querySelector(`.hs-feed-msg[data-msg-id="${CSS.escape(id)}"]`)
+    if (!row) return null
+    const r = row.getBoundingClientRect()
+    const v = msgsEl.getBoundingClientRect()
+    return r.bottom > v.top && r.top < v.bottom ? row : null
+  }
 
   const getOverlay = () => {
     let el = document.getElementById('hs-feed-postlink-preview')
@@ -3355,6 +4064,7 @@ function setupFeedPostLinkHover() {
 
   const _hideOverlay = () => {
     _currentLink = null
+    _clearHl()
     const el = document.getElementById('hs-feed-postlink-preview')
     if (el) {
       el.style.display = 'none'
@@ -3387,12 +4097,16 @@ function setupFeedPostLinkHover() {
 
       const gen = ++_linkGen
 
-      ;(async () => {
-        // Always show on hover — even when the linked post is already on screen.
-        // Matches the chat reply-stack and Twitch reply-thread hover (the user's
-        // mental model): hovering >>id surfaces the thread context regardless of
-        // visibility. (The site skips-if-visible; the cramped panel does not.)
+      // already on screen → light that row up in place, no second copy
+      const onScreen = _onScreenTarget(link, linkedId)
+      if (onScreen) {
+        _clearHl()
+        _hlRow = onScreen
+        onScreen.classList.add('hs-feed-link-hl')
+        return
+      }
 
+      ;(async () => {
         // Fetch the linked message
         const msg = await _feedMsgFetch(linkedId)
         if (_linkGen !== gen) return

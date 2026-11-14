@@ -30,17 +30,14 @@ test('storage keys are verbatim legacy keys (no renames)', () => {
     'avatars',
     'showPlatformBadges',
     'firstChatterGlow',
-    'keywordHighlights',
+    'chatFilterRules',
     'hiddenTabs',
-    'crashTelemetry',
     'fontFamily',
     'fontSize',
     'customFontName',
     'mentionTitleFlash',
     'mentionSoundVolume',
     'crossFollowKick',
-    'automodAllCaps',
-    'automodRegex',
     'hs_emote_size',
     'hs_emoji_size',
     'hs_auto_claim_points',
@@ -156,19 +153,8 @@ test('cw entries carry complete server-patch sub-shapes', () => {
   }
 })
 
-test('tweak entries: 12 sync bools, all default-off (chat-column tweaks removed)', () => {
-  const tweaks = SETTINGS.filter((d) => d.tweak)
-  // 12 after hideDiscoverLuna removal — twitch dropped the luna promo entirely,
-  // a toggle with no matching element is dead UI
-  expect(tweaks.length).toBe(12)
-  for (const def of tweaks) {
-    expect(def.type).toBe('bool')
-    expect(def.scope).toBe('sync')
-    // the 14 native-chat-column tweaks (incl. the only default-on hideChatHeader)
-    // were removed + forced always-on in content.js; every remaining page/player
-    // tweak shows its target by default and hides it only when toggled on.
-    expect(def.default).toBe(false)
-  }
+test('no tweaks tab: the twitch ui hide toggles are gone', () => {
+  expect(SETTINGS.some((d) => d.tweak || d.category === 'tweaks')).toBe(false)
 })
 
 // ── lint catches real mistakes ───────────────────────────────────────────────
@@ -194,17 +180,36 @@ test('lint: flags a sync key on the blocklist', () => {
 // to be worth opening, few enough to not be the wall it replaced, spread
 // across the tabs so no tab opens empty, and never a row that's hidden behind
 // a parent toggle the basic view doesn't show.
-test('basic view: a real but small set, spread across categories', () => {
+// basic = any on/off or pick-one that changes what you see, hear, or who sees
+// you. Numbers, lists, regex, per-provider tuning, debug and saved state stay
+// in "all". It was 16 of 85 and hid things people look for first.
+test('basic view: every everyday toggle, none of the tuning', () => {
   const basic = SETTINGS.filter((d) => d.basic)
-  expect(basic.length).toBeGreaterThanOrEqual(8)
-  expect(basic.length).toBeLessThanOrEqual(20)
-  expect(new Set(basic.map((d) => d.category)).size).toBeGreaterThanOrEqual(4)
+  expect(basic.length).toBeGreaterThanOrEqual(35)
+  expect(basic.length).toBeLessThanOrEqual(60)
+  expect(new Set(basic.map((d) => d.category)).size).toBeGreaterThanOrEqual(5)
+  const keys = new Set(basic.map((d) => d.key))
+  for (const k of [
+    'timestamps',
+    'zebra',
+    'anonChat',
+    'whisperToast',
+    'hermesEvents',
+    'viewer_show_sexual',
+    'tabPosition',
+  ]) {
+    expect(keys.has(k), `${k} is an everyday setting`).toBe(true)
+  }
+  for (const k of ['debugLogging', 'crashTelemetry', 'subsystems', 'chatFilterRules', 'activeTab']) {
+    expect(keys.has(k), `${k} is tuning/internal`).toBe(false)
+  }
 })
 
 test('basic rows are renderable and never gated behind another setting', () => {
   for (const def of SETTINGS.filter((d) => d.basic)) {
     expect(def.control).toBeTruthy()
-    expect(def.dependsOn).toBeUndefined()
+    // a gated row is fine when its parent is on the basic page too
+    if (def.dependsOn) expect(SETTINGS.find((p) => p.key === def.dependsOn.key)?.basic).toBe(true)
     expect(def.labelKey || def.label).toBeTruthy()
   }
 })

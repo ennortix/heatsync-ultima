@@ -7,8 +7,11 @@
  * video starts where our fixed panel ends — without leaving a gap when the
  * sidebar is present, and without overlapping the video when it isn't.
  */
+// #sidebar-wrapper is the sidebar itself (256px open, a rail when collapsed).
+// The class probe is the older markup: on current kick it hits an empty 0px
+// node, which read the sidebar as absent and pushed the player under the panel.
 function getKickSidebarWidth() {
-  const el = document.querySelector('[class*="sidebar-collapsed-width"]')
+  const el = hsQuery('kick:sidebar', ['#sidebar-wrapper', '[class*="sidebar-collapsed-width"]'])
   if (!el) return 0
   const w = el.offsetWidth
   return w > 0 ? w : 0
@@ -78,7 +81,9 @@ function setupKickResizeHandle() {
       } catch (_) {}
       startX = e.clientX
       startWidth = chatWidth
-      const rect = (chatroom.classList.contains('hs-native-hidden') ? mcContainer : chatroom).getBoundingClientRect()
+      const rect = (
+        document.body.classList.contains('hs-kick-native-hidden') ? mcContainer : chatroom
+      ).getBoundingClientRect()
       const w0 = Math.round(rect.width)
       pendingWidth = chatWidth
       lastGhostWidth = w0
@@ -169,12 +174,12 @@ function watchKickViewportClamp() {
   }
   window.addEventListener('resize', onResize, { signal: mcSignal })
 
-  if (document.querySelector('#injected-channel-player')) {
+  if (hsQuery('kick:injected-channel-player', '#injected-channel-player')) {
     // Player already mounted — apply now (early init call missed it).
     applyPlatformPositionOverrides()
   } else if (!_kickPlayerMountObs) {
     _kickPlayerMountObs = new MutationObserver(() => {
-      if (document.querySelector('#injected-channel-player')) {
+      if (hsQuery('kick:injected-channel-player', '#injected-channel-player')) {
         _kickPlayerMountObs.disconnect()
         _kickPlayerMountObs = null
         applyPlatformPositionOverrides()
@@ -189,13 +194,38 @@ let _kickTopNavObs = null
 let _kickTopNavH = 60 // matches --hs-kick-topnav-h CSS fallback
 
 // Kick's top nav is position:fixed, ~60px tall (matches the CSS fallback).
+// The player is sized from <main>'s width, but main keeps settling after that
+// first measure (kick's chatroom lands at its own width, then ours replaces
+// it), and nothing re-sized the player — it stayed 68px past main and the
+// stream's right edge was cut. Re-run on main's width changes. Safe from
+// loops: we size the player inside main, never main itself.
+let _kickMainObs = null
+let _kickMainEl = null
+let _kickMainW = 0
+function watchKickMainWidth(main) {
+  if (!main || main === _kickMainEl || typeof ResizeObserver === 'undefined') return
+  if (_kickMainObs) cleanup.untrackObserver(_kickMainObs)
+  _kickMainEl = main
+  _kickMainW = Math.round(main.getBoundingClientRect().width)
+  _kickMainObs = new ResizeObserver(() => {
+    const w = Math.round(main.getBoundingClientRect().width)
+    if (w === _kickMainW) return
+    _kickMainW = w
+    try {
+      applyPlatformPositionOverrides()
+    } catch (_) {}
+  })
+  _kickMainObs.observe(main)
+  cleanup.trackObserver(_kickMainObs)
+}
+
 // Mirrors the twitch pattern: measure once, track via ResizeObserver, push
 // --hs-kick-topnav-h so CSS rules that offset the panel don't need to
 // hard-code the height. Selector matches the <nav> used elsewhere in the
 // codebase for kick nav height measurement.
 function updateKickTopNavHeight() {
   if (!isKick) return
-  const nav = document.querySelector('nav, [class*="navbar"]')
+  const nav = hsQuery('kick:navbar', 'nav, [class*="navbar"]')
   let h = 60 // CSS fallback default
   if (nav) {
     const r = nav.getBoundingClientRect()
@@ -215,7 +245,7 @@ function setupKickTopNavObserver() {
     } catch (_) {}
     _kickTopNavObs = null
   }
-  const nav = document.querySelector('nav, [class*="navbar"]')
+  const nav = hsQuery('kick:navbar', 'nav, [class*="navbar"]')
   if (nav && typeof ResizeObserver !== 'undefined') {
     _kickTopNavObs = new ResizeObserver(() => updateKickTopNavHeight())
     _kickTopNavObs.observe(nav)
@@ -236,7 +266,39 @@ function updateKickNoChannelClass() {
 
   const onChannel = !!document.getElementById('channel-chatroom')
   const popout = document.body.classList.contains('hs-popout')
-  document.body.classList.toggle('hs-kick-no-channel', !onChannel && !popout)
+  const noChannel = !onChannel && !popout
+  const prev = document.body.classList.contains('hs-kick-no-channel')
+  document.body.classList.toggle('hs-kick-no-channel', noChannel)
+  // Initial load checks once, from loadChatPosition. On a slow load that runs
+  // before kick mounts #channel-chatroom, so a channel page read as "no
+  // channel" and stayed that way — kick's own chat showed beside ours and the
+  // player shrank into the leftover strip. SPA navs re-check (softKickNav);
+  // the first load had nothing. Watch for the chatroom, bounded, and re-run.
+  if (noChannel) armKickChatroomWatch()
+  if (prev !== noChannel) {
+    try {
+      applyChatPosition()
+    } catch (_) {}
+  }
+}
+
+let _kickChatroomWatch = null
+function armKickChatroomWatch() {
+  if (_kickChatroomWatch) return
+  const stop = () => {
+    if (!_kickChatroomWatch) return
+    cleanup.untrackObserver(_kickChatroomWatch)
+    _kickChatroomWatch = null
+  }
+  _kickChatroomWatch = new MutationObserver(() => {
+    if (!document.getElementById('channel-chatroom')) return
+    stop()
+    updateKickNoChannelClass()
+  })
+  _kickChatroomWatch.observe(document.getElementById('__next') || document.body, { childList: true, subtree: true })
+  cleanup.trackObserver(_kickChatroomWatch)
+  // a real no-channel page (browse, categories) never mounts one — give up
+  cleanup.setTimeout(stop, 15000, 'kick-chatroom-watch')
 }
 
 // Kick mirror of softTwitchNav — keep the panel mounted across SPA nav.
@@ -271,11 +333,9 @@ function softKickNav(prevLiveCh) {
   } catch (_) {}
   let done = false
   const finish = () => {
-    // Gated: skip re-hide when the user has chosen nativeVisible.
-    if (!nativeVisible)
-      try {
-        setNativeChatHidden(true)
-      } catch (_) {}
+    try {
+      setNativeChatHidden(true)
+    } catch (_) {}
     isScrolledUp = false
     newMessageCount = 0
     _scrollbackWindow = 0 // new channel starts at the live tail
@@ -311,20 +371,8 @@ function softKickNav(prevLiveCh) {
       if (newCh && kickChat && !kickChat.channels.has(newCh)) kickChat.join(newCh)
       renderMessages('live')
     } catch (_) {}
-    const reHide = new MutationObserver(() => {
-      if (!nativeVisible)
-        try {
-          setNativeChatHidden(true)
-        } catch (_) {}
-    })
-    const target = document.getElementById('channel-chatroom')
-    if (target) {
-      reHide.observe(target, { childList: true })
-      cleanup.trackObserver(reHide)
-    }
     cleanup.setTimeout(
       () => {
-        cleanup.untrackObserver(reHide)
         document.body.classList.remove('hs-mc-navigating')
       },
       300,
@@ -350,7 +398,10 @@ function softKickNav(prevLiveCh) {
   const obs = new MutationObserver(() => {
     if (tryReparent()) cleanup.untrackObserver(obs)
   })
-  obs.observe(document.documentElement, { childList: true, subtree: true })
+  // #__next is Kick's Next.js app root (falls back to body on an app-router
+  // page, which has no wrapper div) — present well before #channel-chatroom
+  // mounts, and narrower than documentElement: no <head> mutation noise.
+  obs.observe(document.getElementById('__next') || document.body, { childList: true, subtree: true })
   cleanup.trackObserver(obs)
   cleanup.setTimeout(
     () => {

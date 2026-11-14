@@ -1,6 +1,6 @@
 // settings tab UI — split out of main.js (2026-07-04).
-// Sub-tab bar, search/filter rows, category panes, presets panel, help overlay,
-// crash-log/backup blocks, and the settings-tab-only keyboard nav. The settings
+// Sub-tab bar, search/filter rows, category panes, help overlay,
+// backup block, and the settings-tab-only keyboard nav. The settings
 // ENGINE (getSetting/setSetting, schema wiring, storage sync/broadcast) stays in
 // main.js — this file only builds and drives the tab's DOM.
 
@@ -9,25 +9,40 @@ let _settingsSubtab = 'display'
 
 // ─── settings sub-tab helpers ────────────────────────────────────────────
 
-// SVG icons for the settings sub-tabs (16x16 stroke, no fill)
+// unicode glyphs for the settings sub-tabs (icons are text, never svg)
 const _SET_SUBTAB_ICONS = {
-  display:
-    '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="2" width="14" height="10" rx="1"/><line x1="5" y1="14" x2="11" y2="14"/><line x1="8" y1="12" x2="8" y2="14"/></svg>',
-  chat: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H6l-3 2v-2H3a1 1 0 0 1-1-1V3z"/></svg>',
-  notifs:
-    '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 2a5 5 0 0 1 5 5v3l1 1H2l1-1V7a5 5 0 0 1 5-5z"/><line x1="6.5" y1="13" x2="9.5" y2="13"/></svg>',
-  mod: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 1.5l5 2.5v4c0 3-2.5 5.5-5 6.5C5.5 13.5 3 11 3 8V4l5-2.5z"/></svg>',
-  filters:
-    '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4h12M4 8h8M6 12h4"/></svg>',
-  tweaks:
-    '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4h3l1-2h4l1 2h3M2 8h12M2 12h3l1 2h4l1-2h3"/></svg>',
-  system:
-    '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="2.5"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.05 3.05l1.42 1.42M11.53 11.53l1.42 1.42M3.05 12.95l1.42-1.42M11.53 4.47l1.42-1.42"/></svg>',
+  display: '<span class="hs-glyph" aria-hidden="true">▭</span>',
+  chat: '<span class="hs-glyph" aria-hidden="true">☰</span>',
+  notifs: '<span class="hs-glyph" aria-hidden="true">!</span>',
+  mod: '<span class="hs-glyph" aria-hidden="true">⛨</span>',
+  help: '<span class="hs-glyph" aria-hidden="true">?</span>',
+  filters: '<span class="hs-glyph" aria-hidden="true">▿</span>',
+  system: '<span class="hs-glyph" aria-hidden="true">⚙</span>',
 }
-const _SET_SUBTAB_ORDER = ['display', 'chat', 'notifs', 'mod', 'filters', 'tweaks', 'system']
+// One list: the registry's settings cells (tab-registry.js), `help` last.
+const _SET_SUBTAB_ORDER = mcSubCells('settings').map((c) => c.id)
+let _setHelpFrom = 'display' // cell Esc returns to from help
 
-// Tweaks (twitch ui noise toggles) render straight from the registry
-// (`tweak: true` entries); content.js applyUiSettings owns the CSS rules.
+// Land on a settings cell. True when it changed; remembers where help was
+// opened from.
+function _setSettingsSubtab(id) {
+  if (id === 'help' && _settingsSubtab !== 'help') _setHelpFrom = _settingsSubtab
+  const changed = id !== _settingsSubtab
+  _settingsSubtab = id
+  return changed
+}
+
+// Every way of changing cell goes through switchTab, like any other tab's.
+function _gotoSetSubtab(id) {
+  if (typeof switchTab === 'function') switchTab('settings', id)
+  else if (_setSettingsSubtab(id)) renderSettingsTab()
+}
+
+// display name of a settings category (the id stays the machine key)
+function _setCatLabel(id) {
+  const c = mcSubCells('settings').find((x) => x.id === id)
+  return c?.labelKey ? t(c.labelKey) : id
+}
 function _renderSetSubtabBar() {
   return (
     '<div class="hs-mc-set-subtabs">' +
@@ -37,9 +52,9 @@ function _renderSetSubtabBar() {
           '<button class="hs-mc-set-subtab' +
           (_settingsSubtab === id ? ' active' : '') +
           '" data-set-subtab="' +
-          id +
+          escapeHtml(id) +
           '" title="' +
-          id +
+          escapeHtml(_setCatLabel(id)) +
           '">' +
           _SET_SUBTAB_ICONS[id] +
           '</button>',
@@ -54,13 +69,12 @@ function _renderSetSubtabBar() {
 // reusing the existing DOM/CSS vocabulary (setting-row, toggle-pill,
 // size-btns, locale-select, textarea). Categories compose registry
 // sections with the few hand-rendered islands (mod toolbar, language,
-// muted users, crash log, backup, defaults).
+// muted users, backup, defaults).
 
 let _setQuery = ''
 const _setCollapsed = new Set() // '<category>|<section title>'
 let _setFocusRow = null // data-set-row id of keyboard focus
 let _setPaneCtx = '' // pane identity for scroll preservation
-let _setHelpOpen = false // '?' keybinding overlay
 // Opening ~90 settings at once is the single loudest thing a new user meets
 // ("very confusing and a lot to learn" — first external tester, 2026-07-25).
 // The catalog stays whole; the default VIEW is the dozen rows that actually
@@ -115,6 +129,12 @@ function _setLabelSpan(def, extraHtml) {
   var tip = _setTip(def)
   var tipAttr = tip ? ` data-tip="${escapeHtml(tip)}"` : ''
   return `<span class="hs-mc-setting-label"${tipAttr}>${extraHtml || ''}${escapeHtml(_setLabel(def))}</span>`
+}
+
+// Is the row shown at all? Only on the sites it affects, and only while the
+// setting it depends on allows it.
+function _rowApplies(def) {
+  return settingShowsOnHost(def, typeof hostPlatform !== 'undefined' ? hostPlatform : undefined) && _depSatisfied(def)
 }
 
 function _depSatisfied(def) {
@@ -176,8 +196,12 @@ function _syncRowModEdge(el, def, opt) {
 
 function _rowsForDef(def) {
   var rows = []
-  // Custom-rendered entries (e.g. filter rules editor) skip auto-row generation.
-  if (def.control === 'custom') return rows
+  // Custom-rendered entries (e.g. filter rules editor) skip auto-row generation;
+  // the one exception hand-renders its own row (sound-ui.js).
+  if (def.control === 'custom') {
+    if (def.key === 'mentionSoundName') rows.push(sfxMentionRow(def))
+    return rows
+  }
   var base = (
     _setLabel(def) +
     ' ' +
@@ -202,7 +226,9 @@ function _rowsForDef(def) {
       if (o.tag) lbl = lbl.replace(o.tag, '').trim()
       var oTip = o.tipKey ? t(o.tipKey) : o.tip || ''
       var oMod = _rowModified(def, o)
-      var oChip = _reloadPending(def, o) ? '<button class="hs-mc-set-reload" data-set-reload>reload</button>' : ''
+      var oChip = _reloadPending(def, o)
+        ? '<button class="hs-mc-set-reload" data-set-reload>' + t('mc_set_reload') + '</button>'
+        : ''
       rows.push({
         id: `${def.key}:${o.value}`,
         mod: oMod,
@@ -242,9 +268,11 @@ function _rowsForDef(def) {
       var member = getSetting(def.key).includes(o.value)
       var active = def.invertDisplay ? !member : member
       var mMod = _rowModified(def, o)
-      var mTag = o.tag
+      // the button's face: a glyph/short code as is, or a word that is translated (tagKey)
+      var mFace = o.tagKey ? t(o.tagKey) : o.tag
+      var mTag = mFace
         ? '<span style="font-family:monospace;color:#fff;margin-right:6px;min-width:34px;display:inline-block">' +
-          escapeHtml(o.tag) +
+          escapeHtml(mFace) +
           '</span>'
         : ''
       rows.push({
@@ -292,11 +320,12 @@ function _rowsForDef(def) {
       def.key +
       '"><span class="hs-mc-toggle-knob"></span></button>' +
       _setLabelSpan(def)
-  } else if (def.type === 'enum' && (def.control === 'sizebtns' || def.options.length <= 3)) {
+  } else if (def.type === 'enum' && (def.control === 'sizebtns' || resolveOptions(def, getSetting).length <= 3)) {
+    var sizeOpts = resolveOptions(def, getSetting)
     inner =
       _setLabelSpan(def) +
       '<div class="hs-mc-size-btns">' +
-      def.options
+      sizeOpts
         .map(
           (o) =>
             '<button class="hs-mc-size-btn' +
@@ -375,7 +404,9 @@ function _rowsForDef(def) {
   }
 
   var sMod = _rowModified(def)
-  var sChip = _reloadPending(def) ? '<button class="hs-mc-set-reload" data-set-reload>reload</button>' : ''
+  var sChip = _reloadPending(def)
+    ? '<button class="hs-mc-set-reload" data-set-reload>' + t('mc_set_reload') + '</button>'
+    : ''
   rows.push({
     id: def.key,
     mod: sMod,
@@ -418,7 +449,7 @@ function _regSections(cat, only) {
   var sections = []
   var byTitle = new Map()
   for (const def of SETTINGS) {
-    if (def.category !== cat || !_depSatisfied(def)) continue
+    if (def.category !== cat || !_rowApplies(def)) continue
     // Basic view: only the day-one rows. Search always searches EVERYTHING
     // (_renderSearchResults has its own path) — hiding a setting from a
     // search for its own name would be the bad kind of simple.
@@ -427,12 +458,14 @@ function _regSections(cat, only) {
     if (only && only.indexOf(def.section) === -1) continue
     var s = byTitle.get(title)
     if (!s) {
-      s = { title: title, rows: [] }
+      s = { title: title, id: def.section, rows: [] }
       byTitle.set(title, s)
       sections.push(s)
     }
     s.rows.push.apply(s.rows, _rowsForDef(def))
   }
+  // the clear button lives under the switch that decides whether anything is kept
+  for (const s of sections) if (cat === 'chat' && s.id === 'input') s.rows.push(_sentClearRow())
   return sections
     .map((s) => {
       var fold = _setCollapsed.has(`${_settingsSubtab}|${s.title}`)
@@ -471,7 +504,7 @@ function _renderSearchResults() {
   var total = 0
   var count = 0
   for (const def of SETTINGS) {
-    if (!_depSatisfied(def)) continue
+    if (!_rowApplies(def)) continue
     var rows = _rowsForDef(def)
     total += rows.length
     var matched = rows.filter((r) => _rowMatches(r.hay, tokens))
@@ -495,7 +528,7 @@ function _renderSearchResults() {
         '<div class="hs-mc-set-search-hdr" data-set-jump="' +
         escapeHtml(`${g.cat}|${g.section}`) +
         '">' +
-        escapeHtml(`${g.cat} · ${g.section}`) +
+        escapeHtml(`${_setCatLabel(g.cat)} · ${g.section}`) +
         '</div>' +
         g.rows.map((r) => r.html).join('') +
         '</div>',
@@ -508,11 +541,42 @@ function _renderSearchResults() {
     count += actions.length
     html +=
       '<div class="hs-mc-settings-group">' +
-      '<div class="hs-mc-set-search-hdr" data-set-jump="system|backup / restore">system · backup / restore</div>' +
+      '<div class="hs-mc-set-search-hdr" data-set-jump="system|backup / restore">' +
+      escapeHtml(t('mc_set_system_backup')) +
+      '</div>' +
       actions.map((a) => a.html).join('') +
       '</div>'
   }
-  if (!count) html = '<div class="hs-mc-setting-row" style="color:#808080">no matches</div>'
+  var helpActions = _setHelpActionRows()
+  var helpHits = helpActions.filter((a) => _rowMatches(a.hay, tokens))
+  total += helpActions.length
+  if (helpHits.length) {
+    count += helpHits.length
+    html +=
+      '<div class="hs-mc-settings-group">' +
+      '<div class="hs-mc-set-search-hdr" data-set-jump="help|">' +
+      escapeHtml(_setCatLabel('help')) +
+      '</div>' +
+      helpHits.map((a) => a.html).join('') +
+      '</div>'
+  }
+  var clearRow = _sentClearRow()
+  total += 1
+  if (_rowMatches(clearRow.hay, tokens)) {
+    count += 1
+    html +=
+      '<div class="hs-mc-settings-group">' +
+      '<div class="hs-mc-set-search-hdr" data-set-jump="chat|' +
+      escapeHtml(t('btn_settings_input')) +
+      '">' +
+      escapeHtml(`${_setCatLabel('chat')} · ${t('btn_settings_input')}`) +
+      '</div>' +
+      clearRow.html +
+      '</div>'
+  }
+  if (!count)
+    html =
+      '<div class="hs-mc-setting-row hs-mc-setting-note" style="color:#ffffff">' + t('common_no_matches') + '</div>'
   return { html: html, count: count, total: total }
 }
 
@@ -525,7 +589,7 @@ function _renderMutedGroup() {
     t('mc_settings_muted_users') +
     '</div>' +
     (mutedUsers.size === 0
-      ? `<div class="hs-mc-setting-row" style="color:#808080;font-size:13px">${t('mc_settings_no_muted')}</div>`
+      ? `<div class="hs-mc-setting-row hs-mc-setting-note" style="color:#ffffff;font-size:13px">${t('mc_settings_no_muted')}</div>`
       : Array.from(mutedUsers)
           .sort()
           .map((u) => {
@@ -536,33 +600,15 @@ function _renderMutedGroup() {
               '<span class="hs-mc-setting-label" style="font-size:13px">' +
               escapeHtml(displayU) +
               '</span>' +
-              '<button class="hs-mc-unmute-btn" data-username="' +
-              escapeHtml(u) +
-              '" style="background:none;border:1px solid #808080;color:#808080;font-size:13px;cursor:pointer;padding:1px 6px;line-height:1.4" title="' +
-              t('mc_settings_unmute') +
-              '">✕</button>' +
+              hsXButtonHtml(
+                'hs-x-inline hs-mc-unmute-btn',
+                t('mc_settings_unmute'),
+                'data-username="' + escapeHtml(u) + '" title="' + t('mc_settings_unmute') + '"',
+              ) +
               '</div>'
             )
           })
           .join('')) +
-    '</div>'
-  )
-}
-
-function _renderCrashLogBlock() {
-  var crash = !!getSetting('crashTelemetry')
-  return (
-    '<div class="hs-mc-setting-row hs-mc-setting-row-block" id="hs-set-crashlog-row"' +
-    (!crash ? ' style="display:none"' : '') +
-    '>' +
-    '<div style="display:flex;justify-content:space-between;align-items:center;width:100%">' +
-    '<span class="hs-mc-setting-label">recent errors</span>' +
-    '<div style="display:flex;gap:4px">' +
-    '<button id="hs-set-crash-copy" style="background:#000;color:#fff;border:1px solid #808080;padding:2px 8px;font-size:13px;cursor:pointer;font-family:inherit">copy</button>' +
-    '<button id="hs-set-crash-clear" style="background:#000;color:#fff;border:1px solid #808080;padding:2px 8px;font-size:13px;cursor:pointer;font-family:inherit">clear</button>' +
-    '</div>' +
-    '</div>' +
-    '<pre id="hs-set-crash-pre" class="hs-mc-set-crash-pre">(loading...)</pre>' +
     '</div>'
   )
 }
@@ -574,31 +620,94 @@ const _SET_ACTION_ROWS = [
     hay: 'export settings backup download json save system',
     html:
       '<div class="hs-mc-setting-row hs-mc-setting-row-split">' +
-      '<span class="hs-mc-setting-label" data-tip="dump ui_settings + all hs_* keys to a JSON file. portable across devices and browsers.">export settings</span>' +
-      '<button class="hs-mc-settings-btn" data-action="export-settings" style="background:#000;color:#fff;border:1px solid #808080;padding:2px 10px;font-size:13px;cursor:pointer;font-family:inherit">download .json</button>' +
+      '<span class="hs-mc-setting-label" data-tip="' +
+      escapeHtml(t('mc_set_export_tip')) +
+      '">' +
+      t('mc_set_export') +
+      '</span>' +
+      '<button class="hs-mc-settings-btn" data-action="export-settings" style="background:#000;color:#fff;border:1px solid #ffffff;padding:2px 10px;font-size:13px;cursor:pointer;font-family:inherit">' +
+      t('mc_set_export_btn') +
+      '</button>' +
       '</div>',
   },
   {
     hay: 'import settings restore load json system',
     html:
       '<div class="hs-mc-setting-row hs-mc-setting-row-split">' +
-      '<span class="hs-mc-setting-label" data-tip="restore from a previously-exported JSON file. merges into existing settings.">import settings</span>' +
-      '<button class="hs-mc-settings-btn" data-action="import-settings" style="background:#000;color:#fff;border:1px solid #808080;padding:2px 10px;font-size:13px;cursor:pointer;font-family:inherit">load .json</button>' +
+      '<span class="hs-mc-setting-label" data-tip="' +
+      escapeHtml(t('mc_set_import_tip')) +
+      '">' +
+      t('mc_set_import') +
+      '</span>' +
+      '<button class="hs-mc-settings-btn" data-action="import-settings" style="background:#000;color:#fff;border:1px solid #ffffff;padding:2px 10px;font-size:13px;cursor:pointer;font-family:inherit">' +
+      t('mc_set_import_btn') +
+      '</button>' +
       '</div>',
   },
   {
     hay: 'default reset all settings factory system',
     html:
       '<div class="hs-mc-setting-row" style="justify-content:flex-end">' +
-      '<button class="hs-mc-defaults-btn" title="reset every setting on every page" style="background:#000;color:#fff;border:1px solid #808080;padding:2px 10px;font-size:13px;cursor:pointer;font-family:inherit">all defaults</button>' +
+      '<button class="hs-mc-defaults-btn" title="' +
+      escapeHtml(t('mc_set_reset_all_title')) +
+      '" style="background:#000;color:#fff;border:1px solid #ffffff;padding:2px 10px;font-size:13px;cursor:pointer;font-family:inherit">' +
+      t('mc_set_all_defaults') +
+      '</button>' +
       '</div>',
   },
 ]
 
+// The two getting-started rows of settings › ? (and of search): the first-run tour's way back —
+// a person who closed the card by accident, or wants it again, looks for help — and the
+// "sending" checklist (send-status.js): which of twitch / kick / youtube are signed in.
+function _setHelpActionRows() {
+  return [
+    {
+      hay: 'tour welcome intro introduction first run start guide help show again replay',
+      html:
+        '<div class="hs-mc-setting-row hs-mc-setting-row-split">' +
+        '<span class="hs-mc-setting-label" data-tip="' +
+        escapeHtml(t('mc_set_tour_tip')) +
+        '">' +
+        t('mc_set_tour') +
+        '</span>' +
+        '<button class="hs-mc-settings-btn" data-action="show-tour" style="background:#000;color:#fff;border:1px solid #ffffff;padding:2px 10px;font-size:13px;cursor:pointer;font-family:inherit">' +
+        t('mc_set_tour_btn') +
+        '</button>' +
+        '</div>',
+    },
+    {
+      hay: 'sending send sign in signed log in login account twitch kick youtube checklist chat help',
+      html: sendStatusGroupHtml(),
+    },
+  ]
+}
+
+// "clear sent history" — a button, not a setting. _regSections puts it in chat > input, under
+// "remember sent messages"; search finds it like the backup buttons.
+function _sentClearRow() {
+  return {
+    hay: 'clear sent history messages up down arrow recall forget privacy chat input',
+    html:
+      '<div class="hs-mc-setting-row hs-mc-setting-row-split">' +
+      '<span class="hs-mc-setting-label" data-tip="' +
+      escapeHtml(t('mc_set_clear_sent_tip')) +
+      '">' +
+      t('mc_set_clear_sent') +
+      '</span>' +
+      '<button class="hs-mc-settings-btn" data-action="clear-sent-history" style="background:#000;color:#fff;border:1px solid #ffffff;padding:2px 10px;font-size:13px;cursor:pointer;font-family:inherit">' +
+      t('mc_set_clear_sent_btn') +
+      '</button>' +
+      '</div>',
+  }
+}
+
 function _renderBackupGroup() {
   return (
     '<div class="hs-mc-settings-group">' +
-    '<div class="hs-mc-settings-group-title">backup / restore</div>' +
+    '<div class="hs-mc-settings-group-title">' +
+    t('mc_set_backup_restore') +
+    '</div>' +
     _SET_ACTION_ROWS[0].html +
     _SET_ACTION_ROWS[1].html +
     '</div>' +
@@ -608,294 +717,7 @@ function _renderBackupGroup() {
   )
 }
 
-// ── filter rules custom settings UI ────────────────────────────────────────
-// Reads chatFilterRules (JSON string) from getSetting, renders an editor with
-// per-rule rows + an add-rule form. Wired into the click/change handlers below.
-
-var _filterRulesCorrupted = false
-
-function _getRawFilterRules() {
-  var raw = getSetting('chatFilterRules') || '[]'
-  var arr
-  try {
-    arr = JSON.parse(raw)
-  } catch (e) {
-    if (!_filterRulesCorrupted) {
-      _filterRulesCorrupted = true
-      console.error('[heatsync] chatFilterRules JSON parse failed:', e)
-      showToast(t('mc_settingsui_rules_corrupted'), 'error')
-    }
-    return []
-  }
-  if (!Array.isArray(arr)) {
-    if (!_filterRulesCorrupted) {
-      _filterRulesCorrupted = true
-      console.error('[heatsync] chatFilterRules is not an array:', arr)
-      showToast(t('mc_settingsui_rules_corrupted'), 'error')
-    }
-    return []
-  }
-  _filterRulesCorrupted = false
-  return arr
-}
-
-function _saveFilterRules(rules) {
-  // _getRawFilterRules() returns [] both for "no rules yet" and "corrupted
-  // JSON" — refuse to write in the corrupted case, or the next add/edit
-  // would silently persist over (and permanently lose) the unreadable blob.
-  if (_filterRulesCorrupted) {
-    showToast(t('mc_settingsui_rules_corrupted_reload'), 'error')
-    return
-  }
-  var json = JSON.stringify(rules)
-  saveUiSetting('chatFilterRules', json)
-  var parsed = []
-  try {
-    parsed = JSON.parse(json)
-  } catch {}
-  compileFilterRules(parsed)
-  renderMessages(currentTab)
-  if (currentTab === 'settings') renderSettingsTab()
-}
-
-var FR_TYPE_LABELS = {
-  keyword: 'kw',
-  regex: 'rx',
-  user: 'user',
-  badge: 'badge',
-  msgtype: 'type',
-  expr: 'expr',
-}
-var FR_BTN =
-  'background:#000;color:#fff;border:1px solid #808080;padding:1px 6px;font-size:13px;cursor:pointer;font-family:inherit;line-height:1.4'
-var FR_SEL = 'background:#000;color:#fff;border:1px solid #808080;padding:1px 3px;font-size:13px;font-family:inherit'
-var FR_INPUT =
-  'background:#000;color:#fff;border:1px solid #808080;padding:1px 4px;font-size:13px;font-family:inherit;flex:1;min-width:60px'
-
-function _renderFilterRuleRow(r) {
-  var on = !!r.enabled
-  var typeLabel = FR_TYPE_LABELS[r.match?.type] || '?'
-  var val = r.match?.value ? escapeHtml(String(r.match.value)) : ''
-  var aLabel = r.action === 'hide' ? 'hide' : 'hl'
-  var aColor = r.action === 'highlight' && r.color ? escapeHtml(r.color) : ''
-  var scopeLabel = r.scope && r.scope !== 'all' ? escapeHtml(String(r.scope)) : 'all'
-  var id = escapeHtml(String(r.id))
-  return (
-    '<div class="hs-mc-setting-row hs-mc-setting-row-split" data-fr-row="' +
-    id +
-    '" style="gap:4px">' +
-    '<div style="display:flex;align-items:center;gap:4px;flex:1;min-width:0;overflow:hidden">' +
-    '<button class="hs-mc-toggle-pill' +
-    (on ? ' active' : '') +
-    '" data-fr-action="toggle" data-fr-id="' +
-    id +
-    '" style="flex-shrink:0"><span class="hs-mc-toggle-knob"></span></button>' +
-    '<span style="color:#808080;font-size:13px;min-width:28px;flex-shrink:0">' +
-    typeLabel +
-    '</span>' +
-    '<span style="font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1" title="' +
-    val +
-    '">' +
-    val +
-    '</span>' +
-    '<span style="color:#aaa;font-size:13px;flex-shrink:0">▶' +
-    aLabel +
-    '</span>' +
-    (aColor
-      ? '<span style="display:inline-block;width:10px;height:10px;background:' +
-        aColor +
-        ';border:1px solid #444;flex-shrink:0"></span>'
-      : '') +
-    (r.action === 'highlight' && r.sound
-      ? '<span style="color:#808080;font-size:13px;flex-shrink:0" title="sound: ' +
-        escapeHtml(String(r.sound)) +
-        '">♪</span>'
-      : '') +
-    '<span style="color:#666;font-size:13px;flex-shrink:0">' +
-    scopeLabel +
-    '</span>' +
-    '</div>' +
-    '<button data-fr-action="up" data-fr-id="' +
-    id +
-    '" style="' +
-    FR_BTN +
-    ';color:#808080;flex-shrink:0;padding:1px 4px" title="move up (higher priority — first match wins)">▲</button>' +
-    '<button data-fr-action="down" data-fr-id="' +
-    id +
-    '" style="' +
-    FR_BTN +
-    ';color:#808080;flex-shrink:0;padding:1px 4px" title="move down">▼</button>' +
-    '<button data-fr-action="delete" data-fr-id="' +
-    id +
-    '" style="' +
-    FR_BTN +
-    ';color:#808080;flex-shrink:0" title="delete rule">✕</button>' +
-    '</div>'
-  )
-}
-
-function _renderFilterRuleAddForm() {
-  var channels = typeof config !== 'undefined' && config && config.channels ? config.channels : []
-  var chOptions =
-    '<option value="all">all channels</option>' +
-    channels
-      .map((ch) => {
-        var label = ch.twitch || ch.kick || ch.id || ''
-        return `<option value="${escapeHtml(ch.id)}">${escapeHtml(label)}</option>`
-      })
-      .join('')
-  return (
-    '<div class="hs-mc-setting-row hs-mc-setting-row-block hs-mc-fr-addform" style="padding:4px 4px 6px">' +
-    '<div style="font-size:13px;color:#808080;margin-bottom:4px">add rule</div>' +
-    '<div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center">' +
-    '<select data-fr-field="type" style="' +
-    FR_SEL +
-    ';width:60px">' +
-    '<option value="keyword">keyword</option>' +
-    '<option value="regex">regex</option>' +
-    '<option value="user">user</option>' +
-    '<option value="badge">badge</option>' +
-    '<option value="msgtype">msgtype</option>' +
-    '<option value="expr">expr</option>' +
-    '</select>' +
-    '<input type="text" data-fr-field="value" placeholder="value..." style="' +
-    FR_INPUT +
-    '">' +
-    '<select data-fr-field="action" style="' +
-    FR_SEL +
-    ';width:68px">' +
-    '<option value="highlight">highlight</option>' +
-    '<option value="hide">hide</option>' +
-    '</select>' +
-    '<input type="color" data-fr-field="color" value="#ffff00" style="width:28px;height:22px;border:1px solid #808080;background:#000;padding:1px;cursor:pointer;flex-shrink:0" title="highlight color">' +
-    '<select data-fr-field="sound" style="' +
-    FR_SEL +
-    ';width:62px" title="highlight sound (highlight action only)">' +
-    '<option value="none">silent</option>' +
-    '<option value="ping">ping</option>' +
-    '<option value="blip">blip</option>' +
-    '<option value="knock">knock</option>' +
-    '<option value="chime">chime</option>' +
-    '</select>' +
-    '<label style="display:flex;align-items:center;gap:2px;color:#808080;font-size:13px;cursor:pointer;flex-shrink:0" title="case-sensitive match">' +
-    '<input type="checkbox" data-fr-field="cs" style="margin:0;cursor:pointer">Aa</label>' +
-    '<select data-fr-field="scope" style="' +
-    FR_SEL +
-    ';max-width:80px">' +
-    chOptions +
-    '</select>' +
-    '<button data-fr-action="add" style="' +
-    FR_BTN +
-    ';background:#222">+ add</button>' +
-    '</div>' +
-    '<div style="font-size:13px;color:#808080;margin-top:4px;line-height:1.4">' +
-    'expr: compose with &amp;&amp; || ! and ( ). fields user: badge: type: contains: regex: · flags first action reply cheer · bits&gt;100. ' +
-    'e.g. <code style="color:#808080">first &amp;&amp; !badge:subscriber</code>' +
-    '</div>' +
-    '</div>'
-  )
-}
-
-function _renderFilterRulesGroup() {
-  var fold = _setCollapsed.has('filters|rules')
-  var rules = _getRawFilterRules()
-  var ruleRows =
-    rules.length === 0
-      ? '<div class="hs-mc-setting-row" style="color:#808080;font-size:13px">no rules — add one below</div>'
-      : rules.map(_renderFilterRuleRow).join('')
-  return (
-    '<div class="hs-mc-settings-group">' +
-    '<div class="hs-mc-settings-group-title" data-set-fold="rules">' +
-    (fold ? '▸ ' : '▾ ') +
-    'filter rules' +
-    (rules.length ? ` <span class="hs-mc-set-cnt">(${rules.length})</span>` : '') +
-    '</div>' +
-    (fold ? '' : ruleRows + _renderFilterRuleAddForm()) +
-    '</div>'
-  )
-}
-
-function _handleFilterRuleAction(el, _panelRoot) {
-  var action = el.dataset.frAction
-  var id = el.dataset.frId
-  var rules = _getRawFilterRules()
-
-  if (action === 'toggle' && id) {
-    var toggleRule = rules.find((r) => String(r.id) === id)
-    if (toggleRule) {
-      toggleRule.enabled = !toggleRule.enabled
-      _saveFilterRules(rules)
-    }
-    return
-  }
-
-  if (action === 'delete' && id) {
-    var delIdx = rules.findIndex((r) => String(r.id) === id)
-    if (delIdx !== -1) {
-      rules.splice(delIdx, 1)
-      _saveFilterRules(rules)
-    }
-    return
-  }
-
-  if ((action === 'up' || action === 'down') && id) {
-    // Reorder = priority. evaluateFilterRules is first-match-wins (hide
-    // short-circuits; first highlight's color+sound win), so moving a rule up
-    // makes it take precedence.
-    var mvIdx = rules.findIndex((r) => String(r.id) === id)
-    if (mvIdx === -1) return
-    var swapIdx = action === 'up' ? mvIdx - 1 : mvIdx + 1
-    if (swapIdx < 0 || swapIdx >= rules.length) return
-    var tmp = rules[mvIdx]
-    rules[mvIdx] = rules[swapIdx]
-    rules[swapIdx] = tmp
-    _saveFilterRules(rules)
-    return
-  }
-
-  if (action === 'add') {
-    var form = el.closest('.hs-mc-fr-addform')
-    if (!form) return
-    var typeEl = form.querySelector('[data-fr-field="type"]')
-    var valEl = form.querySelector('[data-fr-field="value"]')
-    var actEl = form.querySelector('[data-fr-field="action"]')
-    var colEl = form.querySelector('[data-fr-field="color"]')
-    var soundEl = form.querySelector('[data-fr-field="sound"]')
-    var csEl = form.querySelector('[data-fr-field="cs"]')
-    var scopeEl = form.querySelector('[data-fr-field="scope"]')
-    var ruleType = typeEl ? typeEl.value : 'keyword'
-    var ruleVal = valEl ? valEl.value.trim() : ''
-    var ruleAct = actEl ? actEl.value : 'highlight'
-    var ruleCol = colEl ? colEl.value : '#ffff00'
-    var ruleSound = soundEl ? soundEl.value : 'none'
-    var ruleCs = csEl ? !!csEl.checked : false
-    var ruleScope = scopeEl ? scopeEl.value : 'all'
-    if (!ruleVal) {
-      showToast(t('mc_settingsui_rule_value_empty'), 'error')
-      return
-    }
-    // Validate expr syntax up front so a malformed rule toasts instead of
-    // silently compiling to nothing (the parser lives in the same bundle).
-    if (ruleType === 'expr' && typeof _frParseExpr === 'function' && !_frParseExpr(_frTokenizeExpr(ruleVal))) {
-      showToast(t('mc_settingsui_invalid_expression'), 'error')
-      return
-    }
-    var newRule = {
-      id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
-      enabled: true,
-      scope: ruleScope,
-      match: { type: ruleType, value: ruleVal, caseSensitive: ruleCs },
-      action: ruleAct,
-    }
-    if (ruleAct === 'highlight') {
-      newRule.color = ruleCol
-      if (ruleSound && ruleSound !== 'none') newRule.sound = ruleSound
-    }
-    rules.push(newRule)
-    _saveFilterRules(rules)
-    return
-  }
-}
+// The filter rules editor (rows, add/edit form, live count) is filter-rules-ui.js.
 
 // Compose one category pane: registry sections + that category's islands.
 // Per-page reset — mirrors the site's per-section-header `default` button so
@@ -907,7 +729,11 @@ function _renderPageDefaultsRow(cat) {
     '<div class="hs-mc-setting-row" style="justify-content:flex-end;padding-top:6px">' +
     '<button class="hs-mc-pagedefaults-btn" data-set-cat="' +
     escapeHtml(cat) +
-    '" title="reset this page to defaults" style="background:#000;color:#fff;border:1px solid #808080;padding:2px 10px;font-size:13px;cursor:pointer;font-family:inherit">default</button>' +
+    '" title="' +
+    escapeHtml(t('mc_set_page_reset_title')) +
+    '" style="background:#000;color:#fff;border:1px solid #ffffff;padding:2px 10px;font-size:13px;cursor:pointer;font-family:inherit">' +
+    t('mc_set_default') +
+    '</button>' +
     '</div>'
   )
 }
@@ -917,14 +743,15 @@ function _renderPageDefaultsRow(cat) {
 // hidden and where it went, every pane, every time.
 function _basicHint(cat) {
   if (_setShowAll) return ''
-  var hidden = SETTINGS.filter((d) => d.category === cat && !d.basic && _depSatisfied(d)).length
+  var hidden = SETTINGS.filter((d) => d.category === cat && !d.basic && _rowApplies(d)).length
   if (!hidden) return ''
   return (
     '<div class="hs-mc-set-keyhint" data-set-scope-hint="1">' +
-    hidden +
-    ' more setting' +
-    (hidden === 1 ? '' : 's') +
-    ' here — <button class="hs-mc-set-scope-btn hs-mc-set-scope-inline">show all</button></div>'
+    t(hidden === 1 ? 'mc_set_basic_hint_one' : 'mc_set_basic_hint_many', [
+      String(hidden),
+      '<button class="hs-mc-set-scope-btn hs-mc-set-scope-inline">' + t('mc_set_show_all') + '</button>',
+    ]) +
+    '</div>'
   )
 }
 
@@ -933,26 +760,17 @@ function _renderCategoryPane(cat) {
 }
 
 function _renderCategoryPaneInner(cat) {
+  if (cat === 'help') return _renderHelpPane()
   if (cat === 'mod') return _renderPageDefaultsRow(cat) + _regSections(cat)
   if (cat === 'filters') {
     // 'rules' section is custom-rendered; exclude it from auto-sections
     return _renderPageDefaultsRow(cat) + _regSections(cat, ['content', 'messages']) + _renderFilterRulesGroup()
   }
-  if (cat === 'tweaks') {
-    return (
-      _renderPageDefaultsRow(cat) +
-      '<div class="hs-mc-set-keyhint" style="padding-top:8px">twitch.tv only — kick/youtube unaffected</div>' +
-      _regSections(cat)
-    )
+  if (cat === 'notifs') {
+    return _renderPageDefaultsRow(cat) + _regSections(cat) + mrGroupHtml()
   }
   if (cat === 'system') {
-    // crash log block nests inside the advanced section, after its pill
-    var adv = _regSections(cat, ['advanced'])
-    var advFolded = _setCollapsed.has(`${cat}|advanced`)
-    if (!advFolded && adv.endsWith('</div>')) {
-      adv = `${adv.slice(0, -6) + _renderCrashLogBlock()}</div>`
-    }
-    return _regSections(cat, ['tabs', 'subsystems', 'language']) + _renderMutedGroup() + adv + _renderBackupGroup()
+    return _regSections(cat, ['tabs', 'subsystems', 'language']) + _renderMutedGroup() + _renderBackupGroup()
   }
   return _renderPageDefaultsRow(cat) + _regSections(cat)
 }
@@ -961,19 +779,20 @@ function _renderCategoryPaneInner(cat) {
 // Export: dumps ui_settings (sync) + all hs_*/viewer_* keys and registry
 // local-mirror keys (local) into a single JSON. Import: file picker → JSON parse → schema-validate → merge into
 // storage. Both areas restored. Errors toast, don't throw.
-// Private stores that must NEVER ride an export (the preset panel calls
-// exports "sharable"): mention/chat buffers, per-user notes, whispers, crash
-// ring ("captured locally only"). Import skips the same set so a crafted file
-// can't overwrite them either.
-var _SETTINGS_PRIVATE_KEY_RE = /^hs_(mentions_v2|user_notes|errors|irc_|kick_|yt_|whisper)/
+// Private stores that must NEVER ride an export: mention/chat buffers, per-user notes, whispers, crash
+// ring ("captured locally only"), and the picked sound files (hs_sfx_*: up to
+// 256 kb each, per device by design — rules and the mention sound export only
+// the file's name), and the sent-message history (hs_sent_history: what you typed, this device only). Import skips the same set so a crafted file can't overwrite
+// them either. (hs_modlog_v1 — who was banned where, and by whom — is private too.)
+var _SETTINGS_PRIVATE_KEY_RE = /^hs_(mentions_v2|user_notes|errors|irc_|kick_|yt_|whisper|sfx_|sent_history|modlog)/
 // local-mirror settings (keyword highlights, filter rules) live under
 // unprefixed mirror keys — allowlist them alongside the hs_/viewer_ namespaces
 // or the export silently drops them (derived from the registry, never hand-listed)
 var _SETTINGS_MIRROR_KEYS = new Set(SETTINGS.filter((d) => d.mirrorKey).map((d) => d.mirrorKey))
 async function _exportAllSettings() {
   try {
-    var syncObj = await chrome.storage.sync.get(null)
-    var localObj = await chrome.storage.local.get(null)
+    var syncObj = await browser.storage.sync.get(null)
+    var localObj = await browser.storage.local.get(null)
     var hsLocal = {}
     Object.keys(localObj).forEach((k) => {
       if (k.indexOf('hs_') !== 0 && k.indexOf('viewer_') !== 0 && !_SETTINGS_MIRROR_KEYS.has(k)) return
@@ -1049,7 +868,7 @@ async function _importAllSettings() {
             if (_SETTINGS_PRIVATE_KEY_RE.test(k)) return
             safeLocal[k] = data.local[k]
           })
-          if (Object.keys(safeLocal).length) writes.push(chrome.storage.local.set(safeLocal))
+          if (Object.keys(safeLocal).length) writes.push(browser.storage.local.set(safeLocal))
         }
         await Promise.all(writes)
         showToast(t('mc_settingsui_import_ok'), 'info')
@@ -1077,277 +896,73 @@ async function _importAllSettings() {
 // 11 toggles it populated were unwired (server didn't read those keys),
 // so removing it has no functional change. See _SERVER_FILTER_DEFS deletion.
 
-// Load recent errors + diag snapshot into the system sub-tab pre element.
-// Reads hs_errors directly (single source of truth — written by lib/error-reporter).
-async function _loadCrashLog() {
-  var pre = document.getElementById('hs-set-crash-pre')
-  if (!pre) return
-  try {
-    var cur = await new Promise((r) => {
-      chrome.storage.local.get('hs_errors', r)
-    })
-    var log = Array.isArray(cur?.hs_errors) ? cur.hs_errors : []
-    var diag = null
-    try {
-      diag = (await chrome.runtime.sendMessage({ type: 'get_diag' }))?.diag || null
-    } catch (_) {}
-    function fmtTs(ts) {
-      var d = new Date(ts)
-      return d.toISOString().replace('T', ' ').slice(0, 19)
-    }
-    var head = diag ? `--- diag ---\n${JSON.stringify(diag, null, 2)}\n\n` : ''
-    if (log.length === 0) {
-      pre.textContent = `${head}(no errors recorded)`
-      return
-    }
-    pre.textContent =
-      head +
-      log
-        .slice()
-        .reverse()
-        .map(
-          (entry) =>
-            '[' +
-            fmtTs(entry.ts) +
-            '] ' +
-            (entry.plat || entry.type || '?') +
-            ': ' +
-            (entry.msg || '') +
-            '\n' +
-            (entry.stack || '') +
-            '\n',
-        )
-        .join('\n')
-  } catch (_) {
-    pre.textContent = '(unable to read log)'
-  }
-}
-
-// ─── presets ("builds") — sparse diffs over defaults ─────────────────
-// Built-ins live in settings-schema.js (SETTINGS_PRESETS); customs are
-// diff-vs-defaults snapshots in ui_settings.customPresets (synced, and
-// sharable via the existing settings export/import). Applying always
-// goes through a diff-confirm panel; one-shot undo restores the prior
-// values of exactly the keys the preset touched.
-let _customPresets = []
-let _lastPresetUndo = null
-let _presetPending = null // {label, diff} or {savePrompt:true}
-
-function _presetIsActive(p) {
-  return Object.keys(p.diff).every((k) => JSON.stringify(getSetting(k)) === JSON.stringify(p.diff[k]))
-}
-function _presetChanges(diff) {
-  const out = []
-  for (const k in diff) {
-    const def = _SETTINGS_BY_KEY.get(k)
-    if (!def) continue
-    const from = getSetting(k)
-    if (JSON.stringify(from) !== JSON.stringify(diff[k])) out.push({ key: k, def: def, from: from, to: diff[k] })
-  }
-  return out
-}
-function _fmtPresetVal(def, v) {
-  if (def.type === 'bool') return v ? 'on' : 'off'
-  if (def.type === 'boolmap') {
-    const offs = Object.keys(v).filter((k) => v[k] === false)
-    return offs.length ? `off: ${offs.join(', ')}` : 'all on'
-  }
-  if (def.type === 'multiselect') return v.length ? v.join(', ') : 'none'
-  return String(v)
-}
-function _applyPresetDiff(label, diff) {
-  const changes = _presetChanges(diff)
-  _presetPending = null
-  if (!changes.length) {
-    showToast(t('mc_settingsui_preset_already_matching', [label]), 'info')
-    renderSettingsTab()
-    return
-  }
-  const undo = {}
-  for (const c of changes) undo[c.key] = c.from
-  _lastPresetUndo = { label: label, diff: undo }
-  for (const c of changes) setSetting(c.key, c.to)
-  const changeCount = `${changes.length} change${changes.length === 1 ? '' : 's'}`
-  showToast(t('mc_settingsui_preset_applied', [label, changeCount]), 'info')
-  renderSettingsTab()
-}
-function _saveCustomPreset(name) {
-  name = (name || '').trim().slice(0, 24)
-  if (!name) {
-    showToast(t('mc_settingsui_preset_needs_name'), 'error')
-    return
-  }
-  const diff = {}
-  for (const def of SETTINGS) {
-    if (def.noReset) continue
-    const cur = getSetting(def.key)
-    if (JSON.stringify(cur) !== JSON.stringify(def.default)) diff[def.key] = cur
-  }
-  const entry = { id: `c_${Date.now().toString(36)}`, name: name, diff: diff, createdAt: Date.now() }
-  const next = _customPresets
-    .filter((p) => p.name !== name)
-    .concat(entry)
-    .slice(-8)
-  if (JSON.stringify(next).length > 5000) {
-    showToast(t('mc_settingsui_presets_storage_full'), 'error')
-    return
-  }
-  _customPresets = next
-  saveUiSetting('customPresets', next)
-  _presetPending = null
-  showToast(t('mc_settingsui_preset_saved', [name]), 'info')
-  renderSettingsTab()
-}
-function _deleteCustomPreset(id) {
-  _customPresets = _customPresets.filter((p) => p.id !== id)
-  saveUiSetting('customPresets', _customPresets)
-  showToast(t('mc_settingsui_preset_deleted'), 'info')
-}
-function _openPresetMenu(anchorEl) {
-  const r = anchorEl.getBoundingClientRect()
-  const items = []
-  for (const p of SETTINGS_PRESETS) {
-    const pLabel = p.labelKey ? t(p.labelKey) : p.label
-    items.push({
-      label: (_presetIsActive(p) ? '■ ' : '□ ') + pLabel,
-      fn: ((preset, lbl) => () => {
-        _presetPending = { label: lbl, diff: preset.diff }
-        renderSettingsTab()
-      })(p, pLabel),
-    })
-  }
-  if (_customPresets.length) {
-    items.push('sep')
-    for (const p of _customPresets) {
-      items.push({
-        label: (_presetIsActive(p) ? '■ ' : '□ ') + p.name,
-        fn: ((preset) => () => {
-          _presetPending = { label: preset.name, diff: preset.diff }
-          renderSettingsTab()
-        })(p),
-      })
-    }
-    items.push({
-      label: 'delete a preset…',
-      danger: true,
-      fn: () => {
-        const delItems = _customPresets.map((p) => ({
-          label: `✕ ${p.name}`,
-          danger: true,
-          fn: () => {
-            _deleteCustomPreset(p.id)
-          },
-        }))
-        showHsCtxMenu(r.left, r.bottom + 4, 'delete preset', delItems)
-      },
-    })
-  }
-  items.push('sep')
-  items.push({
-    label: 'save current as…',
-    fn: () => {
-      _presetPending = { savePrompt: true }
-      renderSettingsTab()
-    },
-  })
-  if (_lastPresetUndo) {
-    items.push({
-      label: `undo: ${_lastPresetUndo.label}`,
-      fn: () => {
-        const u = _lastPresetUndo
-        _lastPresetUndo = null
-        _applyPresetDiff(`undo ${u.label}`, u.diff)
-      },
-    })
-  }
-  showHsCtxMenu(r.left, r.bottom + 4, 'presets', items)
-}
-function _renderPresetPanel() {
-  if (_presetPending.savePrompt) {
-    return (
-      '<div class="hs-mc-settings-group">' +
-      '<div class="hs-mc-settings-group-title">save current as preset</div>' +
-      '<div class="hs-mc-setting-row hs-mc-setting-row-split">' +
-      '<input class="hs-mc-set-text-input" id="hs-preset-name" type="text" placeholder="preset name" maxlength="24" style="flex:1">' +
-      '<div style="display:flex;gap:4px">' +
-      '<button class="hs-mc-settings-btn" data-preset-action="save-custom" style="background:#000;color:#fff;border:1px solid #808080;padding:2px 10px;font-size:13px;cursor:pointer;font-family:inherit">save</button>' +
-      '<button class="hs-mc-settings-btn" data-preset-action="cancel" style="background:#000;color:#fff;border:1px solid #808080;padding:2px 10px;font-size:13px;cursor:pointer;font-family:inherit">cancel</button>' +
-      '</div>' +
-      '</div>' +
-      '<div class="hs-mc-set-keyhint">snapshots every setting that differs from defaults — sharable via export settings</div>' +
-      '</div>'
-    )
-  }
-  const changes = _presetChanges(_presetPending.diff)
-  let rows = ''
-  if (!changes.length) {
-    rows = '<div class="hs-mc-setting-row" style="color:#808080">already matching — nothing to change</div>'
-  }
-  for (const c of changes) {
-    rows +=
-      '<div class="hs-mc-setting-row hs-mc-setting-row-split">' +
-      '<span class="hs-mc-setting-label">' +
-      escapeHtml(_setLabel(c.def)) +
-      '</span>' +
-      '<span style="font-size:13px;flex-shrink:0"><span style="color:#808080">' +
-      escapeHtml(_fmtPresetVal(c.def, c.from)) +
-      '</span>' +
-      ' → <span style="color:#fff">' +
-      escapeHtml(_fmtPresetVal(c.def, c.to)) +
-      '</span></span>' +
-      '</div>'
-  }
-  return (
-    '<div class="hs-mc-settings-group">' +
-    '<div class="hs-mc-settings-group-title">apply preset: ' +
-    escapeHtml(_presetPending.label) +
-    '</div>' +
-    rows +
-    '<div class="hs-mc-setting-row" style="justify-content:flex-end;gap:4px">' +
-    (changes.length
-      ? '<button class="hs-mc-settings-btn" data-preset-action="apply" style="background:#fff;color:#000;border:none;padding:2px 12px;font-size:13px;cursor:pointer;font-family:inherit">apply</button>'
-      : '') +
-    '<button class="hs-mc-settings-btn" data-preset-action="cancel" style="background:#000;color:#fff;border:1px solid #808080;padding:2px 10px;font-size:13px;cursor:pointer;font-family:inherit">cancel</button>' +
-    '</div>' +
-    '</div>'
-  )
-}
-
-// '?' keybinding overlay — square, two-column key grid; vim block only
-// when vi mode is on. Click anywhere on it (or Esc / ?) closes.
-function _renderHelpOverlay() {
-  var always = [
-    ['/', 'search'],
-    ['1-7', 'category'],
-    ['↑ ↓', 'move'],
-    ['← →', 'adjust'],
-    ['enter', 'toggle'],
-    ['bksp', 'reset row'],
-    ['esc', 'close / clear'],
-    ['?', 'this help'],
-  ]
-  var vim = [
-    ['j k', 'move'],
-    ['h l', 'adjust'],
-    ['gg G', 'first / last'],
-    ['za', 'fold section'],
-    ['d', 'reset row'],
-    ['p', 'presets'],
-    ['H L', 'prev / next category'],
-  ]
+// settings › help — the one help: keys for this pane, then the slash commands.
+// Esc (or ?) goes back to the cell it was opened from.
+const _SET_HELP_KEYS = [
+  ['/', 'mc_set_h_search'],
+  ['1-7', 'mc_set_h_category'],
+  ['↑ ↓', 'mc_set_h_move'],
+  ['← →', 'mc_set_h_adjust'],
+  ['enter', 'mc_set_h_toggle'],
+  ['bksp', 'mc_set_h_reset_row'],
+  ['esc', 'mc_set_h_close_clear'],
+  ['?', 'mc_set_h_this_help'],
+]
+const _SET_HELP_VIM = [
+  ['j k', 'mc_set_h_move'],
+  ['h l', 'mc_set_h_adjust'],
+  ['gg G', 'mc_set_h_first_last'],
+  ['za', 'mc_set_h_fold'],
+  ['d', 'mc_set_h_reset_row'],
+  ['H L', 'mc_set_h_prev_next'],
+  ['spc r', 'mc_set_h_rows'],
+]
+// The chat's own keys, anywhere on the page — what no pane's key list said. alt combos always work
+// (vi mode or not). Every global key the overlay binds belongs here: main-overlay.js (alt+digit,
+// alt+bracket, alt+r) names this list, and tests/key-help.test.js holds the two together.
+const _SET_HELP_CHAT = [
+  ['alt 1-9', 'mc_set_h_nth_tab'],
+  ['alt [ ]', 'mc_set_h_tab_cycle'],
+  ['alt r', 'mc_set_h_rows'],
+]
+// row mode (row-mode.js): the keys once you are in it
+const _SET_HELP_ROWS = [
+  ['j k', 'mc_set_h_move'],
+  ['g G', 'mc_set_h_first_last'],
+  ['enter', 'mc_set_h_row_menu'],
+  ['r', 'mc_set_h_row_reply'],
+  ['esc', 'mc_set_h_row_leave'],
+]
+function _renderHelpPane() {
   function grid(pairs) {
     return pairs
-      .map((kv) => `<span class="hs-mc-set-help-key">${escapeHtml(kv[0])}</span><span>${escapeHtml(kv[1])}</span>`)
+      .map((kv) => `<span class="hs-mc-set-help-key">${escapeHtml(kv[0])}</span><span>${escapeHtml(t(kv[1]))}</span>`)
       .join('')
   }
   return (
-    '<div class="hs-mc-set-help">' +
-    '<div class="hs-mc-set-help-grid">' +
-    grid(always) +
+    '<div class="hs-mc-set-help-pane">' +
+    _setHelpActionRows()
+      .map((a) => a.html)
+      .join('') +
+    '<div class="hs-mc-set-help-title">' +
+    t('mc_set_h_keys') +
     '</div>' +
+    `<div class="hs-mc-set-help-grid">${grid(_SET_HELP_KEYS)}</div>` +
+    '<div class="hs-mc-set-help-title">' +
+    t('mc_set_h_chat') +
+    '</div>' +
+    `<div class="hs-mc-set-help-grid">${grid(_SET_HELP_CHAT)}</div>` +
+    '<div class="hs-mc-set-help-title">' +
+    t('mc_set_h_rows') +
+    '</div>' +
+    `<div class="hs-mc-set-help-grid">${grid(_SET_HELP_ROWS)}</div>` +
     (viModeEnabled
-      ? `<div class="hs-mc-set-help-title">vi</div><div class="hs-mc-set-help-grid">${grid(vim)}</div>`
+      ? `<div class="hs-mc-set-help-title">vi</div><div class="hs-mc-set-help-grid">${grid(_SET_HELP_VIM)}</div>`
       : '') +
+    '<div class="hs-mc-set-help-title">' +
+    t('mc_set_h_commands') +
+    '</div>' +
+    `<pre class="hs-mc-set-help-cmds">${escapeHtml(`${slashHelpText('ext', { title: (s) => t(`slash_sec_${s.key}`), desc: slashDesc })}\n\n${t('mc_set_h_full_list')}`)}</pre>` +
     '</div>'
   )
 }
@@ -1388,7 +1003,11 @@ function _setRowActivate(row) {
     return
   }
   const ctl = row.querySelector('select[data-set-key], input[data-set-key], textarea[data-set-key]')
-  if (ctl) ctl.focus()
+  if (ctl) {
+    ctl.focus()
+    return
+  }
+  row.querySelector('[data-sfx-action="pick"]')?.click() // the sound-file row: Enter opens the dialog
 }
 function _setRowAdjust(row, dir) {
   const def = _setRowDef(row)
@@ -1466,14 +1085,12 @@ function _bindSettingsKeyboard() {
       }
       if (k === '?') {
         e.preventDefault()
-        _setHelpOpen = !_setHelpOpen
-        renderSettingsTab()
+        _gotoSetSubtab(_settingsSubtab === 'help' ? _setHelpFrom : 'help')
         return
       }
       if (k === 'Escape') {
-        if (_setHelpOpen) {
-          _setHelpOpen = false
-          renderSettingsTab()
+        if (_settingsSubtab === 'help') {
+          _gotoSetSubtab(_setHelpFrom)
           return
         }
         if (_setQuery) {
@@ -1490,9 +1107,8 @@ function _bindSettingsKeyboard() {
       // 1-7 jump straight to a category
       if (k.length === 1 && k >= '1' && k <= '7') {
         e.preventDefault()
-        _settingsSubtab = _SET_SUBTAB_ORDER[+k - 1]
         _setFocusRow = null
-        renderSettingsTab()
+        _gotoSetSubtab(_SET_SUBTAB_ORDER[+k - 1])
         return
       }
       if (k === 'ArrowLeft' && idx >= 0) {
@@ -1556,22 +1172,13 @@ function _bindSettingsKeyboard() {
         e.preventDefault()
         const cur = _SET_SUBTAB_ORDER.indexOf(_settingsSubtab)
         const len = _SET_SUBTAB_ORDER.length
-        _settingsSubtab = _SET_SUBTAB_ORDER[(cur + (k === 'L' ? 1 : len - 1)) % len]
         _setFocusRow = null
-        renderSettingsTab()
+        _gotoSetSubtab(_SET_SUBTAB_ORDER[(cur + (k === 'L' ? 1 : len - 1)) % len])
         return
       }
       if (k === 'd' && idx >= 0) {
         e.preventDefault()
         _setRowReset(rows[idx])
-        return
-      }
-      if (k === 'p') {
-        const btn = msgsEl.querySelector('.hs-mc-set-presets-btn')
-        if (btn) {
-          e.preventDefault()
-          _openPresetMenu(btn)
-        }
         return
       }
       if (k === 'z') {
@@ -1606,7 +1213,7 @@ function renderSettingsTab() {
   // (the panel grows inside it); keep its scroll across re-renders of
   // the same logical pane (toggle/applier-triggered rebuilds)
   var hadPanel = !!msgsEl.querySelector('.hs-mc-settings-panel')
-  var paneCtx = `${_settingsSubtab}|${_setQuery}|${!!_presetPending}`
+  var paneCtx = `${_settingsSubtab}|${_setQuery}`
   // The panel is position:absolute inset:0 and ONLY .hs-mc-set-subtab-body
   // scrolls — #hs-mc-messages itself never does, so preserving its scrollTop was
   // always 0 and every toggle reset the view to the top. Capture the inner body.
@@ -1616,9 +1223,7 @@ function renderSettingsTab() {
   var searchActive = _setQueryTokens().length > 0
   var bodyContent
   var countLabel = ''
-  if (_presetPending) {
-    bodyContent = _renderPresetPanel()
-  } else if (searchActive) {
+  if (searchActive) {
     var res = _renderSearchResults()
     bodyContent = res.html
     countLabel = `${res.count}/${res.total}`
@@ -1631,31 +1236,30 @@ function renderSettingsTab() {
     '<div class="hs-mc-settings-panel">' +
     _renderSetSubtabBar() +
     '<div class="hs-mc-set-searchbar">' +
-    '<input class="hs-mc-set-search" type="search" placeholder="/ search settings..." value="' +
+    '<input class="hs-mc-set-search" type="search" placeholder="' +
+    escapeHtml(t('mc_set_search_ph')) +
+    '" value="' +
     escapeHtml(_setQuery) +
     '">' +
     '<span class="hs-mc-set-search-count">' +
     countLabel +
     '</span>' +
     '<button class="hs-mc-set-scope-btn" title="' +
-    (_setShowAll
-      ? 'showing every setting — click for the basics only'
-      : 'showing the basics — click for every setting') +
+    (_setShowAll ? t('mc_set_scope_all_tip') : t('mc_set_scope_basic_tip')) +
     '">' +
-    (_setShowAll ? 'all' : 'basic') +
+    (_setShowAll ? t('mc_set_scope_all') : t('mc_set_scope_basic')) +
     '</button>' +
-    '<button class="hs-mc-set-presets-btn">presets</button>' +
-    '<button class="hs-mc-set-help-btn" title="keybindings">?</button>' +
     '</div>' +
     '<div class="hs-mc-set-subtab-body">' +
     bodyContent +
     '</div>' +
-    (_setHelpOpen ? _renderHelpOverlay() : '') +
     '</div>'
 
-  // Controls render with live values inline (getSetting); only the crash
-  // log pre needs an async fill, and keyboard focus needs restoring.
-  if (_settingsSubtab === 'system' && !searchActive && getSetting('crashTelemetry')) _loadCrashLog()
+  // the sending checklist (settings › ? and search) answers after the pane is drawn
+  sendStatusFill(msgsEl)
+
+  // Controls render with live values inline (getSetting); only keyboard
+  // focus needs restoring.
   if (_setFocusRow) {
     var fr = msgsEl.querySelector(`[data-set-row="${CSS.escape(_setFocusRow)}"]`)
     if (fr) fr.classList.add('hs-mc-set-row-focus')
@@ -1675,10 +1279,7 @@ function renderSettingsTab() {
     var subtabBtn = e.target.closest('.hs-mc-set-subtab[data-set-subtab]')
     if (subtabBtn) {
       var next = subtabBtn.dataset.setSubtab
-      if (next && next !== _settingsSubtab) {
-        _settingsSubtab = next
-        renderSettingsTab()
-      }
+      if (next && next !== _settingsSubtab) _gotoSetSubtab(next)
       return
     }
 
@@ -1690,19 +1291,13 @@ function renderSettingsTab() {
         _exportAllSettings()
       } else if (action === 'import-settings') {
         _importAllSettings()
+      } else if (action === 'show-tour' && typeof tourReopen === 'function') {
+        tourReopen()
+      } else if (action === 'send-login') {
+        sendStatusLogin(settingsActionBtn.dataset.plat)
+      } else if (action === 'clear-sent-history') {
+        hsSentHistoryClear().then(() => showToast(t('mc_set_clear_sent_done'), 'info'))
       }
-      return
-    }
-
-    // '?' help — button toggles, clicking the overlay closes
-    if (e.target.closest('.hs-mc-set-help-btn')) {
-      _setHelpOpen = !_setHelpOpen
-      renderSettingsTab()
-      return
-    }
-    if (e.target.closest('.hs-mc-set-help')) {
-      _setHelpOpen = false
-      renderSettingsTab()
       return
     }
 
@@ -1716,9 +1311,9 @@ function renderSettingsTab() {
     var jumpHdr = e.target.closest('[data-set-jump]')
     if (jumpHdr) {
       var jump = jumpHdr.dataset.setJump.split('|')
-      _settingsSubtab = jump[0]
       _setQuery = ''
       _setFocusRow = null
+      _setSettingsSubtab(jump[0])
       renderSettingsTab()
       var tgt = [...msgsEl.querySelectorAll('[data-set-fold]')].find((el2) => el2.dataset.setFold === jump[1])
       if (tgt) tgt.scrollIntoView({ block: 'start' })
@@ -1731,24 +1326,6 @@ function renderSettingsTab() {
       _setShowAll = !_setShowAll
       _saveShowAll()
       renderSettingsTab()
-      return
-    }
-
-    // Presets dropdown + diff-confirm actions
-    var presetsBtn = e.target.closest('.hs-mc-set-presets-btn')
-    if (presetsBtn) {
-      _openPresetMenu(presetsBtn)
-      return
-    }
-    var presetAction = e.target.closest('[data-preset-action]')
-    if (presetAction) {
-      var pAct = presetAction.dataset.presetAction
-      if (pAct === 'apply' && _presetPending) _applyPresetDiff(_presetPending.label, _presetPending.diff)
-      else if (pAct === 'save-custom') _saveCustomPreset(msgsEl.querySelector('#hs-preset-name')?.value)
-      else if (pAct === 'cancel') {
-        _presetPending = null
-        renderSettingsTab()
-      }
       return
     }
 
@@ -1767,6 +1344,20 @@ function renderSettingsTab() {
     var frEl = e.target.closest('[data-fr-action]')
     if (frEl && !/^(SELECT|INPUT|TEXTAREA)$/.test(frEl.tagName)) {
       _handleFilterRuleAction(frEl, msgsEl)
+      return
+    }
+
+    // Chat sound file controls (@mention sound row) — data-sfx-action
+    var sfxEl = e.target.closest('[data-sfx-action]')
+    if (sfxEl) {
+      sfxHandleAction(sfxEl)
+      return
+    }
+
+    // Mention rule editor (server-side rules) — data-mr-action
+    var mrEl = e.target.closest('[data-mr-action]')
+    if (mrEl && !/^(SELECT|INPUT|TEXTAREA)$/.test(mrEl.tagName)) {
+      mrHandleAction(mrEl)
       return
     }
 
@@ -1793,33 +1384,6 @@ function renderSettingsTab() {
         renderMessages(currentTab)
         renderSettingsTab()
       }
-      return
-    }
-
-    // Crash log buttons
-    if (e.target.id === 'hs-set-crash-copy') {
-      var pre = document.getElementById('hs-set-crash-pre')
-      if (pre?.textContent) {
-        var copyBtn = e.target
-        navigator.clipboard.writeText(pre.textContent).then(
-          () => {
-            copyBtn.textContent = 'copied'
-          },
-          () => {
-            copyBtn.textContent = 'copy failed'
-          },
-        )
-        cleanup.setTimeout(() => {
-          copyBtn.textContent = 'copy'
-        }, 1500)
-      }
-      return
-    }
-    if (e.target.id === 'hs-set-crash-clear') {
-      chrome.storage.local.remove('hs_errors', () => {
-        void chrome.runtime.lastError
-      })
-      _loadCrashLog()
       return
     }
 
@@ -1890,12 +1454,9 @@ function renderSettingsTab() {
     if (regSel) {
       var selKey = regSel.dataset.setKey
       if (selKey === 'fontFamily') {
-        // Bitmap fonts render crisp at their native size only — snap the
-        // size to the font's design size. silent: the fontFamily write
-        // below runs the (shared) fonts applier once with both values.
         var fam = regSel.value
-        var nativeSize = fam === 'CozetteVector' || fam === 'twitch' ? 13 : null
-        if (nativeSize) setSetting('fontSize', nativeSize, { silent: true })
+        var snapped = snapSize(fam, getSetting('fontSize'))
+        if (snapped !== getSetting('fontSize')) setSetting('fontSize', snapped, { silent: true })
         setSetting('fontFamily', fam) // fonts applier + settings re-render
         return
       }
@@ -1904,6 +1465,8 @@ function renderSettingsTab() {
     }
   }
   msgsEl.addEventListener('change', msgsEl._hsSettingsChange)
+
+  frBindForm(msgsEl) // filter-rules-ui.js: the rule form's input / change / keydown
 
   _bindSettingsKeyboard()
 

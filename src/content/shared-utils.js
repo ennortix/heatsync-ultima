@@ -1,0 +1,441 @@
+// Shared utilities for Heatsync browser extension
+// Loaded FIRST via manifest content_scripts — exposes window.HS
+// Chrome compatibility - Firefox uses 'browser', Chrome uses 'chrome'
+const browser = globalThis.browser || chrome
+// Lib's t() (locale override aware) lives in the sibling content script's scope;
+// resolved at call time, falling back to the raw runtime i18n.
+const _hsT = (key, subs) => {
+  if (typeof t === 'function') return t(key, subs)
+  try {
+    return browser.i18n?.getMessage(key, subs?.map(String)) || key
+  } catch {
+    return key
+  }
+}
+;(() => {
+  // Guard against double-load
+  if (window.HS) return
+
+  /**
+   * Create a lifecycle controller — abort() tears down ALL listeners, timers, observers.
+   * Each consumer file gets its own isolated lifecycle.
+   *
+   * @param {Object} opts
+   * @param {Function} opts.onAbort - extra cleanup to run on abort
+   * @returns {{ signal, cleanup, abort }}
+   */
+  function createLifecycle(opts = {}) {
+    const controller = new AbortController()
+    const signal = controller.signal
+    const _timers = { intervals: new Set(), timeouts: new Set(), observers: [] }
+    const _pendingRafs = new Set()
+
+    signal.addEventListener('abort', () => {
+      _timers.intervals.forEach(clearInterval)
+      _timers.timeouts.forEach(clearTimeout)
+      _timers.observers.forEach((o) => {
+        o.disconnect()
+      })
+      _pendingRafs.forEach(cancelAnimationFrame)
+      _pendingRafs.clear()
+      if (opts.onAbort) opts.onAbort()
+    })
+
+    window.addEventListener('pagehide', () => controller.abort(), { once: true })
+
+    const cleanup = {
+      setInterval(fn, ms) {
+        const id = setInterval(fn, ms)
+        _timers.intervals.add(id)
+        return id
+      },
+      setTimeout(fn, ms) {
+        const id = setTimeout(fn, ms)
+        _timers.timeouts.add(id)
+        return id
+      },
+      addEventListener(target, event, handler, extra) {
+        target.addEventListener(event, handler, { signal, ...extra })
+      },
+      trackObserver(obs) {
+        _timers.observers.push(obs)
+        return obs
+      },
+      raf(fn) {
+        let id
+        id = requestAnimationFrame(() => {
+          _pendingRafs.delete(id)
+          fn()
+        })
+        _pendingRafs.add(id)
+        return id
+      },
+      cancelRaf(id) {
+        cancelAnimationFrame(id)
+        _pendingRafs.delete(id)
+      },
+    }
+
+    return { signal, cleanup, abort: () => controller.abort() }
+  }
+
+  /**
+   * React fiber walking (FFZ-style).
+   * Access React's internal component tree via special keys on DOM elements.
+   */
+  function getFiber(el) {
+    if (!el) return null
+    const key = Object.keys(el).find((k) => k.startsWith('__reactFiber$') || k.startsWith('__reactInternalInstance$'))
+    return key ? el[key] : null
+  }
+
+  /**
+   * Safe wrapper for chrome.runtime.sendMessage.
+   * Handles "Extension context invalidated" errors gracefully,
+   * and retries up to 5 times with exponential backoff on connection errors.
+   *
+   * @param {Object} message
+   * @param {Object} opts
+   * @param {Function} opts.onInvalidated - callback when context is dead
+   * @returns {Promise<any>}
+   */
+  let _contextValid = true
+  async function safeSend(message, opts = {}) {
+    if (!_contextValid) {
+      return { success: false, error: 'Extension context invalidated' }
+    }
+    const MAX_RETRIES = 5
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        return await browser.runtime.sendMessage(message)
+      } catch (err) {
+        if (err.message?.includes('Extension context invalidated') || err.message?.includes('context invalidated')) {
+          _contextValid = false
+          if (opts.onInvalidated) opts.onInvalidated()
+          throw err
+        }
+        const isConnErr =
+          err.message?.includes('Receiving end does not exist') ||
+          err.message?.includes('Could not establish connection')
+        if (isConnErr && attempt < MAX_RETRIES) {
+          await new Promise((r) => setTimeout(r, 200 * 2 ** attempt))
+          continue
+        }
+        throw err
+      }
+    }
+  }
+
+  // durationMs: omit for the default per-type duration, 0 to persist until a
+  // later showToast(null) (or another showToast) clears it — used for an
+  // "uploading..." status that must survive as long as the upload does, not
+  // just the default 2s.
+  let _toastTimer = null
+  function showToast(message, type = 'info', durationMs) {
+    if (_toastTimer) {
+      clearTimeout(_toastTimer)
+      _toastTimer = null
+    }
+    if (!message) {
+      document.getElementById('heatsync-toast')?.remove()
+      return
+    }
+
+    // Prefer the overlay statusbar slot (the `>` line) when the multichat
+    // overlay is mounted — one toast surface, deduped (×N) instead of a fresh
+    // floating box per attempt. Float bottom-center only when no overlay exists.
+    try {
+      if (window.HsNotifs && document.getElementById('hs-notif-layer-statusbar')) {
+        window.HsNotifs.emit('toast', { text: message, level: type })
+        return
+      }
+    } catch (_) {}
+
+    const existing = document.getElementById('heatsync-toast')
+    if (existing) existing.remove()
+
+    const borders = { success: '#0f0', error: '#f00', info: '#fff', warning: '#ff0' }
+    const toast = document.createElement('div')
+    toast.id = 'heatsync-toast'
+    toast.textContent = message
+    toast.style.cssText = `position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#000;color:#fff;border:1px solid ${borders[type] || borders.info};padding:6px 14px;border-radius:0;font:bold 12px monospace;z-index:10001;animation:heatsync-toast-in .2s ease-out;max-width:300px;text-align:center;`
+
+    if (!document.getElementById('heatsync-toast-styles')) {
+      const style = document.createElement('style')
+      style.id = 'heatsync-toast-styles'
+      style.textContent = `@keyframes heatsync-toast-in{from{opacity:0}to{opacity:1}}@keyframes heatsync-toast-out{from{opacity:1}to{opacity:0}}`
+      document.head.appendChild(style)
+    }
+
+    document.body.appendChild(toast)
+    if (durationMs === 0) return
+    _toastTimer = setTimeout(
+      () => {
+        toast.style.animation = 'heatsync-toast-out .2s ease-in forwards'
+        setTimeout(() => toast.remove(), 200)
+      },
+      durationMs ?? (type === 'error' ? 3000 : 2000),
+    )
+  }
+
+  /**
+   * Proxy API fetch through the background script (bypasses CORS).
+   * All content script calls to heatsync.org API should use this.
+   *
+   * @param {string} path - API path (e.g. '/api/profile/username')
+   * @param {Object} opts
+   * @param {string} opts.method - HTTP method (default 'GET')
+   * @param {Object} opts.body - JSON body (auto-stringified by background)
+   * @param {boolean} opts.auth - include stored auth token (default false)
+   * @returns {Promise<any>} parsed JSON response
+   */
+  async function apiFetch(path, opts = {}) {
+    const resp = await safeSend({
+      type: 'api_fetch',
+      path,
+      method: opts.method,
+      body: opts.body,
+      auth: opts.auth,
+    })
+    if (!resp?.ok) {
+      const err = new Error(resp?.error || `API error ${resp?.status}`)
+      err.status = resp?.status
+      throw err
+    }
+    return resp.data
+  }
+
+  // ── Media upload ───────────────────────────────────────────────────
+  // Shared by every native chat surface that accepts a pasted/dropped
+  // image/video (kick, youtube, and twitch via content.js) so the size caps,
+  // file filter, and upload path can't drift between them. Caps mirror
+  // multichat's MC_UPLOAD_MAX_IMG/VID (src/multichat/input.js) — kept as
+  // literals since this file has no import path to that one.
+  const HS_UPLOAD_MAX_IMG = 5 * 1024 * 1024
+  // 45MB, not 50: the file crosses to the background as a base64 dataUrl in a
+  // chrome.runtime.sendMessage payload, which runs ~4/3 the raw size — 50MB
+  // would be ~67MB, over that bridge's ~64MiB structured-clone cap (JSON only;
+  // a Blob/ArrayBuffer can't ride it), so the message itself would fail to
+  // send. 45MB inflates to ~60MiB, leaving headroom for the envelope.
+  const HS_UPLOAD_MAX_VID = 45 * 1024 * 1024
+  let _hsMediaUploading = false
+
+  function readFileAsDataUrl(file) {
+    return new Promise((resolve, reject) => {
+      const fr = new FileReader()
+      fr.addEventListener('load', () => resolve(String(fr.result || '')))
+      fr.addEventListener('error', () => reject(new Error('could not read file')))
+      fr.readAsDataURL(file)
+    })
+  }
+
+  /**
+   * Filter fileList down to image/video, upload each sequentially through
+   * the background's api_upload (bypasses host-page CORS, carries the stored
+   * auth token), toast on any per-file failure, and return the urls that made
+   * it. A second call while one is already in flight is a no-op — sequential,
+   * not queued, since the caller is a single paste/drop.
+   * @returns {Promise<string[]>}
+   */
+  async function uploadMediaFiles(fileList) {
+    if (_hsMediaUploading) return []
+    const files = Array.from(fileList || []).filter((f) => f.type.startsWith('image/') || f.type.startsWith('video/'))
+    if (!files.length) return []
+    _hsMediaUploading = true
+    // Persists (durationMs: 0) until an error replaces it or the loop clears
+    // it below — a pasted video is 10-60s of otherwise-total silence, long
+    // enough that a user with no feedback re-pastes, thinking nothing happened.
+    showToast(_hsT('cs_uploading'), 'info', 0)
+    try {
+      const urls = []
+      for (const file of files) {
+        const isImage = file.type.startsWith('image/')
+        const max = isImage ? HS_UPLOAD_MAX_IMG : HS_UPLOAD_MAX_VID
+        if (file.size > max) {
+          showToast(_hsT('cs_file_too_large', [`${max / 1048576}MB`]), 'error')
+          continue
+        }
+        try {
+          const dataUrl = await readFileAsDataUrl(file)
+          const resp = await safeSend({ type: 'api_upload', name: file.name || 'paste', mime: file.type, dataUrl })
+          if (resp?.ok && resp.url) urls.push(resp.url)
+          else showToast(resp?.error || _hsT('cs_upload_failed'), 'error')
+        } catch (err) {
+          showToast(err.message || _hsT('cs_upload_failed'), 'error')
+        }
+      }
+      // Only clear proactively when every file made it — the url appearing IS
+      // the success signal. If anything failed, its own toast is already
+      // showing (and will auto-dismiss); clearing here would cut it off.
+      if (urls.length === files.length) showToast(null)
+      return urls
+    } finally {
+      _hsMediaUploading = false
+    }
+  }
+
+  // ── MAIN-world nonce ──────────────────────────────────────────────
+  // Generates a random per-session nonce and sends it to early-inject-main.js
+  // (MAIN world) so that subsequent GQL/Helix/Apollo messages can be verified.
+  // content.js MUST call HS.initMainWorldNonce() once after the page loads.
+  //
+  // Note: postMessage is visible to page JS — this is defence-in-depth, not
+  // a cryptographic barrier. It prevents static/replay attacks and raises the
+  // bar for any adversarial code that hasn't already hooked addEventListener.
+  function generateNonce() {
+    return Array.from(crypto.getRandomValues(new Uint8Array(16)))
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('')
+  }
+
+  let _mainWorldNonce = null
+
+  function initMainWorldNonce() {
+    if (_mainWorldNonce) return _mainWorldNonce
+    _mainWorldNonce = generateNonce()
+    window.postMessage({ type: 'heatsync-init-nonce', nonce: _mainWorldNonce }, location.origin)
+    return _mainWorldNonce
+  }
+
+  // Returns current nonce (call initMainWorldNonce first)
+  function getMainWorldNonce() {
+    return _mainWorldNonce
+  }
+
+  // The per-site "heatsync chat on" switch (the popup's, the settings page's): off hands the page its own
+  // chat back, decided at the next load. `on` false turns heatsync chat off for that site. Resolves once
+  // stored, so the caller may reload right after. The service worker stores it AND tells the server — a
+  // storage-only write is undone at the next boot, when the server's ui_state wins the merge.
+  async function setSiteOverlay(gate, on) {
+    const r = await browser.runtime.sendMessage({ type: 'site_overlay_set', gate, on: !!on }).catch(() => null)
+    if (r?.ok) return
+    // service worker unreachable (extension reloaded under the page): keep the switch on this device
+    const ui = (await browser.storage.sync.get('ui_settings'))?.ui_settings || {}
+    const subsystems = { ...(ui.subsystems || {}), [gate]: !!on }
+    await browser.storage.sync.set({ ui_settings: { ...ui, subsystems } })
+  }
+
+  // ── Emote preview strip ────────────────────────────────────────────
+  // Kick's and youtube's inputs hold plain text only (an injected image is stripped or ignored and
+  // blocks the send), so the emotes in what you typed show as images in a strip above the box, and the
+  // text stays exactly what gets sent. Twitch's input is a rich editor and shows them in the box itself.
+  const HS_STRIP_MAX = 12
+  const HS_STRIP_CSS =
+    'position:fixed;z-index:2147483000;display:none;flex-wrap:wrap;align-items:center;gap:4px;box-sizing:border-box;' +
+    'padding:2px 4px;background:#000;border:1px solid #fff;border-radius:0;pointer-events:none'
+
+  /**
+   * @param {{ inputOf: (e: Event) => Element | null, resolve: (word: string) => { name: string, url: string } | null, signal: AbortSignal }} cfg
+   */
+  function mountEmoteStrip({ inputOf, resolve, signal }) {
+    let strip = null
+    let lastInput = null
+    const hide = () => {
+      if (strip) strip.style.display = 'none'
+    }
+    const render = (input) => {
+      const seen = new Set()
+      const found = []
+      for (const word of (input.textContent || '').split(/\s+/)) {
+        if (!word || seen.has(word)) continue
+        seen.add(word)
+        const hit = resolve(word)
+        if (hit?.url) found.push(hit)
+        if (found.length >= HS_STRIP_MAX) break
+      }
+      if (!found.length) return hide()
+      if (!strip?.isConnected) {
+        strip = document.createElement('div')
+        strip.className = 'hs-emote-strip'
+        strip.style.cssText = HS_STRIP_CSS
+        document.body.appendChild(strip)
+      }
+      strip.textContent = ''
+      for (const emote of found) {
+        const img = document.createElement('img')
+        img.src = emote.url
+        img.alt = emote.name
+        img.title = emote.name
+        img.style.cssText = 'height:24px;width:auto;display:block'
+        strip.appendChild(img)
+      }
+      const r = input.getBoundingClientRect()
+      strip.style.left = `${Math.round(r.left)}px`
+      strip.style.width = `${Math.round(r.width)}px`
+      strip.style.bottom = `${Math.round(window.innerHeight - r.top)}px`
+      strip.style.display = 'flex'
+    }
+    const refresh = (e) => {
+      const input = inputOf(e)
+      if (!input) return
+      lastInput = input
+      render(input)
+    }
+    document.addEventListener('input', refresh, { capture: true, signal })
+    // a send clears the box without an input event
+    document.addEventListener(
+      'keyup',
+      (e) => {
+        if (e.key !== 'Enter' || !inputOf(e)) return
+        setTimeout(() => lastInput?.isConnected && render(lastInput), 120)
+      },
+      { capture: true, signal },
+    )
+    document.addEventListener('focusout', (e) => inputOf(e) && hide(), { capture: true, signal })
+    signal?.addEventListener('abort', () => strip?.remove(), { once: true })
+  }
+
+  window.HS = {
+    createLifecycle,
+    setSiteOverlay,
+    getFiber,
+    safeSend,
+    apiFetch,
+    showToast,
+    uploadMediaFiles,
+    mountEmoteStrip,
+    initMainWorldNonce,
+    getMainWorldNonce,
+  }
+})()
+
+// Emote continuity fallback — one delegated capture-phase error listener: any
+// <img> from a third-party emote CDN that fails to load retries ONCE through
+// heatsync's continuity byte cache. Covers every ext render surface (multichat
+// rows, native-chat injection, tooltips, picker) without touching creation
+// sites. Zero cost on the happy path; only fires when the provider CDN fails.
+// Guarded: shared-utils loads with both content-script groups on twitch.
+;(() => {
+  if (window.__hsEmoteFallbackInstalled) return
+  window.__hsEmoteFallbackInstalled = true
+  // Mirrors EMOTE_FALLBACK_HOSTS server-side (services/emote-cache.ts).
+  const HS_EC_HOSTS = new Set([
+    'cdn.7tv.app',
+    'cdn.betterttv.net',
+    'cdn.frankerfacez.com',
+    'files.kick.com',
+    'static-cdn.jtvnw.net',
+  ])
+  document.addEventListener(
+    'error',
+    (e) => {
+      const img = e.target
+      if (!img || img.tagName !== 'IMG' || img.dataset.hsEcFb) return
+      const src = img.currentSrc || img.src || ''
+      let host
+      try {
+        host = new URL(src).hostname
+      } catch (_) {
+        return
+      }
+      if (!HS_EC_HOSTS.has(host)) return
+      // a tab-completed emote rides a placeholder jtvnw url until the page-world fixer swaps in the real
+      // one: wrapping the placeholder in the proxy hides it from that fixer and the image stays broken
+      if (src.includes('__FFZ__')) return
+      img.dataset.hsEcFb = '1'
+      img.removeAttribute('srcset')
+      img.src = 'https://heatsync.org/api/emotes/cdn?u=' + encodeURIComponent(src)
+    },
+    true,
+  )
+})()

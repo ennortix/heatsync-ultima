@@ -16,10 +16,19 @@
  */
 
 import { execFileSync } from 'node:child_process'
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { transformSync } from 'esbuild'
+import { computeBuildStamp } from './scripts/lib/build-stamp.mjs'
+import { emojiPairsSource } from './scripts/lib/emoji-pairs.mjs'
+
+// Build stamp — swapped into bootstrap.js's '__HS_BUILD_STAMP__' literal so
+// every hs_diag_ring boot event names the code it ran. Needed because a tab
+// can run a build hours older than dist: a popout froze on code whose fix had
+// landed 3h earlier but was never reloaded, and the ring couldn't show that.
+// A digest of the inputs, not a commit sha: see scripts/lib/build-stamp.mjs.
+const BUILD_STAMP = computeBuildStamp(dirname(fileURLToPath(import.meta.url)))
 
 // ── Pre-build guards ──────────────────────────────────────────────────────────
 // All four checks run before any bundling and fail the build loudly on violation.
@@ -69,12 +78,13 @@ function checkManifestParity() {
   // Order-independent — coverage matters, not entry ordering.
   function csKey(entry) {
     const matches = [...(entry.matches || [])].sort().join('|')
+    const excludeMatches = [...(entry.exclude_matches || [])].sort().join('|')
     const js = [...(entry.js || [])].sort().join('|')
     const css = [...(entry.css || [])].sort().join('|')
     const world = entry.world || 'ISOLATED'
     const runAt = entry.run_at || 'document_idle'
     const allFrames = entry.all_frames === true
-    return `${matches}::${js}::${css}::${world}::${runAt}::${allFrames}`
+    return `${matches}::${excludeMatches}::${js}::${css}::${world}::${runAt}::${allFrames}`
   }
 
   const chromeKeys = new Set((chrome.content_scripts || []).map(csKey))
@@ -132,7 +142,7 @@ function checkMultichatCleanupBinding() {
   const body = bootstrap.slice(bootstrap.search(/^const cleanup = \{/m))
   for (const m of body.matchAll(/^ {2}(?:get )?([A-Za-z0-9_$]+)\s*\(/gm)) defined.add(m[1])
   const missing = new Set()
-  for (const file of MULTICHAT_MODULES.concat(['main.js', 'twitch-host.js', 'kick-host.js', 'youtube-host.js'])) {
+  for (const file of MULTICHAT_MODULES.concat(HOST_MODULES, MAIN_PARTS, ['main.js'])) {
     const p = join(mcDir, file)
     if (!existsSync(p)) continue
     for (const m of readFileSync(p, 'utf8').matchAll(/\bcleanup\.([A-Za-z0-9_$]+)\s*\(/g)) {
@@ -145,6 +155,45 @@ function checkMultichatCleanupBinding() {
     )
   }
   checkMultichatOrphanedRenames(mcDir)
+  checkMultichatModuleList(mcDir)
+}
+
+// Companion guard: every src/multichat/*.js must actually be in
+// MULTICHAT_MODULES. Nothing enforced this — the list was complete by luck, and
+// an omission is silent and fatal: the file's top-level consts simply never
+// exist, so the first cross-file reference throws at load and the whole
+// multichat block dies on every site, with a clean build and green tests. Same
+// outage class as checkMultichatOrphanedRenames, different cause.
+// The main body is eight banner-bounded parts in bundle order; main.js (init +
+// startup) is the entry that closes the list. They share one scope at bundle
+// time, so order here is load order: constants and load-time statements in a
+// later part may read an earlier part's, never the reverse.
+const MAIN_PARTS = [
+  'main-state.js',
+  'main-settings.js',
+  'main-overlay.js',
+  'main-tabs.js',
+  'main-messages.js',
+  'main-live.js',
+  'main-storage.js',
+]
+const HOST_MODULES = ['twitch-host.js', 'kick-host.js', 'youtube-host.js']
+const MULTICHAT_ENTRIES = new Set(['main.js', ...MAIN_PARTS, ...HOST_MODULES])
+function checkMultichatModuleList(mcDir) {
+  const listed = new Set(MULTICHAT_MODULES)
+  const orphans = readdirSync(mcDir).filter((f) => f.endsWith('.js') && !listed.has(f) && !MULTICHAT_ENTRIES.has(f))
+  if (orphans.length) {
+    throw new Error(
+      `build: src/multichat/${orphans.join(', ')} not in MULTICHAT_MODULES — it would be silently\n` +
+        '       dropped from the bundle, and the first cross-file reference kills multichat at load.',
+    )
+  }
+  // Data must be defined before the module that reads it: one flat bundle scope,
+  // and `const` is not hoisted into a usable state.
+  const before = (a, b) => MULTICHAT_MODULES.indexOf(a) < MULTICHAT_MODULES.indexOf(b)
+  if (!before('slash-registry.js', 'input.js')) {
+    throw new Error('build: slash-registry.js must precede input.js in MULTICHAT_MODULES')
+  }
 }
 
 // Companion guard, whole-directory: EVERY multichat file shares one flat
@@ -160,7 +209,7 @@ function checkMultichatCleanupBinding() {
 // declares `_foo` at top level and file B (any file) still references bare
 // `foo`, the rename orphaned its callers.
 function checkMultichatOrphanedRenames(mcDir) {
-  const files = MULTICHAT_MODULES.concat(['main.js', 'twitch-host.js', 'kick-host.js', 'youtube-host.js']).filter((f) =>
+  const files = MULTICHAT_MODULES.concat(HOST_MODULES, MAIN_PARTS, ['main.js']).filter((f) =>
     existsSync(join(mcDir, f)),
   )
   const sources = new Map(files.map((f) => [f, readFileSync(join(mcDir, f), 'utf8')]))
@@ -215,17 +264,37 @@ function checkScopeCollisions() {
     'cleanup.js',
     'user-key.js',
     'utils.js',
+    'diag.js',
+    'font-grid.js',
     'settings-schema.js',
     'browser-api.js',
     'modifiers.js',
     'undo-manager.js',
+    'badge-index.js',
     // paint-spec.js (+ its synced-copy imports paint-core.js/scene-spec.js)
     // isn't part of readLib()'s universal bundle (only the multichat overlay
     // embeds them — see readMultichatModules), but they land in the same
     // outer scope as the lib files there, so they're checked here too.
     'paint-core.js',
     'scene-spec.js',
+    'stv-paint-css.js',
     'paint-spec.js',
+    'animation-phase.js',
+    // Same story: the site's gifs-tab fetch layer, multichat-only, landing in
+    // this scope (see readMultichatModules).
+    'gif-search-remote.js',
+    // The site's emote_refs builder (verbatim copy) — feed posts vouch their emotes.
+    'emote-refs.js',
+    // What a stream event says and which stored ones a reload brings back
+    // (client/utils/stream-event-text.js on the site) — one answer for both.
+    'stream-event-text.js',
+    // The one user-card model/renderer/formatter (client/card/*.js on the
+    // site) — multichat-only for now (tooltips.js/profile-card.js consume
+    // hsCardModel/hsCardHtml), same embed point as gif-search-remote.js above.
+    'brand-tokens.js',
+    'card-time.js',
+    'card-model.js',
+    'card-render.js',
   ]
   const libDir = join(__dirname, 'src', 'lib')
   const mcDir = join(__dirname, 'src', 'multichat')
@@ -249,7 +318,7 @@ function checkScopeCollisions() {
   }
 
   // multichat layer: all MULTICHAT_MODULES + per-platform host modules + main.js
-  const mcFiles = [...MULTICHAT_MODULES, 'kick-host.js', 'youtube-host.js', 'twitch-host.js', 'main.js']
+  const mcFiles = [...MULTICHAT_MODULES, ...HOST_MODULES, ...MAIN_PARTS, 'main.js']
   const libDecls = extractDecls(libDir, LIB_FILES)
   const mcDecls = extractDecls(mcDir, mcFiles)
 
@@ -300,12 +369,48 @@ function runTests(args) {
 }
 
 // Guard 5: error reporter scrub-pattern parity.
+// background.js is generated: src/background/* concatenated in this order (the
+// service worker cannot import, so concat is the mechanism — same as the
+// multichat bundle). One scope, so a later part may read an earlier part's
+// constants, never the reverse. Every file in src/background must be listed,
+// or its top-level names never exist and the first reference throws at boot.
+const BG_PARTS = [
+  '01-core.js',
+  '02-auth-live.js',
+  '03-identity-cosmetics.js',
+  '04-emotes.js',
+  '05-ws.js',
+  '06-message-gate.js',
+  '07-handle-message.js',
+  '08-diag-push.js',
+  '09-irc.js',
+  '10-kick-yt.js',
+  '11-boot.js',
+]
+let bgSourceCache = null
+function readBackgroundSource() {
+  if (bgSourceCache != null) return bgSourceCache
+  const dir = join(SRC_DIR, 'background')
+  const listed = new Set(BG_PARTS)
+  const orphans = readdirSync(dir).filter((f) => f.endsWith('.js') && !listed.has(f))
+  if (orphans.length)
+    throw new Error(
+      `build: src/background/${orphans.join(', ')} not in BG_PARTS — it would be silently left out of background.js`,
+    )
+  const missing = BG_PARTS.filter((f) => !existsSync(join(dir, f)))
+  if (missing.length) throw new Error(`build: BG_PARTS names ${missing.join(', ')} but src/background has no such file`)
+  const head =
+    '// background.js — generated by build.js from src/background/* (BG_PARTS order). edit the parts, not this file.\n'
+  bgSourceCache = head + BG_PARTS.map((f) => readFileSync(join(dir, f), 'utf8')).join('\n')
+  return bgSourceCache
+}
+
 // background.js inlines a copy of the scrub logic from src/lib/error-reporter.js
 // (service workers can't import lib/ modules). This guard compares the two
 // canonical patterns — SENSITIVE_PARAMS and TEXT_SCRUB — so a token-format
 // change in error-reporter.js that isn't mirrored in background.js fails loud.
 function checkErrorReporterParity() {
-  const bgSrc = readFileSync(join(__dirname, 'chrome', 'background.js'), 'utf8')
+  const bgSrc = readBackgroundSource()
   const erSrc = readFileSync(join(__dirname, 'src', 'lib', 'error-reporter.js'), 'utf8')
 
   // Extract the SENSITIVE_PARAMS regex body (between outer slashes, before /i)
@@ -389,7 +494,7 @@ function extractFnBody(src, name) {
 
 function checkUiSyncBlocklistParity() {
   const utilsSrc = readFileSync(join(__dirname, 'src', 'lib', 'utils.js'), 'utf8')
-  const bgSrc = readFileSync(join(__dirname, 'chrome', 'background.js'), 'utf8')
+  const bgSrc = readBackgroundSource()
 
   function extractSet(src, name) {
     const m = src.match(new RegExp(`const ${name}\\s*=\\s*new Set\\(\\[([\\s\\S]*?)\\]\\)`))
@@ -427,6 +532,7 @@ function checkUiSyncBlocklistParity() {
   const checks = [
     ['UI_SYNC_BLOCKLIST', extractSet(utilsSrc, 'UI_SYNC_BLOCKLIST'), extractSet(bgSrc, 'UI_SYNC_BLOCKLIST')],
     ['DEVICE_LOCAL_KEYS', extractSet(utilsSrc, 'DEVICE_LOCAL_KEYS'), extractSet(bgSrc, 'DEVICE_LOCAL_KEYS')],
+    ['RETIRED_UI_KEYS', extractSet(utilsSrc, 'RETIRED_UI_KEYS'), extractSet(bgSrc, 'RETIRED_UI_KEYS')],
     [
       'OVERFLOW_MIRROR_KEYS',
       extractObjectLiteral(utilsSrc, 'OVERFLOW_MIRROR_KEYS'),
@@ -459,13 +565,13 @@ function checkUiSyncBlocklistParity() {
 }
 
 // Guard: userKey / userSetMatches are inlined in 3 files (src/lib/user-key.js,
-// chrome/background.js, chrome/content.js) — the SW can't import and content.js
+// chrome/background.js, src/content/content.js) — the SW can't import and content.js
 // must load standalone. A drift here would ship silently. Fail the build.
 function checkUserKeyParity() {
   const files = [
     ['src/lib/user-key.js', readFileSync(join(__dirname, 'src', 'lib', 'user-key.js'), 'utf8')],
-    ['chrome/background.js', readFileSync(join(__dirname, 'chrome', 'background.js'), 'utf8')],
-    ['chrome/content.js', readFileSync(join(__dirname, 'chrome', 'content.js'), 'utf8')],
+    ['chrome/background.js', readBackgroundSource()],
+    ['src/content/content.js', readFileSync(join(__dirname, 'src', 'content', 'content.js'), 'utf8')],
   ]
   for (const name of ['userKey', 'userSetMatches']) {
     const bodies = files.map(([label, src]) => [label, extractFnBody(src, name)])
@@ -482,15 +588,61 @@ function checkUserKeyParity() {
   console.log('  user-key parity: user-key.js ⇄ background.js ⇄ content.js match ✓')
 }
 
+// Guard: RESERVED_PATHS parity between src/lib/reserved-paths.js and the
+// three hand-written files that can't import it (background.js is the SW,
+// popup.js is the popup page, early-layout.js runs at document_start before
+// the lib bundle exists — none share a module scope with the others). The
+// bundled content scripts (content.js, heatsync-button.js, multichat-core.js)
+// get the real export via LIB_ORDER/LIB_EXTRAS above, so only these three
+// hand-duplicate the literal. This is the guard that keeps a tenth divergent
+// copy from growing back after the nine-way split D1 fixed.
+function checkReservedPathsParity() {
+  const libSrc = readFileSync(join(__dirname, 'src', 'lib', 'reserved-paths.js'), 'utf8')
+
+  function extractSet(src, name) {
+    const m = src.match(new RegExp(`(?:const|let|var)\\s+${name}\\s*=\\s*new Set\\(\\[([\\s\\S]*?)\\]\\)`))
+    if (!m) return null
+    return m[1]
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .sort()
+      .join(',')
+  }
+
+  const canonical = extractSet(libSrc, 'RESERVED_PATHS')
+  if (!canonical) throw new Error('checkReservedPathsParity: could not extract RESERVED_PATHS from reserved-paths.js')
+
+  const files = [
+    ['chrome/background.js', join(__dirname, 'chrome', 'background.js')],
+    ['src/content/popup.js', join(__dirname, 'src', 'content', 'popup.js')],
+    ['src/content/early-layout.js', join(__dirname, 'src', 'content', 'early-layout.js')],
+    ['src/content/kick-css-fix.js', join(__dirname, 'src', 'content', 'kick-css-fix.js')],
+  ]
+  for (const [label, path] of files) {
+    const text = label === 'chrome/background.js' ? readBackgroundSource() : readFileSync(path, 'utf8')
+    const copy = extractSet(text, 'RESERVED_PATHS')
+    if (!copy) throw new Error(`checkReservedPathsParity: could not find RESERVED_PATHS in ${label}`)
+    if (copy !== canonical) {
+      throw new Error(
+        `checkReservedPathsParity: ${label} drifted from src/lib/reserved-paths.js\n  canonical: ${canonical}\n  ${label}: ${copy}`,
+      )
+    }
+  }
+  console.log(
+    '  RESERVED_PATHS parity: reserved-paths.js ⇄ background.js ⇄ popup.js ⇄ early-layout.js ⇄ kick-css-fix.js match ✓',
+  )
+}
+
 // Guard 7: escapeHtml coverage parity.
-// Three local copies of escapeHtml exist (src/lib/utils.js, chrome/chat-injector.js,
-// chrome/heatsync-button.js). Each must escape all five dangerous HTML chars.
+// Three local copies of escapeHtml exist (src/lib/utils.js, src/content/chat-injector.js,
+// src/content/heatsync-button.js). Each must escape all five dangerous HTML chars.
 // This guard fails the build if any copy drops an escape — preventing XSS regressions.
 function checkEscapeHtmlCoverage() {
   const files = [
     { label: 'src/lib/utils.js', path: join(__dirname, 'src', 'lib', 'utils.js') },
-    { label: 'chrome/chat-injector.js', path: join(__dirname, 'chrome', 'chat-injector.js') },
-    { label: 'chrome/heatsync-button.js', path: join(__dirname, 'chrome', 'heatsync-button.js') },
+    { label: 'src/content/chat-injector.js', path: join(__dirname, 'src', 'content', 'chat-injector.js') },
+    { label: 'src/content/heatsync-button.js', path: join(__dirname, 'src', 'content', 'heatsync-button.js') },
   ]
   // Five required escape mappings: input char → at least one of the accepted output forms
   const REQUIRED = [
@@ -537,15 +689,17 @@ function checkEscapeHtmlCoverage() {
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
 const SRC_DIR = join(__dirname, 'src')
+// hand-written page/popup scripts live in src/content; chrome/ holds only the
+// static html/css/icons plus generated manifest + _locales
+const CONTENT_DIR = join(SRC_DIR, 'content')
+const handSource = (file) => join(file.endsWith('.js') ? CONTENT_DIR : join(__dirname, 'chrome'), file)
 const CHROME_OUT = join(__dirname, 'dist', 'chrome')
 const FIREFOX_OUT = join(__dirname, 'dist', 'firefox')
 
 // Files that need lib bundled in (content scripts)
 const CONTENT_SCRIPTS = [
   'content.js',
-  'multichat-twitch.js',
-  'multichat-kick.js',
-  'multichat-youtube.js',
+  'multichat-core.js',
   'heatsync-button.js',
   'autocomplete-hook.js',
   'chat-injector.js',
@@ -559,13 +713,13 @@ const COPY_FILES = [
   'popup.html',
   'early-inject-main.js',
   'twitch-chat-intercept.js',
+  'twitch-callout-token.js',
   'kick-nav-watcher.js',
   'kick-chat-intercept.js',
   'youtube-keyboard-guard.js',
   'yt-data-bridge.js',
   'platform-detector.js',
   'shared-utils.js',
-  'emoji-data.js',
   'welcome.html',
   'welcome.js',
   'injected-message.css',
@@ -573,6 +727,8 @@ const COPY_FILES = [
   'kick-autocomplete-hook.js',
   'pcard-early.js',
   'early-layout.js',
+  'kick-css-fix.js',
+  'player-volume.js',
 ]
 
 // Assets (images, etc)
@@ -584,29 +740,105 @@ function stripExports(content) {
     content
       .replace(/^export\s+default\s+\w+\s*;?\s*$/gm, '')
       .replace(/^export\s*\{[^}]*\}\s*;?\s*$/gm, '')
-      .replace(/^export\s+(const|let|var|function|class)\s+/gm, '$1 ')
+      // `async` sits between `export` and `function`; without it the keyword
+      // survived into the bundle and the whole content script failed to parse.
+      .replace(/^export\s+(async\s+function|const|let|var|function|class)\s+/gm, '$1 ')
       // Relative imports between synced-copy modules (paint-spec.js imports
-      // paint-core.js/scene-spec.js) — the bundle concatenates those files
-      // into one scope in dependency order, so the import lines just go.
-      // Multi-line `import { a,\n b } from './x.js'` included.
-      .replace(/^import\s*\{[\s\S]*?\}\s*from\s*['"]\.\/[^'"]+['"];?\s*$/gm, '')
+      // paint-core.js/scene-spec.js; fill-layers.js imports FILL_LAYER_CLASS/
+      // FILL_WRAP_CLASS from paint-spec.js one directory up, `../utils/...`)
+      // — the bundle concatenates those files into one scope in dependency
+      // order, so the import lines just go. `\.\.?\/` covers both `./` and
+      // `../`. Multi-line `import { a,\n b } from './x.js'` included.
+      .replace(/^import\s*\{[\s\S]*?\}\s*from\s*['"]\.\.?\/[^'"]+['"];?\s*$/gm, '')
   )
 }
 
-// Read lib files
-function readLib() {
-  const libDir = join(SRC_DIR, 'lib')
-  const files = [
-    'error-reporter.js',
+// Lib concatenation order — dependency-sensitive:
+// - diag after utils + error-reporter: hsQuery/hsQueryAll mirror qsArray/
+//   qsaArray's contract and report into error-reporter's ring buffer.
+// - font-grid before settings-schema: the schema's fontSize entry builds its
+//   options from FONT_GRID, and these are concatenated into one scope in order.
+const LIB_ORDER = [
+  'error-reporter.js',
+  'config.js',
+  'cleanup.js',
+  'user-key.js',
+  'reserved-paths.js',
+  'utils.js',
+  'diag.js',
+  'palette.js',
+  'font-grid.js',
+  'settings-schema.js',
+  'browser-api.js',
+  'modifiers.js',
+  'undo-manager.js',
+  'badge-index.js',
+  'badge-hires.js',
+]
+
+// Every content script gets the core: error-reporter/diag stay universal on
+// purpose (crash observability is the whole reason they exist), utils/cleanup/
+// browser-api are referenced everywhere. The rest is dead parse weight in the
+// thin scripts (settings-schema alone is ~70KB), so it's opt-in per entry —
+// verifyLibSlim() below fails the build if an entry starts referencing a lib
+// file it doesn't embed.
+const LIB_CORE = new Set(['error-reporter.js', 'cleanup.js', 'utils.js', 'diag.js', 'browser-api.js'])
+
+// Opt-in lib files per non-multichat content script (multichat bundles embed
+// the full lib). Derived from actual symbol use — keep in sync via the guard.
+const LIB_EXTRAS = {
+  'content.js': [
     'config.js',
-    'cleanup.js',
     'user-key.js',
-    'utils.js',
-    'settings-schema.js',
-    'browser-api.js',
     'modifiers.js',
-    'undo-manager.js',
-  ]
+    'reserved-paths.js',
+    'palette.js',
+    'badge-index.js',
+    'badge-hires.js',
+  ],
+  'youtube-content.js': ['config.js', 'modifiers.js'],
+  'autocomplete-hook.js': ['modifiers.js'],
+  'heatsync-button.js': ['reserved-paths.js', 'palette.js'],
+  'chat-injector.js': [],
+}
+
+// Self-contained modules (no imports) a non-multichat entry embeds after its
+// lib, in dependency order — the same files the multichat bundles embed, so
+// there is one copy of the logic, not a fork. A missing file fails the build.
+//   youtube-content.js renders HeatSync spec paints on the NATIVE yt surface:
+//     ALL of the paint compiler, in order. This once appended paint-spec.js
+//     alone; stripExports removes its `import { … } from './paint-core.js'`
+//     lines, so every helper it leaned on (fnv1a, HEX_RE, buildSceneCss, …)
+//     was undefined — 56 ReferenceErrors no typeof guard on an entry point can see.
+//   content.js runs the chat filter rules on native twitch/kick rows (highlight
+//     words with the overlay off) and folds the old text filters into them
+//     (content/native-filter-rules.js is the content-side half).
+//   content.js + youtube-content.js pick your own emote's size rung (multichat/emote-rungs.js);
+//   heatsync-button.js's upload form runs the overlay's upload rules (multichat/emote-upload-core.js).
+//   content.js + heatsync-button.js draw their close × with the overlay's one
+//     glyph (multichat/x-glyph.js), not a hand-typed character.
+const ENTRY_MODULES = {
+  'youtube-content.js': [
+    'lib/paint-core.js',
+    'lib/scene-spec.js',
+    'lib/stv-paint-css.js',
+    'lib/paint-spec.js',
+    'multichat/emote-rungs.js',
+  ],
+  'content.js': [
+    'multichat/filter-rules.js',
+    'multichat/filter-rules-legacy.js',
+    'content/native-filter-rules.js',
+    'multichat/x-glyph.js',
+    'multichat/emote-rungs.js',
+  ],
+  'heatsync-button.js': ['multichat/x-glyph.js', 'multichat/emote-upload-core.js', 'content/native-emote-upload.js'],
+}
+
+// Read lib files — full set by default, or core + the named extras.
+function readLib(extras = null) {
+  const libDir = join(SRC_DIR, 'lib')
+  const files = extras === null ? LIB_ORDER : LIB_ORDER.filter((f) => LIB_CORE.has(f) || extras.includes(f))
   let combined = '// === HEATSYNC LIB (auto-bundled) ===\n'
 
   for (const file of files) {
@@ -618,65 +850,152 @@ function readLib() {
   return combined
 }
 
+// Guard for the slim lib: if an entry's source references any top-level
+// declaration from a lib file it does NOT embed, fail loudly at build time
+// instead of shipping a runtime ReferenceError. Comment mentions count as
+// references — conservative on purpose.
+function verifyLibSlim(entryName, entrySrc, extras) {
+  const libDir = join(SRC_DIR, 'lib')
+  const KIND_RE = /^(?:export\s+)?(?:async\s+)?(?:function|const|let|var|class)\s+([A-Za-z0-9_$]+)/
+  const dropped = LIB_ORDER.filter((f) => !LIB_CORE.has(f) && !extras.includes(f))
+  const offenders = []
+  for (const file of dropped) {
+    for (const line of readFileSync(join(libDir, file), 'utf8').split('\n')) {
+      const m = KIND_RE.exec(line)
+      if (m && new RegExp(`\\b${m[1]}\\b`).test(entrySrc)) offenders.push(`${m[1]} (${file})`)
+    }
+  }
+  if (offenders.length) {
+    throw new Error(
+      `build: ${entryName} references lib symbols it no longer embeds — add the file(s) to LIB_EXTRAS['${entryName}']:\n  ${offenders.join('\n  ')}`,
+    )
+  }
+}
+
 // Read multichat module files (only bundled into multichat-<platform>.js)
 const MULTICHAT_MODULES = [
   'bootstrap.js',
-  'palette.js',
+  'slash-registry.js',
+  'tab-registry.js',
   'kick-native-tap.js',
   'send-targets.js',
-  'tab-messages.js',
+  'chat-lock.js',
+  'emoji-tab.js',
+  'follows-view.js',
+  'self-identity.js',
+  'x-glyph.js',
+  'pane-panel.js',
+  'takeover.js',
   'notifs.js',
   'styles.js',
   'seen-state.js',
+  'tab-counter.js',
+  'tab-mode.js',
+  'overlay-keys.js',
+  'row-mode.js',
+  'sr-announce.js',
   'filter-rules.js',
+  'filter-rules-legacy.js',
   'user-notes.js',
   'mod-log.js',
   'live-search.js',
-  'automod.js',
+  'hs-origins.js',
+  'merged-tab.js',
   'stream-stats.js',
   'player-guard.js',
+  'sounds.js',
   'mentions.js',
   'irc.js',
   'native-tap.js',
   'auth-irc.js',
   'kick-send.js',
+  'emote-rungs.js',
   'emotes.js',
+  'emote-upload-core.js',
+  'emote-upload.js',
+  'gifs.js',
+  'picker-nav.js',
+  'card-l10n.js',
   'tooltips.js',
+  'tag-card.js',
   'twitch-api.js',
+  'platform-tabs.js',
   'feed-embed.js',
+  'feed-engage.js',
   'social.js',
   'whispers.js',
   'eventsub-whispers.js',
   'cross-follow.js',
+  'sent-history.js',
+  'composer-attrs.js',
+  'ctx-menu.js',
   'input.js',
   'profile-card.js',
   'chat-logs.js',
+  'pred-view.js',
+  'img-view.js',
   'paints.js',
   'cosmetics.js',
+  'badges.js',
+  'name-style.js',
+  'fill-family.js',
+  'stream-line-ids.js',
+  'name-marks.js',
+  'name-marks-data.js',
   'mod-toolbar.js',
   'automod-queue.js',
+  'blocked-terms.js',
+  'mod-suite-calls.js',
+  'mod-suite.js',
+  'kick-mod-calls.js',
+  'kick-mod-suite.js',
+  'pin-bar.js',
+  'tour.js',
+  'hover-reply.js',
+  'chat-modes.js',
+  'share-callouts.js',
   'resize.js',
+  'chat-position.js',
+  'panel-actions.js',
+  'send-status.js',
   'settings-ui.js',
+  'filter-rules-ui.js',
+  'sound-ui.js',
+  'mention-rules.js',
+  'layout-link.js',
+  'seed-legs.js',
+  'rejoin.js',
   'channel-mgmt.js',
   'spa-nav.js',
+  'type-to-focus.js',
 ]
 
-// native-tap.js reads Twitch's React fiber tree — twitch-only, exclude on kick/youtube
-// kick-native-tap.js pairs with chrome/kick-chat-intercept.js — kick-only
-// kick-host.js / youtube-host.js / twitch-host.js: per-platform host DOM modules
-const PLATFORM_MODULES = {
-  twitch: [...MULTICHAT_MODULES.filter((f) => f !== 'kick-native-tap.js'), 'twitch-host.js'],
-  kick: [...MULTICHAT_MODULES.filter((f) => f !== 'native-tap.js'), 'kick-host.js'],
-  youtube: [...MULTICHAT_MODULES.filter((f) => f !== 'native-tap.js' && f !== 'kick-native-tap.js'), 'youtube-host.js'],
+// ONE shared multichat-core.js serves all three platforms (the per-platform
+// bundles were ~99.5% identical — 3×3.3MB of duplicate bytes in every zip and
+// dev load, and three copies for fixes to drift across). All platform modules
+// ride along: the 5 files below have zero top-level name collisions (verified
+// 2026-08-24), declare only (native-tap's window.__hsNsStats counter object is
+// the lone, harmless, top-level side effect), and every cross-platform call
+// site in shared code is behind a hostPlatform/isKick branch — so twitch's
+// fiber tap simply never runs on kick. Platform selection is main.js's
+// location.hostname detection, the same path every dev build has always used;
+// the manifest's match patterns gate injection to exactly those hostnames.
+const CORE_MODULES = [...MULTICHAT_MODULES, ...HOST_MODULES, ...MAIN_PARTS]
+
+// Escapes everything that would otherwise break out of (or interpolate into)
+// the JS template literal CSS gets embedded into below: backslash first
+// (else the next two replaces double-escape it), then backtick, then ${.
+// This used to be a hard error on backtick/${ instead — safe for minified
+// builds (comments, the only place backticks showed up, get stripped) but it
+// broke ANY plain/non-minified build the moment a fragment's comment used a
+// backtick (v1.3.7, and again on 09-24 in a card.css comment). Escaping
+// makes both build modes safe for any CSS text, mirrored or not.
+function escapeCssForTemplateLiteral(cssBody) {
+  return cssBody.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$\{/g, '\\${')
 }
 
-function readMultichatModules(platform) {
+function readMultichatModules() {
   const mcDir = join(SRC_DIR, 'multichat')
-  // Note: __HS_HOST__ is intentionally NOT declared here as a const.
-  // It is a free (global-scope) reference so esbuild's define option can
-  // substitute it at minification time and constant-fold platform branches.
-  // At dev/unminified runtime, typeof __HS_HOST__ !== 'undefined' → false,
-  // so main.js falls back to location.hostname detection — correct for dev.
   let combined = '// === MULTICHAT MODULES (auto-bundled) ===\n'
 
   // emoji-data.js is NOT embedded: the isolated-world copy injected by the
@@ -696,7 +1015,31 @@ function readMultichatModules(platform) {
   // (scene catalog/compiler) → paint-spec (validator/compiler, imports both).
   // stripExports drops the relative import lines; concatenation puts all
   // three in one scope, same shape the site gets from real ESM.
-  for (const mod of ['paint-core.js', 'scene-spec.js', 'paint-spec.js']) {
+  // animation-phase.js is the same mirror (see scripts/sync-paint-compiler.sh):
+  // the compiled `animation-delay` only phase-locks an animation that has never
+  // been paused, and paints.js pauses offscreen names for CPU. It depends on
+  // nothing, so its position here is free; it sits with the compiler because
+  // they are synced and version-locked together.
+  // fill-layers.js + glyph-mask.js are the `fill` block's composited-fill
+  // runtime, synced the same way. Both used to redeclare a name that collided
+  // once concatenated into this shared scope (FILL_LAYER_CLASS/FILL_WRAP_CLASS
+  // against paint-spec.js's own copy, glyph-mask's internal logger against
+  // bootstrap.js's `log`) — fixed at the source instead of papered over here:
+  // fill-layers.js now imports the two consts from paint-spec.js (stripExports
+  // drops that import line, same as paint-spec.js's own imports of
+  // paint-core.js/scene-spec.js), and glyph-mask.js's logger is `maskLog`.
+  // stv-paint-css.js (7TV paint → CSS for cosmetics.js getMcPaintStyle, and the
+  // colour/shadow helpers paint-spec builds glow on) must precede paint-spec.
+  // Every top-level name in it starts with stv, so it cannot collide here.
+  for (const mod of [
+    'paint-core.js',
+    'scene-spec.js',
+    'stv-paint-css.js',
+    'paint-spec.js',
+    'animation-phase.js',
+    'fill-layers.js',
+    'glyph-mask.js',
+  ]) {
     const p = join(SRC_DIR, 'lib', mod)
     if (existsSync(p)) {
       combined += `\n// --- lib/${mod} ---\n${stripExports(readFileSync(p, 'utf8'))}\n`
@@ -712,7 +1055,56 @@ function readMultichatModules(platform) {
     combined += `\n// --- lib/plus-tenure.js ---\n${stripExports(readFileSync(plusTenurePath, 'utf8'))}\n`
   }
 
-  const modules = PLATFORM_MODULES[platform] ?? MULTICHAT_MODULES
+  // The badge catalogue (src/lib/badge-catalogue.js) — verbatim site copy, same
+  // reasoning as plus-tenure above: only the overlay draws badge marks, and
+  // multichat/badges.js (modules loop) reads badgeById, so it lands first.
+  const badgeCataloguePath = join(SRC_DIR, 'lib', 'badge-catalogue.js')
+  if (existsSync(badgeCataloguePath)) {
+    combined += `\n// --- lib/badge-catalogue.js ---\n${stripExports(readFileSync(badgeCataloguePath, 'utf8'))}\n`
+  }
+
+  // The gifs tab's fetch layer — another verbatim site copy
+  // (scripts/sync-site-copies.sh), multichat-only for the same reason as the
+  // compiler: no other content script opens the picker. gifs.js calls
+  // createGifSearch/nextGridIndex, so it must land before the modules loop.
+  const gifSearchPath = join(SRC_DIR, 'lib', 'gif-search-remote.js')
+  if (existsSync(gifSearchPath)) {
+    combined += `\n// --- lib/gif-search-remote.js ---\n${stripExports(readFileSync(gifSearchPath, 'utf8'))}\n`
+  }
+
+  // The site's emote_refs builder — verbatim copy; social.js's feed post path
+  // calls buildEmoteRefs/registerRemoteEmoteRef, so it lands before the modules.
+  const emoteRefsPath = join(SRC_DIR, 'lib', 'emote-refs.js')
+  if (existsSync(emoteRefsPath)) {
+    combined += `\n// --- lib/emote-refs.js ---\n${stripExports(readFileSync(emoteRefsPath, 'utf8'))}\n`
+  }
+
+  // What a stream event says and which stored ones a reload brings back
+  // (scripts/sync-site-copies.sh mirror of client/utils/stream-event-text.js).
+  // main.js calls streamEventBody/REPLAY_WINDOW_MS from the realtime listeners
+  // and the replay path, so it must land before the modules loop. It was once
+  // only in checkScopeCollisions' lint list: the bundle shipped calling a
+  // function it never defined, and every stream event threw.
+  const streamEventTextPath = join(SRC_DIR, 'lib', 'stream-event-text.js')
+  if (existsSync(streamEventTextPath)) {
+    combined += `\n// --- lib/stream-event-text.js ---\n${stripExports(readFileSync(streamEventTextPath, 'utf8'))}\n`
+  }
+
+  // The one user-card model/renderer/formatter (scripts/sync-site-copies.sh
+  // mirror of client/card/*.js) — card-time before card-model before
+  // card-render, matching card-render.js's own `import ... from './card-time.js'`
+  // (stripExports drops that import line; dependency order is what makes the
+  // concatenated scope resolve it). tooltips.js (peek) and profile-card.js
+  // (panel) call hsCardModel/hsCardHtml, so this must land before the modules
+  // loop below.
+  for (const mod of ['brand-tokens.js', 'card-time.js', 'card-model.js', 'card-render.js']) {
+    const p = join(SRC_DIR, 'lib', mod)
+    if (existsSync(p)) {
+      combined += `\n// --- lib/${mod} ---\n${stripExports(readFileSync(p, 'utf8'))}\n`
+    }
+  }
+
+  const modules = CORE_MODULES
   for (const file of modules) {
     const filePath = join(mcDir, file)
     if (!existsSync(filePath)) continue
@@ -727,12 +1119,18 @@ function readMultichatModules(platform) {
         .filter((f) => f.endsWith('.css'))
         .sort()
       if (!cssFrags.length) throw new Error('build: src/multichat/styles/ has no .css fragments')
-      const cssBody = cssFrags.map((f) => readFileSync(join(stylesDir, f), 'utf8')).join('')
-      if (cssBody.includes('`') || cssBody.includes('${')) {
-        throw new Error(
-          'build: a styles/*.css fragment contains a backtick or ${ — unsafe to embed in the css template literal',
-        )
+      let cssBody = cssFrags.map((f) => readFileSync(join(stylesDir, f), 'utf8')).join('')
+      // Packaged builds: minify the CSS here, at embed time — minifyDist's JS
+      // pass can't touch string contents, so without this the shipped bundle
+      // carries the full commented stylesheet (~437KB raw → ~215KB minified).
+      // Dev builds stay unminified so greps against dist css keep working.
+      if (shouldMinify) {
+        // charset utf8: keep glyphs literal — the default ascii mode rewrites
+        // them as \NN css escapes, which are illegal octal escapes inside the
+        // JS template literal this css gets embedded into.
+        cssBody = transformSync(cssBody, { loader: 'css', minify: true, charset: 'utf8' }).code
       }
+      cssBody = escapeCssForTemplateLiteral(cssBody)
       if (!content.includes("'__HS_STYLES_BUNDLE__'")) {
         throw new Error('build: styles.js missing __HS_STYLES_BUNDLE__ placeholder')
       }
@@ -749,6 +1147,9 @@ function readMultichatModules(platform) {
 // Inject lib at top of content script
 // Lib goes at IIFE scope, original content gets a nested block scope
 // so const/let declarations (DEBUG, cleanup, etc.) don't conflict
+// First line of a staged bundle that minifyDistFile must wrap + tree-shake.
+const FLAT_MARK = '/*HS_FLAT*/'
+
 function bundleContentScript(srcPath, lib, mcModules) {
   let content = readFileSync(srcPath, 'utf8')
 
@@ -809,12 +1210,32 @@ function bundleContentScript(srcPath, lib, mcModules) {
   // covering anything. Cheermote echoes still arrive in the MAIN tab's
   // multichat through the IRC stream, so renderer still fires there.
   const cheerPopupGuard = `if (typeof window !== 'undefined' && typeof window.name === 'string' && window.name.indexOf('hs-cheer-') === 0) return;`
-  return `(function() {\n'use strict';\n${cheerPopupGuard}\n\n${lib}\n{\n${modules}${body}\n}\n})();`
+  if (shouldMinify) {
+    // Tree-shake the lib: esbuild only drops unused declarations at the TOP
+    // level of what it parses, and the lib sits inside the wrapper IIFE. So a
+    // minified build stages the same code unwrapped (the cheer guard becomes
+    // the wrapping condition instead of an early `return`) behind FLAT_MARK;
+    // minifyDistFile then minifies + shakes + wraps it in ONE esbuild pass
+    // (a separate shake pass costs more in renames than the shake saves).
+    const flat = `${FLAT_MARK}\n${lib}\nif (!(typeof window !== 'undefined' && typeof window.name === 'string' && window.name.indexOf('hs-cheer-') === 0)) {\n${modules}${body}\n}`
+    return flat.replaceAll('__HS_BUILD_STAMP__', BUILD_STAMP)
+  }
+  return `(function() {\n'use strict';\n${cheerPopupGuard}\n\n${lib}\n{\n${modules}${body}\n}\n})();`.replaceAll(
+    '__HS_BUILD_STAMP__',
+    BUILD_STAMP,
+  )
 }
 
-// Build for a specific browser
+// Build for a specific browser — into a STAGING dir, never the live one.
+// dist/chrome is what a running Chromium has loaded as the unpacked ext; the
+// old clean-then-repopulate flow left that dir torn (missing/half-written
+// files) for the several seconds a build takes, and an MV3 service-worker
+// restart landing inside that window reads a broken extension (see the
+// 08-23/24 freeze incidents). Callers minify + syntax-check the staging dir,
+// then swapDist() renames it into place — the live path is never torn.
 function build(browser) {
-  const outDir = browser === 'chrome' ? CHROME_OUT : FIREFOX_OUT
+  const finalDir = browser === 'chrome' ? CHROME_OUT : FIREFOX_OUT
+  const outDir = `${finalDir}.staging`
   const manifestSrc = join(SRC_DIR, 'manifests', `${browser}.json`)
 
   // Clean and create output dir
@@ -830,49 +1251,51 @@ function build(browser) {
   const lib = readLib()
   const mcSrcPath = join(SRC_DIR, 'multichat', 'main.js')
 
-  // Self-heal: chrome/multichat.js is the retired single-bundle name (pre
-  // per-platform split) — unreferenced by any manifest, gitignored, excluded
-  // from zips. A stale copy still bloats unpacked dev loads (~2.2MB), so
-  // remove it whenever we build.
-  const staleMc = join(chromeDir, 'multichat.js')
-  if (existsSync(staleMc)) {
-    rmSync(staleMc)
-    console.log('  Removed stale chrome/multichat.js')
+  // Self-heal: build output that used to be written into chrome/ — retired
+  // bundle names (multichat.js, multichat-{twitch,kick,youtube}.js) and, since
+  // the bundles stopped being tracked, multichat-core.js, background.js and
+  // the two emoji-data copies. Nothing reads them from chrome/; a stale copy
+  // would only be scanned by the source guards as if it were source.
+  for (const stale of [
+    'multichat.js',
+    'multichat-twitch.js',
+    'multichat-kick.js',
+    'multichat-youtube.js',
+    'multichat-core.js',
+    'background.js',
+    'emoji-data.iso.js',
+    'emoji-data.main.js',
+  ]) {
+    const p = join(chromeDir, stale)
+    if (existsSync(p)) {
+      rmSync(p)
+      console.log(`  Removed stale chrome/${stale}`)
+    }
   }
 
-  // Emit per-platform multichat bundles
-  const PLATFORMS = ['twitch', 'kick', 'youtube']
-  for (const platform of PLATFORMS) {
-    const outFile = `multichat-${platform}.js`
-    const mcModules = readMultichatModules(platform)
-    const bundled = bundleContentScript(mcSrcPath, lib, mcModules)
+  // Emit the shared multichat core — one bundle, all platforms
+  {
+    const outFile = 'multichat-core.js'
+    const bundled = bundleContentScript(mcSrcPath, lib, readMultichatModules())
     writeFileSync(join(outDir, outFile), bundled)
-    // Write to chrome/ so unpacked extension loads the bundled version
-    if (browser === 'chrome') {
-      writeFileSync(join(chromeDir, outFile), bundled)
-    }
-    console.log(`  Bundled multichat-${platform}.js`)
+    console.log(`  Bundled ${outFile}`)
   }
 
   // Bundle remaining content scripts (non-multichat)
   for (const file of CONTENT_SCRIPTS) {
     if (file.startsWith('multichat-')) continue // already handled above
-    const srcPath = join(chromeDir, file)
+    const srcPath = handSource(file)
     if (!existsSync(srcPath)) {
       console.log(`  Skip ${file} (not found)`)
       continue
     }
-    // youtube-content renders HeatSync spec paints on the NATIVE yt surface,
-    // so it gets the paint-spec compiler appended to its lib — same embed the
-    // multichat bundles use (readMultichatModules). Other content scripts
-    // don't pay for it; youtube-content typeof-guards the compiler so a
-    // missing embed degrades to no paints, never a ReferenceError.
-    let libFor = lib
-    if (file === 'youtube-content.js') {
-      const paintSpecPath = join(SRC_DIR, 'lib', 'paint-spec.js')
-      if (existsSync(paintSpecPath)) {
-        libFor = `${lib}\n// --- lib/paint-spec.js ---\n${stripExports(readFileSync(paintSpecPath, 'utf8'))}\n`
-      }
+    // Slim lib per entry: core + only the lib files this script references
+    // (LIB_EXTRAS). verifyLibSlim fails the build if the source drifts.
+    const extras = LIB_EXTRAS[file] ?? []
+    verifyLibSlim(file, readFileSync(srcPath, 'utf8'), extras)
+    let libFor = readLib(extras)
+    for (const mod of ENTRY_MODULES[file] ?? []) {
+      libFor = `${libFor}\n// --- ${mod} ---\n${stripExports(readFileSync(join(SRC_DIR, mod), 'utf8'))}\n`
     }
     const bundled = bundleContentScript(srcPath, libFor, null)
     writeFileSync(join(outDir, file), bundled)
@@ -881,11 +1304,16 @@ function build(browser) {
 
   // Copy other files
   for (const file of COPY_FILES) {
-    const srcPath = join(chromeDir, file)
+    // background.js is generated from src/background/* (BG_PARTS); the rest are hand-written (js in src/content/, html/css in chrome/).
+    if (file === 'background.js') {
+      writeFileSync(join(outDir, file), readBackgroundSource())
+      continue
+    }
+    const srcPath = handSource(file)
     if (!existsSync(srcPath)) continue
     cpSync(srcPath, join(outDir, file))
   }
-  console.log(`  Copied ${COPY_FILES.filter((f) => existsSync(join(chromeDir, f))).length} files`)
+  console.log(`  Copied ${COPY_FILES.filter((f) => existsSync(handSource(f))).length} files`)
 
   // emoji-data.iso.js: byte-identical copy of emoji-data.js for ISOLATED-world
   // content_scripts entries. Chrome injects a given FILE once per frame — on
@@ -895,12 +1323,17 @@ function build(browser) {
   // (all consumers are typeof-guarded, so emoji autocomplete just vanished —
   // no error). Distinct filename per world sidesteps the dedupe while keeping
   // the single-parse win that 43f297b's unbundling was after.
-  cpSync(join(chromeDir, 'emoji-data.js'), join(outDir, 'emoji-data.iso.js'))
-  // Also write the iso copy into chrome/ — manifest.json (mirrored below for
-  // the unpacked dev extension) references emoji-data.iso.js in its
-  // content_scripts entries; without it the dev-loaded chrome/ dir is
-  // un-loadable.
-  if (browser === 'chrome') cpSync(join(chromeDir, 'emoji-data.js'), join(chromeDir, 'emoji-data.iso.js'))
+  const emojiSrc = join(SRC_DIR, 'data', 'emoji-data.js')
+  cpSync(emojiSrc, join(outDir, 'emoji-data.iso.js'))
+  // The source is src/data/emoji-data.js; both shipped copies are generated
+  // into dist only, so the three can never disagree.
+
+  // emoji-data.main.js: the PAGE-world copy (twitch only), cut to [name, emoji] —
+  // all autocomplete-hook.js reads. It used to load emoji-data.js whole, so every
+  // twitch page parsed the 118KB dataset twice. The source itself is not shipped:
+  // src/data/emoji-data.js is what both copies are made from.
+  const emojiMain = emojiPairsSource(readFileSync(emojiSrc, 'utf8'))
+  writeFileSync(join(outDir, 'emoji-data.main.js'), emojiMain)
 
   // Copy assets
   for (const file of ASSETS) {
@@ -923,17 +1356,32 @@ function build(browser) {
   if (existsSync(localesDir)) {
     cpSync(localesDir, join(outDir, '_locales'), { recursive: true })
     cpSync(localesDir, join(chromeDir, '_locales'), { recursive: true })
+    // src stays pretty for diffs and translators; a minified build ships
+    // compact json — the indentation alone was ~1.2MB across 34 locales.
+    if (shouldMinify) {
+      for (const dir of new Set([outDir, chromeDir])) {
+        for (const loc of readdirSync(join(dir, '_locales'))) {
+          const f = join(dir, '_locales', loc, 'messages.json')
+          if (existsSync(f)) writeFileSync(f, JSON.stringify(JSON.parse(readFileSync(f, 'utf8'))))
+        }
+      }
+    }
     console.log(`  Copied _locales`)
   }
 
-  // Copy fonts (bundled bitmap font: CozetteVector)
-  const fontsDir = join(chromeDir, 'fonts')
-  if (existsSync(fontsDir)) {
-    cpSync(fontsDir, join(outDir, 'fonts'), { recursive: true })
-    console.log(`  Copied fonts`)
-  }
-
   console.log(`✓ Built ${browser} → ${outDir}`)
+  return outDir
+}
+
+// Atomically promote a finished staging dir to the live path. Two renames —
+// the live dir is missing only for the microseconds between them, instead of
+// the seconds a full rebuild takes. Any crash-leftover .old is reaped first.
+function swapDist(stageDir, liveDir) {
+  const old = `${liveDir}.old`
+  if (existsSync(old)) rmSync(old, { recursive: true })
+  if (existsSync(liveDir)) renameSync(liveDir, old)
+  renameSync(stageDir, liveDir)
+  rmSync(old, { recursive: true, force: true })
 }
 
 // Read version from chrome manifest (single source of truth)
@@ -966,7 +1414,7 @@ function syntaxCheck(outDir, browser) {
 
 // Build a source zip suitable for AMO source-code review:
 // - everything needed to reproduce the build (chrome/, src/, build.js, lockfile, package.json)
-// - reviewer-facing docs (README, CHANGELOG, LICENSE, TESTER-GUIDE, etc.)
+// - reviewer-facing docs (README, CHANGELOG, LICENSE, etc.)
 // - excludes generated multichat.js (regenerated from src/multichat/), dist/, node_modules/, .git/
 function buildSourceZip() {
   const version = getVersion()
@@ -985,19 +1433,9 @@ function buildSourceZip() {
     'CONTRIBUTING.md',
     'LICENSE',
     'SECURITY.md',
-    'TESTER-GUIDE.md',
-    'BACKEND-ASKS.md',
   ].filter((p) => existsSync(join(__dirname, p)))
 
-  const excludes = [
-    'chrome/multichat-twitch.js',
-    'chrome/multichat-kick.js',
-    'chrome/multichat-youtube.js',
-    'dist/*',
-    'node_modules/*',
-    '.git/*',
-    '*/.DS_Store',
-  ]
+  const excludes = ['chrome/multichat-core.js', 'dist/*', 'node_modules/*', '.git/*', '*/.DS_Store']
   const args = ['-rq', zipPath, ...include]
   for (const ex of excludes) args.push('-x', ex)
   execFileSync('zip', args, { cwd: __dirname, stdio: 'inherit' })
@@ -1045,52 +1483,72 @@ function deploy() {
 
 // Minify a content script in place inside its dist dir.
 // Preserves the IIFE wrapper; safe-mode flags so we don't break runtime semantics.
-// extraDefines: passed for per-platform multichat bundles so esbuild can constant-fold
-// __HS_HOST__ and dead-code-eliminate cross-platform branches at minification time.
 function minifyDistFile(outDir, file, extraDefines) {
   const path = join(outDir, file)
   if (!existsSync(path)) return
   const src = readFileSync(path, 'utf8')
+  const flat = src.startsWith(FLAT_MARK)
   try {
-    const result = transformSync(src, {
+    const result = transformSync(flat ? `"use strict";\n${src}` : src, {
       loader: 'js',
       minify: true,
       target: 'es2020',
       legalComments: 'none',
       keepNames: true, // helps stack traces in prod
+      // a flat bundle has no wrapper of its own: esbuild's iife output is it,
+      // and tree-shaking then sees the lib as top-level declarations.
+      ...(flat ? { format: 'iife', treeShaking: true } : {}),
       ...(extraDefines ? { define: extraDefines } : {}),
     })
     writeFileSync(path, result.code)
   } catch (e) {
+    // an unwrapped bundle left on disk would leak its lib into the page's world
+    if (flat) throw new Error(`build: minify+shake of ${file} failed: ${e.message?.split('\n')[0]}`)
     console.warn(`  ⚠ minify ${file} skipped: ${e.message?.split('\n')[0]}`)
   }
 }
 
-// Map multichat-<platform>.js filenames to their platform string for define injection
-const MULTICHAT_PLATFORM_DEFINE = {
-  'multichat-twitch.js': 'twitch',
-  'multichat-kick.js': 'kick',
-  'multichat-youtube.js': 'youtube',
-}
-
 function minifyDist(outDir) {
-  const targets = [...CONTENT_SCRIPTS, ...COPY_FILES.filter((f) => f.endsWith('.js'))]
+  // the two emoji files are written from emoji-data.js before this runs; they
+  // are the only emoji files shipped, so minify them too (and both stay ASCII,
+  // see the guard below)
+  const targets = [
+    ...CONTENT_SCRIPTS,
+    ...COPY_FILES.filter((f) => f.endsWith('.js')),
+    'emoji-data.iso.js',
+    'emoji-data.main.js',
+  ]
   let bytesBefore = 0,
     bytesAfter = 0
   for (const f of targets) {
     const p = join(outDir, f)
     if (!existsSync(p)) continue
     bytesBefore += readFileSync(p).length
-    const platform = MULTICHAT_PLATFORM_DEFINE[f]
     // __HS_DEV_BUILD__ → false in every minified (packaged/released/store) bundle,
     // so the nonce-less dev reload relaxation in content.js is dead-code-eliminated
     // for real users. Dev builds skip minify → the identifier stays undefined →
     // content.js's `typeof` guard treats it as dev-mode-on. Fail-closed: only the
     // packaged build path (which minifies) flips it off, and that's exactly the
     // store artifact.
-    const extraDefines = { __HS_DEV_BUILD__: 'false', ...(platform ? { __HS_HOST__: JSON.stringify(platform) } : {}) }
-    minifyDistFile(outDir, f, extraDefines)
+    // (No __HS_HOST__ define anymore: multichat-core.js is one bundle for all
+    // three platforms, so platform branches must survive to runtime.)
+    minifyDistFile(outDir, f, { __HS_DEV_BUILD__: 'false' })
     bytesAfter += readFileSync(p).length
+  }
+  // Fail-closed: every shipped script is pure ASCII. One non-ASCII char makes
+  // Chrome hold the WHOLE source as UTF-16 — multichat-core.js's 1.4MB became
+  // 2.9MB in every tab, for four regex literals. esbuild escapes strings and
+  // templates but leaves regex literals raw, so write those with \u escapes.
+  for (const f of targets) {
+    const p = join(outDir, f)
+    if (!existsSync(p)) continue
+    const at = readFileSync(p, 'utf8').search(/[^\x00-\x7f]/)
+    if (at !== -1) {
+      const src = readFileSync(p, 'utf8')
+      throw new Error(
+        `build: ${f} has a non-ASCII char after minify (…${src.slice(Math.max(0, at - 40), at + 10)}…) — escape it as \\uXXXX in the source regex`,
+      )
+    }
   }
   // Fail-closed: the nonce-less dev-reload relaxation MUST be compiled out of
   // every minified (packaged/store) build. minifyDistFile swallows esbuild
@@ -1107,7 +1565,15 @@ function minifyDist(outDir) {
   // chat send via hs-dbg-test-send + private-state dumps) MUST be dead-code-
   // eliminated from every packaged multichat bundle. If the __HS_DEV_BUILD__ fold
   // failed, the sentinel string survives — refuse to ship rather than expose it.
-  for (const f of Object.keys(MULTICHAT_PLATFORM_DEFINE)) {
+  for (const f of targets) {
+    const p = join(outDir, f)
+    if (existsSync(p) && readFileSync(p, 'utf8').startsWith(FLAT_MARK)) {
+      throw new Error(
+        `build: ${f} is still an unwrapped staging bundle — not minified, would leak globals into the page`,
+      )
+    }
+  }
+  for (const f of ['multichat-core.js']) {
     const p = join(outDir, f)
     if (existsSync(p) && readFileSync(p, 'utf8').includes('hs-dbg-test-send')) {
       throw new Error(
@@ -1185,6 +1651,7 @@ checkMultichatCleanupBinding()
 checkErrorReporterParity()
 checkUiSyncBlocklistParity()
 checkUserKeyParity()
+checkReservedPathsParity()
 checkEscapeHtmlCoverage()
 checkNoRuntimeDeps()
 checkNoDynamicCode()
@@ -1206,16 +1673,18 @@ console.log()
 
 if (!target || target === 'chrome') {
   console.log('Chrome:')
-  build('chrome')
-  if (shouldMinify) minifyDist(CHROME_OUT)
-  syntaxCheck(CHROME_OUT, 'chrome')
+  const stage = build('chrome')
+  if (shouldMinify) minifyDist(stage)
+  syntaxCheck(stage, 'chrome')
+  swapDist(stage, CHROME_OUT)
 }
 
 if (!target || target === 'firefox') {
   console.log('\nFirefox:')
-  build('firefox')
-  if (shouldMinify) minifyDist(FIREFOX_OUT)
-  syntaxCheck(FIREFOX_OUT, 'firefox')
+  const stage = build('firefox')
+  if (shouldMinify) minifyDist(stage)
+  syntaxCheck(stage, 'firefox')
+  swapDist(stage, FIREFOX_OUT)
 }
 
 if (shouldPackage) {

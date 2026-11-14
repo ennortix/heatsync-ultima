@@ -1,0 +1,78 @@
+/**
+ * Some of src/lib is the SITE's code, byte for byte.
+ *
+ * Sibling of paint-compiler-parity.test.js, which guards the name-paint
+ * compiler the same way and for the same reason: the two copies of that file
+ * were mirrored by hand and drifted 1,300 lines in three weeks.
+ *
+ * gif-search-remote.js is heatsync.org's gifs-tab fetch layer — the record
+ * shape /api/gifs answers with, the search cache, and the grid's keyboard
+ * model. The extension paints the same corpus in the same grid, so a second
+ * hand-written copy would be two answers to "what is a gif record", and one of
+ * them would go stale the first time the payload gained a field. The only seam
+ * is `base`: '' on the site, https://heatsync.org here, because a root-relative
+ * /api/gifs/... inside a twitch.tv page asks TWITCH for our gifs.
+ *
+ * card-time.js/card-model.js/card-render.js + card.css are the one user-card
+ * model/renderer/formatter/stylesheet, shared by every card surface on both
+ * the site and the extension. card.css lands as a numbered styles/ fragment
+ * (styles/20-card.css), not src/lib/ — see src/multichat/styles.js, which
+ * concatenates every styles/*.css fragment at build time.
+ *
+ * scripts/sync-site-copies.sh is the only way these files change, and
+ * biome.json leaves them unformatted so a formatter pass cannot break parity.
+ *
+ * Runs against the sibling site checkout when one exists (HS_SITE_DIR, or
+ * ../heatsync); the site carries the mirror of this test, so a change on
+ * either side goes red until the other is synced.
+ */
+import { describe, expect, test } from 'bun:test'
+import { readFileSync } from 'node:fs'
+import { join, resolve } from 'node:path'
+import { SITE_MISSING, siteDir, siteRequired } from './site-dir.js'
+
+const HERE = resolve(import.meta.dir, '..')
+const SITE = siteDir('client/utils/gif-search-remote.js')
+
+// [site-relative path, our-relative path] — most pairs are src/lib/<basename>
+// of the site path, but card.css lands as a renamed styles/ fragment instead.
+const FILES = [
+  ['client/utils/gif-search-remote.js', 'src/lib/gif-search-remote.js'],
+  ['client/utils/emote-refs.js', 'src/lib/emote-refs.js'],
+  ['client/utils/stream-event-text.js', 'src/lib/stream-event-text.js'],
+  ['client/card/card-time.js', 'src/lib/card-time.js'],
+  ['client/card/card-model.js', 'src/lib/card-model.js'],
+  ['client/card/card-render.js', 'src/lib/card-render.js'],
+  ['public/css/modules/card.css', 'src/multichat/styles/20-card.css'],
+  ['public/css/brand-tokens.css', 'src/multichat/styles/01-brand-tokens.css'],
+  ['public/css/modules/brand-rows.css', 'src/multichat/styles/21-brand-rows.css'],
+  ['shared/brand/tokens.gen.js', 'src/lib/brand-tokens.js'],
+  ['scripts/lib/inline-doctrine.mjs', 'tests/lib/inline-doctrine.mjs'],
+  ['scripts/lib/strip-comments.mjs', 'tests/lib/strip-comments.mjs'],
+]
+
+describe('site-copy parity', () => {
+  if (!SITE) {
+    if (siteRequired()) throw new Error(SITE_MISSING)
+    test.skip('site repo not present — parity cannot be checked here', () => {})
+    return
+  }
+  for (const [rel, ours_rel] of FILES) {
+    test(`${ours_rel} is byte-identical to the site's ${rel}`, () => {
+      const ours = readFileSync(join(HERE, ours_rel), 'utf8')
+      const theirs = readFileSync(join(SITE, rel), 'utf8')
+      expect(ours === theirs, `run scripts/sync-site-copies.sh — ${ours_rel} drifted from ${SITE}/${rel}`).toBe(true)
+    })
+  }
+
+  test('the copy is only reachable with an explicit origin', () => {
+    const src = readFileSync(join(HERE, 'src', 'lib', 'gif-search-remote.js'), 'utf8')
+    // If the site ever drops the `base` seam, every request the extension makes
+    // goes to the host page instead of to us — and a 404 from twitch is not a
+    // shape this code can tell from an empty library.
+    expect(src).toContain("base = ''")
+    expect(readFileSync(join(HERE, 'src', 'multichat', 'gifs.js'), 'utf8')).toContain(
+      'createGifSearch({ base: HS_GIF_ORIGIN })',
+    )
+  })
+})

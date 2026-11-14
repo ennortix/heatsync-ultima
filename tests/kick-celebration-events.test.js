@@ -10,11 +10,13 @@
 import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { bgSource } from './bg-src.js'
+import { mainSource } from './main-src.js'
 
 const ROOT = join(import.meta.dir, '..')
-const BG = readFileSync(join(ROOT, 'chrome', 'background.js'), 'utf8')
+const BG = bgSource()
 const IRC = readFileSync(join(ROOT, 'src', 'multichat', 'irc.js'), 'utf8')
-const MAIN = readFileSync(join(ROOT, 'src', 'multichat', 'main.js'), 'utf8')
+const MAIN = mainSource()
 
 function extractFn(src, name) {
   const marker = `function ${name}(`
@@ -230,7 +232,9 @@ describe('kick send timeout is unconfirmed, never retried', () => {
 
   test('a timeout returns kick_unconfirmed after exactly one attempt', async () => {
     const counter = { n: 0 }
-    const fatalLine = SEND.split('\n').find((l) => l.startsWith('const KICK_FATAL_SEND_ERRORS'))
+    // the set is a multi-line statement now: from its const to the closing `])`
+    const fatalAt = SEND.indexOf('const KICK_FATAL_SEND_ERRORS')
+    const fatalLine = SEND.slice(fatalAt, SEND.indexOf('])', fatalAt) + 2)
     const backoffLine = SEND.split('\n').find((l) => l.startsWith('const KICK_SEND_RETRY_BACKOFF_MS'))
     const sendKickMessage = new Function(
       'counter',

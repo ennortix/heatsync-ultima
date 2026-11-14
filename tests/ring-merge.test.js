@@ -1,0 +1,199 @@
+/**
+ * Channel rings must stay sorted by ord. History hydration and the BG re-pulls
+ * used to push() straight onto the ring: history newer than a live message
+ * landed before it, every later arrival binary-searched a lying array and sat
+ * above a stale tail, and chat looked frozen for ~2 minutes.
+ */
+
+import { expect, test } from 'bun:test'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { mainSource } from './main-src.js'
+
+const SRC = readFileSync(join(import.meta.dir, '..', 'src', 'multichat', 'irc.js'), 'utf8')
+
+function slice(re) {
+  const s = SRC.search(re)
+  if (s === -1) throw new Error(`not found: ${re}`)
+  return SRC.slice(s, SRC.indexOf('\n}\n', s) + 3)
+}
+
+class Ring {
+  constructor() {
+    this.items = []
+  }
+  getAll() {
+    return this.items.slice()
+  }
+  clear() {
+    this.items = []
+  }
+  push(m) {
+    this.items.push(m)
+  }
+}
+
+const ordOf = (m) => m?.ord ?? m?.time ?? 0
+const mergeIntoRing = new Function('ordOf', `${slice(/function mergeIntoRing\(/)}; return mergeIntoRing`)(ordOf)
+
+const row = (id, time, extra = {}) => ({ id, time, ...extra })
+const hist = (id, time) => row(id, time, { isHistory: true })
+
+test('history newer than a live row lands after it in time order, not before', () => {
+  const buf = new Ring()
+  buf.push(row('live1', 100, { ord: 100 }))
+  buf.push(row('live2', 110, { ord: 110 }))
+  mergeIntoRing(buf, [hist('h1', 90), hist('h2', 105), hist('h3', 120)])
+  expect(buf.items.map((m) => m.id)).toEqual(['h1', 'live1', 'h2', 'live2', 'h3'])
+})
+
+test('the ring is non-decreasing by ord after any merge', () => {
+  const buf = new Ring()
+  for (let i = 0; i < 20; i++) buf.push(row(`l${i}`, 1000 + i * 7, { ord: 1000 + i * 7 }))
+  mergeIntoRing(
+    buf,
+    Array.from({ length: 30 }, (_, i) => hist(`h${i}`, 990 + i * 5)),
+  )
+  const ords = buf.items.map(ordOf)
+  expect(ords).toEqual([...ords].sort((a, b) => a - b))
+})
+
+test('a live copy beats the history copy of the same message', () => {
+  const buf = new Ring()
+  buf.push(row('same', 100, { ord: 100, replyTo: 'x' }))
+  mergeIntoRing(buf, [hist('same', 100), hist('other', 95)])
+  expect(buf.items.map((m) => m.id)).toEqual(['other', 'same'])
+  expect(buf.items[1].replyTo).toBe('x')
+})
+
+test('a re-pull replaces old history and keeps live rows', () => {
+  const buf = new Ring()
+  buf.push(hist('old', 50))
+  buf.push(row('live', 100, { ord: 100 }))
+  mergeIntoRing(buf, [hist('new', 60)], true)
+  expect(buf.items.map((m) => m.id)).toEqual(['new', 'live'])
+})
+
+test('no history push straight onto a ring remains', () => {
+  expect(SRC).not.toMatch(/for \(const m of staged\) buf\.push\(m\)/)
+  expect(SRC).not.toMatch(/\n\s+buf\.push\(m\)\n\s+\}\n\s+log\('(Kick )?BG history hydrated/)
+  expect((SRC.match(/mergeIntoRing\(/g) || []).length).toBeGreaterThanOrEqual(6)
+})
+
+test('the render merge re-sorts any run that arrives out of order', () => {
+  const main = mainSource()
+  expect(main).toMatch(/function fairMerge\(sources\) \{\s*sources = sources\.map\(_ordSortedRun\)/)
+  const s = main.indexOf('function _ordSortedRun(')
+  const sortRun = new Function('ordOf', `${main.slice(s, main.indexOf('\n}\n', s) + 3)}; return _ordSortedRun`)(ordOf)
+  const ok = [{ time: 1 }, { time: 2 }]
+  expect(sortRun(ok)).toBe(ok)
+  const bad = [{ time: 5 }, { time: 9 }, { time: 7 }, { time: 8 }]
+  expect(sortRun(bad).map((m) => m.time)).toEqual([5, 7, 8, 9])
+  expect(bad.map((m) => m.time)).toEqual([5, 9, 7, 8])
+})
+
+test('a render watchdog logs why chat stopped painting and repaints when nothing blocks it', () => {
+  const main = mainSource()
+  expect(main).toMatch(/function renderStallCheck\(\)/)
+  expect(main).toMatch(/__hsDiag\?\.\('render_stall'/)
+  expect(main).toMatch(/cleanup\.setInterval\(renderStallCheck, 2500\)/)
+})
+
+test('an ingest gap on a busy channel re-registers interest and re-pulls the BG ring', () => {
+  const main = mainSource()
+  expect(main).toMatch(/function ingestGapCheck\(\)/)
+  expect(main).toMatch(/__hsDiag\?\.\('ingest_gap'/)
+  expect(main).toMatch(/irc\._refreshFromBg\?\.\(ch\)/)
+  expect(main).toMatch(/cleanup\.setInterval\(ingestGapCheck, 1000\)/)
+})
+
+test('stall check heals the key index from the DOM and logs index_desync', () => {
+  const main = mainSource()
+  expect(main).toMatch(/function _reconcileMsgKeyIndex\(/)
+  expect(main).toMatch(/_reconcileMsgKeyIndex\(msgsEl\)/)
+  expect(main).toMatch(/'index_desync'/)
+})
+
+test('thrash detector logs dom_thrash and rebuilds the pane', () => {
+  const main = mainSource()
+  expect(main).toMatch(/function domThrashCheck\(/)
+  expect(main).toMatch(/cleanup\.setInterval\(domThrashCheck, 2000\)/)
+  expect(main).toMatch(/'dom_thrash'/)
+})
+
+test('unpinned view is logged and re-pinned', () => {
+  const main = mainSource()
+  expect(main).toMatch(/hsDiagLog\('unpinned'/)
+})
+
+test('long animation frames are recorded with attribution', () => {
+  const main = mainSource()
+  expect(main).toMatch(/hsDiagLog\('long_frame'/)
+  expect(main).toMatch(/watchLongFrames\(\)/)
+})
+
+test('multi-platform render debounce cannot be held forever by a frozen rAF', () => {
+  const main = mainSource()
+  expect(main).toMatch(/nowMp - _multiPlatformRenderAt > 500/)
+  expect(main).toMatch(/cleanup\.setTimeout\(run, 500\)/)
+  expect(main).toMatch(/hs-popout'\)\) \{\s*_hiddenSkippedAppend = true/)
+})
+
+test('a quiet pane on a busy channel logs which side went quiet', () => {
+  const main = mainSource()
+  expect(main).toMatch(/hsDiagLog\('dom_quiet'/)
+})
+
+test('stripe flicker is counted and logged with its mid-insert count', () => {
+  const main = mainSource()
+  expect(main).toMatch(/hsDiagLog\('zebra_flicker'/)
+})
+
+test('alt+shift+d dumps the pane state to the diag ring', () => {
+  const main = mainSource()
+  expect(main).toMatch(/hsDiagLog\('manual_dump'/)
+  expect(main).toMatch(/e\.code === 'KeyD'/)
+})
+
+test('a popout never waits on rAF or the 1s starved timer', () => {
+  const main = mainSource()
+  expect(main).toMatch(
+    /function rafOrTimeout\(fn\) \{[\s\S]{0,700}hs-popout'\)\) \{\s*cleanup\.setPageTimeout\(fn, 16\)/,
+  )
+})
+
+test('a new row anchors on the lowest placed row, never on a shared cursor', () => {
+  const main = mainSource()
+  expect(main).toMatch(/if \(prevNode\) after = prevNode\.nextSibling/)
+  expect(main).not.toMatch(/domIdx/)
+})
+
+test('a live line never lands above a row already on screen', () => {
+  const src = mainSource()
+  expect(src).toMatch(/div\._hsAt = 1/)
+  expect(src).toMatch(/settledEnd &&\s*m\.ord != null/)
+})
+
+// Real shape: mellen's reply sent from another client. The live row that got
+// there first (native tap, or a copy that lost its tags) has no reply context;
+// the robotty/BG history copy of the same id carries it. Dropping the history
+// copy whole left the line plain forever.
+test('a history copy donates its reply context to a bare live copy of the same id', () => {
+  const buf = new Ring()
+  const live = row('e894ace2', 100, { ord: 100, replyTo: null, _renderedHtml: '<b>x</b>' })
+  buf.push(live)
+  const replyTo = { user: 'wollip', text: 'Just flip heads.', id: '85aef2f5', threadId: '85aef2f5' }
+  const grafted = mergeIntoRing(buf, [{ ...hist('e894ace2', 100), replyTo }])
+  expect(grafted).toBe(1)
+  expect(buf.items).toHaveLength(1)
+  expect(buf.items[0].replyTo).toEqual(replyTo)
+  expect(buf.items[0]._renderedHtml).toBeNull()
+})
+
+test('a live copy that already has reply context is never overwritten by history', () => {
+  const buf = new Ring()
+  buf.push(row('m', 100, { ord: 100, replyTo: { user: 'a', id: '1' } }))
+  const grafted = mergeIntoRing(buf, [{ ...hist('m', 100), replyTo: { user: 'b', id: '2' } }])
+  expect(grafted).toBe(0)
+  expect(buf.items[0].replyTo.user).toBe('a')
+})

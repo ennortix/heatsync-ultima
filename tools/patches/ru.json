@@ -1,6 +1,6 @@
 {
   "manifest_name": "heatsync",
-  "manifest_description": "Одна панель для живого чата Twitch, Kick + YouTube. Плюс бесплатный инвентарь на 5000 эмоций, который работает на любом канале",
+  "manifest_description": "Одна панель для живого чата Twitch, Kick + YouTube. Плюс бесплатный инвентарь на 5 000 эмоций, который работает на любом канале",
   "common_loading": "загрузка...",
   "common_extension_updated": "Расширение обновлено — обновите страницу",
   "common_no_matches": "ничего не найдено",
@@ -42,7 +42,6 @@
   "welcome_step2_desc": "добавьте любые изображения — 5000 слотов, все форматы поддерживаются",
   "welcome_step3_title": "используйте их в чате",
   "welcome_step3_desc": "нажмите кнопку heatsync в чате Twitch/Kick, чтобы получить доступ к своим эмоутам",
-  "welcome_cta": "начать",
   "welcome_privacy": "конфиденциальность",
   "welcome_source": "исходный код",
   "btn_auth_login": "войти",

@@ -101,14 +101,11 @@ describe('mutation shape', () => {
 
   test('kick success wins over a twitch refusal', () => {
     expect(INPUT).toContain('resp?.unsupported && kickResp?.ok')
-    expect(INPUT).toContain('mc_input_mode_twitch_unsupported')
+    expect(INPUT).toContain("showToast(t('mc_cm_link'), 'error')")
   })
 
   test('confirmation reads the read-type field, not a write field', () => {
     expect(extractFn(API, 'setTwitchChatMode')).toContain('after[spec.read]')
-  })
-  test('the followers wrapper still exists for its old callers', () => {
-    expect(API).toContain('async function setTwitchFollowersMode(channelLogin, minutes)')
   })
 })
 
@@ -203,7 +200,7 @@ describe('kick chat modes', () => {
     expect(fn).toContain('kick did not apply it')
   })
   test('the relay hands the row back', () => {
-    const C = readFileSync(join(ROOT, 'chrome', 'content.js'), 'utf8')
+    const C = readFileSync(join(ROOT, 'src', 'content', 'content.js'), 'utf8')
     expect(C).toContain('sendResponse({ ok: true, row })')
   })
   test('composer refuses unique-chat on a kick-only channel instead of no-oping', () => {

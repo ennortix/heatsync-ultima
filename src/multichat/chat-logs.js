@@ -21,21 +21,89 @@ let _clLoadMoreObs = null
 const HS_CL_PAGE = 100
 const HS_CL_PUBLIC_ORIGIN = 'https://heatsync.org'
 
-// Build a public /logs/ permalink for a row. Returns null when fields missing.
+// HS_LOG_PLATFORMS (the platforms the archive stores) lives in feed-embed.js —
+// that file is concatenated BEFORE this one, and a const referenced from an
+// earlier file would still be in its temporal dead zone.
+
+// Build a public /search/logs/ permalink out of the four things that identify one
+// archived line. THE canonical builder — the archive viewer, the live-row
+// permalink and the thread composer all mint their URLs here.
+//
 // URL shape mirrors server/routes/chat-log-permalinks.ts:
-//   /logs/<platform>/<channel>/<yyyy-mm-dd>?m=<message_id>
-// Anchoring is best-effort; channel-day URL still resolves when message_id absent.
-function buildChatLogPermalink(r) {
-  if (!activeChatLogs) return null
-  const platform = activeChatLogs.platform
-  const channel = r.channel || activeChatLogs.channel
-  if (!platform || !channel || !r.timestamp) return null
-  const d = new Date(r.timestamp)
+//   /search/logs/<platform>/<channel>/<yyyy-mm-dd>?m=<message_id>
+//
+// The date is the UTC day (the archive partitions on it), taken from the
+// message's own timestamp — never from "now", which is a different day for
+// anyone reading chat across UTC midnight. It only picks the PAGE: the
+// resolver keys off (platform, channel, message_id) and ignores the date
+// entirely, so a message whose archived timestamp lands a few hundred ms the
+// other side of midnight still quotes correctly, it just anchors on the
+// neighbouring day. `m` is best-effort — the channel-day URL is a real page
+// on its own when the id is missing.
+function buildLogPermalink({ platform, channel, messageId, time }) {
+  const p = (platform || '').toLowerCase()
+  const c = (channel || '').toLowerCase().replace(/^#/, '')
+  if (!HS_LOG_PLATFORMS.has(p) || !c || !time) return null
+  const d = new Date(time)
   if (Number.isNaN(d.getTime())) return null
   const ymd = d.toISOString().slice(0, 10)
-  let url = `${HS_CL_PUBLIC_ORIGIN}/logs/${encodeURIComponent(platform)}/${encodeURIComponent(channel)}/${ymd}`
-  if (r.message_id) url += `?m=${encodeURIComponent(r.message_id)}`
+  let url = `${HS_CL_PUBLIC_ORIGIN}/search/logs/${encodeURIComponent(p)}/${encodeURIComponent(c)}/${ymd}`
+  if (messageId) url += `?m=${encodeURIComponent(messageId)}`
   return url
+}
+
+// Public post/thread permalink out of a base36 message id. THE canonical
+// builder — every place that links to a heatsync post must use this, not
+// hand-roll the URL. /share/<id> is the public THREAD page; /m/<id> is a
+// DIFFERENT server route (the multichat overlay's own layout permalink) that
+// happens to share the origin — pointing a post link at it 404s the reader.
+function buildPostPermalink(id) {
+  if (!id) return null
+  return `${HS_CL_PUBLIC_ORIGIN}/share/${encodeURIComponent(id)}`
+}
+
+// Outgoing content for a quote-mode post — pure, no DOM/network, so this is
+// the one piece of the flow a unit test can pin exactly. `state` carries the
+// citation (permalink) and, when the row could not be cited, the raw text +
+// author as a fallback quote. Returns null when there is nothing to quote at
+// all (should never happen — startQuoteFromRow refuses to enter quote mode
+// without one or the other).
+function buildQuoteContent(state, words) {
+  const quoteLine = state?.permalink || (state?.text ? `"${state.text}" — ${state.user || 'anonymous'}` : null)
+  if (!quoteLine) return null
+  return words ? `${words}\n${quoteLine}` : quoteLine
+}
+
+// Archive-viewer row → permalink. Channel falls back to the view's channel
+// (the all-channels view carries it per-row instead).
+function buildChatLogPermalink(r) {
+  if (!activeChatLogs) return null
+  return buildLogPermalink({
+    platform: activeChatLogs.platform,
+    channel: r.channel || activeChatLogs.channel,
+    messageId: r.message_id,
+    time: r.timestamp,
+  })
+}
+
+// Live chat row → permalink. Reads the identity the row already carries; the
+// row stamps data-msg-time for exactly this (see main.js).
+//
+// `|| 'twitch'` matches every other row reader (mod-toolbar.js, input.js): a
+// twitch IRC message never sets m.platform — only kick and youtube stamp
+// themselves — so an empty attribute means twitch by construction. Measured on
+// a live channel, 481 of 494 rows were empty, so without this the permalink
+// fell back to a retyped quote on all but the handful of rows peekSentHost had
+// retagged. The fallback is safe in the direction that matters: a kick or
+// youtube row always carries its own value and can never land here.
+function buildRowPermalink(row) {
+  if (!row) return null
+  return buildLogPermalink({
+    platform: row.dataset.msgPlatform || 'twitch',
+    channel: row.dataset.msgChannel,
+    messageId: row.dataset.msgId,
+    time: Number(row.dataset.msgTime) || 0,
+  })
 }
 
 async function copyChatLogPermalink(btn, r) {
@@ -53,12 +121,13 @@ async function copyChatLogPermalink(btn, r) {
       showToast(t('mc_chatlogs_copy_failed'), 'error')
     } catch {}
   }
-  const prev = btn.textContent
-  btn.textContent = ok ? '✓' : '✗'
-  if (ok) btn.classList.add('hs-cl-permalink-copied')
+  const time = btn.querySelector('time')
+  const prev = time.textContent
+  time.textContent = ok ? t('mc_logs_copied') : t('mc_logs_failed')
+  if (ok) btn.classList.add('hs-cl-time-copied')
   setTimeout(() => {
-    btn.textContent = prev
-    btn.classList.remove('hs-cl-permalink-copied')
+    time.textContent = prev
+    btn.classList.remove('hs-cl-time-copied')
   }, 1200)
 }
 
@@ -67,12 +136,6 @@ async function openChatLogsView(username, opts = {}) {
   username = String(username).toLowerCase()
   const platform = (opts.platform || 'twitch').toLowerCase()
   const channel = opts.channel ? String(opts.channel).toLowerCase() : null
-
-  // Hide inputbar — no message composition in log view. Flag must move with
-  // the class or showInputBar() early-returns forever (composer unreachable).
-  const inputBar = document.getElementById('hs-mc-inputbar')
-  if (inputBar) inputBar.classList.add('hs-hidden')
-  inputBarVisible = false
 
   activeChatLogs = {
     username,
@@ -85,22 +148,58 @@ async function openChatLogsView(username, opts = {}) {
     query: '',
     scope: channel ? 'channel' : 'all',
   }
+  hsTakeoverSync()
   renderChatLogsView()
+  clLiveRoomSync()
   await fetchChatLogsPage()
 }
 
-function closeChatLogsView() {
-  if (!activeChatLogs) return
+// The server pushes this person's new archive lines (any channel the archive
+// hears, not just the ones this tab is in) to a socket that joined their
+// `ulog:` room. The background owns the socket; like a thread view, this tab
+// only names the room it is looking at (null leaves) and re-announces it so a
+// restarted service worker re-joins.
+const CL_ULOG_NAME_RE = /^[a-z0-9_]{1,40}$/
+// a youtube name arrives as "@handle"; the room is keyed by the bare handle
+const clRoomName = (u) => String(u || '').replace(/^@/, '')
+let _clRoom = null
+let _clRoomKeep = null
+function clLiveRoomSync() {
+  const st = activeChatLogs
+  const room =
+    st && CL_ULOG_NAME_RE.test(clRoomName(st.username)) && ['twitch', 'kick', 'youtube'].includes(st.platform)
+      ? `ulog:${st.platform}:${clRoomName(st.username)}`
+      : null
+  if (room === _clRoom && (room === null || _clRoomKeep)) return
+  _clRoom = room
+  safeSendMessage({ type: 'feed_thread', room })
+  if (_clRoomKeep) {
+    cleanup.clearInterval(_clRoomKeep)
+    _clRoomKeep = null
+  }
+  if (room) {
+    _clRoomKeep = cleanup.setPageIntervalIfVisible(() => {
+      if (_clRoom) safeSendMessage({ type: 'feed_thread', room: _clRoom })
+    }, 30000)
+  }
+}
+
+// Forget the open view without leaving its cell (a pane remount owns the rest).
+function dropChatLogsState() {
   activeChatLogs = null
+  clLiveRoomSync()
+  hsTakeoverSync()
   if (_clLoadMoreObs) {
     cleanup.untrackObserver(_clLoadMoreObs)
     _clLoadMoreObs = null
   }
-  // showInputBar owns the "may this tab have a composer" call (and keeps the
-  // visible flag in step) — the local tab list here was a third copy of it,
-  // already out of date: it never included modlog.
-  showInputBar()
-  if (typeof renderMessages === 'function') renderMessages(currentTab)
+}
+
+// × / Esc: logs is a cell, so closing it goes back to the tab's home cell.
+function closeChatLogsView() {
+  if (!activeChatLogs) return
+  dropChatLogsState()
+  mcLeaveSubPane()
 }
 
 async function fetchChatLogsPage() {
@@ -140,6 +239,115 @@ async function fetchChatLogsPage() {
   // "fetching history" hint and the user knows to retry shortly.
   if (resp.data.backfill_pending) state.backfillPending = true
   renderChatLogsView()
+}
+
+// A message the person sends WHILE their logs are open lands at the top of the
+// list as it arrives — the same chat line, in the archive's row shape — instead
+// of waiting for a reopen. Skipped while a search is showing (results are not a
+// timeline), and for anything that is not a plain chat line from this person on
+// this platform (and this channel, when the view is scoped to one).
+function chatLogsLive(msg) {
+  const st = activeChatLogs
+  if (!st || st.query || !msg || msg.hidden || msg.isHistory) return
+  if (msg.type && msg.type !== 'chat') return
+  const platform = String(msg.platform === 'yt' ? 'youtube' : msg.platform || 'twitch').toLowerCase()
+  if (platform !== st.platform) return
+  if (String(msg.login || msg.user || '').toLowerCase() !== st.username) return
+  const channel = String(msg.channel || '').toLowerCase()
+  if (st.channel && channel !== st.channel) return
+  if (typeof msg.text !== 'string' || !msg.text) return
+  const stamp = new Date(msg.time || Date.now()).toISOString()
+  // a refetch of the first page can hand back the line we already added live
+  if (st.rows.some((r) => r.live && r.timestamp === stamp && r.message === msg.text)) return
+
+  const r = {
+    id: msg.id,
+    live: true,
+    timestamp: stamp,
+    channel,
+    username: st.username,
+    display_name: msg.user,
+    message: msg.text,
+    platform,
+    user_id: msg.userId,
+    color: msg.color,
+  }
+  clInsertLive(r)
+}
+
+// A line the archive just heard (server push). The tab's own chat may already
+// have added the same line through chatLogsLive — that one stays; this is the
+// fallback for every channel the tab is NOT in.
+function chatLogsServerLive(row) {
+  const st = activeChatLogs
+  if (!st || st.query || !row || typeof row.message !== 'string' || !row.message) return
+  if (String(row.platform || '').toLowerCase() !== st.platform) return
+  if (String(row.username || '').toLowerCase() !== st.username) return
+  const channel = String(row.channel || '').toLowerCase()
+  if (st.channel && channel !== st.channel) return
+  const ts = new Date(row.timestamp).getTime()
+  if (Number.isNaN(ts)) return
+  for (const r of st.rows.slice(0, 40)) {
+    if (row.message_id && r.message_id === row.message_id) return
+    if (
+      r.live &&
+      r.message === row.message &&
+      r.channel === channel &&
+      Math.abs(new Date(r.timestamp).getTime() - ts) < 15000
+    ) {
+      // our own chat heard it first: keep that row, but adopt the archive's badges/ids
+      r.message_id = r.message_id || row.message_id
+      return
+    }
+  }
+  clInsertLive({ ...row, id: row.id || `srv-${row.message_id || ts}`, channel, username: st.username, srv: true })
+}
+
+// user-log:removed — archive lines were taken down. ids = those lines; after /
+// before = a timestamp window (both exclusive); neither = all of this person's
+// lines (in `channel`, when named). Pure: the rows that survive.
+function clRowsAfterRemoval(rows, d) {
+  const after = d.after ? Date.parse(d.after) : null
+  const before = d.before ? Date.parse(d.before) : null
+  const ids = Array.isArray(d.ids) ? d.ids : null
+  const channel = d.channel ? String(d.channel).toLowerCase() : ''
+  return rows.filter((r) => {
+    if (channel && String(r.channel || '').toLowerCase() !== channel) return true
+    if (ids && !ids.includes(r.message_id)) return true
+    const at = Date.parse(r.timestamp)
+    if (after !== null && !(at > after)) return true
+    if (before !== null && !(at < before)) return true
+    return false
+  })
+}
+function chatLogsServerRemoved(d) {
+  const st = activeChatLogs
+  if (!st || !d) return
+  if (String(d.platform || '').toLowerCase() !== st.platform) return
+  if (String(d.username || '').toLowerCase() !== st.username) return
+  const kept = clRowsAfterRemoval(st.rows, d)
+  if (kept.length === st.rows.length) return
+  st.rows = kept
+  renderChatLogsView()
+}
+
+function clInsertLive(r) {
+  const st = activeChatLogs
+  if (!st) return
+  st.rows.unshift(r)
+  if (st.rows.length > 500) st.rows.pop()
+
+  const list = document.querySelector('#hs-mc-subpane .hs-cl-list')
+  if (!list || list.querySelector('.hs-cl-empty')) {
+    renderChatLogsView() // first row into an empty view needs the whole frame
+    return
+  }
+  // Keep the reader's place: at the top, new lines just appear; scrolled down
+  // into older lines, the view must not slide under them.
+  const row = renderChatLogRow(r)
+  const atTop = list.scrollTop < 4
+  list.insertBefore(row, list.firstChild)
+  if (!atTop) list.scrollTop += row.offsetHeight
 }
 
 async function refreshChatLogs() {
@@ -229,7 +437,7 @@ function exportChatLogs(format) {
 }
 
 function renderChatLogsView() {
-  const msgsEl = document.getElementById('hs-mc-messages')
+  const msgsEl = document.getElementById('hs-mc-subpane')
   if (!msgsEl || !activeChatLogs) return
   msgsEl.textContent = ''
 
@@ -249,18 +457,11 @@ function renderChatLogsView() {
   tName.textContent = username
   const tSub = document.createElement('span')
   tSub.className = 'hs-cl-title-sub'
-  tSub.textContent = channel ? `#${channel}` : 'all channels'
+  tSub.textContent = channel ? `#${channel}` : t('mc_logs_all_channels')
   title.appendChild(tName)
   title.appendChild(tSub)
   hdr.appendChild(title)
 
-  const closeBtn = document.createElement('button')
-  closeBtn.className = 'hs-cl-close'
-  closeBtn.type = 'button'
-  closeBtn.title = 'close (Esc)'
-  closeBtn.textContent = '×'
-  closeBtn.addEventListener('click', closeChatLogsView)
-  hdr.appendChild(closeBtn)
   wrap.appendChild(hdr)
 
   // Controls
@@ -270,8 +471,8 @@ function renderChatLogsView() {
   const search = document.createElement('input')
   search.type = 'text'
   search.className = 'hs-cl-search'
-  search.placeholder = 'search…'
-  search.title = `search ${username}'s messages`
+  search.placeholder = t('mc_logs_search')
+  search.title = t('mc_logs_search_title', [username])
   search.value = query || ''
   let searchTimer = null
   search.addEventListener('input', () => {
@@ -285,11 +486,8 @@ function renderChatLogsView() {
     const scopeBtn = document.createElement('button')
     scopeBtn.className = 'hs-cl-scope'
     scopeBtn.type = 'button'
-    scopeBtn.textContent = scope === 'channel' ? `#${channel}` : 'all'
-    scopeBtn.title =
-      scope === 'channel'
-        ? `currently scoped to #${channel} — click to see all channels`
-        : `currently showing all channels — click to scope to #${channel}`
+    scopeBtn.textContent = scope === 'channel' ? `#${channel}` : t('mc_logs_all')
+    scopeBtn.title = scope === 'channel' ? t('mc_logs_scope_channel', [channel]) : t('mc_logs_scope_all', [channel])
     scopeBtn.addEventListener('click', async () => {
       const newScope = scope === 'channel' ? 'all' : 'channel'
       activeChatLogs.scope = newScope
@@ -307,7 +505,7 @@ function renderChatLogsView() {
   refreshBtn.className = 'hs-cl-export'
   refreshBtn.type = 'button'
   refreshBtn.textContent = '↻'
-  refreshBtn.title = 'refresh'
+  refreshBtn.title = t('mc_logs_refresh')
   refreshBtn.addEventListener('click', () => refreshChatLogs())
   ctrls.appendChild(refreshBtn)
 
@@ -315,7 +513,7 @@ function renderChatLogsView() {
   exportTxt.className = 'hs-cl-export'
   exportTxt.type = 'button'
   exportTxt.textContent = '.txt'
-  exportTxt.title = 'export as .txt'
+  exportTxt.title = t('mc_logs_export_txt')
   exportTxt.addEventListener('click', () => exportChatLogs('txt'))
   ctrls.appendChild(exportTxt)
 
@@ -323,20 +521,20 @@ function renderChatLogsView() {
   exportJson.className = 'hs-cl-export'
   exportJson.type = 'button'
   exportJson.textContent = '.json'
-  exportJson.title = 'export as .json'
+  exportJson.title = t('mc_logs_export_json')
   exportJson.addEventListener('click', () => exportChatLogs('json'))
   ctrls.appendChild(exportJson)
 
   // Public archive link — only meaningful when scoped to a channel (the
-  // public surface is /logs/<platform>/<channel>/<date>, channel-keyed).
+  // public surface is /search/logs/<platform>/<channel>/<date>, channel-keyed).
   if (channel) {
     const pub = document.createElement('a')
     pub.className = 'hs-cl-public-archive'
-    pub.href = `${HS_CL_PUBLIC_ORIGIN}/logs/${encodeURIComponent(activeChatLogs.platform)}/${encodeURIComponent(channel)}`
+    pub.href = `${HS_CL_PUBLIC_ORIGIN}/search/logs/${encodeURIComponent(activeChatLogs.platform)}/${encodeURIComponent(channel)}`
     pub.target = '_blank'
     pub.rel = 'noopener noreferrer'
-    pub.textContent = 'public archive ↗'
-    pub.title = `open #${channel}'s public chat log on heatsync.org`
+    pub.textContent = t('mc_logs_public')
+    pub.title = t('mc_logs_public_title', [channel])
     ctrls.appendChild(pub)
   }
 
@@ -352,14 +550,16 @@ function renderChatLogsView() {
     if (activeChatLogs.loadError) {
       // A failed request is not an empty archive — saying "no matches" for a
       // request that never succeeded is the same lie as the rest of this sweep.
-      empty.textContent = "couldn't load the archive — search or scroll again to retry"
+      empty.textContent = t('mc_logs_load_failed')
     } else if (activeChatLogs.backfillPending) {
       const src = activeChatLogs.platform === 'kick' ? 'kick archive' : 'logs.ivr.fi'
-      empty.textContent = `fetching historical logs from ${src}… try refresh in ~30s`
+      empty.textContent = t('mc_logs_backfill', [src])
     } else {
       empty.textContent = query
-        ? `no matches for "${query}"`
-        : `no archived messages from ${username}${channel ? ` in #${channel}` : ''} yet`
+        ? t('mc_logs_no_matches', [query])
+        : channel
+          ? t('mc_logs_none_in_channel', [username, channel])
+          : t('mc_logs_none', [username])
     }
     list.appendChild(empty)
   } else {
@@ -371,7 +571,7 @@ function renderChatLogsView() {
   if (!exhausted) {
     const sentinel = document.createElement('div')
     sentinel.className = 'hs-cl-loader'
-    sentinel.textContent = loading ? 'loading…' : 'scroll for older'
+    sentinel.textContent = loading ? t('content_card_loading') : t('mc_logs_scroll_older')
     list.appendChild(sentinel)
     // IntersectionObserver auto-fires when sentinel scrolls into view
     if (!loading && 'IntersectionObserver' in window) {
@@ -406,16 +606,34 @@ function renderChatLogRow(r) {
   row.className = 'hs-cl-row'
   if (r.deleted_at) row.classList.add('hs-cl-deleted')
 
-  const ts = document.createElement('span')
-  ts.className = 'hs-cl-ts'
-  if (r.timestamp) {
-    const d = new Date(r.timestamp)
-    if (!Number.isNaN(d.getTime())) {
-      ts.textContent = d.toISOString().replace('T', ' ').slice(5, 16)
-      ts.title = d.toLocaleString()
+  // Time sits right and IS the permalink (like the site's logTimeHtml): first
+  // in source so the float lands on the first line. Click copies the public
+  // /search/logs/ URL; modified/middle click opens it.
+  const d = r.timestamp ? new Date(r.timestamp) : null
+  if (d && !Number.isNaN(d.getTime())) {
+    const hhmmss = d.toISOString().slice(11, 19)
+    const url = buildChatLogPermalink(r)
+    const ts = document.createElement(url ? 'a' : 'span')
+    ts.className = 'hs-cl-time'
+    const time = document.createElement('time')
+    time.dateTime = d.toISOString()
+    time.textContent = hhmmss
+    ts.appendChild(time)
+    if (url) {
+      ts.href = url
+      ts.target = '_blank'
+      ts.rel = 'noopener'
+      ts.title = t('mc_logs_copy_permalink')
+      ts.setAttribute('aria-label', t('mc_logs_permalink_aria', [hhmmss]))
+      ts.addEventListener('click', (e) => {
+        e.stopPropagation()
+        if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey) return
+        e.preventDefault()
+        copyChatLogPermalink(ts, r)
+      })
     }
+    row.appendChild(ts)
   }
-  row.appendChild(ts)
 
   if (activeChatLogs && activeChatLogs.scope === 'all' && r.channel) {
     const ch = document.createElement('span')
@@ -424,69 +642,27 @@ function renderChatLogRow(r) {
     row.appendChild(ch)
   }
 
+  if (r.badges_html) appendArchiveBadges(row, r.badges_html)
+
   const name = document.createElement('span')
   name.className = 'hs-cl-user'
-  name.textContent = r.display_name || r.username || '?'
-  // Color + paint cosmetics — match the live chat renderer so the viewer's
-  // username display is consistent with what the user sees in chat. Walk:
-  // 1) knownColors map (live chat color, captured from IRC tags / Helix users)
-  // 2) twitch user id from knownUserIds map for the paint lookup
-  // 3) getMcPaintStyle returns a complete CSS style string (background-clip
-  //    gradient for paints, plain color: rgba(…) for solid-color paints)
-  // If neither is available, fall back to plain white (default).
-  try {
-    const ulow = (r.username || '').toLowerCase()
-    let color = null
-    if (typeof knownColors !== 'undefined' && knownColors instanceof Map) {
-      color = knownColors.get(ulow) || null
-    }
-    let paintApplied = false
-    if (typeof knownUserIds !== 'undefined' && knownUserIds instanceof Map && typeof getMcPaintStyle === 'function') {
-      // Platform-scoped key — a twitch and kick chatter sharing this username
-      // must never trade 7TV paints in the archive view either.
-      const uidKey = typeof userKey === 'function' ? userKey(ulow, r.platform) : ulow
-      const uid = knownUserIds.get(uidKey)
-      if (uid) {
-        // HeatSync paint (own-platform cosmetic) wins over 7TV — same precedence
-        // as the live sender row. Twitch-keyed only (see paints.js ID-SPACE note):
-        // a kick/yt uid must never index the twitch-space HS paint cache.
-        const isTwitch = !r.platform || r.platform === 'twitch'
-        if (isTwitch && typeof hasResolvedHsPaint === 'function' && hasResolvedHsPaint(String(uid))) {
-          applyHsPaintToElement(name, String(uid))
-          paintApplied = true
-        } else {
-          const paintCss = getMcPaintStyle(String(uid))
-          if (paintCss) {
-            name.style.cssText = paintCss
-            paintApplied = true
-          }
-        }
-      }
-    }
-    if (!paintApplied && color) name.style.color = color
-  } catch {}
+  // The archive row names the chatter (user_id + platform when the server sent
+  // them, else the twitch id chat already resolved for that name), so the name
+  // wears the same colour + heatsync paint + 7TV paint as in live chat. The
+  // row's own colour wins; ids it lacks are queued and repaint on arrival.
+  hsNameApply(name, {
+    name: r.display_name || r.username || '?',
+    userId: r.user_id,
+    platform: r.platform,
+    colour: r.color || r.user_color,
+    login: String(r.username || '').toLowerCase(),
+  })
   row.appendChild(name)
 
   const body = document.createElement('span')
   body.className = 'hs-cl-body'
   appendChatLogBody(body, r)
   row.appendChild(body)
-
-  // Permalink copy — hover-revealed ¶ that puts the public /logs/ URL on
-  // the clipboard. Matches server's chat-log-permalinks.ts pattern; every
-  // copied permalink is a backlink into the SEO acquisition surface.
-  if (buildChatLogPermalink(r)) {
-    const link = document.createElement('button')
-    link.className = 'hs-cl-permalink'
-    link.type = 'button'
-    link.textContent = '¶'
-    link.title = 'copy permalink'
-    link.addEventListener('click', (e) => {
-      e.stopPropagation()
-      copyChatLogPermalink(link, r)
-    })
-    row.appendChild(link)
-  }
 
   return row
 }
@@ -514,8 +690,10 @@ function clEmoteImg(host, src, alt) {
 // Fail open on neither set existing yet (never blocked before boot finishes)
 // since that mirrors every other blocked-check callsite's `typeof !== undefined` guard.
 function clEmoteBlocked(name, idOrHash) {
-  if (typeof blockedEmoteNames !== 'undefined' && name && blockedEmoteNames.has(name)) return true
   if (typeof blockedEmoteHashes !== 'undefined' && idOrHash && blockedEmoteHashes.has(String(idOrHash))) return true
+  // by name only where no key tells the emotes apart (rule 9)
+  if (typeof blockedEmoteNames !== 'undefined' && name && blockedEmoteNames.has(name))
+    return typeof emoteIsBlocked === 'function' ? emoteIsBlocked(name, { hash: idOrHash }) : true
   return false
 }
 
@@ -544,7 +722,97 @@ function clEmoteUrlAllowed(url) {
   }
 }
 
+// The server's own render of the line (message_html) knows every provider's
+// emotes — 7TV, BTTV, FFZ, twitch, kick — where emote_refs only carries
+// twitch/kick, so a 7TV emote like `1984` came out as plain text that could not
+// be hovered. It is read here as DATA, never inserted as markup: parsed in an
+// inert <template>, then rebuilt node by node — text stays text, an <img> only
+// survives as one of our own emote paths on an allowed host.
+const CL_HS_EMOTE_PATH = /^\/e\/(?:7tv|bttv|ffz|hs|twitch|kick)\/[A-Za-z0-9_-]{1,64}$/
+function clArchiveEmoteSrc(src) {
+  if (typeof src !== 'string') return null
+  if (src.startsWith('/')) return CL_HS_EMOTE_PATH.test(src) ? `https://heatsync.org${src}` : null
+  return clEmoteUrlAllowed(src) ? src : null
+}
+
+// Real badge art for the channel the line was posted in. badges_html is the
+// server's own render; read as DATA like message_html — only an <img> pointing
+// at heatsync's own badge mirror survives, rebuilt node by node.
+const CL_BADGE_PATH = /^\/(?:b\/(?:twitch|kick|youtube)\/[A-Za-z0-9_-]{1,64}|badges\/[a-z0-9_/-]{1,60}\.(?:svg|png))$/
+function appendArchiveBadges(row, html) {
+  if (typeof html !== 'string' || !html.includes('<img')) return
+  const tpl = document.createElement('template')
+  tpl.innerHTML = html
+  const wrap = document.createElement('span')
+  wrap.className = 'hs-cl-badges'
+  for (const n of tpl.content.querySelectorAll('img')) {
+    const src = n.getAttribute('src') || ''
+    if (!CL_BADGE_PATH.test(src)) continue
+    const img = document.createElement('img')
+    img.className = 'hs-cl-badge-img'
+    img.src = `https://heatsync.org${src}`
+    img.alt = (n.getAttribute('alt') || '').slice(0, 40)
+    img.title = img.alt
+    img.loading = 'lazy'
+    wrap.appendChild(img)
+  }
+  if (wrap.childNodes.length) row.appendChild(wrap)
+}
+
+// Text of a logged line with the same link rules as live chat: full urls,
+// plus partial/defanged ones ("watch?v=…") when that setting is on. Linkified as
+// escaped html, then rebuilt node by node — only http(s) anchors survive.
+function appendLoggedText(host, text) {
+  const raw = String(text == null ? '' : text)
+  if (typeof linksEnabled === 'undefined' || !linksEnabled || !raw) return appendTextWithHashtags(host, raw)
+  let html = raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+  html = html.replace(/https?:\/\/[^\s<]+/gi, (m) => `<a href="${m}" class="hs-mc-link hs-link">${m}</a>`)
+  html = linkifyPartialLinks(html)
+  if (!html.includes('<a ')) return appendTextWithHashtags(host, raw)
+  const tpl = document.createElement('template')
+  tpl.innerHTML = html
+  for (const n of tpl.content.childNodes) {
+    if (n.nodeName === 'A' && /^https?:\/\//i.test(n.getAttribute('href') || '')) {
+      const a = document.createElement('a')
+      a.className = 'hs-mc-link hs-link hs-cl-link'
+      a.href = n.getAttribute('href')
+      a.target = '_blank'
+      a.rel = 'noopener noreferrer'
+      a.textContent = n.textContent
+      a.addEventListener('click', (e) => e.stopPropagation())
+      host.appendChild(a)
+    } else appendTextWithHashtags(host, n.textContent || '')
+  }
+}
+
+/** True when the line was drawn from message_html (caller skips its own shapes). */
+function appendArchiveHtmlBody(host, html) {
+  if (typeof html !== 'string' || !html.includes('<img')) return false
+  const tpl = document.createElement('template')
+  tpl.innerHTML = html
+  const walk = (node) => {
+    for (const n of node.childNodes) {
+      if (n.nodeType === 3) appendLoggedText(host, n.nodeValue || '')
+      else if (n.nodeName === 'IMG') {
+        const alt = n.getAttribute('alt') || ''
+        const src = clArchiveEmoteSrc(n.getAttribute('src'))
+        if (src && !clEmoteBlocked(alt)) {
+          const prev = host.lastChild
+          clEmoteImg(host, src, alt)
+          // only a real overlay (something to sit on) goes zero-width + click-through;
+          // a lone zero-width emote is just an emote and must stay interactive
+          if ((n.classList.contains('zw') || n.classList.contains('zwo')) && prev?.tagName === 'IMG')
+            host.lastChild.classList.add('zw')
+        } else host.appendChild(document.createTextNode(alt))
+      } else if (n.nodeType === 1) walk(n)
+    }
+  }
+  walk(tpl.content)
+  return true
+}
+
 function appendChatLogBody(host, r) {
+  if (appendArchiveHtmlBody(host, r.message_html)) return
   const text = String(r.message || '')
   const refs = r.emote_refs || null
 
@@ -566,7 +834,7 @@ function appendChatLogBody(host, r) {
       let cursor = 0
       for (const span of spans) {
         if (span.s < cursor) continue
-        if (span.s > cursor) appendTextWithHashtags(host, text.slice(cursor, span.s))
+        if (span.s > cursor) appendLoggedText(host, text.slice(cursor, span.s))
         const slice = text.slice(span.s, span.e + 1)
         const altMatch = slice.match(/^\[emote:[^:]+:([^\]]+)\]$/)
         const altName = altMatch ? altMatch[1] : slice
@@ -576,7 +844,7 @@ function appendChatLogBody(host, r) {
         else host.appendChild(document.createTextNode(src ? altName : slice))
         cursor = span.e + 1
       }
-      if (cursor < text.length) appendTextWithHashtags(host, text.slice(cursor))
+      if (cursor < text.length) appendLoggedText(host, text.slice(cursor))
       return
     }
   }
@@ -584,7 +852,7 @@ function appendChatLogBody(host, r) {
   // Shape B — twitch name→url map (ext relay)
   const twitchEmotes = refs?.twitch || null
   if (!twitchEmotes) {
-    appendTextWithHashtags(host, text)
+    appendLoggedText(host, text)
     return
   }
   const parts = text.split(/(\s+)/)
@@ -593,7 +861,7 @@ function appendChatLogBody(host, r) {
     // blocked, OR the url fails the CDN allowlist (untrusted host) → plain
     // text; never set an unvalidated string straight into img.src.
     if (emoteUrl && !clEmoteBlocked(part) && clEmoteUrlAllowed(emoteUrl)) clEmoteImg(host, emoteUrl, part)
-    else appendTextWithHashtags(host, part)
+    else appendLoggedText(host, part)
   }
 }
 
@@ -601,9 +869,17 @@ function appendChatLogBody(host, r) {
 document.addEventListener(
   'keydown',
   (e) => {
-    if (e.key === 'Escape' && activeChatLogs) {
+    if (e.key !== 'Escape') return
+    if (activeChatLogs) {
       e.preventDefault()
       closeChatLogsView()
+      return
+    }
+    // Predictions/polls view — same convention, same file so the two takeover
+    // surfaces can't disagree about what Escape does.
+    if (typeof predViewOpen === 'function' && predViewOpen()) {
+      e.preventDefault()
+      closePredView()
     }
   },
   { signal: mcSignal, capture: true },
@@ -624,7 +900,7 @@ document.addEventListener(
   'pointerdown',
   (e) => {
     if (e.button !== 0) return
-    const x = e.target?.closest?.('.hs-cl-close, .hs-pcard-close')
+    const x = e.target?.closest?.('.hs-pcard-close, .hs-pv-close')
     if (!x) return
     e.preventDefault()
     e.stopPropagation()
@@ -634,7 +910,7 @@ document.addEventListener(
     }
     document.addEventListener('click', swallow, { capture: true, once: true, signal: mcSignal })
     cleanup.setTimeout(() => document.removeEventListener('click', swallow, { capture: true }), 350)
-    if (x.classList.contains('hs-cl-close')) closeChatLogsView()
+    if (x.classList.contains('hs-pv-close')) closePredView()
     else if (typeof closeProfileCard === 'function') closeProfileCard()
   },
   { signal: mcSignal, capture: true },

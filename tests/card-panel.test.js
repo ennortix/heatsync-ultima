@@ -1,0 +1,310 @@
+/**
+ * The overlay full card (src/multichat/profile-card.js renderProfileCardView)
+ * is the second extension surface migrated onto the shared card model/
+ * renderer (see tests/card-tooltip.test.js for the first — the hover
+ * tooltip). This pins the panel-only host hooks introduced for it:
+ *   - pcBuildSocials: Kick bio socials → payload.socials
+ *   - pcBuildSessionSheetRows: local session stats → ctx.extraSheet
+ *   - pcBuildModGroups: per-channel mod actions → ctx.modGroups (pure data;
+ *     card-render.js renders it, pcHandleModAction — tested via source
+ *     invariants below — wires the real behavior)
+ *   - the model + hsCardHtml('panel') call itself, and that every OLD
+ *     .hs-pcard-* class this surface used to build by hand is gone (except
+ *     the explicitly-kept close button / notes-section chrome, still on old
+ *     CSS pending the cleanup pass).
+ *
+ * profile-card.js has top-level side effects and cannot be imported (house
+ * pattern — see reply-name-opens-card.test.js, native-name-opens-current-
+ * card.test.js); the pure builders below are extracted as source text and
+ * evaluated for real, same technique as card-tooltip.test.js.
+ */
+import { describe, expect, test } from 'bun:test'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+
+const ROOT = join(import.meta.dir, '..')
+const CARD = readFileSync(join(ROOT, 'src', 'multichat', 'profile-card.js'), 'utf8')
+
+// the sliced builders call the bundle-global t(); resolve it from the en catalog
+const EN = JSON.parse(readFileSync(join(ROOT, 'src', '_locales', 'en', 'messages.json'), 'utf8'))
+globalThis.t = (key) => EN[key]?.message ?? key
+
+function slice(src, startMarker, endMarker) {
+  const start = src.indexOf(startMarker)
+  if (start === -1) throw new Error(`marker not found: ${startMarker}`)
+  const end = src.indexOf(endMarker, start)
+  if (end === -1) throw new Error(`end marker not found: ${endMarker}`)
+  return src.slice(start, end)
+}
+
+describe('pcBuildSocials — Kick bio socials as payload.socials', () => {
+  const src = slice(CARD, 'function pcBuildSocials(data) {', '\n// Native chat badges')
+  const pcBuildSocials = new Function(`${src}\nreturn pcBuildSocials`)()
+
+  test('null with no _kick_socials at all', () => {
+    expect(pcBuildSocials({})).toBeNull()
+    expect(pcBuildSocials(null)).toBeNull()
+  })
+
+  test('null when _kick_socials is present but every field is empty', () => {
+    expect(pcBuildSocials({ _kick_socials: {} })).toBeNull()
+  })
+
+  test('builds a plain `site @handle` entry per populated field, never an href', () => {
+    const out = pcBuildSocials({ _kick_socials: { twitter: 'xqc', instagram: 'xqc' } })
+    expect(out).toEqual([{ label: 'twitter @xqc' }, { label: 'instagram @xqc' }])
+  })
+
+  test('an absolute url is reduced to its handle', () => {
+    const out = pcBuildSocials({ _kick_socials: { youtube: 'https://youtube.com/@xqc' } })
+    expect(out).toEqual([{ label: 'youtube @xqc' }])
+  })
+
+  test('discord has no canonical URL shape — renders as a labeled entry with no href', () => {
+    const out = pcBuildSocials({ _kick_socials: { discord: 'xqc#0001' } })
+    expect(out).toEqual([{ label: 'discord: xqc#0001' }])
+    expect(out[0].href).toBeUndefined()
+  })
+})
+
+describe('pcBuildSessionSheetRows — local session stats as ctx.extraSheet', () => {
+  const src = slice(CARD, 'function pcBuildSessionSheetRows(username) {', '\n\n// Kick bio socials')
+  const makeFn = (stats) => new Function('getUserSessionStats', `${src}\nreturn pcBuildSessionSheetRows`)(() => stats)
+
+  test('empty when the user has no buffered messages', () => {
+    const fn = makeFn({ count: 0, firstTime: null, channels: new Set() })
+    expect(fn('nobody')).toEqual([])
+  })
+
+  test('always includes a msgs row when count > 0', () => {
+    const fn = makeFn({ count: 12, firstTime: null, channels: new Set() })
+    const rows = fn('x')
+    expect(rows).toEqual([{ k: 'session-msgs', label: 'session', value: '12' }])
+  })
+
+  test('channels row only when more than one channel was seen', () => {
+    const fn = makeFn({ count: 3, firstTime: null, channels: new Set(['a', 'b']) })
+    const rows = fn('x')
+    expect(rows.find((r) => r.k === 'session-channels')).toEqual({
+      k: 'session-channels',
+      label: 'channels',
+      value: '2',
+    })
+  })
+})
+
+describe('pcBuildModGroups — mod actions as ctx.modGroups (pure data)', () => {
+  const src = slice(CARD, 'function pcBuildModGroups(username, platform) {', '\n\n// Fires a mod-action')
+
+  function makeFn({ recent, isMod = true, isKickMod = true, selfUsername = 'viewer' } = {}) {
+    return new Function(
+      'getRecentMessagesFromUser',
+      'currentUsername',
+      'isModForSync',
+      'isKickModForSync',
+      `${src}\nreturn pcBuildModGroups`,
+    )(
+      () => recent || [],
+      selfUsername,
+      () => isMod,
+      () => isKickMod,
+    )
+  }
+
+  test('empty on your own profile — self-mod buttons are nonsense', () => {
+    const fn = makeFn({ recent: [{ platform: 'twitch', channel: 'forsen', id: 'm1', user: 'viewer' }] })
+    expect(fn('viewer')).toEqual([])
+  })
+
+  test('empty with no recent messages', () => {
+    const fn = makeFn({ recent: [] })
+    expect(fn('x')).toEqual([])
+  })
+
+  test('empty when you do not mod any channel the chatter posted in', () => {
+    const fn = makeFn({ recent: [{ platform: 'twitch', channel: 'forsen', id: 'm1', user: 'x' }], isMod: false })
+    expect(fn('x')).toEqual([])
+  })
+
+  test('one group per channel you mod, with the full action set', () => {
+    const fn = makeFn({ recent: [{ platform: 'twitch', channel: 'forsen', id: 'm1', user: 'x' }] })
+    const groups = fn('x')
+    expect(groups).toHaveLength(1)
+    expect(groups[0].channel).toBe('forsen')
+    expect(groups[0].platform).toBe('twitch')
+    expect(groups[0].msgId).toBe('m1')
+    expect(groups[0].actions.map((a) => a.action)).toEqual([
+      'delete',
+      'timeout',
+      'timeout',
+      'timeout',
+      'timeout',
+      'timeout',
+      'ban',
+      'unban',
+    ])
+  })
+
+  test('role grants (mod/vip) are twitch-only', () => {
+    const twitchFn = makeFn({ recent: [{ platform: 'twitch', channel: 'forsen', id: 'm1', user: 'x' }] })
+    expect(twitchFn('x')[0].roleActions.map((a) => a.kind)).toEqual(['mod', 'mod', 'vip', 'vip'])
+    const kickFn = makeFn({ recent: [{ platform: 'kick', channel: 'xqc', id: 'm1', user: 'x' }] })
+    expect(kickFn('x')[0].roleActions).toEqual([])
+  })
+
+  test('a message with no id disables the delete action, not the whole group', () => {
+    const fn = makeFn({ recent: [{ platform: 'twitch', channel: 'forsen', id: null, user: 'x' }] })
+    const del = fn('x')[0].actions.find((a) => a.action === 'delete')
+    expect(del.disabled).toBe(true)
+  })
+})
+
+describe('renderProfileCardView runs through the shared card pipeline (source invariants)', () => {
+  test('builds the model via hsCardModel and renders panel (embedded) or full (floating)', () => {
+    const view = slice(CARD, 'function renderProfileCardView() {', '\n\n// No-heatsync-profile view')
+    expect(view).toContain('hsCardModel(')
+    expect(view).toContain("variant: floating ? 'full' : 'panel'")
+    expect(view).toContain('modGroups: pcBuildModGroups(username, platform)')
+    expect(view).toContain('pcBuildSessionSheetRows(username)')
+    expect(view).toContain('socials: pcBuildSocials(data)')
+    expect(view).toContain('renderBadges: () => pcRenderBadgesHtml(data, username)')
+  })
+
+  test('a floating open (no overlay mounted) mounts at #hs-pcard-floating and positions/follows the anchor', () => {
+    const view = slice(CARD, 'function renderProfileCardView() {', '\n\n// No-heatsync-profile view')
+    expect(view).toContain('if (floating) pcPositionFloating(msgsEl)')
+    const resolve = slice(CARD, 'function pcResolveMount() {', '\n\nfunction renderProfileCardView')
+    expect(resolve).toContain("document.getElementById('hs-mc-messages')")
+    expect(resolve).toContain("el.id = 'hs-pcard-floating'")
+    const position = slice(CARD, 'function pcPositionFloating(mountEl) {', '\n}\n')
+    expect(position).toContain('positionTooltipAtElement(card, anchorEl)')
+    expect(position).toContain('pcFollowAnchor(anchorEl, card)')
+  })
+
+  test('the floating card closes itself if its anchor leaves the DOM (anchor-gone, not just scroll-away)', () => {
+    const follow = slice(CARD, 'function pcFollowAnchor(anchorEl, cardEl) {', '\n}\n')
+    expect(follow).toContain('if (!anchorEl.isConnected)')
+    expect(follow).toContain('closeProfileCard()')
+  })
+
+  test('role=dialog + focus-in-once + focus-return-on-close (F-ext-4 parity — see profile-card-context-menu-aria.test.js)', () => {
+    const view = slice(CARD, 'function renderProfileCardView() {', '\n\n// No-heatsync-profile view')
+    expect(view).toContain(`card.setAttribute('role', 'dialog')`)
+    expect(view).toContain('if (!activeProfileCard.focusMoved)')
+  })
+
+  test('followage comes from the same /api/card fetch as the profile, folded into extraSheet, never DOM-patched', () => {
+    const view = slice(CARD, 'function renderProfileCardView() {', '\n\n// No-heatsync-profile view')
+    expect(view).toContain('...(activeProfileCard.followageRows || [])')
+    expect(view).toContain('followageFetchedFor !== username')
+    // No separate request for the common case — resolveFollowageRows only
+    // fires the (twitch-api.js) gql fallback when activeProfileCard.followage
+    // came back degraded; otherwise it folds payload.followage straight in.
+    expect(view).toContain('resolveFollowageRows(username, channelLogin, activeProfileCard.followage')
+    expect(view).toContain('renderProfileCardView()') // re-render, not a sheet-row DOM patch
+  })
+
+  test('openProfileCard fetches one POST /api/card, not a separate profile + followage pair', () => {
+    const open = slice(
+      CARD,
+      'async function openProfileCard(username, platform, opts = {}) {',
+      '\nasync function pcFetchKickEnrich',
+    )
+    expect(open).toContain("fetchCardPayload(platform || 'twitch', username, channelLogin)")
+    expect(open).not.toContain('/api/profile/')
+    expect(open).not.toContain('/api/twitch/followage')
+  })
+
+  test('every old .hs-pcard-id/.hs-pcard-mod/.hs-pcard-actions DOM-building class is gone', () => {
+    const view = slice(CARD, 'function renderProfileCardView() {', '\n\n// No-heatsync-profile view')
+    expect(view).not.toMatch(/hs-pcard-(id|mod|actions|sheet|hero|avatar|body)\b/)
+  })
+
+  test('every button the card shows a key for lands on an action pcHandleCardAction handles', () => {
+    // the keys themselves are the shared model's (tests/card-hotkeys.test.js); this pins the other end:
+    // a key presses a button, and a button that does nothing would be a lie with an underline on it
+    const fn = slice(CARD, 'function pcHandleCardAction(actionKey, btn) {', '\n}\n')
+    for (const action of ['follow', 'whisper', 'dm', 'mention', 'mute', 'block', 'addchannel', 'clip', 'gift']) {
+      expect(fn).toContain(`case '${action}':`)
+    }
+  })
+
+  test('pcHandleCardAction dispatches every action key to its existing toggle/nav function', () => {
+    const fn = slice(CARD, 'function pcHandleCardAction(actionKey, btn) {', '\n}\n')
+    for (const call of [
+      'pcToggleFollow(',
+      'pcDoWhisper(',
+      'pcDoDm(',
+      'pcMention(',
+      'pcToggleMute(',
+      'pcToggleBlock(',
+      'pcAddAsChannel(',
+    ]) {
+      expect(fn).toContain(call)
+    }
+  })
+
+  test('close dispatches to closeProfileCard', () => {
+    const fn = slice(CARD, 'function pcHandleCardAction(actionKey, btn) {', '\n}\n')
+    expect(fn).toContain("case 'close':")
+    expect(fn).toContain('closeProfileCard()')
+  })
+
+  test('the click delegator matches .hs-card-close too — closeButtonHtml is not a .hs-card-action', () => {
+    const handlers = slice(CARD, 'function setupProfileCardHandlers() {', '\n\n// Dispatches a click')
+    expect(handlers).toMatch(/closest\(['"]\.hs-card-action,\s*\.hs-card-close['"]\)/)
+  })
+
+  test('the panel has no ×/links inside the card: its destinations are cells of the 2nd row (pcMountDestRow), closed by the ← back tab', () => {
+    const view = slice(CARD, 'function renderProfileCardView() {', '\n\n// No-heatsync-profile view')
+    expect(view).toContain('navInBar: !floating')
+    expect(view).toMatch(/if\s*\(!floating\)\s*pcMountDestRow\(hsCardNavItems\(/)
+    expect(view).not.toContain("closeBtn.className = 'hs-pcard-close'")
+    const mount = slice(CARD, 'function pcMountDestRow(items) {', '\n}\n')
+    expect(mount).toContain('hsPaneMountRow(items)')
+    expect(mount).not.toContain('closeProfileCard')
+    const pane = readFileSync(join(ROOT, 'src', 'multichat', 'pane-panel.js'), 'utf8')
+    expect(pane).toContain("hsXButton('hs-x-cell'")
+    expect(pane).toContain('hs-mc-subrow')
+  })
+
+  test('addchannel is dispatched, even though it is not a card-model.js ACTION_DEFS key', () => {
+    const fn = slice(CARD, 'function pcHandleCardAction(actionKey, btn) {', '\n}\n')
+    expect(fn).toContain("case 'addchannel':")
+  })
+
+  test('clip is dispatched with the button (two-click UX needs it), twitch-only, shown only while live', () => {
+    const dispatch = slice(CARD, 'function pcHandleCardAction(actionKey, btn) {', '\n}\n')
+    expect(dispatch).toContain("case 'clip':")
+    expect(dispatch).toContain('pcDoClip(username, platform, btn)')
+    const view = slice(CARD, 'function renderProfileCardView() {', '\n\n// No-heatsync-profile view')
+    expect(view).toContain("platform === 'twitch' && (data.twitch_is_live || data.live_status?.twitch)")
+    expect(view).toContain("clipBtn.dataset.hsCardAction = 'clip'")
+  })
+
+  test('pcDoClip: second click (edit url already on the button) opens the editor instead of re-clipping', () => {
+    const fn = slice(CARD, 'async function pcDoClip(username, platform, btn) {', '\n}\n')
+    expect(fn).toContain('if (btn.dataset.editUrl)')
+    expect(fn).toContain('window.open(safeUrl(btn.dataset.editUrl)')
+  })
+
+  test('pcDoClip posts to /api/twitch/clip and copies the share url on success', () => {
+    const fn = slice(CARD, 'async function pcDoClip(username, platform, btn) {', '\n}\n')
+    expect(fn).toContain(
+      "apiFetch('/api/twitch/clip', { method: 'POST', auth: true, body: { channel: channelLogin } })",
+    )
+    expect(fn).toContain('navigator.clipboard.writeText(clipUrl)')
+  })
+})
+
+describe('pcApplyBanner/pcApplyPronouns target the new .hs-card-* markup', () => {
+  test('no function in this file still queries the old .hs-pcard-hero/-avatar/-id-text/-pronoun classes', () => {
+    expect(CARD).not.toMatch(/hs-pcard-(hero|avatar|id-text|id-chips|pronoun)\b/)
+  })
+
+  test('accent is applied via the shared hsExtApplyAccent (CSSOM-at-mount, not style=)', () => {
+    const fn = slice(CARD, 'async function pcApplyBanner(card, chain) {', '\n}\n')
+    expect(fn).toContain('hsExtApplyAccent(root, banner.accent)')
+    expect(fn).not.toContain('style.setProperty')
+  })
+})

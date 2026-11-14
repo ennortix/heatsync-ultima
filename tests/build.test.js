@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { computeBuildStamp } from '../scripts/lib/build-stamp.mjs'
 
 const ROOT = new URL('..', import.meta.url).pathname
 const DIST_CHROME = join(ROOT, 'dist', 'chrome')
@@ -19,9 +20,7 @@ const coreFiles = [
   'manifest.json',
   'background.js',
   'content.js',
-  'multichat-twitch.js',
-  'multichat-kick.js',
-  'multichat-youtube.js',
+  'multichat-core.js',
   'heatsync-button.js',
   'shared-utils.js',
   'popup.html',
@@ -63,6 +62,46 @@ t('firefox manifest is valid json with required fields', () => {
   expect(typeof m.description).toBe('string')
   expect(Array.isArray(m.content_scripts)).toBe(true)
   expect(Array.isArray(m.background?.scripts)).toBe(true)
+})
+
+// ── CSS-to-template-literal escaping ──────────────────────────────────────────
+// build.js concatenates every src/multichat/styles/*.css fragment and embeds
+// it into a JS template literal. A stray backtick or ${ in ANY fragment
+// (mirrored from the site or not) used to hard-error the plain build — it
+// only survived minified builds because minify strips comments. This proves
+// escapeCssForTemplateLiteral() makes any CSS text — including backslashes,
+// backticks, and ${ — round-trip safely through real template-literal eval.
+// Extracted from build.js's own source (it has no exports; build.js is a
+// script, not a module) rather than duplicated, so this test rots if the
+// escape logic ever drifts out of sync with what actually ships.
+const BUILD_SRC = readFileSync(join(ROOT, 'build.js'), 'utf8')
+
+function extractEscapeFn() {
+  const start = BUILD_SRC.indexOf('function escapeCssForTemplateLiteral(cssBody) {')
+  if (start === -1) throw new Error('escapeCssForTemplateLiteral not found in build.js')
+  const end = BUILD_SRC.indexOf('\n}', start) + 2
+  const fnSrc = BUILD_SRC.slice(start, end)
+  return new Function(`${fnSrc}\nreturn escapeCssForTemplateLiteral`)()
+}
+
+test('escapeCssForTemplateLiteral round-trips backtick + dollar-brace + backslash through a real template literal', () => {
+  const escapeCssForTemplateLiteral = extractEscapeFn()
+  const original = [
+    '/* a comment with a `backtick` and a ${trap} */',
+    '.hs-card-x::after { content: "\\2014"; }',
+    'a[data-x="${not-js}"] { color: red; }',
+  ].join('\n')
+
+  const escaped = escapeCssForTemplateLiteral(original)
+  const rebuilt = new Function(`return \`${escaped}\``)()
+
+  expect(rebuilt).toBe(original)
+})
+
+test('escapeCssForTemplateLiteral leaves plain CSS (no backtick/${/backslash) untouched', () => {
+  const escapeCssForTemplateLiteral = extractEscapeFn()
+  const plain = '.hs-card { border: 1px solid #808080; padding: 4px 8px; }'
+  expect(escapeCssForTemplateLiteral(plain)).toBe(plain)
 })
 
 // ── version sync ──────────────────────────────────────────────────────────────
@@ -144,4 +183,24 @@ for (const dir of [DIST_CHROME, DIST_FIREFOX]) {
 test('src/lib/cleanup.js re-exports the bundle-scope cleanup binding', () => {
   const src = readFileSync(join(ROOT, 'src', 'lib', 'cleanup.js'), 'utf8')
   expect(/\nconst cleanup = window\.heatsyncCleanup\s*$/m.test(src)).toBe(true)
+})
+
+// ── built bundle freshness ───────────────────────────────────────────────────
+// The bundles are not tracked: `bun run build.js` makes them from src/. What
+// can still go stale is a dist/ built from an older src/ and then zipped or
+// loaded (store build 1.7.75 shipped a bundle that threw "RESERVED_PATHS is not
+// defined" for exactly that reason, when the bundle was still committed). Every
+// content-script bundle carries a build stamp (a digest of src/ + build.js,
+// swapped in from bootstrap.js's '__HS_BUILD_STAMP__' literal) — compare it
+// against the CURRENT repo state the same way build.js computes it.
+//
+// Gated on HS_VERIFY_DIST like the rest of this file's t()-tests: it needs a
+// built dist/, which build.js's pre-build `bun test` does not have yet.
+t('dist/chrome/multichat-core.js build stamp is the digest of this src/', () => {
+  const src = readFileSync(join(ROOT, 'dist', 'chrome', 'multichat-core.js'), 'utf8')
+  const m = src.match(/build:\s*['"]([0-9a-f]{12})['"]/)
+  expect(m).not.toBeNull()
+  // The same digest every machine computes for the same inputs — so this
+  // holds on a plain checkout, which the old `<sha>-<minute>` stamp never could.
+  expect(m[1]).toBe(computeBuildStamp(ROOT))
 })

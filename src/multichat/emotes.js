@@ -31,11 +31,10 @@ function mcHasExternalSource() {
 }
 
 // Which third-party provider (7tv/bttv/ffz) wins a same-name collision within
-// a tier (channel or global). Bridged to the settings registry
-// (emoteProviderPriority, default '7tv' — matches the pre-existing hardcoded
-// winner) via _RUNTIME_BRIDGE in main.js. Read live by _buildChannelEmoteCache
-// and the global-emotes loader in loadEmotes() below.
-let emoteProviderPriority = '7tv'
+// a tier (channel or global): ffz — its API answers at once and its images
+// load, so Tab and the picker lead with it (mellen, 2026-10-23). Read by
+// _buildChannelEmoteCache and the global-emotes loader in loadEmotes() below.
+const emoteProviderPriority = 'ffz'
 
 // Per-provider result caches keyed per-query. AbortController cancels stale
 // in-flight requests on each keystroke. Results ACCUMULATE across pages
@@ -46,9 +45,23 @@ const mcProviderInFlight = { '7tv': false, bttv: false, ffz: false, hs: false }
 const mcProviderPage = { '7tv': 0, bttv: 0, ffz: 0, hs: 0 } // pages loaded so far (0 = none)
 const mcProviderExhausted = { '7tv': false, bttv: false, ffz: false, hs: false }
 const mcProviderSeenIds = { '7tv': new Set(), bttv: new Set(), ffz: new Set(), hs: new Set() }
+// The picker shows one tile per NAME, so a page of 60 'dance' emotes can be 60
+// copies of the five names already shown. Per provider: the names seen, and how
+// many pages in a row have been fetched on a user's behalf without adding one.
+const mcProviderSeenNames = { '7tv': new Set(), bttv: new Set(), ffz: new Set(), hs: new Set() }
+const mcProviderEmptyRun = { '7tv': 0, bttv: 0, ffz: 0, hs: 0 }
+const MC_EMPTY_PAGES_MAX = 6
+// 7tv serves a cold emote at ~1s, so 'load more' waited on a page's worth of
+// them. Read one page AHEAD instead: once a page lands, fetch the next page's
+// list and warm its images in the browser cache, so the click finds both ready.
+// { q, page, promise } per provider; only providers in MC_PREFETCH_AHEAD use it.
+const mcProviderAhead = { '7tv': null, bttv: null, ffz: null, hs: null }
+const MC_PREFETCH_AHEAD = new Set(['7tv'])
 // A page shorter than the provider's page size means we hit the tail. 'hs' is
 // single-page (the endpoint returns top-100 by popularity, no pagination).
-const MC_PAGE_SIZE = { '7tv': 60, bttv: 100, ffz: 200, hs: 100 }
+// 7tv: a small page. Its CDN serves a cold emote in ~1s and a page's worth of
+// images queues behind six connections, so 60 a click meant a 10-15s blank grid.
+const MC_PAGE_SIZE = { '7tv': 24, bttv: 100, ffz: 200, hs: 100 }
 const _mcProviderAborts = { '7tv': null, bttv: null, ffz: null, hs: null }
 let mcCurrentQuery = ''
 // Exact-match filter — when on, picker search shows only emotes whose name
@@ -79,11 +92,7 @@ function mcRerenderSearch(query) {
   mcRemoteEmoteIndex.clear()
   if (!query) {
     _mcSearchRenderedQuery = ''
-    const allMap = new Map()
-    for (const [k, v] of viewerPersonalEmotes) allMap.set(k, v)
-    for (const cc of activeTabEmotePools()) for (const [k, v] of cc) if (!allMap.has(k)) allMap.set(k, v)
-    for (const [k, v] of emoteCache) if (!allMap.has(k)) allMap.set(k, v)
-    grid.innerHTML = renderEmoteSections(groupEmotes(allMap))
+    grid.innerHTML = renderEmoteSections(groupEmotes(pickerBaseEmotes()))
     attachChunkObserver(grid)
     markPickerDirty()
     return
@@ -95,6 +104,7 @@ function mcRerenderSearch(query) {
   // `pop` is a monotonic insertion counter, so already-shown tiles keep a
   // stable order when load-more appends new pages.
   const seenNames = new Set()
+  const seenVariantIds = new Set()
   const entries = []
   let pop = 0
   const matchQuality = (nl) => (nl === query ? 0 : nl.startsWith(query) ? 1 : nl.includes(query) ? 2 : 3)
@@ -135,23 +145,37 @@ function mcRerenderSearch(query) {
     if (!mcPickerSources.has(p)) continue
     if (mcProviderLastQuery[p] !== query) continue
     for (const r of mcProviderResults[p]) {
-      if (!r.name || seenNames.has(r.name)) continue
+      if (!r.name) continue
+      // Once the name is typed in full, every upload of it is its own tile —
+      // 7TV holds hundreds of 'dance' and they are different art. Told apart by
+      // id; all paste the same name, and the one you click is the one added.
+      const exactName = r.name.toLowerCase() === query
+      const variant = seenNames.has(r.name) && exactName && !!r.id && !seenVariantIds.has(r.id)
+      if (seenNames.has(r.name) && !variant) continue
       const mq = matchQuality(r.name.toLowerCase())
       if (mcExactMatch && mq !== 0) continue
       seenNames.add(r.name)
       // state='remote' — unowned picker result, click handler routes through
       // addEmoteToInventory to persist. Auto-add-on-send also commits the slot.
+      if (r.id && exactName) seenVariantIds.add(r.id)
+      const vkey = variant ? `${r.name}#${r.id}` : r.name
       entries.push({
         name: r.name,
         // source tracks the emote's real provider (r.provider), which equals the
         // bucket key p for third-party but is 'heatsync' for the 'hs' directory —
         // keeps source/provider aligned for state + tooltip + re-add.
-        emote: { source: r.provider || p, state: 'remote', url: r.url, provider: r.provider },
+        emote: {
+          source: r.provider || p,
+          state: 'remote',
+          url: r.url,
+          provider: r.provider,
+          variant: variant ? r.id : '',
+        },
         mq,
         loc: 3,
         pop: pop++,
       })
-      mcRemoteEmoteIndex.set(r.name, { url: r.url, provider: r.provider, id: r.id, zeroWidth: !!r.zeroWidth })
+      mcRemoteEmoteIndex.set(vkey, { url: r.url, provider: r.provider, id: r.id, zeroWidth: !!r.zeroWidth })
     }
   }
   entries.sort((a, b) => a.mq - b.mq || a.loc - b.loc || a.pop - b.pop || a.name.localeCompare(b.name))
@@ -205,7 +229,7 @@ const MC_SEVEN_TV_V4_GQL = `query SearchEmotes($query: String!, $page: Int!, $pe
   }`
 
 async function mcSearch7tvApi(q, signal, opts) {
-  const perPage = opts && Number.isFinite(opts.perPage) ? opts.perPage : 60
+  const perPage = opts && Number.isFinite(opts.perPage) ? opts.perPage : MC_PAGE_SIZE['7tv']
   const page = opts && Number.isFinite(opts.page) ? opts.page : 1
   const resp = await fetch('https://api.7tv.app/v4/gql', {
     method: 'POST',
@@ -222,7 +246,7 @@ async function mcSearch7tvApi(q, signal, opts) {
   const items = data?.data?.emotes?.search?.items || []
   return items.map((e) => ({
     name: e.defaultName,
-    url: `https://cdn.7tv.app/emote/${e.id}/1x.avif`,
+    url: `https://cdn.7tv.app/emote/${e.id}/1x.webp`, // webp like every other 7TV url here: avif is slower to decode and missing for older emotes
     provider: '7tv',
     id: e.id,
     animated: !!e.flags?.animated,
@@ -277,7 +301,10 @@ async function mcSearchHsApi(q, signal, opts) {
     // protocol (chip + endpoint param), so the rendered emote stays consistent.
     provider: 'heatsync',
     id: e.id,
-    animated: !!e.animated,
+    // No `animated` here on purpose: the search endpoint reports false for every
+    // upload, animated webp included, so the flag says nothing. Whether a heatsync
+    // file moves is the file's business — deriveStaticEmoteSrc never reads the
+    // flag for these urls (it always proxies a still unless animation is 'always').
   }))
 }
 
@@ -292,6 +319,9 @@ const MC_PROVIDER_FETCHERS = {
 function mcResetProvider(p) {
   mcProviderResults[p] = []
   mcProviderSeenIds[p].clear()
+  mcProviderSeenNames[p].clear()
+  mcProviderEmptyRun[p] = 0
+  mcProviderAhead[p] = null
   mcProviderPage[p] = 0
   mcProviderExhausted[p] = false
   mcProviderInFlight[p] = false
@@ -313,7 +343,11 @@ function mcFetchProviderPage(p, q) {
     mcProviderInFlight[p] = false
     return
   }
-  fn(q, ac.signal, { page })
+  // the page-ahead read, if it is for exactly this query and page
+  const ahead = mcProviderAhead[p]
+  mcProviderAhead[p] = null
+  const run = ahead && ahead.q === q && ahead.page === page ? ahead.promise : fn(q, ac.signal, { page })
+  run
     .then((items) => {
       if (ac.signal.aborted || mcCurrentQuery !== q) return
       mcProviderInFlight[p] = false
@@ -322,12 +356,30 @@ function mcFetchProviderPage(p, q) {
       // A short page means the tail — stop offering more for this provider.
       if (!Array.isArray(items) || items.length < MC_PAGE_SIZE[p]) mcProviderExhausted[p] = true
       const seen = mcProviderSeenIds[p]
+      let newNames = 0
       for (const it of items || []) {
         const key = it.id || it.name
         if (key && seen.has(key)) continue
         if (key) seen.add(key)
         mcProviderResults[p].push(it)
+        // exact-name uploads each show (see mcRerenderSearch), so they count as new
+        const shown = it.name && it.name.toLowerCase() === q.toLowerCase() ? key : it.name
+        if (shown && !mcProviderSeenNames[p].has(shown)) {
+          newNames++
+          mcProviderSeenNames[p].add(shown)
+        }
       }
+      // A page of repeats shows the reader nothing, and 'load more' looks dead.
+      // Keep going (bounded) until a page adds a name or the provider runs out.
+      mcProviderEmptyRun[p] = newNames ? 0 : mcProviderEmptyRun[p] + 1
+      if (!newNames && page > 1 && !mcProviderExhausted[p]) {
+        if (mcProviderEmptyRun[p] >= MC_EMPTY_PAGES_MAX) mcProviderExhausted[p] = true
+        else
+          setTimeout(() => {
+            if (mcCurrentQuery === q) mcFetchProviderPage(p, q)
+          }, 0)
+      }
+      if (newNames && !mcProviderExhausted[p]) mcPrefetchAhead(p, q, page + 1)
       document.dispatchEvent(new CustomEvent('hs-mc-search-results-ready', { detail: { query: q, provider: p } }))
     })
     .catch((err) => {
@@ -337,6 +389,30 @@ function mcFetchProviderPage(p, q) {
       mcProviderExhausted[p] = true
       document.dispatchEvent(new CustomEvent('hs-mc-search-results-ready', { detail: { query: q, provider: p } }))
     })
+}
+
+// Fetch page `page` for a slow provider ahead of the click and warm its images.
+// Never touches the accumulated results; a miss just means the click fetches it.
+function mcPrefetchAhead(p, q, page) {
+  if (!MC_PREFETCH_AHEAD.has(p) || mcProviderAhead[p]) return
+  const fn = MC_PROVIDER_FETCHERS[p]
+  if (!fn) return
+  const promise = fn(q, new AbortController().signal, { page })
+  promise
+    .then((items) => {
+      if (mcCurrentQuery !== q) return
+      for (const it of items || []) {
+        if (!it.url) continue
+        const im = new Image()
+        im.decoding = 'async'
+        im.src = it.url
+      }
+    })
+    .catch(() => {
+      // a failed read-ahead is not an error: the click fetches the page itself
+      if (mcProviderAhead[p] && mcProviderAhead[p].promise === promise) mcProviderAhead[p] = null
+    })
+  mcProviderAhead[p] = { q, page, promise }
 }
 
 // Initial search for a new query — reset pagination per provider (aborting any
@@ -403,17 +479,34 @@ let emoteSize = 1
 // static=1 (server extracts the first frame, 30-day immutable cache).
 // data-emote-url keeps the ORIGINAL url for tooltips/copy/re-add.
 let emoteAnimationMode = 'always'
-function staticEmoteSrc(url) {
-  if (emoteAnimationMode === 'always' || !url) return url
+// Mode-independent half of staticEmoteSrc below — the offscreen idle gate
+// needs the static variant of a URL even while emoteAnimationMode is
+// 'always' (that's the one mode staticEmoteSrc itself short-circuits on).
+// The one static-url deriver; nothing else computes a static variant.
+// `animated` is the emote's own flag (7TV/FFZ/BTTV metadata). 7TV and BTTV only
+// host a static file for ANIMATED emotes — asking for it on a static emote is a
+// 404, which the page-wide img-error fallback then retried through
+// heatsync.org once per img (86 requests / 30s on one busy twitch channel; the
+// bttv half was still 45 / 30s on 10-04, and the retry 404s too — a broken img).
+// Unknown (inventory rows carry no flag) keeps the original url: an animated
+// emote keeps animating offscreen, a static one never 404s.
+function deriveStaticEmoteSrc(url, animated) {
+  if (!url) return url
   if (url.indexOf('/api/emote-proxy') !== -1) return url
   // 7TV: Nx.{avif,webp,gif} → Nx_static.{avif,webp,gif} (covers avif, which
   // the old gif/webp-only regex missed on Chrome)
-  if (url.includes('cdn.7tv.app')) return url.replace(/\/(\dx)\.(avif|webp|gif)(\?|$)/i, '/$1_static.$2$3')
+  if (url.includes('cdn.7tv.app')) {
+    if (animated !== true) return url
+    return url.replace(/\/(\dx)\.(avif|webp|gif)(\?|$)/i, '/$1_static.$2$3')
+  }
   // Twitch native: /default/ format token → /static/ (extensionless URLs;
   // identical image for non-animated emotes, so no animated-detection needed)
   if (url.includes('static-cdn.jtvnw.net/emoticons/')) return url.replace('/default/', '/static/')
   // BTTV: /emote/{id}/{size} → /emote/{id}/static/{size}
-  if (url.includes('cdn.betterttv.net/emote/')) return url.replace(/(\/emote\/[a-f0-9]+)\//i, '$1/static/')
+  if (url.includes('cdn.betterttv.net/emote/')) {
+    if (animated !== true) return url
+    return url.replace(/(\/emote\/[a-f0-9]+)\//i, '$1/static/')
+  }
   // Kick: extensionless /fullsize URLs have no CDN static variant — proxy
   // them (files.kick.com is allowlisted server-side; static pngs pass through)
   if (/files\.kick\.com\/emotes\//i.test(url))
@@ -421,51 +514,301 @@ function staticEmoteSrc(url) {
   if (!/\.(gif|webp)(\?|$)/i.test(url)) return url
   return `https://heatsync.org/api/emote-proxy?url=${encodeURIComponent(url)}&static=1`
 }
+function staticEmoteSrc(url, animated) {
+  if (emoteAnimationMode === 'always' || !url) return url
+  return deriveStaticEmoteSrc(url, animated)
+}
+
+// ── offscreen idle gate (animateEmotes: 'always') ───────────────────────────
+// 'hover'/'never' already render static srcs (see staticEmoteSrc above) — the
+// only mode with a real cost is 'always', where every row's animated
+// webp/avif keeps its own decoder running for as long as the img stays in
+// the DOM. At DOM_RENDER_CAP=500 a busy channel means ~470 offscreen rows
+// decoding animation forever. Same tax paints.js's viewport gate exists for
+// (see its "viewport gate" section) — a CSS animation can be paused, a
+// decoded raster image can't, so the only lever is swapping the img away
+// from the animated url while it's off-screen and swapping it back with
+// enough runway (rootMargin) that a scroll never uncovers a frozen frame.
+//
+// Reuses the render path's own primitives instead of forking a second
+// static-url deriver or a second stash convention: data-emote-url on the
+// wrapper (set at render time, see hsPaintRender-style templates above) is
+// already the stable ORIGINAL animated url, so there is nothing to stash —
+// restoring is just writing that same url back.
+const hsIdleEmoteRows = new Set()
+let hsIdleEmoteObserver = null
+let hsIdleEmoteSweepScheduled = false
+let hsIdleEmoteSweepForced = false
+let hsIdleEmoteLastDiscoverAt = 0
+const HS_EMOTE_IDLE_DISCOVER_MIN_MS = 250
+
+/** Swap (or restore) every animated emote img in one row. Class/src writes
+ * only — no layout read, so this is safe to call straight from an IO
+ * callback without fighting the chat pane's scroll-pin. */
+function hsSwapRowEmotesForIdle(row, idle) {
+  for (const img of row.querySelectorAll('img.hs-mc-emote')) {
+    const wrap = img.closest('.hs-mc-emote-wrapper')
+    const orig = wrap?.dataset?.emoteUrl
+    if (!orig) continue
+    if (idle) {
+      // Only swap a row still showing the true original — a static/avif
+      // fallback already in place (hsStaticFell/hsAvifFell) or a prior idle
+      // swap must not be clobbered.
+      if (img.src !== orig) continue
+      const staticSrc = deriveStaticEmoteSrc(orig, wrap.dataset.animated === '1')
+      if (staticSrc === orig) continue // no static variant for this CDN/url
+      img.src = staticSrc
+    } else if (img.src !== orig) {
+      img.src = orig
+    }
+  }
+}
+
+function ensureHsEmoteIdleObserver() {
+  if (hsIdleEmoteObserver || typeof IntersectionObserver !== 'function') return hsIdleEmoteObserver
+  // No root, same reasoning as paints.js's viewport gate: this module
+  // doesn't know which pane a row lives in. The margin keeps a screen of
+  // rows warm either side so a scroll never uncovers a frozen frame.
+  hsIdleEmoteObserver = new IntersectionObserver(
+    (entries) => {
+      for (const entry of entries) hsSwapRowEmotesForIdle(entry.target, !entry.isIntersecting)
+    },
+    { rootMargin: '150% 0px' },
+  )
+  return hsIdleEmoteObserver
+}
+
+/** Drop targets that left the DOM — an IntersectionObserver holds its
+ * targets strongly, and the hidden-tab shed + normal trim-to-cap both remove
+ * rows continuously. Bounded by the observed count, no DOM query. */
+function reapHsIdleEmoteRows(io) {
+  for (const row of hsIdleEmoteRows) {
+    if (!row.isConnected) {
+      io.unobserve(row)
+      hsIdleEmoteRows.delete(row)
+    }
+  }
+}
+
+/** Find rows we aren't watching yet. Rows are appended at several call
+ * sites (initial render, live append, history restore) with no single
+ * construction hook, so — same call as paints.js's discovery — a bounded
+ * document query is what actually covers every one of them. */
+function discoverHsIdleEmoteRows(io) {
+  hsIdleEmoteLastDiscoverAt = Date.now()
+  for (const row of document.querySelectorAll('.hs-mc-msg')) {
+    if (hsIdleEmoteRows.has(row)) continue
+    hsIdleEmoteRows.add(row)
+    io.observe(row)
+  }
+}
+
+function sweepHsEmoteIdleRows(force) {
+  if (emoteAnimationMode !== 'always') return
+  const io = ensureHsEmoteIdleObserver()
+  if (!io) return
+  reapHsIdleEmoteRows(io)
+  if (force || Date.now() - hsIdleEmoteLastDiscoverAt >= HS_EMOTE_IDLE_DISCOVER_MIN_MS) discoverHsIdleEmoteRows(io)
+}
+
+/** One sweep per frame — see paints.js's identical scheduler for why. */
+function scheduleHsEmoteIdleSweep(force) {
+  if (force) hsIdleEmoteSweepForced = true
+  if (hsIdleEmoteSweepScheduled || typeof requestAnimationFrame !== 'function') return
+  hsIdleEmoteSweepScheduled = true
+  requestAnimationFrame(() => {
+    hsIdleEmoteSweepScheduled = false
+    const f = hsIdleEmoteSweepForced
+    hsIdleEmoteSweepForced = false
+    sweepHsEmoteIdleRows(f)
+  })
+}
+
+/** A settings change out of 'always' must stop cleanly: unswap every row
+ * still mid-gate, disconnect, and forget them — main.js's emoteAnimation
+ * applier calls this before its full re-render replaces the rows anyway,
+ * but a row this exact tick hasn't been rebuilt yet must not linger frozen
+ * on its static src. Switching back into 'always' just lets the next
+ * scroll/pin re-arm the observer from scratch (ensureHsEmoteIdleObserver). */
+function teardownHsEmoteIdleGate() {
+  if (hsIdleEmoteObserver) {
+    for (const row of hsIdleEmoteRows) hsSwapRowEmotesForIdle(row, false)
+    hsIdleEmoteObserver.disconnect()
+  }
+  hsIdleEmoteObserver = null
+  hsIdleEmoteRows.clear()
+}
+
+// Scroll is when visibility changes, and also when a pane autoscrolls a new
+// message in (scheduleScrollPin's scrollTop write fires it too). Capture so
+// it hears every pane, passive so it never delays one. Reaping is cheap (no
+// query) and runs every sweep; discovery is bounded above. sweepHsEmoteIdleRows
+// itself no-ops outside 'always' mode, so this listener costs one flag check
+// per scroll frame in 'hover'/'never'.
+if (typeof document !== 'undefined' && document.addEventListener) {
+  document.addEventListener('scroll', () => scheduleHsEmoteIdleSweep(false), { capture: true, passive: true })
+}
 
 // Upgrade emote URL to match current emote size setting.
 // Memoized: input URLs are bounded by emote count (~few thousand). Cache
 // resets when emoteSize changes — same input → same output otherwise.
-// Firefox has no animated-AVIF decoder (Chrome-only). 7TV serves emotes as
-// avif by default, so animated 7TV emotes render as a frozen first frame on
-// Firefox. Detect once and rewrite 7TV avif → webp at the chat chokepoint
-// below (FF animates webp fine; static webp is correct too, just marginally
-// larger). Chrome keeps avif.
-// NB: `typeof browser` is NOT a usable FF signal in this bundle — background's
-// `const browser = globalThis.browser || chrome` alias makes it truthy on
-// Chrome too, which (verified live) wrongly stripped avif on Chrome. The UA is
-// the reliable discriminator: only Firefox's userAgent contains "Firefox".
-const HS_IS_FF = typeof navigator !== 'undefined' && navigator.userAgent.includes('Firefox')
+// 7TV serves emotes as avif by default; the chat chokepoint below rewrites them to webp (see the rung step).
+
+/** The emote url at one rung of its provider's ladder. `want` is a multiple of
+ *  the emote's LOGICAL 1x size, not a pixel count — providers disagree about
+ *  how many pixels 1x is (twitch 28, 7TV 32) and that disagreement is what
+ *  "native size" means. 4 is the largest rung, not literally 4x: twitch's
+ *  `3.0` is 112px = 4x its 28px base, and BTTV stops at `3x`. */
+function hsRungUrl(url, want) {
+  if (want === 1) {
+    // True native: downgrade Twitch native (IRC fetches at /2.0) and 3rd-party CDNs to 1x.
+    if (url.includes('static-cdn.jtvnw.net')) return url.replace(/\/[23]\.0/, '/1.0')
+    if (url.includes('cdn.7tv.app')) return url.replace(/\/[234]x/, '/1x')
+    if (url.includes('cdn.betterttv.net')) return url.replace(/\/[23]x/, '/1x')
+    if (url.includes('cdn.frankerfacez.com')) return url.replace(/\/[24](?=\.|$)/, '/1')
+  } else if (want === 2) {
+    if (url.includes('cdn.7tv.app')) return url.replace(/\/[134]x/, '/2x')
+    if (url.includes('cdn.betterttv.net')) return url.replace(/\/[13]x/, '/2x')
+    if (url.includes('cdn.frankerfacez.com')) return url.replace(/\/[14](?=\.|$)/, '/2')
+    if (url.includes('static-cdn.jtvnw.net')) return url.replace(/\/[13]\.0/, '/2.0')
+  } else if (want === 4) {
+    if (url.includes('cdn.7tv.app')) return url.replace(/\/[123]x/, '/4x')
+    if (url.includes('cdn.betterttv.net')) return url.replace(/\/[12]x/, '/3x')
+    if (url.includes('cdn.frankerfacez.com')) return url.replace(/\/[12](?=\.|$)/, '/4')
+    if (url.includes('static-cdn.jtvnw.net')) return url.replace(/\/[12]\.0/, '/3.0')
+  }
+  return url
+}
+
+/**
+ * WHICH RUNG A SCREEN ACTUALLY NEEDS.
+ *
+ * ⛔ The setting was the only input. Measured on the live extension in Chrome
+ * 2026-09-23, twitch.tv/xqc: 247 `img.hs-mc-emote`, **0 with a srcset**, every
+ * src the 1x rung. On a DPR-2 laptop or a phone that is a 32px file drawn into
+ * a 32px box and upscaled — the same defect the site carried until fc066d6bb.
+ *
+ * ⭐ It costs no layout to fix, because the emote box is CSS: `height: auto`
+ * with `max-height: var(--hs-emote-size)` (styles/10-emotes.css), and
+ * max-height only ever SHRINKS. A 64px file in a 32px box renders 32px tall
+ * with its aspect kept — so asking for a denser rung changes the pixels and
+ * nothing else.
+ *
+ * ⚠ A `srcset` would be the web-standard answer and is the WRONG one HERE:
+ * `hsSwapRowEmotesForIdle` parks offscreen animated emotes by assigning
+ * `img.src`, and a srcset candidate outranks src — the offscreen animation
+ * gate would silently stop working and every parked row would keep its
+ * decoder running. One url keeps that gate honest.
+ */
+function hsWantedRung() {
+  const dpr = typeof devicePixelRatio === 'number' && devicePixelRatio >= 1.5 ? 2 : 1
+  // emoteSize is 1|2|4 and dpr doubles it; 8 does not exist, so 4 is the cap.
+  // At size 4 on a retina screen the top rung is already all there is — an
+  // honest limit, not a rounding error.
+  return Math.min(4, emoteSize * dpr)
+}
+
+// One block key per emote (rule 9): the emote's own id/hash when a pool knows it, else the
+// FULL base64 of its url (what content.js files natively) — never a prefix of the url,
+// which was the same 24-32 bytes for every emote on one cdn and so blocked a whole
+// provider. Keys stored by older builds are such prefixes: they can't be mapped back to an
+// emote, so they simply stop matching anything (the name-keyed fallback keeps the hidden
+// word hidden until the user unblocks it, which files a correct key from then on).
+function emoteBlockKey(name, url, hash) {
+  if (hash) return String(hash)
+  if (typeof url === 'string' && url) {
+    try {
+      return btoa(url)
+    } catch {
+      return btoa(unescape(encodeURIComponent(url)))
+    }
+  }
+  return name
+}
+
+// Is THIS emote blocked? Exact (rule 9): its own key is in the block set. A name-wide block
+// survives only where no key can be told apart — the stored block carries no real key, or this
+// emote has no hash and no url to key by. Blocking 7tv W never hides bttv W or a friend's W.
+function emoteIsBlocked(rawName, emote) {
+  const hash = emote?.hash ? String(emote.hash) : ''
+  const urlKey = emote?.url ? emoteBlockKey(rawName, emote.url) : ''
+  if (hash && blockedEmoteHashes.has(hash)) return true
+  if (urlKey && blockedEmoteHashes.has(urlKey)) return true
+  if (!blockedEmoteNames.has(rawName)) return false
+  const recs = blockedFallbacksForName(rawName)
+  if (!recs.length) return !hash // no record of which emote was blocked: a hashed one the set doesn't list is not it
+  for (const fb of recs) {
+    const fbKey = fb.hash && fb.hash !== rawName ? String(fb.hash) : ''
+    if (hash && fbKey && hash === fbKey) return true
+    if (fb.url && emote?.url) {
+      if (emoteAssetKey(fb.url) === emoteAssetKey(emote.url)) return true
+    } else if (!hash && !urlKey) return true
+    else if (!fbKey && !hash) return true
+  }
+  return false
+}
+
+// Is this rendered wrapper the SAME emote as (hash, url)? A block or unblock repaints only the
+// emote that was acted on (rule 9/10) — never every wrapper that happens to share its name.
+// Bare log <img>s carry no identity, so they keep following the name.
+function wrapperIsEmote(w, hash, url) {
+  if (!w || w.tagName === 'IMG') return true
+  const wh = w.dataset?.emoteHash
+  if (wh && hash) return wh === String(hash)
+  const wu = w.dataset?.emoteUrl
+  if (wu && url) return emoteAssetKey(wu) === emoteAssetKey(url)
+  return true
+}
+
+// The picture behind an emote url, with the size file dropped (…/ID/2x.webp → …/ID),
+// so one emote fetched at two rungs compares equal and two emotes never do.
+function emoteAssetKey(url) {
+  if (typeof url !== 'string' || !url) return ''
+  const u = url.replace(/^https?:\/\//i, '').replace(/[?#].*$/, '')
+  return u.replace(/\/(?:\d+x?(?:\.(?:webp|avif|png|gif))?|default|fullsize)$/i, '')
+}
+
+// Is this resolved emote the one the viewer owns under that name? Same name alone
+// is not enough: the room's W and your W are two emotes (rule 10).
+function isViewerEmote(name, emote) {
+  if (!emote || !inventoryEmotes.has(name)) return false
+  const mine = viewerPersonalEmotes.get(name)
+  if (!mine) return true // inventory loaded, picture not yet — name is all there is
+  if (mine === emote) return true
+  if (mine.hash && emote.hash) return String(mine.hash) === String(emote.hash)
+  const a = emoteAssetKey(mine.url)
+  const b = emoteAssetKey(emote.url)
+  return !a || !b || a === b
+}
+
+// Wrapper-side form for the right-click path: a rendered wrapper carries its url and hash.
+function isViewerEmoteUrl(name, url, hash) {
+  return isViewerEmote(name, { url, hash })
+}
+
 let _resCacheSize = 1
 const _resCache = new Map()
-function getChatResUrl(url) {
+function getChatResUrl(url, variants) {
   if (!url) return url
-  if (_resCacheSize !== emoteSize) {
+  const want = hsWantedRung()
+  // An advertised-variants emote is a handful of regex steps and its answer
+  // depends on the record, not just the url, so it skips the url-keyed cache.
+  if (variants) return hsOwnRungUrl(url, want, variants)
+  // Keyed on the EFFECTIVE rung, not on emoteSize: dragging the window to a
+  // monitor with a different pixel ratio changes the answer without the
+  // setting moving, and a cache keyed on the setting would keep serving the
+  // old screen's file.
+  if (_resCacheSize !== want) {
     _resCache.clear()
-    _resCacheSize = emoteSize
+    _resCacheSize = want
   }
   const hit = _resCache.get(url)
   if (hit !== undefined) return hit
-  let out = url
-  if (emoteSize === 1) {
-    // True native: downgrade Twitch native (IRC fetches at /2.0) and 3rd-party CDNs to 1x.
-    if (url.includes('static-cdn.jtvnw.net')) out = url.replace(/\/[23]\.0/, '/1.0')
-    else if (url.includes('cdn.7tv.app')) out = url.replace(/\/[234]x/, '/1x')
-    else if (url.includes('cdn.betterttv.net')) out = url.replace(/\/[23]x/, '/1x')
-    else if (url.includes('cdn.frankerfacez.com')) out = url.replace(/\/[24](?=\.|$)/, '/1')
-  } else if (emoteSize === 2) {
-    if (url.includes('cdn.7tv.app')) out = url.replace('/1x', '/2x')
-    else if (url.includes('cdn.betterttv.net')) out = url.replace('/1x', '/2x')
-    else if (url.includes('cdn.frankerfacez.com')) out = url.replace(/\/1(?=\.|$)/, '/2')
-    else if (url.includes('static-cdn.jtvnw.net')) out = url.replace('/1.0', '/2.0')
-  } else if (emoteSize === 4) {
-    if (url.includes('cdn.7tv.app')) out = url.replace('/1x', '/4x').replace('/2x', '/4x')
-    else if (url.includes('cdn.betterttv.net')) out = url.replace('/1x', '/3x').replace('/2x', '/3x')
-    else if (url.includes('cdn.frankerfacez.com')) out = url.replace(/\/[12](?=\.|$)/, '/4')
-    else if (url.includes('static-cdn.jtvnw.net')) out = url.replace(/\/[12]\.0/, '/3.0')
-  }
-  // Firefox: 7TV avif → webp (animated avif freezes on FF; see HS_IS_FF above).
-  // Applied after the size rewrite so it isn't clobbered.
-  if (HS_IS_FF && out.includes('cdn.7tv.app')) out = out.replace(/\.avif(\?|$)/i, '.webp$1')
+  let out = hsRungUrl(url, want)
+  // 7TV avif → webp everywhere: Firefox cannot animate avif, and on chrome a full chat of animated avif
+  // is the heavier decode (frames ~17% longer measured on a 500-row kick chat). Applied after the size
+  // rewrite so it isn't clobbered.
+  if (out.includes('cdn.7tv.app')) out = out.replace(/\.avif(\?|$)/i, '.webp$1')
   _resCache.set(url, out)
   if (_resCache.size > 2000) _resCache.delete(_resCache.keys().next().value)
   return out
@@ -490,7 +833,8 @@ function getHighResUrl(url) {
   if (url.includes('static-cdn.jtvnw.net')) {
     return url.replace('/1.0', '/3.0').replace('/2.0', '/3.0')
   }
-  return url
+  // our own uploads: the chat shows a smaller copy, a tooltip wants the original
+  return hsOwnCanonicalUrl(url)
 }
 
 /**
@@ -646,7 +990,7 @@ function buildRecentSection(allEmotes) {
     if (e) out.push([name, e])
     if (out.length >= RECENT_CAP) break
   }
-  return out.length ? { key: 'recent', label: 'recent', emotes: out } : null
+  return out.length ? { key: 'recent', label: t('btn_recent'), emotes: out } : null
 }
 
 function groupEmotes(allEmotes) {
@@ -677,14 +1021,24 @@ const CHUNK_SIZE = 96
 // picker.addEventListener block) — unique every content-script context.
 const _HS_PICKER_CLICK_CTX = `ctx_${Math.random().toString(36).slice(2)}`
 const _chunkStore = new Map()
-let _chunkObserver = null
+/**
+ * One observer PER scroll root, not one globally.
+ *
+ * An IntersectionObserver bakes its `root` in at construction, and a target that
+ * is not a descendant of that root is never reported as intersecting. The cache
+ * used to be a single observer returned for any root, so whichever scope called
+ * first won: attachChunkObserver runs with the search `grid` at two sites and
+ * with the whole `picker` at a third, and if the grid got there first every
+ * picker-level chunk was handed an observer rooted inside the grid and could
+ * never fire. Nothing threw — the chunks simply stopped lazy-filling on scroll,
+ * masked by renderVisibleChunks eagerly filling the first 16.
+ */
+const _chunkObservers = new Map()
 
 function clearChunkStore() {
   _chunkStore.clear()
-  if (_chunkObserver) {
-    _chunkObserver.disconnect()
-    _chunkObserver = null
-  }
+  for (const obs of _chunkObservers.values()) obs.disconnect()
+  _chunkObservers.clear()
 }
 
 // Fill one chunk placeholder from its stored emote data. Returns true if filled.
@@ -700,19 +1054,23 @@ function _fillChunk(el) {
 }
 
 function ensureChunkObserver(scrollRoot) {
-  if (_chunkObserver) return _chunkObserver
-  _chunkObserver = new IntersectionObserver(
-    (entries) => {
+  const cached = _chunkObservers.get(scrollRoot)
+  if (cached) return cached
+  const obs = new IntersectionObserver(
+    // Second callback arg, not the outer binding: an observer should unobserve
+    // through ITSELF, so this cannot drift if the cache shape changes again.
+    (entries, self) => {
       for (const e of entries) {
         if (!e.isIntersecting) continue
         _fillChunk(e.target)
-        _chunkObserver.unobserve(e.target)
+        self.unobserve(e.target)
       }
     },
     { root: scrollRoot, rootMargin: '300px 0px', threshold: 0 },
   )
-  cleanup.trackObserver(_chunkObserver)
-  return _chunkObserver
+  _chunkObservers.set(scrollRoot, obs)
+  cleanup.trackObserver(obs)
+  return obs
 }
 
 // The IntersectionObserver never fires while the tab is hidden/occluded (a
@@ -730,7 +1088,7 @@ function renderVisibleChunks(scope) {
   for (const el of scope.querySelectorAll('.hs-mc-picker-chunk:not(.hs-mc-chunk-ready)')) {
     if (el.offsetTop > cutoff) continue
     if (_fillChunk(el)) {
-      _chunkObserver?.unobserve(el)
+      _chunkObservers.get(scrollRoot)?.unobserve(el)
       if (++filled >= 16) break
     }
   }
@@ -757,12 +1115,18 @@ function renderEmoteSections(sections, emptyMsg = t('mc_emote_no_loaded'), opts)
     // Cold-start: personal + channel + global caches are all empty. Not the
     // "no search matches" case (that passes opts.noHeaders + its own emptyMsg)
     // — point the user at the one-click channel import instead of a dead end.
-    const channel = !opts?.noHeaders && getCurrentChannel()
+    // On a youtube /watch page getCurrentChannel() is the VIDEO id — the
+    // channel is not known until the page resolves it, and an import button
+    // pointed at a video id imports nothing.
+    const onVideo =
+      location.hostname.includes('youtube.com') &&
+      parseYoutubeChannelType(location.pathname, location.search) === 'video'
+    const channel = !opts?.noHeaders && !onVideo && getCurrentChannel()
     if (channel) return renderEmoteColdStart(channel)
     return `<div class="hs-mc-picker-empty">${escapeHtml(emptyMsg)}</div>`
   }
   const noHeaders = !!opts?.noHeaders
-  return sections
+  const rows = sections
     .map((s, si) => {
       const chunks = []
       for (let i = 0; i < s.emotes.length; i += CHUNK_SIZE) {
@@ -786,17 +1150,18 @@ function renderEmoteSections(sections, emptyMsg = t('mc_emote_no_loaded'), opts)
         ? ''
         : `<div class="hs-mc-picker-section-header">${escapeHtml(s.label)} <span class="hs-mc-picker-section-count">${s.emotes.length}</span></div>`
       return `
-      <div class="hs-mc-picker-section" data-section-key="${escapeHtml(s.key)}">
+      <div class="hs-mc-picker-section"${noHeaders ? '' : ` role="group" aria-label="${escapeHtml(s.label)}"`} data-section-key="${escapeHtml(s.key)}">
         ${header}
         ${chunksHtml}
       </div>`
     })
     .join('')
+  return `<div id="hs-mc-emote-list" role="listbox" aria-label="${escapeHtml(t('mc_emo_tab_emotes'))}">${rows}</div>`
 }
 
 // Empty-inventory cold-start: point a fresh/logged-out-of-emotes user straight
 // at the one-click channel import instead of a dead-end "no emotes" message.
-// Mirrors chrome/heatsync-button.js's renderInventoryColdStart pattern; button
+// Mirrors src/content/heatsync-button.js's renderInventoryColdStart pattern; button
 // reuses the existing .hs-mc-load-more style (no new button chrome).
 function renderEmoteColdStart(channel) {
   const safeCh = escapeHtml(channel)
@@ -809,7 +1174,7 @@ function renderEmoteColdStart(channel) {
 }
 
 // One-click "import all of a channel's 7TV/BTTV/FFZ emotes into your set" —
-// same server endpoint as chrome/heatsync-button.js's hsImportChannel.
+// same server endpoint as src/content/heatsync-button.js's hsImportChannel.
 async function hsMcImportChannelEmotes(btn, channel) {
   if (!channel || btn.disabled) return
   btn.disabled = true
@@ -847,7 +1212,11 @@ async function hsMcImportChannelEmotes(btn, channel) {
 }
 
 function emoteImgHtml([name, emote]) {
-  const isBlocked = blockedEmoteNames.has(name)
+  // Filtered out for this viewer: the same labeled dashed box chat draws, no
+  // image — you still see that the emote is in your set, just not what it is.
+  const hiddenCat = hsEmoteHiddenForViewer(emote)
+  if (hiddenCat) return _hsCwBoxHtml(escapeHtml(hiddenCat), escapeHtml(name))
+  const isBlocked = emoteIsBlocked(name, emote) // this tile's emote, not every W of the name
   // 2-state picker: normal or blocked. `state` is still tracked on the img
   // dataset so findEmoteTarget can route blocked→unblock and the chat-row /
   // cross-user rendering pipelines that inspect it (lookupEmote, processEmotes)
@@ -865,7 +1234,12 @@ function emoteImgHtml([name, emote]) {
   const cwAttr = flagCat ? ` data-cw="${escapeHtml(flagCat)}"` : ''
   const wrapCls = (isBlocked ? 'hs-mc-picker-emote-wrap blocked' : 'hs-mc-picker-emote-wrap') + nsfwTag
   const safeName = escapeHtml(name)
-  return `<span class="${wrapCls}" data-name="${safeName}"${cwAttr}><img src="${escapeHtml(emote.url)}" alt="${safeName}" title="${safeName} (${escapeHtml(emote.source)})" class="hs-mc-picker-emote hs-emote-${escapeHtml(emote.source)}" data-name="${safeName}" data-source="${escapeHtml(emote.source)}" data-state="${state}" loading="lazy"></span>`
+  // The picker grid is a FIXED 32px box (.hs-mc-picker-emote, max-height:32px)
+  // — it does not move with the emote-size setting, so it asks for the rung the
+  // SCREEN needs and nothing else. Same reasoning as getChatResUrl: max-height
+  // only shrinks, so a denser file changes the pixels and not the layout.
+  const pickerUrl = hsRungUrl(emote.url, typeof devicePixelRatio === 'number' && devicePixelRatio >= 1.5 ? 2 : 1)
+  return `<span class="${wrapCls}" role="option" aria-selected="false" data-name="${safeName}"${cwAttr}><img src="${escapeHtml(pickerUrl)}" alt="${safeName}" title="${safeName} (${escapeHtml(emote.source)})" class="hs-mc-picker-emote hs-emote-${escapeHtml(emote.source)}" data-name="${safeName}"${emote.variant ? ` data-variant="${escapeHtml(emote.variant)}"` : ''} data-source="${escapeHtml(emote.source)}" data-state="${escapeHtml(state)}" loading="lazy"></span>`
 }
 
 /**
@@ -874,16 +1248,50 @@ function emoteImgHtml([name, emote]) {
  * even the very first click open instantly. Cache invalidates on channel
  * switch, emote-size change, or any emote-cache reload via markPickerDirty().
  */
-let pickerTab = 'emotes' // 'emotes' or 'twitch'
-let _pickerCloseHandler = null
+/**
+ * The picker's tabs, in order.
+ *
+ * A table, not hand-written buttons: the tab bar used to live INSIDE the
+ * `showTwitchTab` ternary, so a kick or youtube viewer got no tab bar at all —
+ * which was invisible while twitch was the only thing on the other side of it,
+ * and would have hidden the gifs tab from two platforms out of three. `when`
+ * is the per-tab answer to "does this host have it", and adding a tab is one
+ * entry here plus one renderer.
+ */
+const MC_PICKER_TABS = [
+  { id: 'emotes', labelKey: 'mc_emo_tab_emotes' },
+  { id: 'emoji', labelKey: 'mc_emo_tab_emoji' },
+  { id: 'gifs', labelKey: 'mc_emo_tab_gifs' },
+  { id: 'twitch', label: 'twitch', when: () => hostPlatform === 'twitch' },
+  { id: 'kick', label: 'kick', when: () => hostPlatform === 'kick' },
+  { id: 'youtube', label: 'youtube', when: () => hostPlatform === 'yt' },
+]
+
+function mcVisiblePickerTabs() {
+  return MC_PICKER_TABS.filter((t) => !t.when || t.when())
+}
+
+let pickerTab = 'emotes'
 let _pickerBuiltKey = null
 let _pickerPrebuildScheduled = false
+
+// What the picker grid lists with no query: your set first (so 'owned' shows on top), then
+// every channel pool this tab covers (a merged or yt tab spans several; the raw tab key
+// finds none of them), then globals. The same pools search and Tab read.
+function pickerBaseEmotes() {
+  const all = new Map()
+  for (const [k, v] of viewerPersonalEmotes) all.set(k, v)
+  for (const pool of activeTabEmotePools()) for (const [k, v] of pool) if (!all.has(k)) all.set(k, v)
+  for (const [k, v] of emoteCache) if (!all.has(k)) all.set(k, v)
+  return all
+}
 
 function pickerCacheKey() {
   // pickerTab is intentionally NOT in the key — switching the active tab
   // (emotes ↔ twitch) just toggles display, no rebuild needed.
   const ch = currentTab || getCurrentChannel() || '_'
-  const chSize = channelEmoteCaches[ch]?.size || channelEmoteCaches[getCurrentChannel()]?.size || 0
+  let chSize = 0
+  for (const pool of activeTabEmotePools()) chSize += pool.size
   // _blockedRev: a cross-device block/unblock (applyBlockedHashDelta) changes
   // no size here — without it a rebuild triggered by an unrelated key change
   // would be the only thing correcting a stale cached picker DOM.
@@ -919,10 +1327,10 @@ function prebuildPickerIdle() {
 }
 
 function syncPickerTabDisplay(picker) {
-  const emTab = picker.querySelector('#hs-mc-tab-emotes')
-  const twTab = picker.querySelector('#hs-mc-tab-twitch')
-  if (emTab) emTab.style.display = pickerTab === 'emotes' ? 'flex' : 'none'
-  if (twTab) twTab.style.display = pickerTab === 'twitch' ? 'flex' : 'none'
+  for (const tab of MC_PICKER_TABS) {
+    const el = picker.querySelector(`#hs-mc-tab-${tab.id}`)
+    if (el) el.style.display = pickerTab === tab.id ? 'flex' : 'none'
+  }
   picker.querySelectorAll('.hs-mc-picker-tab').forEach((b) => {
     b.classList.toggle('active', b.dataset.tab === pickerTab)
   })
@@ -949,7 +1357,7 @@ function showEmotePicker(tab = null) {
   // Twitch features tab (predictions/polls/rewards/clip/popout/mod) needs the
   // twitch.tv page context for auth + GQL proxy. Hide it on YT/Kick host.
   const showTwitchTab = hostPlatform === 'twitch'
-  if (!showTwitchTab && pickerTab === 'twitch') pickerTab = 'emotes'
+  if (!mcVisiblePickerTabs().some((t) => t.id === pickerTab)) pickerTab = 'emotes'
 
   // Cache hit → no rebuild, just sync which tab content is shown.
   if (!isPrebuild && pickerCacheKey() === _pickerBuiltKey && picker.firstChild) {
@@ -960,6 +1368,10 @@ function showEmotePicker(tab = null) {
     // never got to (first open in a hidden/occluded tab — IO doesn't fire there).
     renderVisibleChunks(picker)
     if (pickerTab === 'twitch') renderTwitchTab()
+    if (pickerTab === 'kick') renderKickTab()
+    if (pickerTab === 'youtube') renderYoutubeTab()
+    if (pickerTab === 'emoji') hsOnEmojiTabShown()
+    if (pickerTab === 'gifs') hsOnGifTabShown()
     attachPickerCloseHandler(picker)
     return
   }
@@ -967,36 +1379,47 @@ function showEmotePicker(tab = null) {
   // Cache miss → build full DOM synchronously (no chunks, no popping).
   // Merge channel emotes first (keeps 'channel' state), then globals.
   // All names/urls are pre-sanitized via escapeHtml in render helpers.
-  const allEmotes = new Map()
-  // Picker priority: viewer's personal inventory FIRST so 'owned' state shows on top
-  for (const [k, v] of viewerPersonalEmotes) allEmotes.set(k, v)
-  const chCache = channelEmoteCaches[currentTab] || channelEmoteCaches[getCurrentChannel()]
-  if (chCache) for (const [k, v] of chCache) if (!allEmotes.has(k)) allEmotes.set(k, v)
-  for (const [k, v] of emoteCache) if (!allEmotes.has(k)) allEmotes.set(k, v)
-  const sections = groupEmotes(allEmotes)
+  const sections = groupEmotes(pickerBaseEmotes())
   picker.innerHTML = `
       <div class="hs-mc-tab-content" id="hs-mc-tab-emotes" style="display: ${pickerTab === 'emotes' ? 'flex' : 'none'}; flex-direction: column;">
         <div class="hs-mc-picker-header">
           <div class="hs-mc-search-wrap">
-            <svg class="hs-mc-search-icon" width="14" height="14" viewBox="0 0 20 20"><path fill="#000" d="M13.74 12.33l4.04 4.04a1 1 0 01-1.42 1.42l-4.04-4.04a7 7 0 111.42-1.42zM9 14A5 5 0 109 4a5 5 0 000 10z"/></svg>
-            <input type="text" id="hs-mc-emote-search" placeholder="${t('mc_emote_search_placeholder')}" autocomplete="off">
+            <span class="hs-mc-search-icon hs-glyph" aria-hidden="true">⌕</span>
+            <input type="text" id="hs-mc-emote-search" placeholder="${t('mc_emote_search_placeholder')}" autocomplete="off" role="combobox" aria-label="${t('mc_emote_search_placeholder')}" aria-controls="hs-mc-emote-list" aria-autocomplete="list">
           </div>
+          ${mcEmoteUploadHtml()}
         </div>
         <div class="hs-mc-picker-scroll" id="hs-mc-emote-grid">
           ${renderEmoteSections(sections)}
         </div>
       </div>
+      ${hsEmojiTabHtml()}
+      ${hsGifTabHtml()}
       ${
         showTwitchTab
           ? `<div class="hs-mc-tab-content" id="hs-mc-tab-twitch" style="display: ${pickerTab === 'twitch' ? 'flex' : 'none'}; flex-direction: column; padding: 8px 0;">
         <div class="hs-mc-pred-loading">${t('common_loading')}</div>
-      </div>
-      <div class="hs-mc-picker-tabs">
-        <button class="hs-mc-picker-tab ${pickerTab === 'emotes' ? 'active' : ''}" data-tab="emotes">emotes</button>
-        <button class="hs-mc-picker-tab ${pickerTab === 'twitch' ? 'active' : ''}" data-tab="twitch">twitch</button>
       </div>`
           : ''
       }
+      ${
+        hostPlatform === 'kick'
+          ? `<div class="hs-mc-tab-content" id="hs-mc-tab-kick" style="display: ${pickerTab === 'kick' ? 'flex' : 'none'}; flex-direction: column; padding: 8px 0;"></div>`
+          : ''
+      }
+      ${
+        hostPlatform === 'yt'
+          ? `<div class="hs-mc-tab-content" id="hs-mc-tab-youtube" style="display: ${pickerTab === 'youtube' ? 'flex' : 'none'}; flex-direction: column; padding: 8px 0;"></div>`
+          : ''
+      }
+      <div class="hs-mc-picker-tabs">
+        ${mcVisiblePickerTabs()
+          .map(
+            (tab) =>
+              `<button class="hs-mc-picker-tab ${pickerTab === tab.id ? 'active' : ''}" data-tab="${escapeHtml(tab.id)}">${escapeHtml(tab.labelKey ? t(tab.labelKey) : tab.label)}</button>`,
+          )
+          .join('')}
+      </div>
     `
 
   // Inject provider filter chips INSIDE the search wrap (not as a sibling
@@ -1007,7 +1430,7 @@ function showEmotePicker(tab = null) {
   if (searchWrap && !searchWrap.querySelector('.hs-mc-src-chips')) {
     const chipBar = document.createElement('div')
     chipBar.className = 'hs-mc-src-chips visible'
-    chipBar.title = 'toggle which providers to search'
+    chipBar.title = t('mc_emo_chips_title')
     for (const src of MC_REMOTE_SOURCES) {
       const btn = document.createElement('button')
       btn.className = `hs-mc-src-chip${mcPickerSources.has(src) ? ' active' : ''}`
@@ -1022,7 +1445,7 @@ function showEmotePicker(tab = null) {
     const exactBtn = document.createElement('button')
     exactBtn.className = `hs-mc-exact-chip${mcExactMatch ? ' active' : ''}`
     exactBtn.textContent = t('mc_emote_exact')
-    exactBtn.title = 'exact name match only'
+    exactBtn.title = t('mc_emo_exact_title')
     exactBtn.type = 'button'
     chipBar.appendChild(exactBtn)
     // Clicking a chip blurs the search input; preventDefault keeps focus.
@@ -1084,6 +1507,11 @@ function showEmotePicker(tab = null) {
   // result callbacks can call it directly.
   const rerenderSearch = mcRerenderSearch
 
+  hsWireGifTab(picker)
+  hsWireEmojiTab(picker)
+  hsWirePickerNav(picker)
+  mcEmoteUploadWire(picker)
+
   // Emote size controls
   picker.querySelectorAll('.hs-mc-size-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -1110,10 +1538,19 @@ function showEmotePicker(tab = null) {
       picker.querySelectorAll('.hs-mc-tab-content').forEach((c) => {
         c.style.display = 'none'
       })
-      const display = newTab === 'emotes' || newTab === 'settings' || newTab === 'twitch' ? 'flex' : 'block'
-      document.getElementById(`hs-mc-tab-${newTab}`).style.display = display
+      // Every tab content is a flex column; the old ternary listed the three
+      // that were and fell through to `block` for a tab that never existed.
+      const el = document.getElementById(`hs-mc-tab-${newTab}`)
+      if (el) el.style.display = 'flex'
       if (newTab === 'twitch') renderTwitchTab()
+      if (newTab === 'kick') renderKickTab()
+      if (newTab === 'youtube') renderYoutubeTab()
+      if (newTab === 'emoji') hsOnEmojiTabShown()
+      if (newTab === 'gifs') hsOnGifTabShown()
       if (oldTab === 'twitch' && newTab !== 'twitch') stopPredictionPoll()
+      // Leaving the gifs tab drops the in-flight request on the floor: its
+      // .then() would otherwise land on a grid nobody is looking at.
+      if (oldTab === 'gifs' && newTab !== 'gifs') hsLeaveGifTab()
     })
   })
 
@@ -1128,6 +1565,20 @@ function showEmotePicker(tab = null) {
   // double-attaches — robust regardless of expando/world visibility quirks.
   if (picker._hsClickCtx !== _HS_PICKER_CLICK_CTX) {
     picker._hsClickCtx = _HS_PICKER_CLICK_CTX
+    // A 7TV tile that fails (the CDN throttles a burst, or an edge node is
+    // cold) is retried once through heatsync's proxy, which fetches from the
+    // server's own connection. Error events do not bubble, hence capture.
+    picker.addEventListener(
+      'error',
+      (e) => {
+        const im = e.target
+        if (!im || !im.classList || !im.classList.contains('hs-mc-picker-emote')) return
+        if (im.dataset.hsFb || !/^https:\/\/cdn\.7tv\.app\//.test(im.src)) return
+        im.dataset.hsFb = '1'
+        im.src = `https://heatsync.org/api/emote-proxy?url=${encodeURIComponent(im.src)}`
+      },
+      true,
+    )
     picker.addEventListener('click', (e) => {
       // Cold-start import CTA (empty inventory) — one-click channel import.
       const coldBtn = e.target.closest('.hs-mc-cold-start-import')
@@ -1149,7 +1600,7 @@ function showEmotePicker(tab = null) {
       // the background; on success the state is reconciled, on failure the
       // user still sees the emote (server sync re-evaluates next load).
       if (img.dataset.state === 'remote') {
-        const remote = mcRemoteEmoteIndex.get(name)
+        const remote = mcRemoteEmoteIndex.get(img.dataset.variant ? `${name}#${img.dataset.variant}` : name)
         // Race-guard rapid double-clicks: addEmoteToInventory tracks in-flight adds
         // in pendingEmoteOps, so skip the optimistic-add + POST if one is already
         // running for this name — otherwise a fast second click fires a second
@@ -1227,50 +1678,19 @@ function showEmotePicker(tab = null) {
   // hidden/occluded tab (where the IntersectionObserver never fires) isn't blank.
   renderVisibleChunks(picker)
 
+  // ONE code path decides which tab is showing, including the first paint. The
+  // emotes and twitch panes used to bake `display` into their own markup — a
+  // second source of truth syncPickerTabDisplay then had to keep in step, and
+  // a third pane would have had to remember to join in.
+  syncPickerTabDisplay(picker)
+
   if (pickerTab === 'twitch') renderTwitchTab()
+  if (pickerTab === 'kick') renderKickTab()
+  if (pickerTab === 'youtube') renderYoutubeTab()
+  if (pickerTab === 'emoji') hsOnEmojiTabShown()
+  if (pickerTab === 'gifs') hsOnGifTabShown()
 
   attachPickerCloseHandler(picker)
-}
-
-let _pickerEscHandler = null
-function attachPickerCloseHandler(picker) {
-  if (_pickerCloseHandler) document.removeEventListener('click', _pickerCloseHandler)
-  if (_pickerEscHandler) document.removeEventListener('keydown', _pickerEscHandler)
-  cleanup.setTimeout(() => {
-    _pickerCloseHandler = (e) => {
-      if (mcSignal?.aborted) {
-        document.removeEventListener('click', _pickerCloseHandler)
-        _pickerCloseHandler = null
-        return
-      }
-      if (!picker.contains(e.target) && !e.target.closest('#hs-mc-emote-btn')) {
-        picker.classList.remove('visible')
-        hideInputBar()
-        stopPredictionPoll()
-        document.removeEventListener('click', _pickerCloseHandler)
-        _pickerCloseHandler = null
-        document.removeEventListener('keydown', _pickerEscHandler)
-        _pickerEscHandler = null
-      }
-    }
-    _pickerEscHandler = (e) => {
-      if (e.key !== 'Escape') return
-      if (mcSignal?.aborted) {
-        document.removeEventListener('keydown', _pickerEscHandler)
-        _pickerEscHandler = null
-        return
-      }
-      picker.classList.remove('visible')
-      hideInputBar()
-      stopPredictionPoll()
-      document.removeEventListener('keydown', _pickerEscHandler)
-      _pickerEscHandler = null
-      document.removeEventListener('click', _pickerCloseHandler)
-      _pickerCloseHandler = null
-    }
-    cleanup.addEventListener(document, 'click', _pickerCloseHandler, 'mc-picker-close')
-    cleanup.addEventListener(document, 'keydown', _pickerEscHandler, 'mc-picker-esc')
-  }, 0)
 }
 
 /** Size the open picker to exactly the message list's box.
@@ -1322,7 +1742,7 @@ function rebuildBlockedNames() {
   }
   // Names persisted at block time — survive refresh even when hashToName can't
   // map the hash (blocked emote removed from set / not in any loaded cache).
-  for (const name of blockedEmoteFallback.keys()) blockedEmoteNames.add(name)
+  for (const [key, rec] of blockedEmoteFallback) blockedEmoteNames.add(rec.name || key)
   log(
     'Blocked names rebuilt:',
     blockedEmoteNames.size,
@@ -1336,13 +1756,29 @@ function rebuildBlockedNames() {
 
 async function loadBlockedEmotes() {
   try {
-    const data = await chrome.storage.local.get(['blocked_emotes'])
+    const data = await browser.storage.local.get(['blocked_emotes'])
     blockedEmoteHashes = new Set(data.blocked_emotes || [])
     rebuildBlockedNames()
     log('Loaded', blockedEmoteHashes.size, 'blocked emote hashes')
   } catch (e) {
     log('Error loading blocked emotes:', e)
   }
+}
+
+// A blocked emote on a logs surface becomes a dashed box of EXACTLY the size the
+// emote had (wide or skinny), so nothing around it moves. The pixel swap in css
+// would collapse the width, so the size is pinned here before the state flips.
+function hsPinLogEmoteSize(el, on) {
+  const img = el.tagName === 'IMG' ? el : el.querySelector?.('img')
+  if (!img || !img.closest('.hs-card-log-body, .hs-cl-list')) return
+  if (!on) {
+    img.style.removeProperty('--hs-lock-w')
+    img.style.removeProperty('--hs-lock-h')
+    return
+  }
+  const r = img.getBoundingClientRect()
+  if (r.width > 2) img.style.setProperty('--hs-lock-w', `${r.width}px`)
+  if (r.height > 2) img.style.setProperty('--hs-lock-h', `${r.height}px`)
 }
 
 // Diff-apply blocked changes from storage WITHOUT re-rendering the whole tab.
@@ -1372,10 +1808,11 @@ function applyBlockedHashDelta(newHashesArr) {
     {
       const _be = lookupEmote(name)
       const _u = typeof _be?.url === 'string' && /^https?:\/\//i.test(_be.url) ? _be.url : ''
-      rememberBlockedEmote(name, _u, _be?.source || 'heatsync', _be?.zeroWidth)
+      rememberBlockedEmote(name, _u, _be?.source || 'heatsync', _be?.zeroWidth, hash)
     }
     queryEmoteWrappers(name).forEach((w) => {
-      if (w.classList.contains('hs-state-blocked')) return
+      if (w.classList.contains('hs-state-blocked') || !wrapperIsEmote(w, hash, '')) return
+      hsPinLogEmoteSize(w, true)
       w.classList.remove(
         'hs-state-global',
         'hs-state-channel',
@@ -1383,6 +1820,7 @@ function applyBlockedHashDelta(newHashesArr) {
         'hs-state-unadded',
         'hs-emote-highlight',
       )
+      w.closest?.('.hs-mc-emote-stack')?.classList.remove('hs-stack-hl')
       w.classList.add('hs-state-blocked')
       w.dataset.state = 'blocked'
       const img = w.querySelector('img')
@@ -1414,7 +1852,7 @@ function applyBlockedHashDelta(newHashesArr) {
     // Drop the persisted fallback too, else rebuildBlockedNames re-seeds this
     // name from blockedEmoteFallback on the next reload and the emote re-blocks
     // itself. Mirrors unblockEmote's cleanup; persist is debounced.
-    if (blockedEmoteFallback.delete(name)) persistBlockedFallback()
+    if (forgetBlockedFallback(name, hash)) persistBlockedFallback()
     const emote = lookupEmote(name)
     const realUrl = emote?.url || ''
     // 2-state model: block never dropped this from the set (server preserves
@@ -1424,7 +1862,7 @@ function applyBlockedHashDelta(newHashesArr) {
     const src = emote?.source || 'heatsync'
     const newState = getEmoteState(name, src)
     queryEmoteWrappers(name).forEach((w) => {
-      if (w.classList.contains(`hs-state-${newState}`)) return
+      if (w.classList.contains(`hs-state-${newState}`) || !wrapperIsEmote(w, hash, '')) return
       w.classList.remove(
         'hs-state-global',
         'hs-state-channel',
@@ -1433,9 +1871,11 @@ function applyBlockedHashDelta(newHashesArr) {
         'hs-state-unadded',
         'hs-emote-highlight',
       )
+      w.closest?.('.hs-mc-emote-stack')?.classList.remove('hs-stack-hl')
       w.classList.add(`hs-state-${newState}`)
       w.dataset.state = newState
       w.style.outline = ''
+      hsPinLogEmoteSize(w, false)
       const img = w.querySelector('img')
       if (img && realUrl) {
         img.src = realUrl
@@ -1510,9 +1950,10 @@ function createInputEmoteImg(emoteName) {
   const resolved = lookupEmoteWithOverlay(emoteName)
   if (!resolved) return null
   const { emote, isOverlay } = resolved
+  if (hsEmoteHiddenForViewer(emote)) return null
   const img = document.createElement('img')
   img.className = 'hs-input-emote'
-  img.src = getChatResUrl(emote.url)
+  img.src = getChatResUrl(emote.url, emote.variants)
   img.alt = emoteName
   img.dataset.emoteName = emoteName
   img.draggable = false
@@ -1551,13 +1992,7 @@ function createInputEmoteImg(emoteName) {
     !lookupEmoteRenderOrder(emoteName) &&
     blockedEmoteNames.has(emoteName.slice(0, -1))
   const _chipBlockedByHash = !!(emote.hash && blockedEmoteHashes.has(String(emote.hash)))
-  if (blockedEmoteNames.has(emoteName) || _chipBlockedByBase || _chipBlockedByHash) markInputEmoteBlocked(img, true)
-  // Snap the chip to an integer width once decoded. A non-square emote scaled
-  // to the row height lands on a fractional width, so every character typed
-  // AFTER it starts at a fractional x and the bitmap font smears — the same
-  // horizontal fault chat rows fix via the load listener on #hs-mc-messages,
-  // which never covered the composer. Hook the chip directly (it's created in
-  // code) and cover the already-cached case, where load never fires.
+  if (emoteIsBlocked(emoteName, emote) || _chipBlockedByBase || _chipBlockedByHash) markInputEmoteBlocked(img, true)
   if (typeof hsAttachInputEmoteSnap === 'function') hsAttachInputEmoteSnap(img)
   return img
 }
@@ -1811,24 +2246,35 @@ function pasteEmojiSpanFromNestToInput(srcSpan, asOverlay) {
 // emotes (state==='owned' && inventoryEmotes.has) so subs / channel / bits are
 // never removable, and removal is reversible (30-day recovery on the backend) —
 // which is what made the old accidental-vanish concern safe to revisit.
-async function removeEmoteFromInventory(emoteName, targetEl) {
-  if (!emoteName) return
+// Resolves true when the server dropped it (or it was already gone), false when
+// it stayed (everything put back, the reason toasted). opts.silent: no
+// "removed" toast — a swap speaks once, at the end, in its own words.
+async function removeEmoteFromInventory(emoteName, targetEl, opts) {
+  if (!emoteName) return false
   pendingEmoteOps.add(emoteName)
   try {
-    await _removeEmoteFromInventory(emoteName, targetEl)
+    return await _removeEmoteFromInventory(emoteName, targetEl, opts)
   } finally {
     pendingEmoteOps.delete(emoteName)
   }
 }
 
-async function _removeEmoteFromInventory(emoteName, targetEl) {
+async function _removeEmoteFromInventory(emoteName, targetEl, opts) {
   const wrapper = targetEl?.closest?.('.hs-mc-emote-wrapper') || targetEl
+  // Where the cursor sits, taken before the row re-renders: the hovered node is
+  // replaced, and the open tooltip would keep the old "inventory" label until
+  // the pointer moved off and back.
+  const r = wrapper?.getBoundingClientRect?.()
+  const pt = r && r.width ? { x: r.left + r.width / 2, y: r.top + r.height / 2 } : null
   const emoteHash =
     inventoryHashes.get(emoteName) ||
     wrapper?.dataset?.emoteHash ||
     emoteHashes.get(emoteName) ||
     lookupEmote(emoteName)?.hash ||
     emoteName
+  // Optimistic: the server DELETE takes seconds, and the row/tooltip must flip
+  // the instant you right-click. Local state goes first; a failure puts it back.
+  const undo = applyLocalRemoval(emoteName, pt)
   try {
     const response = await new Promise((resolve, reject) => {
       chrome.runtime.sendMessage({ type: 'remove_from_inventory', emoteHash, emoteName }, (resp) => {
@@ -1839,16 +2285,37 @@ async function _removeEmoteFromInventory(emoteName, targetEl) {
     // Server is authoritative: treat "not found in your set" as already-removed so a
     // stale 'owned' state can't trap the user looping on a failing remove.
     if (response?.success || (response?.error && /not found in your set/i.test(response.error))) {
-      handleRemoveSuccess(emoteName)
-    } else {
-      showToast(response?.error || t('mc_emote_remove_failed', [emoteName]), 'error')
+      if (!opts?.silent) showToast(t('mc_emote_removed', [emoteName]), 'success')
+      return true
     }
+    undo(pt)
+    showToast(response?.error || t('mc_emote_remove_failed', [emoteName]), 'error')
   } catch (_) {
+    undo(pt)
     showToast(t('mc_emote_remove_error', [emoteName]), 'error')
   }
+  return false
 }
 
-function handleRemoveSuccess(emoteName) {
+// Re-run the hover on whatever a re-render left under the cursor, so an open
+// tooltip relabels (inventory → 7TV/channel) without a rehover. The row swap runs
+// 50 rows per frame, so the hovered row may not be rewritten yet: wait (bounded)
+// while the emote under the cursor still reads the OLD state — owned after a
+// removal, not-owned after a rollback.
+function rehoverAt(pt, ownedNow) {
+  if (!pt || !emoteTooltip?.classList.contains('visible')) return
+  let frames = 0
+  const rehover = () => {
+    const under = document.elementFromPoint(pt.x, pt.y)
+    if (!under) return hideEmoteTooltip()
+    const stale = (under.closest?.('.hs-mc-emote-wrapper')?.dataset.state === 'owned') !== ownedNow
+    if (stale && frames++ < 12) return requestAnimationFrame(rehover)
+    under.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, clientX: pt.x, clientY: pt.y }))
+  }
+  requestAnimationFrame(rehover)
+}
+
+function applyLocalRemoval(emoteName, pt) {
   // Capture BEFORE the delete below strips the entry — keeps this emote's
   // history resolvable so the viewer's own past messages that used it still
   // render the image (as unadded, not owned) instead of raw text after a
@@ -1856,10 +2323,21 @@ function handleRemoveSuccess(emoteName) {
   // is guaranteed present here since the only caller (input.js) gates the
   // remove path on inventoryEmotes.has(emoteName).
   const _re = viewerPersonalEmotes.get(emoteName)
-  if (_re?.url) rememberRemovedEmote(emoteName, _re.url, _re.source, _re.zeroWidth)
+  const _hash = inventoryHashes.get(emoteName)
+  if (_re?.url) {
+    rememberRemovedEmote(emoteName, _re.url, _re.source, _re.zeroWidth)
+    rememberPastOwnership(emoteName, _re, Date.now())
+  }
   inventoryEmotes.delete(emoteName)
   inventoryHashes.delete(emoteName)
   viewerPersonalEmotes.delete(emoteName)
+  localRemovals.set(emoteName, Date.now())
+  // The shared heatsync pool entry was stamped 'owned' when the emote joined the
+  // set (inventory_update / add). Your own rows resolve to it once the personal
+  // entry is gone, so left alone they keep rendering — and labelling — 'owned'.
+  const _pool = emoteCache.get(emoteName)
+  const _poolWasOwned = _pool?.state === 'owned'
+  if (_poolWasOwned) _pool.state = getEmoteState(emoteName, _pool.source)
   // Drop from the tab-complete auto-add registry so re-posting doesn't silently re-add it.
   if (typeof recentRemoteCompletions !== 'undefined') recentRemoteCompletions.delete(emoteName)
   // Vanish the picker thumbnail(s) + keep section counts truthful; rebuild on reopen.
@@ -1888,7 +2366,20 @@ function handleRemoveSuccess(emoteName) {
   // removed image. (typeof guards: these live in main.js, loaded after this module.)
   if (typeof invalidateRenderedForEmotes === 'function') invalidateRenderedForEmotes([emoteName])
   if (typeof reprocessEmoteTextInPlace === 'function') reprocessEmoteTextInPlace()
-  showToast(t('mc_emote_removed', [emoteName]), 'success')
+  rehoverAt(pt, false)
+  // Failure path: put every cache back exactly as it was and re-render.
+  return (undoPt) => {
+    localRemovals.delete(emoteName)
+    inventoryEmotes.add(emoteName)
+    if (_poolWasOwned && emoteCache.get(emoteName) === _pool) _pool.state = 'owned'
+    if (_hash) inventoryHashes.set(emoteName, _hash)
+    if (_re) viewerPersonalEmotes.set(emoteName, _re)
+    if (removedEmoteFallback.delete(emoteName)) persistRemovedFallback()
+    markPickerDirty()
+    if (typeof invalidateRenderedForEmotes === 'function') invalidateRenderedForEmotes([emoteName])
+    if (typeof reprocessEmoteTextInPlace === 'function') reprocessEmoteTextInPlace()
+    rehoverAt(undoPt, true)
+  }
 }
 
 function blockAllEmotesInStack(stack) {
@@ -1903,7 +2394,7 @@ function blockAllEmotesInStack(stack) {
   })
   if (count > 0) showToast(t('mc_emote_blocked_count', [String(count)]), 'success')
   stack.classList.remove('expanded')
-  stack.setAttribute('title', 'expand')
+  stack.setAttribute('title', t('mc_emo_stack_expand'))
 }
 
 // opts.skipSync: don't hit the API (used when this call IS the rollback of a
@@ -1926,7 +2417,13 @@ function blockEmote(emoteName, clickedUrl, clickedSource, opts) {
   // returns the global cache first and would otherwise capture the wrong image
   // for unblock/re-add.
   const capturedUrl = _httpOk(clickedUrl) ? clickedUrl : _httpOk(_be?.url) ? _be.url : ''
-  rememberBlockedEmote(emoteName, capturedUrl, _be?.source || clickedSource, _be?.zeroWidth)
+  // Hash for API - prefer known hash, then url-derived (capturedUrl covers
+  // the case lookupEmote misses), last resort the name.
+  // the clicked emote's own key; the name's last-registered hash may belong to ANOTHER emote
+  // of the same name (rule 9)
+  const hash =
+    opts?.hash || (capturedUrl ? emoteBlockKey(emoteName, capturedUrl) : emoteHashes.get(emoteName) || emoteName)
+  rememberBlockedEmote(emoteName, capturedUrl, _be?.source || clickedSource, _be?.zeroWidth, hash)
 
   // 2-state model: block is a render-preference, not an inventory mutation.
   // Preserve inventoryEmotes / inventoryHashes / viewerPersonalEmotes so an
@@ -1936,9 +2433,6 @@ function blockEmote(emoteName, clickedUrl, clickedSource, opts) {
   // tab restarts + inventory refetches.
   blockedEmoteNames.add(emoteName)
 
-  // Get hash for API - prefer known hash, then url-derived (capturedUrl covers
-  // the case lookupEmote misses), last resort the name.
-  const hash = emoteHashes.get(emoteName) || (capturedUrl ? btoa(capturedUrl).slice(0, 32) : emoteName)
   blockedEmoteHashes.add(hash)
 
   // Sync to heatsync.org API via background.js (it handles storage). The
@@ -1948,10 +2442,17 @@ function blockEmote(emoteName, clickedUrl, clickedSource, opts) {
   // undoes. Pass the captured url/source so a failed-unblock rollback can
   // restore the real image.
   if (!opts?.skipSync)
-    syncBlockToAPI(emoteName, true, { url: capturedUrl, source: _be?.source || clickedSource, silent: opts?.silent })
+    syncBlockToAPI(emoteName, true, {
+      url: capturedUrl,
+      source: _be?.source || clickedSource,
+      silent: opts?.silent,
+      hash,
+    })
 
   // Instant DOM update - CSS visibility:hidden hides the img, no src swap needed
   queryEmoteWrappers(emoteName).forEach((w) => {
+    if (!wrapperIsEmote(w, hash, capturedUrl)) return
+    hsPinLogEmoteSize(w, true)
     w.classList.remove(
       'hs-state-global',
       'hs-state-channel',
@@ -1959,6 +2460,7 @@ function blockEmote(emoteName, clickedUrl, clickedSource, opts) {
       'hs-state-unadded',
       'hs-emote-highlight',
     )
+    w.closest?.('.hs-mc-emote-stack')?.classList.remove('hs-stack-hl')
     w.classList.add('hs-state-blocked')
     w.dataset.state = 'blocked'
     const img = w.querySelector('img')
@@ -2005,7 +2507,16 @@ function refreshEmoteWrappersState(emoteName) {
   const newState = emote ? getEmoteState(emoteName, emote.source) : 'unadded'
   queryEmoteWrappers(emoteName).forEach((w) => {
     if (w.classList.contains('hs-state-blocked')) return
+    // 'owned' is the exact emote you hold, not every wrapper sharing its name (rule 10): leave
+    // another emote's wrapper as the render drew it.
+    if (
+      newState === 'owned' &&
+      w.tagName !== 'IMG' &&
+      !isViewerEmoteUrl(emoteName, w.dataset?.emoteUrl, w.dataset?.emoteHash)
+    )
+      return
     w.classList.remove('hs-state-global', 'hs-state-channel', 'hs-state-owned', 'hs-state-unadded')
+    w.closest?.('.hs-mc-emote-stack')?.classList.remove('hs-stack-hl')
     w.classList.add(`hs-state-${newState}`)
     w.dataset.state = newState
     const img = w.querySelector('img')
@@ -2021,22 +2532,34 @@ function unblockEmote(emoteName, opts) {
   if (!emoteName) return
 
   // Update local tracking
-  blockedEmoteNames.delete(emoteName)
+  // The fallback remembers the hash the block was filed under; read it before
+  // the entry is dropped. After a refresh nothing else can name this emote. The clicked
+  // emote's own key (opts.hash) picks THE record when a name has several blocked emotes.
+  const _bfEmote =
+    (opts?.hash && blockedFallbacksForName(emoteName).find((r) => String(r.hash) === String(opts.hash))) ||
+    blockedFallbackForName(emoteName)
   const hash =
+    opts?.hash ||
+    _bfEmote?.hash ||
+    (_bfEmote?.url ? emoteBlockKey(emoteName, _bfEmote.url) : '') ||
     emoteHashes.get(emoteName) ||
-    (lookupEmote(emoteName)?.url ? btoa(lookupEmote(emoteName).url).slice(0, 32) : emoteName)
+    emoteBlockKey(emoteName, lookupEmote(emoteName)?.url)
   blockedEmoteHashes.delete(hash)
   // Drop the persisted block fallback so it can't re-seed blockedEmoteNames on
   // the next refresh (which would re-hide an emote the user just unblocked).
-  const _bfEmote = blockedEmoteFallback.get(emoteName)
-  if (blockedEmoteFallback.delete(emoteName)) persistBlockedFallback()
+  if (_bfEmote) {
+    for (const [k, r] of blockedEmoteFallback) if (r === _bfEmote) blockedEmoteFallback.delete(k)
+    persistBlockedFallback()
+  }
+  // the name stays blocked while another emote of that name is
+  if (!blockedFallbacksForName(emoteName).length) blockedEmoteNames.delete(emoteName)
 
   // Sync to heatsync.org API via background.js. Toast + optimistic-rollback
   // live in syncBlockToAPI (see blockEmote). Carry the fallback url/source so a
   // failed-block rollback (i.e. this unblock reversing a block) is redundant,
   // but a failed UNBLOCK rollback re-blocks and needs them.
   if (!opts?.skipSync)
-    syncBlockToAPI(emoteName, false, { url: _bfEmote?.url || '', source: _bfEmote?.source, silent: opts?.silent })
+    syncBlockToAPI(emoteName, false, { url: _bfEmote?.url || '', source: _bfEmote?.source, silent: opts?.silent, hash })
 
   // Instant DOM update - restore images. After refresh the emote is in no live
   // cache, so lookupEmote misses — fall back to the persisted block url.
@@ -2051,6 +2574,7 @@ function unblockEmote(emoteName, opts) {
   const newState =
     typeof getEmoteState === 'function' ? getEmoteState(emoteName, emote?.source) : emote?.state || 'global'
   queryEmoteWrappers(emoteName).forEach((w) => {
+    if (!wrapperIsEmote(w, hash, _bfEmote?.url || realUrl)) return
     w.classList.remove(
       'hs-state-global',
       'hs-state-channel',
@@ -2059,9 +2583,11 @@ function unblockEmote(emoteName, opts) {
       'hs-state-unadded',
       'hs-emote-highlight',
     )
+    w.closest?.('.hs-mc-emote-stack')?.classList.remove('hs-stack-hl')
     w.classList.add(`hs-state-${newState}`)
     w.dataset.state = newState
     w.style.outline = ''
+    hsPinLogEmoteSize(w, false)
     const img = w.querySelector('img')
     if (img && realUrl) {
       img.src = realUrl
@@ -2103,7 +2629,9 @@ function unblockEmote(emoteName, opts) {
 // lookup across mcRemoteEmoteIndex + zeroWidthFromAnyCache so all callers
 // (picker, chat-row click, auto-add-on-send, chip-paste) inherit the flag
 // without each having to plumb it through their own state.
-async function addEmoteToInventory(emoteName, emoteUrl, emoteSource, _targetEl, zeroWidth, silent) {
+// replace: re-point a name you already own to this emote in one server call (the
+// same-name swap); the server refuses it when the owned one is your own upload.
+async function addEmoteToInventory(emoteName, emoteUrl, emoteSource, _targetEl, zeroWidth, silent, replace) {
   if (!emoteName) return false
   if (zeroWidth == null) {
     const remote = mcRemoteEmoteIndex.get(emoteName)
@@ -2121,7 +2649,13 @@ async function addEmoteToInventory(emoteName, emoteUrl, emoteSource, _targetEl, 
   pendingEmoteOps.add(emoteName)
   try {
     // Generate a hash from the URL for the API
-    const emoteHash = emoteUrl ? btoa(emoteUrl).slice(0, 32) : emoteName
+    // The same per-emote key as blocks and ownership (the emote's own hash, else the full url key);
+    // the server's sourceId allows 200 chars.
+    const emoteHash = emoteBlockKey(
+      emoteName,
+      emoteUrl,
+      _targetEl?.closest?.('[data-emote-hash]')?.dataset?.emoteHash,
+    ).slice(0, 200)
 
     // Send to background script for API call with auth
     const response = await new Promise((resolve) => {
@@ -2132,6 +2666,7 @@ async function addEmoteToInventory(emoteName, emoteUrl, emoteSource, _targetEl, 
           emoteHash: emoteHash,
           emoteUrl: emoteUrl,
           zeroWidth: !!zeroWidth,
+          ...(replace ? { replace: true } : {}),
         },
         (resp) => {
           // Read lastError so Chrome doesn't log an "unchecked runtime.lastError"
@@ -2150,7 +2685,8 @@ async function addEmoteToInventory(emoteName, emoteUrl, emoteSource, _targetEl, 
       blockedEmoteNames.delete(emoteName)
       // No longer "removed" or blocked — drop the stale render fallback entries.
       if (removedEmoteFallback.delete(emoteName)) persistRemovedFallback()
-      if (blockedEmoteFallback.delete(emoteName)) persistBlockedFallback()
+      if (forgetBlockedFallback(emoteName, response.hash || emoteHash)) persistBlockedFallback()
+      localRemovals.delete(emoteName)
       const serverHash = response.hash || emoteHash
       inventoryEmotes.add(emoteName)
       inventoryHashes.set(emoteName, serverHash)
@@ -2180,7 +2716,10 @@ async function addEmoteToInventory(emoteName, emoteUrl, emoteSource, _targetEl, 
 
       // Update all wrappers in DOM (no full re-render)
       queryEmoteWrappers(emoteName).forEach((w) => {
-        w.classList.remove('hs-state-global', 'hs-state-unadded', 'hs-state-blocked')
+        if (!wrapperIsEmote(w, serverHash, emoteUrl)) return // the one just added, not every W
+        // stale too: once it is in your set, the channel dropping its 7TV copy
+        // no longer matters, and a leftover ghost class kept the row dimmed
+        w.classList.remove('hs-state-global', 'hs-state-unadded', 'hs-state-blocked', 'hs-state-stale')
         w.classList.add('hs-state-owned')
         w.dataset.state = 'owned'
       })
@@ -2190,17 +2729,19 @@ async function addEmoteToInventory(emoteName, emoteUrl, emoteSource, _targetEl, 
         showToast(t('mc_emote_added', [emoteName]), 'success')
         flashAllEmotes(emoteName, 'hs-flash-add')
       }
-    } else if (!silent) {
-      // Logged-out is the common case, not a failure — one gentle nudge
-      // (statusbar dedupes to ×N) instead of a red per-emote error.
+    } else {
+      // A failed add is loud even for the silent auto-add on send: only the
+      // success toast is skipped. Staying quiet left "my emote is text" with no
+      // clue why. Logged-out is the common case, not a failure — one gentle
+      // nudge (statusbar dedupes to ×N) instead of a red per-emote error.
       const addErr = String(response?.error || '')
       if (/not logged in/i.test(addErr)) {
         showToast(t('mc_emote_add_login'), 'info')
+      } else if (replace && /held by your upload/i.test(addErr)) {
+        showToast(t('mc_emote_swap_upload', [emoteName]), 'error')
       } else {
         showToast(addErr || t('mc_emote_add_failed', [emoteName]), 'error')
       }
-    } else {
-      log('Auto-add failed silently:', emoteName, response?.error || '(no error)')
     }
   } catch (e) {
     log('Add emote error:', e)
@@ -2209,6 +2750,32 @@ async function addEmoteToInventory(emoteName, emoteUrl, emoteSource, _targetEl, 
     pendingEmoteOps.delete(emoteName)
   }
   return _added
+}
+
+// Swap what you own under a name for a different emote — the same-name pick (the
+// channel's IDK vs another IDK). ONE add carrying replace:true: the server re-points
+// the same slot atomically, so you are never left with neither. It refuses when the
+// emote you own under that name is your own upload (the add toasts why). The new one
+// is seeded locally first so the line being sent right now, whose echo is back in a
+// blink, still draws it; a refusal puts the old entry back. Resolves true when the
+// new one is yours.
+async function swapEmoteInInventory(emoteName, emoteUrl, emoteSource, zeroWidth) {
+  const old = viewerPersonalEmotes.get(emoteName)
+  if (!emoteName || !old?.url) return false
+  viewerPersonalEmotes.set(emoteName, {
+    url: emoteUrl,
+    source: emoteSource || 'heatsync',
+    state: 'owned',
+    zeroWidth: !!zeroWidth,
+    addedAt: Date.now(),
+  })
+  if (await addEmoteToInventory(emoteName, emoteUrl, emoteSource, null, zeroWidth, true, true)) {
+    if (old.hash && hashToName.get(old.hash) === emoteName) hashToName.delete(old.hash)
+    showToast(t('mc_emote_swapped', [emoteName]), 'success')
+    return true
+  }
+  viewerPersonalEmotes.set(emoteName, old)
+  return false
 }
 
 // Sync block/unblock to heatsync.org API via background script, then RECONCILE.
@@ -2224,10 +2791,8 @@ async function syncBlockToAPI(emoteName, block, ctx) {
   let resp
   try {
     // Background script expects message.hash - use emoteHashes (most complete mapping)
-    const hash =
-      emoteHashes.get(emoteName) ||
-      (lookupEmote(emoteName)?.url ? btoa(lookupEmote(emoteName).url).slice(0, 32) : emoteName)
-    resp = await chrome.runtime.sendMessage({
+    const hash = ctx?.hash || emoteHashes.get(emoteName) || emoteBlockKey(emoteName, lookupEmote(emoteName)?.url)
+    resp = await browser.runtime.sendMessage({
       type: block ? 'block_emote' : 'unblock_emote',
       hash: hash,
       emoteName: emoteName,
@@ -2240,11 +2805,12 @@ async function syncBlockToAPI(emoteName, block, ctx) {
   }
   if (resp && resp.success === false) {
     log('block sync rejected:', resp.error)
+    console.warn('[heatsync] emote block refused:', emoteName, ctx?.hash, resp.error)
     // Roll back the optimistic local change. This is a rollback of a rollback-
     // free op, so pass skipSync (don't re-hit the server) + silent (the error
     // toast below is the only message this failure gets).
     if (block) unblockEmote(emoteName, { skipSync: true, silent: true })
-    else blockEmote(emoteName, ctx?.url, ctx?.source, { skipSync: true, silent: true })
+    else blockEmote(emoteName, ctx?.url, ctx?.source, { skipSync: true, silent: true, hash: ctx?.hash })
     if (!silent) showToast(t(block ? 'mc_emote_block_failed' : 'mc_emote_unblock_failed'), 'error')
     return
   }
@@ -2289,11 +2855,72 @@ function registerClickPastedRef(name, url, source, zeroWidth) {
 // the image (as unadded/orange — not owned). Gated to the viewer's own messages
 // in processEmotes so it never bleeds into other senders' rendering.
 const removedEmoteFallback = new Map() // Map<name, {url, source, zeroWidth}>
+// Names removed from the set a moment ago, while the server DELETE may still be
+// in flight. A background inventory poll that started before the delete lands
+// after it with the old list and would put the name straight back (label flips
+// to "inventory" again). inventory_update skips these until the server agrees.
+const LOCAL_REMOVAL_GRACE_MS = 20000
+const localRemovals = new Map() // Map<name, removedAtMs>
+function isLocallyRemoved(name) {
+  const at = localRemovals.get(name)
+  if (at === undefined) return false
+  if (Date.now() - at < LOCAL_REMOVAL_GRACE_MS) return true
+  localRemovals.delete(name)
+  return false
+}
 const REMOVED_FALLBACK_CAP = 1000
+// Every stretch of time the viewer owned an emote and then gave it up:
+// name -> [{url, source, zeroWidth, from, to}]. A re-add (or an unblock that
+// puts it back) opens a NEW interval but never erases these, so a line posted
+// while the emote was in the inventory keeps its image for good, and a line
+// posted in a gap (not owned) stays text. Own messages only; persisted.
+const pastOwnership = new Map()
+const PAST_OWNERSHIP_CAP = 500
+const PAST_INTERVALS_PER_NAME = 8
+let _pastOwnershipPersistTimer = null
+function persistPastOwnership() {
+  if (_pastOwnershipPersistTimer) return
+  _pastOwnershipPersistTimer = cleanup.setPageTimeout(() => {
+    _pastOwnershipPersistTimer = null
+    const obj = {}
+    for (const [name, list] of pastOwnership) obj[name] = list
+    try {
+      chrome.storage.local.set({ hs_own_emote_past: obj })
+    } catch {}
+  }, 1000)
+}
+function rememberPastOwnership(name, entry, to) {
+  if (!name || !entry?.url) return
+  const list = pastOwnership.get(name) || []
+  pastOwnership.delete(name)
+  list.push({
+    url: entry.url,
+    source: entry.source || 'heatsync',
+    zeroWidth: !!entry.zeroWidth,
+    from: Number(entry.addedAt) || 0,
+    to,
+  })
+  while (list.length > PAST_INTERVALS_PER_NAME) list.shift()
+  pastOwnership.set(name, list)
+  while (pastOwnership.size > PAST_OWNERSHIP_CAP) pastOwnership.delete(pastOwnership.keys().next().value)
+  persistPastOwnership()
+}
+function pastOwnershipAt(name, msgTime) {
+  if (typeof msgTime !== 'number') return null
+  const list = pastOwnership.get(name)
+  if (!list) return null
+  for (let i = list.length - 1; i >= 0; i--) {
+    const iv = list[i]
+    if (msgTime >= iv.from - EMOTE_OWN_SKEW_MS && msgTime < iv.to) {
+      return { url: iv.url, source: iv.source, zeroWidth: iv.zeroWidth, state: 'unadded' }
+    }
+  }
+  return null
+}
 let _removedFallbackPersistTimer = null
 function persistRemovedFallback() {
   if (_removedFallbackPersistTimer) return
-  _removedFallbackPersistTimer = cleanup.setTimeout(() => {
+  _removedFallbackPersistTimer = cleanup.setPageTimeout(() => {
     _removedFallbackPersistTimer = null
     const obj = {}
     for (const [name, e] of removedEmoteFallback) obj[name] = e
@@ -2329,24 +2956,71 @@ function rememberRemovedEmote(name, url, source, zeroWidth) {
 // the blocked-box render branch never fires and the token leaks as raw text. This
 // bounded, persisted map keeps the NAME (and url/source, for inline unblock-restore)
 // so the 2px dashed box survives refresh. Mirror of removedEmoteFallback.
-const blockedEmoteFallback = new Map() // Map<name, {url, source, zeroWidth}>
+// Keyed by the emote's own block key (its hash, else btoa(url)) — NOT by name — so blocking two
+// different W keeps both records (rule 9). A record: {name, url, source, zeroWidth, hash}. A
+// record with no `name` is a legacy name-keyed one: its key is the name.
+const blockedEmoteFallback = new Map()
 const BLOCKED_FALLBACK_CAP = 1000
 let _blockedFallbackPersistTimer = null
 function persistBlockedFallback() {
   if (_blockedFallbackPersistTimer) return
-  _blockedFallbackPersistTimer = cleanup.setTimeout(() => {
+  _blockedFallbackPersistTimer = cleanup.setPageTimeout(() => {
     _blockedFallbackPersistTimer = null
     const obj = {}
-    for (const [name, e] of blockedEmoteFallback) obj[name] = e
+    for (const [key, e] of blockedEmoteFallback) obj[key] = e
     try {
       chrome.storage.local.set({ hs_blocked_emote_fallback: obj })
     } catch {}
   }, 1000)
 }
-function rememberBlockedEmote(name, url, source, zeroWidth) {
+// Every record for a name, oldest first.
+function blockedFallbacksForName(name) {
+  const out = []
+  if (!blockedEmoteFallback.size) return out
+  for (const [key, rec] of blockedEmoteFallback) if ((rec.name || key) === name) out.push(rec)
+  return out
+}
+// The newest record for a name (what name-only lookups — the dashed box, a url to restore — need).
+function blockedFallbackForName(name) {
+  const all = blockedFallbacksForName(name)
+  return all.length ? all[all.length - 1] : undefined
+}
+// Drop one emote's record by key; or, with no key, the name's newest. True if something went.
+function forgetBlockedFallback(name, key) {
+  if (key && blockedEmoteFallback.delete(String(key))) return true
+  if (key) {
+    for (const [k, rec] of blockedEmoteFallback) {
+      if ((rec.name || k) === name && rec.hash && String(rec.hash) === String(key))
+        return blockedEmoteFallback.delete(k)
+    }
+    return false
+  }
+  const rec = blockedFallbackForName(name)
+  if (!rec) return false
+  for (const [k, r] of blockedEmoteFallback) if (r === rec) return blockedEmoteFallback.delete(k)
+  return false
+}
+function rememberBlockedEmote(name, url, source, zeroWidth, hash) {
   if (!name) return // url optional — a name with no resolvable url still needs the box
-  blockedEmoteFallback.delete(name) // re-insert to refresh LRU position
-  blockedEmoteFallback.set(name, { url: url || '', source: source || 'heatsync', zeroWidth: !!zeroWidth })
+  // hash: the exact id the server holds this block under. After a refresh the
+  // emote is in no live cache, so unblock can't re-derive it — without it the
+  // DELETE goes out under the bare name, the server refuses, and the block sticks.
+  let key = hash ? String(hash) : ''
+  let keep = key
+  if (!key) {
+    // no key given: the same picture already on file keeps its key
+    const same = blockedFallbacksForName(name).find((r) => r.url && url && emoteAssetKey(r.url) === emoteAssetKey(url))
+    keep = same?.hash || ''
+    key = keep || (url ? emoteBlockKey(name, url) : name)
+  }
+  blockedEmoteFallback.delete(key) // re-insert to refresh LRU position
+  blockedEmoteFallback.set(key, {
+    name,
+    url: url || '',
+    source: source || 'heatsync',
+    zeroWidth: !!zeroWidth,
+    hash: keep,
+  })
   while (blockedEmoteFallback.size > BLOCKED_FALLBACK_CAP) {
     blockedEmoteFallback.delete(blockedEmoteFallback.keys().next().value)
   }
@@ -2390,6 +3064,11 @@ const SENDER_EMOTE_SETS_VERSION = 2
 // could gate the sender's OWN first use off. Retro-flips this is meant to stop
 // are minutes-to-days old, so 2min of slack costs nothing.
 const EMOTE_ADDED_SKEW_MS = 120000
+// The viewer's own set: tight, so a line sent right BEFORE you add an emote (it was
+// text then) does not flip to the image. Not tighter than the send→commit gap: an
+// emote auto-added by the very line that first uses it gets the server's added_at
+// a second or two AFTER that line, and after a refresh that stamp is all there is.
+const EMOTE_OWN_SKEW_MS = 15000
 let _senderEmotePersistTimer = null
 let _senderEmoteDirty = false
 
@@ -2401,7 +3080,7 @@ function _scheduleSenderEmotePersist() {
   // of additions on tab close, doesn't spam during heavy chat. Persist also
   // runs on visibilitychange below so unsynced state is flushed when the
   // user navigates away.
-  _senderEmotePersistTimer = cleanup.setTimeout(() => {
+  _senderEmotePersistTimer = cleanup.setPageTimeout(() => {
     _senderEmotePersistTimer = null
     if (!_senderEmoteDirty) return
     _senderEmoteDirty = false
@@ -2466,7 +3145,8 @@ function mergeSenderEmotes(senderKey, nameToEmote) {
         prev.state !== data.state ||
         prev.source !== data.source ||
         prev.addedAt !== data.addedAt ||
-        prev.removedAt !== data.removedAt
+        prev.removedAt !== data.removedAt ||
+        prev.untilAt !== data.untilAt
       ) {
         inner.set(name, _carryEmoteInterval(prev, data))
         changed = true
@@ -2527,6 +3207,31 @@ function dropEmoteFromSenders(senderKeys, emoteName) {
     _scheduleSenderEmotePersist()
   }
   return changed
+}
+
+// Highest emote-inventory version seen per sender key (push `ver` or batch
+// `vers`). Versions are a server counter, so a batch response older than one we
+// already saw is a CDN-stale snapshot — applying it would drop a just-added
+// emote until the cached entry expires. Counters only; a wall-clock fallback
+// ver (server's redis-down Date.now()) is ignored so it can't outrank the real
+// counter forever.
+const senderEmoteHighVer = new Map()
+const SENDER_VER_MAX = 1e12
+function noteSenderVer(senderKey, ver) {
+  const n = Number(ver)
+  if (!senderKey || !Number.isFinite(n) || n < 0 || n >= SENDER_VER_MAX) return
+  if (n <= (senderEmoteHighVer.get(senderKey) ?? -1)) return
+  senderEmoteHighVer.delete(senderKey)
+  senderEmoteHighVer.set(senderKey, n)
+  if (senderEmoteHighVer.size > SENDER_EMOTE_LRU_MAX) senderEmoteHighVer.delete(senderEmoteHighVer.keys().next().value)
+}
+// True → the batch reply for this key is older than a version already seen:
+// keep the current set. Absent/bad ver → false (old server, apply as before).
+function senderSetIsStale(senderKey, ver) {
+  const n = Number(ver)
+  if (ver == null || !Number.isFinite(n)) return false
+  const high = senderEmoteHighVer.get(senderKey)
+  return high != null && n < high
 }
 
 // Replace a sender's set with an AUTHORITATIVE fresh fetch — drops any
@@ -2600,7 +3305,8 @@ function replaceSenderEmotes(senderKey, nameToEmote) {
       prev.source !== data.source ||
       prev.cw !== data.cw ||
       prev.addedAt !== data.addedAt ||
-      prev.removedAt !== data.removedAt
+      prev.removedAt !== data.removedAt ||
+      prev.untilAt !== data.untilAt
     ) {
       inner.set(name, _carryEmoteInterval(prev, data))
       changed = true
@@ -2616,7 +3322,7 @@ function replaceSenderEmotes(senderKey, nameToEmote) {
 
 async function loadSenderEmoteSets() {
   try {
-    const stored = await chrome.storage.local.get(['sender_emote_sets', 'sender_emote_sets_v'])
+    const stored = await browser.storage.local.get(['sender_emote_sets', 'sender_emote_sets_v'])
     senderEmoteSets.clear()
     // Version gate — see SENDER_EMOTE_SETS_VERSION. A mismatched blob is
     // discarded rather than rendered-then-corrected.
@@ -2707,7 +3413,7 @@ function lookupEmote(name) {
     emoteCache.get(name) ||
     activeTabChannelEmote(name) ||
     removedEmoteFallback.get(name) ||
-    blockedEmoteFallback.get(name)
+    blockedFallbackForName(name)
   )
 }
 // Kick-native emotes only exist on the wire as [emote:<id>:<name>]. Sending
@@ -2723,7 +3429,7 @@ function kickifyEmoteText(text) {
   const out = text.replace(/\S+/g, (word) => {
     // Never touch a token the user (or kick's own composer) already wrote.
     if (word.startsWith('[emote:')) return word
-    const e = typeof lookupEmoteRenderOrder === 'function' ? lookupEmoteRenderOrder(word) : null
+    const e = typeof lookupEmoteWireOrder === 'function' ? lookupEmoteWireOrder(word) : null
     if (e?.source !== 'kick' || !e.url) return word
     const m = KICK_EMOTE_ID_RE.exec(e.url)
     return m ? `[emote:${m[1]}:${word}]` : word
@@ -2742,19 +3448,33 @@ function kickifyEmoteText(text) {
 function lookupOwnedEmote(name) {
   return viewerPersonalEmotes.get(name)
 }
-// Render-order resolution for the INPUT PREVIEW: channel > inventory > global,
-// mirroring processEmotes (channel emotes authoritative in their own channel).
-// lookupEmote stays inventory-first — it drives block/add/state/tooltip, which
-// are viewer-centric. The input chip must match what gets RENDERED on send, so
-// it resolves channel-first here. Removed/blocked fallbacks stay last so a
-// blocked emote still resolves its real url for the dashed-box preview.
+// Composer preview order: inventory > channel > global, the order a sent line draws in
+// (see _lookup: your own emote beats the channel's of the same name). lookupEmote stays
+// inventory-first too — it drives block/add/state/tooltip. Removed/blocked fallbacks
+// stay last so a blocked emote still resolves its real url for the dashed-box preview.
 function lookupEmoteRenderOrder(name) {
+  return (
+    viewerPersonalEmotes.get(name) ||
+    activeTabChannelEmote(name) ||
+    emoteCache.get(name) ||
+    removedEmoteFallback.get(name) ||
+    blockedFallbackForName(name)
+  )
+}
+// Someone else's bare word (a feed post, a line with no ref): channel, then globals — never
+// your inventory, which is yours alone (rule 4).
+function lookupPublicEmote(name) {
+  return activeTabChannelEmote(name) || emoteCache.get(name)
+}
+// Wire order for kick: channel > inventory > global, so a kick channel emote that shares a name
+// with one you own still goes out as the kick-native token every kick viewer can see.
+function lookupEmoteWireOrder(name) {
   return (
     activeTabChannelEmote(name) ||
     viewerPersonalEmotes.get(name) ||
     emoteCache.get(name) ||
     removedEmoteFallback.get(name) ||
-    blockedEmoteFallback.get(name)
+    blockedFallbackForName(name)
   )
 }
 // True if ANY cache knows this emote name is 7TV zero-width. The owned set
@@ -2938,15 +3658,23 @@ function _buildChannelEmoteCache(ch, emotes, platform) {
       source,
       state,
       zeroWidth: !!e.zeroWidth,
+      animated: e.animated === true,
       os: e.os,
       _plat: platform,
+      hash: e.hash || undefined,
+      // our own uploads: smaller copies + natural size (emote-rungs.js)
+      ...(source === 'heatsync' ? { variants: e.variants, width: e.width, height: e.height } : null),
       nsfw: !!(e.flags & 65536),
+      // heatsync's own scan (weapons/drugs/gore/hate/sexual), stamped on by the
+      // background from /api/channel/:c/emotes — the render gate hides the
+      // category the viewer turned off, same as an own-inventory annotation
+      cwCats: Array.isArray(e.cw_cats) && e.cw_cats.length ? e.cw_cats : null,
     }
     // Same-name collision between two third-party providers (7tv/bttv/ffz):
     // emoteProviderPriority decides the winner instead of plain array-order
     // last-write-wins. Every other pairing (heatsync, twitch, kick, or a
     // same-provider refresh) is untouched — see resolveEmoteProviderWinner.
-    chCache.set(e.name, resolveEmoteProviderWinner(chCache.get(e.name), entry, emoteProviderPriority))
+    chCache.set(e.name, resolveEmoteProviderWinner(chCache.get(e.name), entry, EMOTE_TIER_ORDER.channel))
     if (e.hash) {
       emoteHashes.set(e.name, e.hash)
       hashToName.set(e.hash, e.name)
@@ -2993,13 +3721,14 @@ async function loadEmotes() {
   _loadEmotesInFlight = true
   try {
     try {
-      const stored = await chrome.storage.local.get([
+      const stored = await browser.storage.local.get([
         'global_emotes',
         'emote_inventory',
         'channel_emotes_map',
         'native_twitch_emotes',
         'hs_removed_emote_fallback',
         'hs_blocked_emote_fallback',
+        'hs_own_emote_past',
       ])
       // Restore removed-emote render fallback (persists across refresh).
       removedEmoteFallback.clear()
@@ -3016,17 +3745,28 @@ async function loadEmotes() {
             })
         }
       }
+      pastOwnership.clear()
+      const po = stored.hs_own_emote_past
+      if (po && typeof po === 'object') {
+        for (const [name, list] of Object.entries(po)) {
+          if (!Array.isArray(list)) continue
+          const ok = list.filter((iv) => iv?.url && Number.isFinite(iv.to))
+          if (ok.length) pastOwnership.set(name, ok)
+        }
+      }
       // Restore block-state render fallback so the dashed box survives refresh
       // (rebuildBlockedNames at the tail of this fn seeds blockedEmoteNames from it).
       blockedEmoteFallback.clear()
       const bf = stored.hs_blocked_emote_fallback
       if (bf && typeof bf === 'object') {
-        for (const [name, e] of Object.entries(bf)) {
+        for (const [key, e] of Object.entries(bf)) {
           if (e)
-            blockedEmoteFallback.set(name, {
+            blockedEmoteFallback.set(key, {
+              name: typeof e.name === 'string' && e.name ? e.name : key,
               url: e.url || '',
               source: e.source || 'heatsync',
               zeroWidth: !!e.zeroWidth,
+              hash: typeof e.hash === 'string' ? e.hash : '',
             })
         }
       }
@@ -3078,10 +3818,19 @@ async function loadEmotes() {
           const source = e.source || detectEmoteSource(e.url, 'heatsync')
           const state = getEmoteState(e.name, source)
           _hsRegisterOversize(e)
-          const entry = { url: e.url, source, state, zeroWidth: !!e.zeroWidth, nsfw: !!e.nsfw, os: e.os }
+          const entry = {
+            url: e.url,
+            source,
+            state,
+            zeroWidth: !!e.zeroWidth,
+            animated: e.animated === true,
+            hash: e.hash || undefined,
+            nsfw: !!e.nsfw,
+            os: e.os,
+          }
           // See _buildChannelEmoteCache — same 7tv/bttv/ffz collision rule
           // applied to the global-tier pool.
-          emoteCache.set(e.name, resolveEmoteProviderWinner(emoteCache.get(e.name), entry, emoteProviderPriority))
+          emoteCache.set(e.name, resolveEmoteProviderWinner(emoteCache.get(e.name), entry, EMOTE_TIER_ORDER.global))
           while (emoteCache.size > 2000) {
             emoteCache.delete(emoteCache.keys().next().value)
           }
@@ -3104,7 +3853,9 @@ async function loadEmotes() {
             source,
             state: 'owned',
             zeroWidth: !!(e.zero_width ?? e.zeroWidth),
+            variants: Array.isArray(e.variants) ? e.variants : undefined,
             subscription: !!e.subscription,
+            hash: e.hash || undefined,
             slot: e.slot,
             nsfw: !!e.nsfw,
             // BG-normalized epoch ms (emoteAddedAtMs) — inventory-time render gate
@@ -3252,7 +4003,7 @@ cleanup.persistInterval(cleanup.setIntervalIfVisible(scanDomForEmotes, 10000))
 
 // Process text and replace emote codes with images.
 // Supports 7TV zero-width (overlay) emotes that stack on base emotes.
-// Resolution priority (perma sender model): channel > senderEmotes > extraCache (native twitch IRC) > emoteCache (globals) — see the lookup order below (~line 3440); channel is authoritative in its own room
+// Resolution priority: this message's server-verified refs > senderEmotes (the sender's own set, the emote they picked) > channel > extraCache (native twitch IRC) > emoteCache (globals) — see _lookup below
 // - extraCache: optional Map<name, emoteData> for per-message Twitch IRC tag emotes
 // - senderEmotes: optional Map<name, emoteData> — sender's personal set frozen at first sight.
 //   For viewer's own outgoing messages, caller passes viewerPersonalEmotes here.
@@ -3299,11 +4050,22 @@ function _hsMcApplyMods(html, mods, hue) {
   // ride on hs-fx-* classes (keyframes in the emote CSS) so they compose with
   // the static transform/filter above. Merge into the img's existing class.
   const animClasses = hsModComposeAnimClasses(mods)
-  if (animClasses.length && hasImg) {
+  if (animClasses.length) {
     const cls = animClasses.join(' ')
-    out = /<img\b[^>]*\sclass="/.test(out)
-      ? out.replace(/(<img\b[^>]*\sclass=")/, `$1${cls} `)
-      : out.replace(/<img\b/, `<img class="${cls}"`)
+    if (hasImg) {
+      out = /<img\b[^>]*\sclass="/.test(out)
+        ? out.replace(/(<img\b[^>]*\sclass=")/, `$1${cls} `)
+        : out.replace(/<img\b/, `<img class="${cls}"`)
+    } else {
+      // No <img> means an emoji base: the glyph IS the wrapper span, so the
+      // effect class has to land there instead. Without this the class was
+      // simply never emitted for emoji — the static half of a modifier applied
+      // (it rides the style attr, folded in above) and the animated half
+      // silently did nothing, so `p!` on an emoji read as a frozen tint.
+      out = /^<span\b[^>]*\sclass="/.test(out)
+        ? out.replace(/^(<span\b[^>]*\sclass=")/, `$1${cls} `)
+        : out.replace(/^<span\b/, `<span class="${cls}"`)
+    }
   }
   // Stamp the scale factors so the load-time snap can reserve horizontal/vertical
   // space sized to the emote's REAL width (hsModBuildStyleAttr's static margins
@@ -3328,31 +4090,104 @@ function _hsMcApplyMods(html, mods, hue) {
   return out
 }
 
-// ── Bitmap crispness: snap each emote box to an integer outer width ──────
-// A non-integer-width inline emote shifts every following glyph on the row
-// onto a fractional x. On Linux (where -webkit-font-smoothing:none is a
-// no-op) Chrome grayscale-AAs text at sub-pixel origins, so the text AFTER
-// an emote renders blurry while text before it stays crisp — the reported
-// "emote at start / after punctuation blurs the rest of the line" (position
-// is a perception artifact: any emote blurs the text that follows it).
-// Rounding the emote box's outer width UP to the next pixel puts the
-// post-emote pen back on the same integer-phase grid as ordinary text, so
-// the run renders crisp again (measured: post-emote text returns to the
-// native text phase in every position). Width is cached by url and
-// re-emitted inline by the HTML builders below, so re-sightings paint
-// snapped from the first frame — no reflow, no flash. Lazy emojis carry the
-// same fractional-advance issue but have no load event to hook — separate.
 const _hsEmoteBoxW = new Map() // chat url -> integer px (ceil of natural box width)
+
+// The widths are only learned once an image has decoded, so after a refresh every emote in
+// the first paint had none: each image loaded at width 0 and pushed the text after it
+// sideways, row after row, as they trickled in. They are saved (newest 1500, 30 days) and
+// read back before the first row renders, so a returning emote reserves its box from frame one.
+const HS_BOXW_KEY = 'hs_emote_boxw_v1'
+const HS_BOXW_SAVE_MAX = 1500
+const HS_BOXW_TTL = 30 * 24 * 60 * 60 * 1000
+let _hsBoxWSaveTimer = null
+function scheduleEmoteBoxWSave() {
+  if (_hsBoxWSaveTimer) return
+  _hsBoxWSaveTimer = cleanup.setPageTimeout(() => {
+    _hsBoxWSaveTimer = null
+    try {
+      browser.storage.local
+        .set({ [HS_BOXW_KEY]: { at: Date.now(), items: [..._hsEmoteBoxW].slice(-HS_BOXW_SAVE_MAX) } })
+        .catch(() => {})
+    } catch (_) {}
+  }, 5000)
+}
+async function hydrateEmoteBoxWidths() {
+  try {
+    const blob = (await browser.storage.local.get(HS_BOXW_KEY))?.[HS_BOXW_KEY]
+    if (!blob || Date.now() - (blob.at || 0) > HS_BOXW_TTL) return
+    for (const [url, w] of blob.items || []) {
+      if (typeof url === 'string' && Number.isInteger(w) && w > 0 && w < 600 && !_hsEmoteBoxW.has(url))
+        _hsEmoteBoxW.set(url, w)
+    }
+  } catch (_) {}
+}
+
+// Kick serves every emote on a square canvas, so a wide one (…KEKWIDE) arrives
+// as a strip of art in the middle of transparent padding and drew at a third of
+// the size of any other wide emote. Measure where the art actually is (one
+// fetch per emote id, files.kick.com allows CORS) and, for clearly wide art,
+// crop the wrapper to it. Tall or squarish art stays as Kick drew it.
+const _kickCrop = new Map() // emote id -> { w, h, x, y, sw, sh } | null (no crop)
+const _kickCropPending = new Set()
+const KICK_CROP_MIN_ASPECT = 1.5
+
+async function _measureKickEmote(id) {
+  const res = await fetch(`https://files.kick.com/emotes/${id}/fullsize`)
+  if (!res.ok) return null
+  const bmp = await createImageBitmap(await res.blob())
+  const sw = bmp.width
+  const sh = bmp.height
+  const cv = new OffscreenCanvas(sw, sh)
+  const cx = cv.getContext('2d', { willReadFrequently: true })
+  cx.drawImage(bmp, 0, 0)
+  bmp.close?.()
+  const d = cx.getImageData(0, 0, sw, sh).data
+  let x0 = sw
+  let x1 = -1
+  let y0 = sh
+  let y1 = -1
+  for (let y = 0; y < sh; y++) {
+    for (let x = 0; x < sw; x++) {
+      if (d[(y * sw + x) * 4 + 3] > 16) {
+        if (x < x0) x0 = x
+        if (x > x1) x1 = x
+        if (y < y0) y0 = y
+        if (y > y1) y1 = y
+      }
+    }
+  }
+  if (x1 < 0) return null
+  const w = x1 - x0 + 1
+  const h = y1 - y0 + 1
+  if (w / h < KICK_CROP_MIN_ASPECT) return null
+  return { w, h, x: x0, y: y0, sw, sh }
+}
+
+function _kickCropStyle(c) {
+  return `--kc-ar:${(c.w / c.h).toFixed(4)};--kc-x:${(c.x / c.w).toFixed(4)};--kc-y:${(c.y / c.h).toFixed(4)};--kc-sh:${(c.sh / c.h).toFixed(4)}`
+}
+
+// Measure once per id, then restyle every wrapper of it already on screen;
+// later renders read the cache and come out cropped from the start.
+function _kickCropRequest(id) {
+  if (_kickCrop.has(id) || _kickCropPending.has(id)) return
+  _kickCropPending.add(id)
+  _measureKickEmote(id)
+    .catch(() => null)
+    .then((c) => {
+      _kickCropPending.delete(id)
+      _kickCrop.set(id, c)
+      if (_kickCrop.size > 1500) _kickCrop.delete(_kickCrop.keys().next().value)
+      if (!c) return
+      for (const w of document.querySelectorAll(`.hs-mc-emote-wrapper[data-kick-id="${id}"]`)) {
+        w.classList.add('hs-kick-crop')
+        w.setAttribute('style', _kickCropStyle(c))
+      }
+    })
+}
 const _hsSnapQueue = new Set()
 let _hsSnapScheduled = false
 const HS_SNAP_QUEUE_CAP = 200
-// Attach the integer-width snap to a composer chip. Every chip-creation site
-// must call this: a chip with a fractional width puts every character typed
-// AFTER it on a fractional x, and the bitmap font smears. Measured live on a
-// 51x32 emote at 28px height — box 44.625px, following text at x-fraction
-// 0.625; pinned to 45px, the text returns to 0.
-// There are FOUR creation paths (paste, typing-imagify, and two emote-cycling
-// ones) and hooking only one is exactly how this shipped half-fixed.
 function hsAttachInputEmoteSnap(img) {
   if (!img || typeof hsSnapEmoteBox !== 'function') return
   img.addEventListener('load', () => hsSnapEmoteBox(img), { once: true })
@@ -3463,6 +4298,7 @@ function hsSnapEmoteBox(img) {
           const surl = it.selfWrap.dataset?.emoteUrl || it.im.getAttribute('src')
           if (surl && !_hsEmoteBoxW.has(surl)) {
             _hsEmoteBoxW.set(surl, it.selfW)
+            scheduleEmoteBoxWSave()
             if (_hsEmoteBoxW.size > 2000) _hsEmoteBoxW.delete(_hsEmoteBoxW.keys().next().value)
           }
         }
@@ -3470,6 +4306,7 @@ function hsSnapEmoteBox(img) {
       }
       const url = it.im.closest('.hs-mc-emote-wrapper')?.dataset?.emoteUrl || it.im.getAttribute('src')
       if (url) {
+        if (_hsEmoteBoxW.get(url) !== it.w) scheduleEmoteBoxWSave()
         _hsEmoteBoxW.set(url, it.w)
         // FIFO cap — a long multi-channel session measures thousands of unique
         // emote URLs; without eviction this Map grows unbounded for the tab's life.
@@ -3557,6 +4394,64 @@ function hsChannelNsfwHidden(emote) {
   return typeof getSetting === 'function' && getSetting('viewer_show_sexual') === false
 }
 
+// A flagged emote the viewer's own filters hide (underage / unverified / the
+// category toggled off). Decision surfaces — picker cell, composer chip,
+// tab-complete — must not draw its image either: a border "tell" around a
+// visible image still puts the image on screen. One answer for all of them.
+function hsEmoteHiddenForViewer(emote) {
+  return hsOwnCwHiddenCat(emote) || (hsChannelNsfwHidden(emote) ? 'sexual' : '')
+}
+
+// "Why does this name not draw in THIS tab?" — console: __hsWhy('gg'). Reads
+// the same stores and gates processEmotes does and says which layer holds the
+// name and which gate (block, filter, setting) would stop it. Read-only.
+function whyEmote(name) {
+  const raw = String(name || '').trim()
+  const brief = (e) =>
+    e ? { source: e.source, state: e.state, hash: e.hash || null, nsfw: !!e.nsfw, plat: e._plat || null } : null
+  const here = typeof getCurrentChannel === 'function' ? getCurrentChannel() : null
+  const channels = {}
+  for (const k of Object.keys(channelEmoteCaches)) {
+    const hit = channelEmoteCaches[k]?.get(raw)
+    channels[k] = { size: channelEmoteCaches[k]?.size || 0, entry: brief(hit) }
+  }
+  const resolved = (here && channelEmoteCaches[here]?.get(raw)) || emoteCache.get(raw) || viewerPersonalEmotes.get(raw)
+  const gates = {
+    blockedByName: blockedEmoteNames.has(raw),
+    blockedByHash: !!(resolved?.hash && blockedEmoteHashes.has(String(resolved.hash))),
+    hiddenByOwnFilter: resolved ? hsOwnCwHiddenCat(resolved) || null : null,
+    hiddenByChannelNsfw: resolved ? hsChannelNsfwHidden(resolved) : false,
+    inventoryRenderOff: typeof getSetting === 'function' && getSetting('renderInventoryEmotes') === false,
+    staleGhost: !!window._hsStaleEmotes?.get((here || '').toLowerCase())?.has(raw),
+  }
+  const stopped = Object.entries(gates).find(([k, v]) => v && k !== 'inventoryRenderOff')
+  const verdict = !resolved
+    ? `"${raw}" is in no emote store for this tab (channel ${here || '?'} has ${channels[here]?.size || 0} emotes)`
+    : stopped
+      ? `found, but held back by ${stopped[0]}`
+      : 'found and would draw'
+  return {
+    name: raw,
+    channel: here,
+    verdict,
+    channels,
+    global: brief(emoteCache.get(raw)),
+    viewerPersonal: brief(viewerPersonalEmotes.get(raw)),
+    inInventory: inventoryEmotes.has(raw),
+    gates,
+  }
+}
+// The bundle runs in the extension's isolated world, so a page console cannot
+// call it directly. early-inject-main.js defines the console-side __hsWhy: it
+// fires this event and reads the answer back off <html> — synchronous both ways.
+if (typeof document !== 'undefined' && document?.addEventListener) {
+  document.addEventListener('hs-why-ask', (e) => {
+    try {
+      document.documentElement.setAttribute('data-hs-why', JSON.stringify(whyEmote(e.detail)))
+    } catch (_) {}
+  })
+}
+
 // cw stub markup shared by every render branch that can hit a filter-hidden
 // emote (generic + kick [emote:id:name]) — no <img>, a labeled dashed box
 // marks the spot so the message reads as "emote hidden here". cwCat and
@@ -3572,6 +4467,28 @@ function _hsCwBoxHtml(cwCat, displayName, boxW) {
   const sizedClass = sized ? ' hs-mc-emote-cw--sized' : ''
   const wAttr = sized ? ` style="width:${boxW}px"` : ''
   return `<span class="hs-mc-emote-wrapper hs-mc-emote-cw${sizedClass}" data-emote-name="${displayName}" data-cw="${cwCat}" data-state="cw"${wAttr} title="${displayName}">${cwCat}</span>`
+}
+
+// A whisper / DM belongs to no channel, so a channel-only emote ("BillyLift" from
+// the channel you typed it in) found nothing to resolve against and stayed plain
+// text. This is every loaded channel's set in one map (names escaped, the form
+// processEmotes' extraCache is keyed by), rebuilt only when a set changes size.
+let _anyChanEmotes = null
+let _anyChanSig = ''
+function hsAnyChannelEmotes() {
+  let sig = ''
+  for (const k in channelEmoteCaches) sig += `${k}:${channelEmoteCaches[k]?.size || 0};`
+  if (_anyChanEmotes && sig === _anyChanSig) return _anyChanEmotes
+  const all = new Map()
+  for (const k in channelEmoteCaches) {
+    for (const [name, e] of channelEmoteCaches[k] || []) {
+      const key = escapeHtml(name)
+      if (!all.has(key)) all.set(key, e)
+    }
+  }
+  _anyChanEmotes = all
+  _anyChanSig = sig
+  return all
 }
 
 function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMentions = false, msgRefs = null) {
@@ -3610,13 +4527,20 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
   // clock drift on the collect→send fast path.
   const _sGate = (entry) => {
     if (!entry || typeof msgTime !== 'number') return entry || null
-    if (entry.addedAt && msgTime < entry.addedAt - EMOTE_ADDED_SKEW_MS) return null
+    if (
+      entry.addedAt &&
+      msgTime < entry.addedAt - (senderEmotes === viewerPersonalEmotes ? EMOTE_OWN_SKEW_MS : EMOTE_ADDED_SKEW_MS)
+    )
+      return null
     if (entry.removedAt && msgTime >= entry.removedAt) return null
+    // A historical pairing's upper bound (untilAt, see the BG batch loop): past
+    // it the word means nothing again. Same skew pad as addedAt, server clock.
+    if (entry.untilAt && msgTime >= entry.untilAt + EMOTE_ADDED_SKEW_MS) return null
     return entry
   }
   const _sGet = (name) => (_invRender ? _sGate(senderEmotes?.get(name)) : null)
-  // Provenance-aware resolve: channel > sender inventory > native > global >
-  // removed-inventory fallback. `inv` marks hits that render BECAUSE of a
+  // Provenance-aware resolve: message ref > sender inventory > channel > native >
+  // global > removed-inventory fallback. `inv` marks hits that render BECAUSE of a
   // heatsync inventory (the sender's, or the viewer's own) — the tooltip
   // attributes those to the inventory instead of the emote's original
   // provider, which the viewer may have no relationship with (same emote
@@ -3630,19 +4554,31 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
     // the escaped name to match this token directly. escapeHtml is identity
     // for names without specials, so raw === name on the hot path (no `&`).
     const raw = name.indexOf('&') === -1 ? name : unescapeHtml(name)
-    let e = channel ? channelEmoteCaches[channel]?.get(raw) : null
-    if (e) return { e, inv: false }
     // Server-enriched per-message refs: the sender's inventory emote actually
-    // used in THIS message, resolved authoritatively server-side. Wins over the
-    // lazily-fetched sender set (which may be stale/unfetched) but yields to the
-    // channel's own set above. Ungated by _sGate — it's current by construction.
+    // used in THIS message, resolved authoritatively server-side. First of all:
+    // many emotes share one name across providers (a channel's AYAYA, the kick
+    // AYAYA, the 7tv variant someone collected), and the one the sender
+    // picked is the only one that is not a guess. Ungated by _sGate — it's
+    // current by construction.
+    // A platform token (twitch IRC emotes= tag) is exact by position (rule 1): it is
+    // what the line literally carries, so nothing with the same name replaces it.
+    let e = extraCache?.get(name)
+    if (e) return { e, inv: false }
     e = msgRefs?.get(name)
     if (e) return { e, inv: true }
+    // The SENDER's own set next, before the channel: the ref above is just a
+    // precomputed lookup of this same inventory, so a line with no ref (the first
+    // one after an add or swap, a cold server cache, history) must still resolve
+    // to the emote they picked and not the room's same-name one. Only the sender's
+    // set ever fills this — never another user's — and _sGate keeps it to the
+    // window they actually owned the emote.
     e = _sGet(raw)
     if (e) return { e, inv: true }
-    e = extraCache?.get(name) || emoteCache.get(raw)
+    e = channel ? channelEmoteCaches[channel]?.get(raw) : null
     if (e) return { e, inv: false }
-    e = _rfGate(_rf?.get(raw))
+    e = emoteCache.get(raw)
+    if (e) return { e, inv: false }
+    e = _rfGate(_rf?.get(raw)) || (_rf ? pastOwnershipAt(raw, msgTime) : null)
     return e ? { e, inv: true } : null
   }
 
@@ -3818,9 +4754,17 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
       const kickUrl = `https://files.kick.com/emotes/${emoteId}/fullsize`
       // _lookup applies the inventory-time gate here too (sender path was
       // previously ungated on kick tokens — an oversight vs the twitch path).
+      // The token is exact (rule 1): only the SAME kick emote's richer copy (its hash is
+      // the kick id, or its url is that id's file) may stand in for it; a same-name
+      // 7tv/bttv/ffz emote is a different picture and never replaces it.
       const _kickHit = _lookup(emoteName)
-      const cached = _kickHit?.e
-      const cachedInv = !!_kickHit?.inv
+      const _kickHitE = _kickHit?.e
+      const _isThisKick =
+        !!_kickHitE &&
+        (String(_kickHitE.hash) === String(emoteId) ||
+          (typeof _kickHitE.url === 'string' && _kickHitE.url.includes(`/emotes/${emoteId}/`)))
+      const cached = _isThisKick ? _kickHitE : null
+      const cachedInv = _isThisKick && !!_kickHit?.inv
       const useCachedUrl = !!(cached?.url && !/^https?:\/\/files\.kick\.com\//i.test(cached.url))
       const finalUrl = useCachedUrl ? cached.url : kickUrl
       const provider = cached?.source || 'kick'
@@ -3833,22 +4777,24 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
       // hash check catches the same asset re-listed under a different alias —
       // the kick numeric id IS the stored hash (background.js hash: String(e.id)).
       const isBlocked =
-        blockedEmoteNames.has(emoteName) ||
-        blockedEmoteNames.has(rawEmoteName) ||
-        blockedEmoteHashes.has(String(emoteId))
+        blockedEmoteHashes.has(String(emoteId)) || emoteIsBlocked(rawEmoteName, { hash: cached?.hash, url: finalUrl })
       let state = isBlocked ? 'blocked' : cached?.state || 'channel'
       if (state === 'unadded' && (inventoryEmotes.has(emoteName) || inventoryEmotes.has(rawEmoteName))) state = 'owned'
       const safeName = escapeHtml(rawEmoteName)
-      const chatUrl = getChatResUrl(finalUrl)
+      const chatUrl = getChatResUrl(finalUrl, cached?.variants)
       const safeUrlAttr = escapeHtml(chatUrl)
-      const safeSrc = escapeHtml(staticEmoteSrc(chatUrl))
+      const safeSrc = escapeHtml(staticEmoteSrc(chatUrl, cached?.animated === true))
+      const animAttr = cached?.animated === true ? ' data-animated="1"' : ''
       const safeProvider = escapeHtml(provider)
       const safeHash = cached?.hash ? escapeHtml(cached.hash) : ''
       const ownerAttr = cached?.ownerDisplay ? ` data-owner="${escapeHtml(cached.ownerDisplay)}"` : ''
-      const titleAttr = useCachedUrl ? safeName : `${safeName} (${safeProvider} via kick)`
       const nsfwClass = cached?.nsfw ? ' hs-state-nsfw' : ''
       const _boxW = _hsEmoteBoxW.get(chatUrl)
-      const wAttr = _boxW ? ` style="width:${_boxW}px"` : ''
+      // a kick-CDN emote with wide art crops to it (see _kickCrop); a 7TV copy has its own aspect
+      const _crop = useCachedUrl ? null : _kickCrop.get(emoteId)
+      if (!useCachedUrl && _crop === undefined) _kickCropRequest(emoteId)
+      const wAttr = _crop ? ` style="${_kickCropStyle(_crop)}"` : _boxW ? ` style="width:${_boxW}px"` : ''
+      const cropClass = _crop ? ' hs-kick-crop' : ''
       const _os = useCachedUrl ? _hsEmoteOversize(cached) : 0
       const osAttr = _os ? ` style="--hs-os:${_os}"` : ''
       // Only inventory-attributed when the inventory URL actually renders.
@@ -3863,7 +4809,7 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
       const kickCwCat = _kickCwRaw ? escapeHtml(_kickCwRaw) : ''
       const imgHtmlRaw = kickCwCat
         ? _hsCwBoxHtml(kickCwCat, safeName, _boxW)
-        : `<span class="hs-mc-emote-wrapper hs-state-${state}${nsfwClass}" data-emote-name="${safeName}" data-emote-url="${safeUrlAttr}" data-state="${state}" data-source="${safeProvider}"${ownerAttr}${invAttr}${safeHash ? ` data-emote-hash="${safeHash}"` : ''}${wAttr}><img src="${safeSrc}" alt="${safeName}" title="${titleAttr}" class="hs-mc-emote hs-emote-${state}"${osAttr} data-emote-name="${safeName}" data-state="${state}" data-source="${safeProvider}"${ownerAttr}${invAttr} loading="lazy" decoding="async"></span>`
+        : `<span class="hs-mc-emote-wrapper hs-state-${state}${nsfwClass}${cropClass}" data-kick-id="${emoteId}" data-emote-name="${safeName}" data-emote-url="${safeUrlAttr}" data-state="${state}" data-source="${safeProvider}"${ownerAttr}${invAttr}${animAttr}${safeHash ? ` data-emote-hash="${safeHash}"` : ''}${wAttr}><img src="${safeSrc}" alt="${safeName}"${hsEmoteDimAttr(cached)} class="hs-mc-emote hs-emote-${state}"${osAttr} data-emote-name="${safeName}" data-state="${state}" data-source="${safeProvider}"${ownerAttr}${invAttr} loading="lazy" decoding="async"></span>`
       if (isOverlay && pendingStack) {
         const itemMods = pendingMods.slice()
         const itemHue = pendingHue
@@ -3890,14 +4836,10 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
     // 7TV-style "name0" convention (strip the trailing 0 and overlay the
     // base). This MUST match lookupEmoteWithOverlay (input preview) so the
     // input chip and the rendered message agree.
-    // Priority: channel > senderEmotes > extraCache (twitch IRC native) > emoteCache (globals).
-    // Channel emotes are AUTHORITATIVE in their own channel for every sender
-    // (mirrors chrome/content.js cachedOwnEmotes): nl_kripp's channel "Cabge"
-    // must win over a sender's colliding personal 7TV "Cabge", so the viewer
-    // sees the same image whether they or someone else posts the name. The
-    // per-sender set (viewer inventory on own msgs, sender's personal 7TV on
-    // others') still fills every name the channel doesn't carry — sovereignty
-    // intact. Without this, others' messages diverged from the viewer's own.
+    // Priority: msg refs > senderEmotes > channel > extraCache (twitch IRC native) > emoteCache (globals).
+    // The per-sender set (viewer inventory on own msgs, the sender's set on
+    // others') is the sender's own pick, so it beats the channel's same-name
+    // emote; the channel still fills every name the sender doesn't carry.
     let emote = null
     let emoteFromInv = false
     let isOverlayEmote = false
@@ -3908,19 +4850,21 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
       emote = _hit.e
       emoteFromInv = _hit.inv
     }
-    // blockedEmoteFallback last + ungated (block is viewer-wide, all senders):
-    // resolves a blocked emote to its real url+dims so it renders the dashed box
-    // at the emote's true rectangle via the normal path, instead of the square
-    // 1×1-placeholder branch below. Only when a real url is stored (url-less
-    // blocks — name-as-hash — still fall through to the square box).
-    if (!emote) {
+    // blockedEmoteFallback last, own messages only: resolves a blocked emote to
+    // its real url+dims so it renders the dashed box at the emote's true
+    // rectangle via the normal path, instead of the square 1×1-placeholder
+    // branch below. Only when a real url is stored (url-less blocks — name-as-
+    // hash — still fall through to the square box). Another sender who never
+    // had the emote typed plain text, and a block must not conjure the emote
+    // for them — the fallback knows the name, not who may use it.
+    if (!emote && senderEmotes === viewerPersonalEmotes) {
       // blockedEmoteFallback is keyed by RAW names (picker/server side); the
       // escaped `word` misses for specials (`>:3`) — try the raw form too.
       // Guard the unescape call: this runs for EVERY non-emote word (the
       // common case), and word.indexOf('&') === -1 (no specials) means the
       // raw form is identical — skip the redundant unescape + second .get.
       const _bf =
-        blockedEmoteFallback.get(word) || (word.indexOf('&') !== -1 && blockedEmoteFallback.get(unescapeHtml(word)))
+        blockedFallbackForName(word) || (word.indexOf('&') !== -1 && blockedFallbackForName(unescapeHtml(word)))
       if (_bf?.url) emote = _bf
     }
     if (emote) {
@@ -3995,21 +4939,34 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
       // different alias (7tv per-set alias, kick re-list) — name-only checks
       // miss that case entirely.
       const isBlocked =
-        blockedEmoteNames.has(word) ||
-        blockedEmoteNames.has(rawWord) ||
+        emoteIsBlocked(rawWord, emote) ||
         (overlayBaseName !== null &&
           (blockedEmoteNames.has(overlayBaseName) ||
-            (overlayBaseName.indexOf('&') !== -1 && blockedEmoteNames.has(unescapeHtml(overlayBaseName))))) ||
-        (emote.hash && blockedEmoteHashes.has(String(emote.hash)))
+            (overlayBaseName.indexOf('&') !== -1 && blockedEmoteNames.has(unescapeHtml(overlayBaseName)))))
       let state = isBlocked ? 'blocked' : emote.state || 'global'
-      // Upgrade 'unadded' → 'owned' when the viewer actually has this name
-      // in their inventory. Visually identical under 2-state, but downstream
-      // auto-add-on-send + cross-user rendering gates read dataset.state.
-      if (state === 'unadded' && (inventoryEmotes.has(word) || inventoryEmotes.has(rawWord))) state = 'owned'
+      // A cached entry (channel / global / sender pool) is stamped 'owned' by NAME when it
+      // is built, so another W beside the one you own carries the stamp too. Owned is the
+      // exact emote in your inventory (or a sub emote) right now — anything else resolves from its source, as getEmoteState does.
+      if (state === 'owned' && !emote.subscription && !isViewerEmote(rawWord, emote))
+        state = emote.source === 'heatsync' ? 'unadded' : 'global'
+      // Upgrade to 'owned' when the viewer actually has this name in their
+      // inventory — whoever posted it and however it resolved (a sender's set
+      // resolves as 'global'). Visually identical under 2-state, but downstream
+      // auto-add-on-send + cross-user rendering gates read dataset.state, and
+      // the tooltip says "in your set" instead of a sender's provider.
+      // Ownership is the exact emote, never the name (rule 10): owning W must not make
+      // another chatter's channel W read as yours, or right-click removes YOUR W.
+      if (
+        (state === 'unadded' || state === 'global' || state === 'channel') &&
+        (inventoryEmotes.has(word) || inventoryEmotes.has(rawWord)) &&
+        isViewerEmote(rawWord, emote)
+      )
+        state = 'owned'
       const source = escapeHtml(emote.source || 'unknown')
-      const rawChatUrl = getChatResUrl(emote.url)
+      const rawChatUrl = getChatResUrl(emote.url, emote.variants)
       const imgSrc = escapeHtml(rawChatUrl)
-      const staticSrc = escapeHtml(staticEmoteSrc(rawChatUrl))
+      const staticSrc = escapeHtml(staticEmoteSrc(rawChatUrl, emote.animated === true))
+      const animAttr = emote.animated === true ? ' data-animated="1"' : ''
       const safeHash = emote.hash ? escapeHtml(emote.hash) : ''
       const displayName = escapeHtml(rawWord)
       const ownerAttr = emote.ownerDisplay ? ` data-owner="${escapeHtml(emote.ownerDisplay)}"` : ''
@@ -4023,7 +4980,14 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
         staleAttr = ''
       try {
         const chKey = (channel || '').toLowerCase()
-        const meta = chKey && window._hsStaleEmotes ? window._hsStaleEmotes.get(chKey)?.get(word) : null
+        // A heatsync or inventory copy of the name is still usable by the viewer
+        // after the channel drops its 7TV one, so it is never a ghost: not when
+        // the sender's own set supplied it, and not when it is in YOUR set.
+        const ownedByViewer = inventoryEmotes.has(rawWord) || viewerPersonalEmotes.has(rawWord)
+        const meta =
+          chKey && window._hsStaleEmotes && emote.source !== 'heatsync' && !emoteFromInv && !ownedByViewer
+            ? window._hsStaleEmotes.get(chKey)?.get(word)
+            : null
         if (meta) {
           const liveSet = channelEmoteCaches[chKey] || channelEmoteCaches[channel]
           const liveNow = !!liveSet?.has(word)
@@ -4062,7 +5026,7 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
       const cwCat = _cwRaw ? escapeHtml(_cwRaw) : ''
       const imgHtmlRaw = cwCat
         ? _hsCwBoxHtml(cwCat, displayName, _boxW)
-        : `<span class="hs-mc-emote-wrapper hs-state-${state}${staleClass}${nsfwClass}" data-emote-name="${displayName}" data-emote-url="${imgSrc}" data-state="${state}" data-source="${source}"${ownerAttr}${invAttr}${safeHash ? ` data-emote-hash="${safeHash}"` : ''}${staleAttr}${wAttr}><img src="${staticSrc}" alt="${displayName}" title="${displayName}" class="hs-mc-emote hs-emote-${state}"${osAttr} data-emote-name="${displayName}" data-state="${state}" data-source="${source}"${ownerAttr}${invAttr} loading="lazy" decoding="async"></span>`
+        : `<span class="hs-mc-emote-wrapper hs-state-${state}${staleClass}${nsfwClass}" data-emote-name="${displayName}" data-emote-url="${imgSrc}" data-state="${state}" data-source="${source}"${ownerAttr}${invAttr}${animAttr}${safeHash ? ` data-emote-hash="${safeHash}"` : ''}${staleAttr}${wAttr}><img src="${staticSrc}" alt="${displayName}"${hsEmoteDimAttr(emote)} class="hs-mc-emote hs-emote-${state}"${osAttr} data-emote-name="${displayName}" data-state="${state}" data-source="${source}"${ownerAttr}${invAttr} loading="lazy" decoding="async"></span>`
 
       // Build the new item — inline-glued suffix mod attaches to THIS emote
       // (e.g. "RainTimew!" → wide RainTime, not wide whatever-was-base).
@@ -4147,8 +5111,10 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
       // Blocked emote whose URL didn't resolve in this context (removed from set,
       // wrong channel, foreign personal emote, etc.) — still render the blocked
       // box (2px dashed outline) instead of leaking the raw name as text. Matches
-      // by exact name, so only emotes the user actually blocked are boxed.
-      if (blockedEmoteNames.has(word)) {
+      // by exact name, so only emotes the user actually blocked are boxed. Own
+      // messages only: elsewhere the sender's access decides, and a sender with
+      // none wrote plain text.
+      if (senderEmotes === viewerPersonalEmotes && blockedEmoteNames.has(word)) {
         _flushStackToResult()
         pendingMods = []
         pendingHue = null
@@ -4158,7 +5124,7 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
         }
         const dn = escapeHtml(word)
         result.push(
-          `<span class="hs-mc-emote-wrapper hs-state-blocked" data-emote-name="${dn}" data-state="blocked" data-source="heatsync"><img src="${HS_TRANSPARENT_PX}" alt="${dn}" title="${dn}" class="hs-mc-emote hs-emote-blocked" style="width:var(--hs-emote-size,32px);height:var(--hs-emote-size,32px)" data-emote-name="${dn}" data-state="blocked" data-source="heatsync"></span>`,
+          `<span class="hs-mc-emote-wrapper hs-state-blocked" data-emote-name="${dn}" data-state="blocked" data-source="heatsync"><img src="${HS_TRANSPARENT_PX}" alt="${dn}" class="hs-mc-emote hs-emote-blocked" style="width:var(--hs-emote-size,32px);height:var(--hs-emote-size,32px)" data-emote-name="${dn}" data-state="blocked" data-source="heatsync"></span>`,
         )
         continue
       }
@@ -4183,8 +5149,11 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
           .toLowerCase()
         const color =
           typeof mentionColor === 'function' ? mentionColor(name) : sanitizeColor(knownColors.get(name) || '#fff')
+        // skipMentions=false only ever reaches here for twitch prediction/
+        // outcome titles (twitch-api.js) — the only processEmotes() callers
+        // that don't pass skipMentions=true — so twitch is not a guess here.
         result.push(
-          `<a href="https://heatsync.org/user/${encodeURIComponent(name)}" target="_blank" rel="noopener noreferrer" class="hs-mc-user hs-mc-mention" data-username="${name}" style="color:${color};font-weight:bold">${word}</a>`,
+          `<a href="https://heatsync.org/user/${encodeURIComponent(name)}" target="_blank" rel="noopener noreferrer" class="hs-mc-user hs-mc-mention hs-mention" data-username="${name}" data-platform="twitch" style="color:${color};font-weight:bold">${word}</a>`,
         )
       } else if (linksEnabled && LINK_RE.test(word)) {
         // Validate URL protocol before creating link (block javascript:, data:, etc.)
@@ -4195,7 +5164,9 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
           // the raw push in the else branch below). Escaping again turned a
           // url's &amp; into &amp;amp;: corrupted href params + visible &amp;
           // in the link text. Entities inside an href attr decode correctly.
-          result.push(`<a href="${fullUrl}" target="_blank" rel="noopener noreferrer" class="hs-mc-link">${word}</a>`)
+          result.push(
+            `<a href="${fullUrl}" target="_blank" rel="noopener noreferrer" class="hs-mc-link hs-link">${word}</a>`,
+          )
         } else {
           result.push(word)
         }
@@ -4251,32 +5222,55 @@ function renderEmoteStack(stack) {
     _urlRe.lastIndex = 0
   }
   const _resAttr = _reserve ? ` style="min-width:${_reserve}px"` : ''
-  return `<span class="hs-mc-emote-stack" data-stack-count="${count}" title="expand"${_resAttr}><span class="hs-mc-emote-stack-emotes">${stack.base}${overlayHtml}</span><span class="hs-mc-stack-collapse" title="collapse">\u00d7</span><span class="hs-mc-stack-block-all" title="block all">\u2298</span></span>`
+  return `<span class="hs-mc-emote-stack" data-stack-count="${count}" title="${t('mc_emo_stack_expand')}"${_resAttr}><span class="hs-mc-emote-stack-emotes">${stack.base}${overlayHtml}</span>${hsXButtonHtml('hs-mc-stack-collapse hs-x-inline', t('mc_emo_stack_collapse'), `title="${t('mc_emo_stack_collapse')}"`)}<span class="hs-mc-stack-block-all" title="${t('mc_emo_stack_block_all')}">\u2298</span></span>`
 }
 
 export {
   _buildChannelEmoteCache,
   blockedEmoteFallback,
+  blockedEmoteNames,
+  blockedFallbackForName,
+  blockedFallbacksForName,
   bumpEmoteFrecency,
   channelEmoteCaches,
+  deriveStaticEmoteSrc,
   detectEmoteSource,
   dropEmoteFromAllSenders,
+  emoteBlockKey,
   emoteCache,
+  emoteIsBlocked,
+  ensureHsEmoteIdleObserver,
   getEmoteState,
   getSenderEmotes,
+  hsSwapRowEmotesForIdle,
+  hydrateEmoteBoxWidths,
   inventoryEmotes,
+  isViewerEmote,
+  isViewerEmoteUrl,
   loadEmoteFrecency,
   loadSenderEmoteSets,
   lookupEmote,
   lookupEmoteRenderOrder,
+  lookupEmoteWireOrder,
   lookupEmoteWithOverlay,
   lookupOwnedEmote,
+  lookupPublicEmote,
   mergeSenderEmotes,
+  pastOwnership,
+  pastOwnershipAt,
+  pickerBaseEmotes,
   processEmotes,
+  reapHsIdleEmoteRows,
+  rememberBlockedEmote,
   removedEmoteFallback,
   replaceSenderEmotes,
+  scheduleHsEmoteIdleSweep,
   senderEmoteSets,
+  staticEmoteSrc,
+  sweepHsEmoteIdleRows,
+  teardownHsEmoteIdleGate,
   unbumpEmoteFrecency,
   viewerPersonalEmotes,
+  whyEmote,
   zeroWidthFromAnyCache,
 }

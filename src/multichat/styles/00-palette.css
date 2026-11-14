@@ -1,59 +1,79 @@
 
-    /* Color doctrine — one source of truth for every semantic color.
-       Bright ANSI = accents (text/icons/borders/≤3px strips); dim ANSI +
-       low-alpha tints = fills; hover/active = reverse-video (#fff bg /
-       #000 text); orange is scarce and means "HeatSync itself".
+    /* Color doctrine — VT320: eight colours and nothing else —
+       #000000 #ff0000 #00ff00 #ffff00 #8888ff #ff00ff #00ffff #ffffff.
+       Emphasis is bold, underline, reverse video (#fff bg / #000 text) and
+       blink for urgency. No grays, no shades, no partial opacity, no shadows,
+       no gradients. Hierarchy is weight, not tone: primary text is bold,
+       secondary is plain. Hover/active = reverse video.
+       #ff8700 exists exactly once, as --hs-plat-hs, the [H] platform tag.
        Vocabulary mirrors heatsync.org css/core/variables.css (bare names
        there, --hs- prefix here for host-page namespace safety):
        brand · heat · mention · warn · ok · danger · reply · thread ·
-       link · info · gold · plat-*. Platform hexes appear ONLY next to a
+       link · info · gold · plat-*. Platform colours appear ONLY next to a
        platform glyph/label — never as free-standing semantic color. */
     :root {
-      /* bright */
-      --hs-brand: #ff8700;    /* 208 — logo, heat, focus, admin, hs chip */
-      --hs-heat: #ff8700;
-      --hs-mention: #ffff00;  /* 226 — @-mentions, unseen-mention, search hit */
-      --hs-warn: #ffff00;     /*       warn toasts, announce, NSFW */
-      --hs-ok: #00ff00;       /* 46  — success, online, toggle-on, unban */
-      /* LIVE IS RED — deliberate doctrine exception. Every streaming platform
-         (twitch/yt/kick) uses a red live dot; a green one reads as "online"
-         or "healthy", not "broadcasting right now". Semantically separate
-         from --hs-danger so the two can diverge later. */
+      --hs-brand: #ffffff;    /* logo, focus, admin — CTAs are reverse video, bold */
+      --hs-heat: #ffff00;     /* heat numerals — the ladder steps via weight/reverse */
+      --hs-mention: #ffff00;  /* @-mentions, unseen-mention, search hit */
+      --hs-warn: #ffff00;     /* warn toasts, announce, NSFW */
+      --hs-ok: #00ff00;       /* success, online, toggle-on, unban */
+      /* LIVE IS RED — the one deliberate exception to the ansi doctrine, and
+         the same token the site uses (--live). Green read as KICK. */
       --hs-live: #ff0000;
-      --hs-live-dim: #800000;
-      --hs-live-tint: rgba(255, 0, 0, 0.10);
-      --hs-danger: #ff0000;   /* 196 — error, ban, delete, destructive */
-      --hs-reply: #00ffff;    /* 51  — reply borders, quotes, whispers, mode */
-      --hs-thread: #ff00ff;   /* 201 — OP/thread accents, raid/hype events */
-      --hs-link: #5f87ff;     /* 69  — hyperlinks */
-      --hs-info: #5f87ff;     /*       info toasts, polls, mod-grant */
-      --hs-gold: #ffd700;     /* 220 — mod/VIP, automod, bits, pinned, premium */
-      /* dim — fills, muted borders, low-urgency strips */
-      --hs-danger-dim: #800000;
-      --hs-ok-dim: #008000;
-      --hs-warn-dim: #808000;
-      --hs-info-dim: #000080;
-      --hs-thread-dim: #800080;
-      --hs-reply-dim: #008080;
-      /* tints — row backgrounds; never a bright hue as a large solid bg */
-      --hs-danger-tint: rgba(255, 0, 0, 0.10);
-      --hs-ok-tint: rgba(0, 255, 0, 0.10);
-      --hs-warn-tint: rgba(255, 255, 0, 0.10);
-      --hs-info-tint: rgba(95, 135, 255, 0.12);
-      --hs-thread-tint: rgba(255, 0, 255, 0.12);
-      --hs-reply-tint: rgba(0, 255, 255, 0.10);
-      --hs-gold-tint: rgba(255, 215, 0, 0.10);
-      --hs-warn-bg: #2e2e08;  /* solid — avoids alpha-stacking artifacts */
-      /* platform — values frozen; scope: adjacent to a platform glyph only */
-      --hs-plat-twitch: #9146ff;
-      --hs-plat-kick: #53fc18;
+      --hs-live-dim: #ff0000;
+      --hs-live-tint: #000000;
+      --hs-danger: #ff0000;   /* error, ban, delete, destructive */
+      --hs-reply: #00ffff;    /* reply borders, quotes, whispers, mode */
+      --hs-thread: #ff00ff;   /* OP/thread accents, raid/hype events */
+      --hs-link: #8888ff;     /* hyperlinks — blue */
+      --hs-info: #ffffff;     /* info toasts, polls, mod-grant */
+      --hs-gold: #ffff00;     /* mod/VIP, automod, bits, pinned, premium */
+      /* the dim variants ARE the full-saturation colour now */
+      --hs-danger-dim: #ff0000;
+      --hs-ok-dim: #00ff00;
+      --hs-warn-dim: #ffff00;
+      --hs-thread-dim: #ff00ff;
+      --hs-reply-dim: #00ffff;
+      /* tints — rows are not tinted; the border strip carries the hue */
+      --hs-danger-tint: #000000;
+      --hs-ok-tint: #000000;
+      --hs-warn-tint: #000000;
+      --hs-thread-tint: #000000;
+      --hs-reply-tint: #000000;
+      --hs-gold-tint: #000000;
+      --hs-warn-bg: #000000;
+      /* THE MENTION SIGNAL — mirrors the site's --mention-bg (messages.css).
+         A dark red FILL, no edge (mellen, 2026-10-09: "red bg and not red
+         outline"). #ff0000 itself drowns red names and red text, so the fill
+         is the one dark red every colour still reads on. On a zebra stripe row
+         it is the lighter #870000 instead of the gray stripe. */
+      --hs-mention-bg: var(--brand-fill-red);
+      --hs-mention-bg-stripe: var(--brand-fill-red-stripe);
+      --hs-zebra: var(--brand-zebra); /* alternating-row stripe — owner pick for visible stripes; red/dim text on it is ~2.4:1 by choice */
+      /* THE CURSOR INVERT — one token, mirroring the site's --sel-bg.
+         white bg = the POINTER is on a control (:hover/:active).
+         --hs-sel bg = the KEYBOARD CURSOR is here (arrow-key/jk rows, the
+         tab-mode rover). Cyan: red/green/yellow are already error/live/warn
+         and magenta is the nsfw hue, so a cursor never reads as a status. */
+      --hs-sel: #00ffff;
+      --hs-sel-fg: #000;
+      /* platform tags — scope: adjacent to a platform glyph only */
+      --hs-plat-twitch: #c8a8ff;
+      --hs-plat-kick: #00ff00;
       --hs-plat-youtube: #ff0000;
       --hs-plat-hs: #ff8700;
+      /* moderator green: Twitch's real mod badge colour (twin of HS_MOD_GREEN in lib/palette.js) */
+      --hs-mod: #00ad03;
+      /* dim gray: exactly two roles — the reply-context line above a threaded message,
+         and a chat tab with nothing unread */
+      --hs-dim: var(--brand-dim);
+      /* the reply-context line inside a zebra stripe row: this light gray is 5.1:1 on the stripe (the plain dim is not) */
+      --hs-dim-stripe: var(--brand-dim-stripe);
       /* structural */
       --hs-fg: #fff;
       --hs-bg: #000;
-      --hs-muted: #aaa;
-      --hs-border: #808080;
+      --hs-muted: #ffffff;
+      --hs-border: #ffffff;
     }
     /* Chromium auto-dark (WebContentsForceDark / android "darken websites")
        classifies per ELEMENT — the page-level color-scheme meta injected at
@@ -65,17 +85,6 @@
        shields the whole overlay regardless of host theme or meta timing.
        Verified live: inverted strips + white emotes reverted instantly when
        this rule was applied. */
-    /* html/body excluded — they carry hs- state classes (hs-font-bitmap,
-       hs-platform-*, hs-tabs-*) and matching them would force the entire
-       HOST page out of auto-darkening.
-       .hs-native-hidden excluded for the same reason one level down: it is a
-       class we put on the HOST's own nodes (twitch chat-shell +
-       chat-room__content, kick #channel-chatroom) to hide native chat, not on
-       anything we own. Stamping those opted a host subtree out of force-dark
-       while the rest of the page stayed inverted — on a light-themed host that
-       paints the subtree white. Verified live on twitch: chat-shell was
-       resolving color-scheme:dark purely because of hs-native-hidden. Only
-       stamp what we actually render. */
     [id^="hs-"]:not(html):not(body):not(.hs-native-hidden),
     [class^="hs-"]:not(html):not(body):not(.hs-native-hidden),
     [class*=" hs-"]:not(html):not(body):not(.hs-native-hidden) {

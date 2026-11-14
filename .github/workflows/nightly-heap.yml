@@ -1,0 +1,205 @@
+name: nightly-heap
+
+# What a push-time run cannot afford to do, once or twice a day:
+#   heap-quick      the extension's memory on a page with no chat (ext-on minus
+#                   ext-off, budget in scripts/heap-budget.ts). ~3 min, no live
+#                   channels. The lived-in soak stays a manual run: it needs busy
+#                   channels and an hour.
+#   browser-suites  the real-browser suites ci.yml does not run: rtl, the three
+#                   emote-collision renders, the interaction trace, and the
+#                   merged-tab bench against its recorded budget.
+#   contracts       the three tests that compare this repo with the site repo,
+#                   run against the site's CURRENT main. A change on the site
+#                   side alone (no push here) turns this red within a day.
+#   supply-chain    bun audit and gitleaks over the whole history.
+# Twice a day so the sentinel's 26h staleness window survives GitHub dropping
+# one cron fire (2026-10-19 did).
+on:
+  schedule:
+    - cron: '17 9,21 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  heap-quick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.4
+
+      - name: install dependencies
+        run: bun install --frozen-lockfile
+
+      # Branded google-chrome ignores --load-extension (since chrome 137), so the
+      # MV3 service worker never starts and every launch times out waiting for
+      # it (first nightly, 2026-10-14). Playwright's own chromium still honours
+      # the flag; install the build matching the pinned playwright-core.
+      - name: install chromium
+        run: |
+          bunx playwright-core install chromium
+          echo "CHROMIUM_BIN=$(bun -e "console.log(require('playwright-core').chromium.executablePath())")" >> "$GITHUB_ENV"
+
+      # `bun run test:heap-budget:quick` minus its build's test run. That run needs
+      # the private site repo for the parity tests (the first dispatched run,
+      # 2026-10-14, died on exactly that before measuring), and ci.yml and the
+      # contracts job below already run every test.
+      - name: build
+        run: bun run build.js chrome --minify --no-test
+
+      - name: non-chat heap budget
+        # below the job's 15: a step that times out fails the job (and pages);
+        # a job that times out is `cancelled`, which pages nobody
+        timeout-minutes: 10
+        run: bun scripts/heap-budget.ts --quick
+
+  browser-suites:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.4
+
+      - name: install dependencies
+        run: bun install --frozen-lockfile
+
+      # same reason as heap-quick: playwright's own chromium, not branded chrome
+      - name: install chromium
+        run: |
+          bunx playwright-core install chromium
+          echo "CHROMIUM_BIN=$(bun -e "console.log(require('playwright-core').chromium.executablePath())")" >> "$GITHUB_ENV"
+
+      - name: build
+        run: bun run build.js chrome --minify --no-test
+
+      # Each step has its own ceiling below the job's 40: a step that times out
+      # fails the job (and pages); a job that times out is `cancelled`, which
+      # pages nobody.
+      - name: rtl (arabic mirrors the overlay, english does not)
+        timeout-minutes: 5
+        run: bun scripts/render-rtl.ts
+
+      - name: emote collisions (twitch)
+        timeout-minutes: 5
+        run: bun scripts/render-emote-collisions.ts
+
+      - name: emote collisions (twitch native)
+        timeout-minutes: 5
+        run: bun scripts/render-emote-collisions-native.ts
+
+      - name: emote collisions (kick)
+        timeout-minutes: 5
+        run: bun scripts/render-emote-collisions-kick.ts
+
+      # A trace, not a gate: it prints what a hover, a tab click, a keystroke and
+      # a send cost the page's main thread. It fails only if the page cannot be
+      # driven at all. Read the numbers in the step log.
+      - name: interaction trace
+        timeout-minutes: 5
+        run: bun scripts/interaction-ext.ts
+
+      # the fast path vs a full render must agree row for row. TODO: the timing
+      # gate (--budget scripts/merged-tab-budget.json, baseline + 25%) is built
+      # into the script but has no baseline file yet: measure three --json runs
+      # on a quiet machine, write the file, then add the flag here.
+      - name: merged-tab bench
+        timeout-minutes: 5
+        run: bun scripts/merged-tab-bench.ts
+
+  contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: ./.github/actions/site
+        with:
+          ssh-key: ${{ secrets.SITE_DEPLOY_KEY }}
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.4
+
+      - name: install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: contract tests against the site's current main
+        run: bun test tests/ws-contract.test.js tests/paint-compiler-parity.test.js tests/site-copy-parity.test.js
+
+  supply-chain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0 # the whole history, not the tip
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.4
+
+      - name: install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: bun audit (high and critical fail)
+        run: bun audit --audit-level=high
+
+      # config: .gitleaks.toml. a scheduled run scans every commit.
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2.3.9
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # the action's default (8.24.3) predates [[allowlists]] and silently ignores
+          # every allowlist in .gitleaks.toml; 8.30.1 is checksum-verified clean on full history
+          GITLEAKS_VERSION: 8.30.1
+
+  notify-failure:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [heap-quick, browser-suites, contracts, supply-chain]
+    # Only the SCHEDULED run pages. A workflow_dispatch is somebody at a
+    # terminal asking a question — they are reading the answer already, and a
+    # red is their experiment's RESULT, not an incident. On 2026-10-14 this job
+    # spooled five pages between 04:11 and 04:36, every one an A/B iteration of
+    # one investigation on `claude/yt-hang`, while nothing in the extension had
+    # changed. ci.yml in this repo has always carried the equivalent guard
+    # (`github.ref == 'refs/heads/main'`); this job shipped without one.
+    #
+    # Nothing is lost: whoever dispatched it sees the red, and a nightly that
+    # stops firing at all is caught by the site's heatsync-sentinel-ci.sh 26h
+    # staleness window, which keys on the run's event being `schedule` — the
+    # same discriminator used here.
+    # `cancelled()` as well as `failure()`: a job killed by its own
+    # timeout-minutes concludes `cancelled`, so `failure()` alone SKIPS this
+    # job and a run that HANGS pages nobody — run 38505736893 burned 15m23s in
+    # exactly that silence on 2026-10-13. The step timeout above is the first
+    # answer to that and this is the second, because only a step that RUNS can
+    # time out: a wedge in install or the chromium download has nothing but the
+    # job ceiling. Safe because this workflow declares no concurrency group, so
+    # nothing supersedes it and `cancelled` can only be its own ceiling or a
+    # hand cancel.
+    if: ${{ (failure() || cancelled()) && github.event_name == 'schedule' }}
+    steps:
+      - name: spool alert
+        run: |
+          code=$(curl -sS -m 10 -o /dev/null -w '%{http_code}' -X POST \
+            "https://heatsync.org/api/ops/intake/ci" \
+            -H "Authorization: Bearer ${{ secrets.OPS_INTAKE_KEY }}" \
+            -H 'content-type: application/json' \
+            -d "{\"workflow\":\"ext ${{ github.workflow }}\",\"run_id\":\"${{ github.run_id }}\",\"attempt\":\"${{ github.run_attempt }}\",\"branch\":\"${{ github.ref_name }}\",\"sha\":\"${{ github.sha }}\"}" \
+            || echo 000)
+          if [ "$code" = 204 ]; then
+            echo "::notice::ops-intake accepted the ext alert"
+          else
+            echo "::error::ops-intake refused the ext alert (HTTP $code) — check that secrets.OPS_INTAKE_KEY matches OPS_INTAKE_KEY in prod's .env"
+          fi

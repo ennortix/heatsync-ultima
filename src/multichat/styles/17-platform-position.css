@@ -11,10 +11,11 @@
        #chat-container, which lies ON TOP of the player and eats every hover
        so the scrubber/volume/pause controls never appear. We body-mount our
        own panel (never inside #chat-container), so nuking native chat
-       wherever YT parks it is always safe. */
-    body:has(#hs-mc-container) ytd-live-chat-frame#chat,
-    body:has(#hs-mc-container) ytd-live-chat-frame,
-    body:has(#hs-mc-container) ytd-watch-flexy #chat-container {
+       wherever YT parks it is always safe — except on a premiere or scheduled stream
+       (body.hs-yt-owns-chat), where YouTube owns the chat. */
+    body:not(.hs-yt-owns-chat):not(.hs-yt-peek):has(#hs-mc-container) ytd-live-chat-frame#chat,
+    body:not(.hs-yt-owns-chat):not(.hs-yt-peek):has(#hs-mc-container) ytd-live-chat-frame,
+    body:not(.hs-yt-owns-chat):not(.hs-yt-peek):has(#hs-mc-container) ytd-watch-flexy #chat-container {
       display: none !important;
     }
 
@@ -36,12 +37,27 @@
        hover rule, which is exactly the per-class allowlist this was meant to
        replace, and is why it went unnoticed. Targets #hs-mc-container now.
        ============================================ */
-    #hs-mc-container :where(button, [role="button"], [role="tab"], [role="menuitem"], [role="option"], [onclick], [data-hs-clickable]):not(:disabled):not([aria-disabled="true"]):hover,
+    #hs-mc-container :where(button, [role="button"], [role="tab"], [role="menuitem"], [role="option"], [onclick], [data-hs-clickable]):not(:disabled):not([aria-disabled="true"]):not([data-hs-name-hover]):hover,
     #hs-mc-container :where(button, [role="button"], [role="tab"], [role="menuitem"], [role="option"], [onclick], [data-hs-clickable]):not(:disabled):not([aria-disabled="true"]):focus-visible {
       background: #fff !important;
       color: #000 !important;
     }
-    #hs-mc-container :where(button, [role="button"], [role="tab"], [role="menuitem"], [role="option"], [onclick], [data-hs-clickable]):not(:disabled):not([aria-disabled="true"]):hover *,
+    /* A clickable row holding a name or a link (stream event, inline DM, moment):
+       the name is its own destination, so on the name only the name inverts and
+       the row stays as it is. Anywhere else on the row, the whole row inverts.
+       main.js sets data-hs-name-hover on the row while the pointer is on the
+       name — never a has-hover selector here, it restyled the whole panel per hover. */
+    #hs-mc-container [data-hs-clickable] :where(a, .hs-mc-user):hover {
+      background: #fff !important;
+      color: #000 !important;
+      -webkit-text-fill-color: #000 !important;
+      text-decoration: none !important;
+    }
+    #hs-mc-container [data-hs-clickable] :where(a, .hs-mc-user):hover * {
+      color: #000 !important;
+      -webkit-text-fill-color: #000 !important;
+    }
+    #hs-mc-container :where(button, [role="button"], [role="tab"], [role="menuitem"], [role="option"], [onclick], [data-hs-clickable]):not(:disabled):not([aria-disabled="true"]):not([data-hs-name-hover]):hover *,
     #hs-mc-container :where(button, [role="button"], [role="tab"], [role="menuitem"], [role="option"], [onclick], [data-hs-clickable]):not(:disabled):not([aria-disabled="true"]):focus-visible * {
       color: #000 !important;
       fill: #000 !important;
@@ -73,6 +89,16 @@
        restored, masthead full, player full size) when the panel is hidden. */
     body.hs-platform-yt.hs-offline #hs-mc-container,
     body.hs-platform-yt.hs-offline #hs-yt-resize-handle {
+      display: none !important;
+    }
+
+    /* Twitch: a no-channel page (directory/settings/search/…) with ZERO
+       configured chat tabs has nothing to show — an empty 340px panel
+       floating over pure browsing. hs-twitch-no-channel-empty (set by
+       updateTwitchNoChannelClass only when both no-channel AND
+       config.channels is empty) hides it; a user who HAS tabs keeps the real
+       feature — chat follows you while browsing away from it. */
+    body.hs-platform-twitch.hs-twitch-no-channel-empty #hs-mc-container {
       display: none !important;
     }
 
@@ -330,6 +356,27 @@
       height: calc(100vh - var(--hs-chat-h, 35vh)) !important;
       overflow-y: hidden !important;
     }
+    /* The body squeeze above narrows Kick's top bar with everything else, so Log In /
+       Sign Up end up beside the chat panel and the search box is crushed. Lift the
+       bar out of the squeezed body to span the whole viewport (the panel already
+       starts below it, at the measured bar height), and give the page wrapper the
+       row the bar vacated so content still starts underneath it. Right/left/top
+       squeeze the bar; bottom leaves it at y0. Mirror of the twitch top-nav lift. */
+    body.hs-platform-kick.hs-kick-no-channel.hs-chat-right nav[class*="navbar-height"],
+    body.hs-platform-kick.hs-kick-no-channel.hs-chat-left nav[class*="navbar-height"],
+    body.hs-platform-kick.hs-kick-no-channel.hs-chat-top nav[class*="navbar-height"] {
+      position: fixed !important;
+      top: 0 !important;
+      left: 0 !important;
+      right: 0 !important;
+      width: 100vw !important;
+      max-width: 100vw !important;
+    }
+    body.hs-platform-kick.hs-kick-no-channel.hs-chat-right [class*="group/main"],
+    body.hs-platform-kick.hs-kick-no-channel.hs-chat-left [class*="group/main"] {
+      box-sizing: border-box !important;
+      padding-top: var(--hs-kick-topnav-h, 60px) !important;
+    }
     /* On no-channel pages, the existing kick.hs-chat-left main padding rule
        (padding-left: var(--hs-chat-w)) is wrong — there's no #channel-
        chatroom to anchor against and we already shifted body via
@@ -442,9 +489,7 @@
        border-top so abs-positioned children (tabbar/messages/inputbar) shift
        down and don't sit under the banner. The banner itself uses top:-28px
        to land in the border zone (= container's outer top edge). */
-    #hs-mc-container:has(> .hs-mc-auth-banner),
-    #hs-mc-container:has(> .hs-mc-api-banner),
-    #hs-mc-container:has(> [class*="hs-mc-api-banner-"]) {
+    #hs-mc-container.hs-has-banner {
       border-top: 28px solid transparent !important;
     }
     .hs-mc-auth-banner,
@@ -661,6 +706,13 @@
     body.hs-platform-yt #page-manager ytd-rich-grid-row {
       display: contents !important;
     }
+    /* Shelves, promos and the continuation spinner are not tiles: one cell
+       squeezed a whole Shorts shelf into a single column (2900px tall, its
+       neighbours stretched to match). They take the full row; their own items
+       keep YouTube's sizing, so the width clamps below stay on tiles only. */
+    body.hs-platform-yt #page-manager ytd-rich-grid-renderer > #contents > :not(ytd-rich-item-renderer) {
+      grid-column: 1 / -1 !important;
+    }
     /* Defense-in-depth: every level inside the grid cell must respect
        parent width. YT inline-styles widths on ytd-rich-grid-media (and
        sometimes on the thumbnail anchor) using its own items-per-row
@@ -670,14 +722,14 @@
        thumbnail. #page-manager ID prefix bumps specificity above YT's
        attribute-keyed width rules on ytd-rich-grid-media which would
        otherwise win on attribute-selector count. */
-    body.hs-platform-yt #page-manager ytd-rich-item-renderer,
-    body.hs-platform-yt #page-manager ytd-rich-item-renderer > #content,
-    body.hs-platform-yt #page-manager ytd-rich-grid-media,
-    body.hs-platform-yt #page-manager ytd-rich-grid-media > #thumbnail,
-    body.hs-platform-yt #page-manager ytd-rich-grid-media a#thumbnail,
-    body.hs-platform-yt #page-manager ytd-rich-grid-media yt-image,
-    body.hs-platform-yt #page-manager ytd-rich-grid-media yt-image img,
-    body.hs-platform-yt #page-manager ytd-rich-item-renderer ytd-thumbnail {
+    body.hs-platform-yt #page-manager ytd-rich-item-renderer:not(ytd-rich-section-renderer *),
+    body.hs-platform-yt #page-manager ytd-rich-item-renderer:not(ytd-rich-section-renderer *) > #content,
+    body.hs-platform-yt #page-manager ytd-rich-item-renderer:not(ytd-rich-section-renderer *) ytd-rich-grid-media,
+    body.hs-platform-yt #page-manager ytd-rich-item-renderer:not(ytd-rich-section-renderer *) ytd-rich-grid-media > #thumbnail,
+    body.hs-platform-yt #page-manager ytd-rich-item-renderer:not(ytd-rich-section-renderer *) ytd-rich-grid-media a#thumbnail,
+    body.hs-platform-yt #page-manager ytd-rich-item-renderer:not(ytd-rich-section-renderer *) ytd-rich-grid-media yt-image,
+    body.hs-platform-yt #page-manager ytd-rich-item-renderer:not(ytd-rich-section-renderer *) ytd-rich-grid-media yt-image img,
+    body.hs-platform-yt #page-manager ytd-rich-item-renderer:not(ytd-rich-section-renderer *) ytd-thumbnail {
       width: 100% !important;
       max-width: 100% !important;
       min-width: 0 !important;
@@ -695,6 +747,13 @@
       width: 100% !important;
       max-width: 100% !important;
       margin: 0 !important;
+    }
+
+    /* The home feed is thumbnails only: every non-tile section (shorts,
+       playables, news, promos) is hidden. They are not videos, and each one
+       cuts the tile grid into short rows. */
+    body.hs-platform-yt #page-manager ytd-rich-grid-renderer > #contents > ytd-rich-section-renderer {
+      display: none !important;
     }
 
     /* Shorts shelf: hidden only while the HeatSync takeover UI is active
@@ -787,6 +846,13 @@
       inset-inline-start: 0 !important;
       width: auto !important;
       max-width: none !important;
+      /* Theatre fills the viewport: top:0 + bottom:0. The right-dock pass
+         strips Twitch's inline height:100% (it must, windowed), and without
+         these the player collapses to its 16:9 content height and the left
+         nav shows underneath it instead of being covered. */
+      bottom: 0 !important;
+      height: auto !important;
+      max-height: none !important;
     }
 
     /* Twitch sizes .persistent-player by writing explicit pixel width/height
@@ -821,9 +887,18 @@
        own ".channel-root + .persistent-player { width:100% }" is the right
        target; assert it with !important so it survives the missing/stale
        inline write. Theatre and mini-player (no-channel) have their own rules. */
-    body:not(.hs-player-safe).hs-platform-twitch.hs-chat-right:not(.hs-mode-theatre):not(.hs-twitch-no-channel) .persistent-player {
+    /* hs-chat-hidden is the same layout: the panel is gone, so twitch's
+       column owns the page and the player must fill the slot. Without this the
+       offline page keeps the stale small px width twitch wrote while our panel
+       was open and the player sits in a corner of its area. */
+    body:not(.hs-player-safe).hs-platform-twitch.hs-chat-right:not(.hs-mode-theatre):not(.hs-twitch-no-channel):not(.hs-offline) .persistent-player,
+    body:not(.hs-player-safe).hs-platform-twitch.hs-chat-hidden:not(.hs-mode-theatre):not(.hs-twitch-no-channel):not(.hs-offline) .persistent-player {
       width: 100% !important;
     }
+    /* Offline channel page: the player is not the page's 16:9 slot, it is the
+       small hero beside the "offline" card, and twitch sizes AND places it
+       itself (inline width/height/top/left). Forcing it to 100% pushes it off
+       the right of its area and its controls with it. Twitch owns it here. */
     /* chat-top / chat-bottom, windowed: the chat-top/bottom branch in
        applyPlatformPositionOverrides writes all four insets inline with
        !important, but Twitch's React effect later does el.style.top = X
@@ -1049,6 +1124,12 @@
       right: 0 !important;
       bottom: 0 !important;
     }
+    /* Kick leaves its loading skeletons pulsing forever on an offline channel. A running animation makes
+       every frame repaint, so each hover and unhover waited on a full repaint (frames ~33ms -> ~17ms with
+       it off, measured). The skeleton is a placeholder; it does not need to breathe. */
+    body.hs-platform-kick .animate-pulse {
+      animation: none !important;
+    }
     body.hs-platform-kick:has(:fullscreen) #hs-mc-container {
       display: none !important;
     }
@@ -1099,11 +1180,11 @@
     }
     body:not(.hs-player-safe).hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy:not([theater]):not([fullscreen]) #primary-inner {
       position: fixed !important;
-      top: 0 !important;
+      top: var(--hs-yt-masthead-h, 56px) !important;
       left: 0 !important;
       right: var(--hs-chat-w, 340px) !important;
       width: auto !important;
-      height: 100vh !important;
+      height: calc(100vh - var(--hs-yt-masthead-h, 56px)) !important;
     }
     body:not(.hs-player-safe).hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy:not([theater]):not([fullscreen]) {
       --ytd-watch-flexy-side-menu-margin: 0 !important;
@@ -1138,11 +1219,11 @@
     }
     body:not(.hs-player-safe).hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy:not([theater]):not([fullscreen]) #primary-inner {
       position: fixed !important;
-      top: 0 !important;
+      top: var(--hs-yt-masthead-h, 56px) !important;
       left: var(--hs-chat-w, 340px) !important;
       right: 0 !important;
       width: auto !important;
-      height: 100vh !important;
+      height: calc(100vh - var(--hs-yt-masthead-h, 56px)) !important;
     }
     /* Kill the secondary's residual 16px (its own padding/margin still
        takes layout space even with width:0). Live-only. */
@@ -1162,23 +1243,25 @@
     }
     /* Kill the masthead reservation — chat clutter is hidden, no need to
        reserve top-bar space below it. Applies to ALL chat positions on YT
-       so the player floats flush in every layout. Live-only. */
-    body.hs-platform-yt:not(.hs-yt-watch).hs-chat-top #page-manager,
-    body.hs-platform-yt:not(.hs-yt-watch).hs-chat-bottom #page-manager,
-    body.hs-platform-yt:not(.hs-yt-watch).hs-chat-left #page-manager,
-    body.hs-platform-yt:not(.hs-yt-watch).hs-chat-right #page-manager {
+       so the player floats flush in every layout. Live-only: on an offline
+       page (home, search) the masthead is still there and the reservation is
+       what keeps the first row of tiles from sliding under it. */
+    body.hs-platform-yt:not(.hs-yt-watch):not(.hs-offline).hs-chat-top #page-manager,
+    body.hs-platform-yt:not(.hs-yt-watch):not(.hs-offline).hs-chat-bottom #page-manager,
+    body.hs-platform-yt:not(.hs-yt-watch):not(.hs-offline).hs-chat-left #page-manager,
+    body.hs-platform-yt:not(.hs-yt-watch):not(.hs-offline).hs-chat-right #page-manager {
       margin-top: 0 !important;
     }
     /* primary clips to viewport height; primary-inner scrolls so video info
        below the player is reachable. Live-only. */
     body:not(.hs-player-safe).hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy:not([theater]):not([fullscreen]) #primary {
-      height: 100vh !important;
-      max-height: 100vh !important;
+      height: calc(100vh - var(--hs-yt-masthead-h, 56px)) !important;
+      max-height: calc(100vh - var(--hs-yt-masthead-h, 56px)) !important;
       overflow: hidden !important;
     }
     body:not(.hs-player-safe).hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy:not([theater]):not([fullscreen]) #primary-inner {
-      height: 100vh !important;
-      max-height: 100vh !important;
+      height: calc(100vh - var(--hs-yt-masthead-h, 56px)) !important;
+      max-height: calc(100vh - var(--hs-yt-masthead-h, 56px)) !important;
       overflow-y: auto !important;
     }
     /* Chat panel fills viewport height when on right — overrides the
@@ -1301,13 +1384,13 @@
       justify-content: flex-start !important;
     }
     body:not(.hs-player-safe).hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy:not([theater]):not([fullscreen]) #primary {
-      height: 100vh !important;
-      max-height: 100vh !important;
+      height: calc(100vh - var(--hs-yt-masthead-h, 56px)) !important;
+      max-height: calc(100vh - var(--hs-yt-masthead-h, 56px)) !important;
       overflow: hidden !important;
     }
     body:not(.hs-player-safe).hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy:not([theater]):not([fullscreen]) #primary-inner {
-      height: 100vh !important;
-      max-height: 100vh !important;
+      height: calc(100vh - var(--hs-yt-masthead-h, 56px)) !important;
+      max-height: calc(100vh - var(--hs-yt-masthead-h, 56px)) !important;
       overflow-y: auto !important;
       display: flex !important;
       flex-direction: column !important;
@@ -1344,7 +1427,7 @@
       padding: 10px 18px !important;
       overflow-y: auto !important;
       box-sizing: border-box !important;
-      background: #0a0a0a !important;
+      background: #000000 !important;
       z-index: 1 !important;
     }
     body:not(.hs-player-safe).hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy:not([theater]):not([fullscreen]) #below {
@@ -1359,7 +1442,7 @@
       padding: 10px 18px !important;
       overflow-y: auto !important;
       box-sizing: border-box !important;
-      background: #0a0a0a !important;
+      background: #000000 !important;
       z-index: 1 !important;
     }
     /* high-contrast metadata text (theme-independent). Target the TEXT containers
@@ -1379,8 +1462,8 @@
     body:not(.hs-player-safe).hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy:not([theater]):not([fullscreen]) #below #description, body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy:not([theater]):not([fullscreen]) #below #description *,
     body:not(.hs-player-safe).hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy:not([theater]):not([fullscreen]) #below ytd-channel-name, body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy:not([theater]):not([fullscreen]) #below ytd-channel-name *,
     body:not(.hs-player-safe).hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy:not([theater]):not([fullscreen]) #below #info, body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy:not([theater]):not([fullscreen]) #below #info * {
-      color: #e6e6e6 !important;
-      -webkit-text-fill-color: #e6e6e6 !important;
+      color: #ffffff !important;
+      -webkit-text-fill-color: #ffffff !important;
     }
     /* links stay heatsync-orange — out-specify the #description * rule above */
     body:not(.hs-player-safe).hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy:not([theater]):not([fullscreen]) #below a,
@@ -1389,6 +1472,52 @@
     body:not(.hs-player-safe).hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy:not([theater]):not([fullscreen]) #below #description a {
       color: #fff !important;
       -webkit-text-fill-color: #fff !important;
+    }
+
+    /* youtube's own chat, brought up over the pane from the youtube tab (platform-tabs.js) until "back" */
+    /* the sidebar sweep above hides #chat-container with the rest of #secondary-inner; the frame sits inside it */
+    body.hs-yt-peek.hs-platform-yt:not(.hs-offline) ytd-watch-flexy #secondary-inner > #chat-container {
+      display: block !important;
+    }
+    /* #secondary carries a view-transition-name, which makes it a stacking context pinned under our pane
+       however high the frame inside it is raised */
+    body.hs-yt-peek ytd-watch-flexy #secondary {
+      view-transition-name: none !important;
+    }
+    body.hs-yt-peek ytd-live-chat-frame#chat {
+      display: block !important;
+      position: fixed !important;
+      top: var(--hs-peek-top) !important;
+      left: var(--hs-peek-left) !important;
+      width: var(--hs-peek-w) !important;
+      height: var(--hs-peek-h) !important;
+      max-height: none !important;
+      margin: 0 !important;
+      z-index: 2147483000 !important;
+      background: #000000 !important;
+    }
+    body.hs-yt-peek ytd-live-chat-frame#chat iframe {
+      width: 100% !important;
+      height: 100% !important;
+    }
+    #hs-yt-peek-bar { background: #000000; border-bottom: 1px solid #ffffff; box-sizing: border-box; display: flex; }
+    #hs-yt-peek-back {
+      flex: 1; background: #000000; color: #ffffff; border: 0; border-radius: 0; font: inherit; font-size: 13px;
+      display: flex; align-items: center; text-align: left; padding: 0 8px; cursor: pointer;
+    }
+    #hs-yt-peek-back .hs-yt-peek-arrow { font-size: 24px; font-weight: 700; line-height: 1; margin-right: 8px; }
+    #hs-yt-peek-back:hover, #hs-yt-peek-back:active { background: #ffffff; color: #000000; }
+    /* the description box lights up on hover from a colour youtube bakes into the page when it renders
+       (light in a light theme), under the white text above: hover is white with black text, like every
+       other hovered control here */
+    body:not(.hs-player-safe).hs-platform-yt:not(.hs-offline):is(.hs-chat-left, .hs-chat-right) ytd-watch-flexy:not([theater]):not([fullscreen]) #below #description:hover {
+      background: #ffffff !important;
+    }
+    body:not(.hs-player-safe).hs-platform-yt:not(.hs-offline):is(.hs-chat-left, .hs-chat-right) ytd-watch-flexy:not([theater]):not([fullscreen]) #below #description:hover,
+    body:not(.hs-player-safe).hs-platform-yt:not(.hs-offline):is(.hs-chat-left, .hs-chat-right) ytd-watch-flexy:not([theater]):not([fullscreen]) #below #description:hover *,
+    body:not(.hs-player-safe).hs-platform-yt:not(.hs-offline):is(.hs-chat-left, .hs-chat-right) ytd-watch-flexy:not([theater]):not([fullscreen]) #below #description:hover a {
+      color: #000000 !important;
+      -webkit-text-fill-color: #000000 !important;
     }
 
     /* ============================================
@@ -1429,7 +1558,7 @@
       flex: 0 0 auto !important;
       overflow-y: auto !important;
       overflow-x: hidden !important;
-      background: #0a0a0a !important;
+      background: #000000 !important;
       padding: 8px !important;
       box-sizing: border-box !important;
       z-index: 1 !important;
@@ -1460,7 +1589,7 @@
     }
     /* high-contrast text in the strip */
     body.hs-yt-suggestions.hs-platform-yt:not(.hs-offline) ytd-watch-flexy:not([theater]):not([fullscreen]) #secondary,
-    body.hs-yt-suggestions.hs-platform-yt:not(.hs-offline) ytd-watch-flexy:not([theater]):not([fullscreen]) #secondary * { color: #e6e6e6 !important; }
+    body.hs-yt-suggestions.hs-platform-yt:not(.hs-offline) ytd-watch-flexy:not([theater]):not([fullscreen]) #secondary * { color: #ffffff !important; }
     body.hs-yt-suggestions.hs-platform-yt:not(.hs-offline) ytd-watch-flexy:not([theater]):not([fullscreen]) #secondary a { color: #ffffff !important; }
 
     /* ============================================

@@ -60,14 +60,13 @@
     .hs-tabs-right #hs-mc-tabbar::-webkit-scrollbar { display: none; }
     .hs-tabs-right .hs-mc-tab,
     .hs-tabs-left .hs-mc-tab {
-      padding: 4px 14px 4px 6px !important;
+      padding-block: 4px !important;
+      padding-inline: 6px 14px !important;
       font-size: 13px !important;
       min-width: 0 !important;
       max-width: none !important;
       width: 100% !important;
-      /* Left-align (not center) — see .hs-mc-tab base for the bitmap-snap
-         reasoning. Util buttons override this back to center below. */
-      text-align: left !important;
+      text-align: start !important;
       box-sizing: border-box !important;
       flex: 0 0 auto !important;
       margin: 0 0 -1px 0 !important;
@@ -76,9 +75,7 @@
        centered. Their text origin math always lands on an integer pixel
        because both inner width and glyph width are even. */
     .hs-tabs-right .hs-mc-util-btn,
-    .hs-tabs-right .hs-mc-pf-btn,
-    .hs-tabs-left .hs-mc-util-btn,
-    .hs-tabs-left .hs-mc-pf-btn {
+    .hs-tabs-left .hs-mc-util-btn {
       text-align: center !important;
     }
     /* Vertical-tabs override for util buttons (C/T/F-/F+/⚙): the .hs-tabs-
@@ -88,43 +85,45 @@
        right edge (no 18px gap from fixed-size squares + left-aligned row). */
     .hs-tabs-right .hs-mc-util-btn,
     .hs-tabs-left .hs-mc-util-btn {
-      /* Fixed 14px (12px content after 1px borders) -- even content width
-         integer-centers CozetteVector's 6px glyph advance for both 1-glyph
-         (C/T) and 2-glyph (F-/F+) labels. Growing to fill (flex:1) produced
-         odd 15px widths, landing glyphs on a half-pixel and smearing the
-         bitmap. 6x14=84 fits the 90px column without wrapping. */
       width: 14px !important;
       min-width: 14px !important;
       max-width: 14px !important;
       padding: 0 !important;
       flex: 0 0 14px !important;
-      margin: 0 -1px 0 0 !important;
+      margin-block: 0 !important;
+      margin-inline: 0 -1px !important;
     }
-    /* Right-cluster (util-row + platfilter) wraps both rows. In vertical mode
+    /* Right-cluster (util-row) wraps its rows. In vertical mode
        the tabbar's align-items:flex-start collapses it to content width, so
        force full tabbar width so the rows themselves can stretch to the edge. */
+    /* The card/panel destinations (profile, logs, chatter, twitch) and their
+       × ride the 2nd row; in a side column they are tabs, so they run the full
+       width exactly like the chat tabs above. */
+    .hs-tabs-right #hs-mc-subrow,
+    .hs-tabs-left #hs-mc-subrow {
+      width: 100%;
+      align-self: stretch;
+    }
+    .hs-tabs-right #hs-mc-subrow .hs-mc-dest,
+    .hs-tabs-left #hs-mc-subrow .hs-mc-dest {
+      width: 100%;
+      box-sizing: border-box;
+      text-align: start;
+      padding-block: 4px;
+      padding-inline: 6px 14px;
+      margin: 0 0 -1px 0;
+    }
+    .hs-tabs-right #hs-mc-subrow .hs-x-cell,
+    .hs-tabs-left #hs-mc-subrow .hs-x-cell {
+      width: 100%;
+      box-sizing: border-box;
+      justify-content: center;
+      margin: 0 0 -1px 0;
+    }
     .hs-tabs-right .hs-mc-right-cluster,
     .hs-tabs-left .hs-mc-right-cluster {
       width: 100% !important;
       align-self: stretch !important;
-    }
-    /* Platfilter (T/K/Y) in vertical mode: stretch each button to fill its
-       row (3 buttons share the 90px column width). */
-    .hs-tabs-right .hs-mc-pf-btn,
-    .hs-tabs-left .hs-mc-pf-btn {
-      flex: 1 1 0 !important;
-      width: auto !important;
-      min-width: 0 !important;
-      max-width: none !important;
-      padding: 0 !important;
-      margin: 0 -1px 0 0 !important;
-    }
-    .hs-tabs-right #hs-mc-platfilter,
-    .hs-tabs-left #hs-mc-platfilter {
-      display: flex !important;
-      flex-direction: row !important;
-      width: 100% !important;
-      flex: 0 0 auto !important;
     }
     .hs-tabs-right .hs-mc-tabs-scroll {
       display: flex;
@@ -190,11 +189,20 @@
     .hs-tabs-bottom:has(#hs-mc-inputbar.hs-hidden) #hs-mc-tabbar {
       bottom: 0;
     }
+    /* Pre-JS fallback only — NOT !important.
+       The tab bar wraps, so its height is measured, not known: _updateMcLayout
+       writes the real inset inline from getBoundingClientRect. These rules used
+       31px !important, which beat that inline style and pinned the overlay
+       31px off the bottom while the bar actually occupied 19 — a 12px strip of
+       container that nothing covered, in every bottom-docked session with the
+       composer hidden. Found by scripts/render-extension.ts.
+       :has() already outspecifies the generic .hs-tabs-bottom rule below, so
+       dropping !important keeps the fallback and lets the measurement win. */
     .hs-tabs-bottom:has(#hs-mc-inputbar.hs-hidden) #hs-mc-overlay {
-      bottom: 31px !important; /* tab bar only — override generic rule */
+      bottom: 31px;
     }
     .hs-tabs-bottom:has(#hs-mc-inputbar.hs-hidden) #hs-mc-emote-picker {
-      bottom: 31px !important;
+      bottom: 31px;
     }
 
     /* LEFT SIDE TABS LAYOUT - absolute position at left edge (matches right) */
@@ -327,7 +335,7 @@
        (body.hs-platform-yt:not(.hs-offline).hs-chat-right #hs-mc-container) is
        (1,3,1) — it TIES a plain hs-popout+platform-yt fill and wins by load
        order (17 after 15), docking the overlay to a ~336px strip. Double the
-       .hs-popout class (house idiom, cf. the ×4 .hs-native-visible bump) to
+       .hs-popout class (house idiom) to
        reach (1,4,1) and win outright, so the overlay fills the whole pop-out
        window edge-to-edge regardless of chat-position class or load order. */
     body.hs-popout.hs-popout.hs-platform-yt:not(.hs-offline) #hs-mc-container {

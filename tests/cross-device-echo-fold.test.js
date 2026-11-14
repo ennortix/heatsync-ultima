@@ -16,11 +16,12 @@
 import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { bgSource } from './bg-src.js'
 
 const INPUT_SRC = readFileSync(join(import.meta.dir, '..', 'src', 'multichat', 'input.js'), 'utf8')
 const SOCIAL_SRC = readFileSync(join(import.meta.dir, '..', 'src', 'multichat', 'social.js'), 'utf8')
 const IRC_SRC = readFileSync(join(import.meta.dir, '..', 'src', 'multichat', 'irc.js'), 'utf8')
-const BG_SRC = readFileSync(join(import.meta.dir, '..', 'chrome', 'background.js'), 'utf8')
+const BG_SRC = bgSource()
 
 const foldStart = INPUT_SRC.indexOf('function retroFoldOwnEchoes()')
 const foldEnd = INPUT_SRC.indexOf('\nfunction ', foldStart + 10)
@@ -44,9 +45,9 @@ describe('live retro-fold', () => {
   test('twitch leg preferred as survivor, others hidden + removed', () => {
     // Kick echoes paint first (they relay through this ext) but bare and with
     // laggier timestamps — surviving them strands the [H] row rows-up.
-    expect(FOLD).toContain("legs.find((l) => (l.m.platform || 'twitch') === 'twitch')")
+    expect(FOLD).toContain("legs.find((l) => l.plat === 'twitch')")
     expect(FOLD).toContain("m.platform = 'heatsync'")
-    expect(FOLD).toContain('hs-mc-pb-heatsync')
+    expect(FOLD).toContain('hsMarkBadgeHeatsync(pb)')
     expect(FOLD).toContain('leg.m.hidden = true')
     expect(FOLD).toContain('leg.div.remove()')
     expect(FOLD).toContain('_unindexMessageDiv(leg.div)')

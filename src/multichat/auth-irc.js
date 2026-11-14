@@ -27,6 +27,12 @@ const TWITCH_SEND_REJECT_NOTICES = new Map([
   ['tos_ban', 'mc_irc_notice_tos_ban'],
 ])
 
+// last WIRE text this client sent per twitch channel (see dupBypassWire)
+const lastWireByChannel = new Map()
+function twitchWireText(channel, text) {
+  return dupBypassWire(lastWireByChannel.get(channel), String(text).replace(/[\r\n]/g, ' '))
+}
+
 function parseNoticeMsgId(line) {
   // Tags arrive before the colon: @msg-id=msg_followersonly;... :tmi.twitch.tv NOTICE ...
   if (!line.startsWith('@')) return null
@@ -48,6 +54,7 @@ const authState = {
   joined: new Set(),
   joinWaiters: new Map(),
   lastData: 0,
+  openedAt: 0, // when twitch accepted this socket's login
   pongPending: false,
   token: null,
   nick: null,
@@ -106,7 +113,7 @@ function cleanupAuthIrc(destroy = false) {
   authState.pongPending = false
   authState.joined.clear()
   for (const [, w] of authState.joinWaiters) {
-    clearTimeout(w.timer)
+    cleanup.clearTimeout(w.timer)
     w.resolve(false)
   }
   authState.joinWaiters.clear()
@@ -134,7 +141,7 @@ function handleAuthIrcMessage(event) {
       authState.joined.add(ch)
       const w = authState.joinWaiters.get(ch)
       if (w) {
-        clearTimeout(w.timer)
+        cleanup.clearTimeout(w.timer)
         w.resolve(true)
         authState.joinWaiters.delete(ch)
       }
@@ -148,6 +155,11 @@ function handleAuthIrcMessage(event) {
     if (line.includes(' NOTICE ')) {
       const msgId = parseNoticeMsgId(line)
       if (msgId && TWITCH_SEND_REJECT_NOTICES.has(msgId)) {
+        // the composer learns why it is shut (banned / timed out / room rule) from the refusal itself
+        try {
+          const lockCh = (line.match(/ NOTICE #(\w+)/) || [])[1]
+          if (lockCh) chatLockSet(lockCh, chatLockFromNotice(msgId, line))
+        } catch (_) {}
         if (typeof showToast === 'function') showToast(t(TWITCH_SEND_REJECT_NOTICES.get(msgId)), 'error')
         // ALSO a persistent inline red row in that channel's chat — the toast
         // alone lasts ~2s, and a rejected send otherwise leaves no trace: the
@@ -162,6 +174,12 @@ function handleAuthIrcMessage(event) {
             const parsed = parseIrcLine(line)
             if (parsed) {
               parsed.isSynthetic = true
+              if (msgId === 'msg_rejected') {
+                // held for a mod, not refused: say so in house copy, and remember WHICH send it is so
+                // that message's own echo can retire this row (irc.js)
+                parsed.text = parsed.systemMsg = t(TWITCH_SEND_REJECT_NOTICES.get(msgId))
+                parsed.heldText = globalThis.__hsPendingTextByChannel?.(parsed.channel) || ''
+              }
               irc._handleMsg?.(parsed)
             }
           }
@@ -188,12 +206,26 @@ function handleAuthIrcMessage(event) {
     // Whispers arrive via IRC WHISPER with twitch.tv/commands cap (same as Chatterino)
     if (line.includes('WHISPER')) {
       const msg = parseIrcLine(line)
-      if (msg?.type === 'whisper') handleIncomingWhisper(msg)
+      if (msg?.type === 'whisper') handleIncomingWhisper({ ...msg, src: 'irc' })
       continue
     }
     if (line.includes(' 353 ') || line.includes(' 366 ') || line.includes('ROOMSTATE')) continue
     if (MC_DEBUG) console.warn('[HS] IRC ←', line.slice(0, 200))
   }
+}
+
+// A twitch send that never echoed back: the socket may be dead while it still
+// reads as open (a sleep, a network switch, a hop that drops it silently), and
+// every send after it would go nowhere until a page refresh. Replace it, so the
+// next send goes out on a fresh one. A socket only just opened is not the cause.
+const AUTH_RECYCLE_MIN_AGE_MS = 15_000
+function recycleAuthIrc(reason) {
+  if (authState.destroyed || authState.connecting || !authState.ws || !authState.token || !authState.nick) return false
+  if (Date.now() - authState.openedAt < AUTH_RECYCLE_MIN_AGE_MS) return false
+  log('Auth IRC: replacing the socket after', reason)
+  const prev = cleanupAuthIrc()
+  scheduleReconnect(prev)
+  return true
 }
 
 function scheduleReconnect(prevChannels) {
@@ -203,7 +235,7 @@ function scheduleReconnect(prevChannels) {
   authState.reconnectDelay = Math.min(delay * 2, 30000)
   const jitteredDelay = delay + Math.random() * 500
   log(`Auth IRC reconnect in ${delay}ms...`)
-  authState.reconnectTimer = cleanup.setTimeout(async () => {
+  authState.reconnectTimer = cleanup.setPageTimeout(async () => {
     authState.reconnectTimer = null
     if (authState.destroyed || authIrcAlive()) return
     const ok = await connectAuthIrc(authState.token, authState.nick)
@@ -235,7 +267,7 @@ async function connectAuthIrc(token, nick) {
     const ws = new WebSocket('wss://irc-ws.chat.twitch.tv:443')
     authState.ws = ws
     await new Promise((resolve, reject) => {
-      const timeout = cleanup.setTimeout(() => reject(new Error('timeout')), 8000)
+      const timeout = cleanup.setPageTimeout(() => reject(new Error('timeout')), 8000)
       ws.onopen = () => {
         ws.send(`PASS oauth:${token}\r\n`)
         ws.send(`NICK ${nick}\r\n`)
@@ -245,6 +277,7 @@ async function connectAuthIrc(token, nick) {
         if (event.data.includes(' 001 ')) {
           authState.ready = true
           authState.lastData = Date.now()
+          authState.openedAt = authState.lastData
           authState.reconnectDelay = 1000
           cleanup.clearTimeout(timeout)
           resolve()
@@ -282,7 +315,7 @@ async function connectAuthIrc(token, nick) {
     }
     ws.onerror = () => {}
     // Keepalive PING every 30s — detect dead sockets fast
-    authState.keepaliveTimer = cleanup.setInterval(() => {
+    authState.keepaliveTimer = cleanup.setPageInterval(() => {
       if (!authState.ws || authState.ws.readyState !== WebSocket.OPEN) return
       if (authState.pongPending) {
         log('Auth IRC: PONG timeout, reconnecting')
@@ -323,7 +356,7 @@ function joinChannel(channel) {
     // sends for the WS lifetime — every later PRIVMSG to that channel hit
     // tmi.twitch.tv as a never-joined client and dropped without a NOTICE.
     // Now: longer timeout, no fake-success; caller retries via sendIrcMessage.
-    const timer = cleanup.setTimeout(() => {
+    const timer = cleanup.setPageTimeout(() => {
       authState.joinWaiters.delete(channel)
       resolve(false)
     }, 2000)
@@ -331,7 +364,20 @@ function joinChannel(channel) {
   })
 }
 
-async function drainSendQueue() {
+// One drain at a time. The reconnect timer and the tab-focus handler both drain when the socket is back,
+// and a join await sits between peeking the queue head and shifting it: two walks over one queue would
+// each send that head (a duplicate) and each shift one entry (the next message gone, never sent).
+let drainingQueue = null
+function drainSendQueue() {
+  if (!drainingQueue) {
+    drainingQueue = drainSendQueueOnce().finally(() => {
+      drainingQueue = null
+    })
+  }
+  return drainingQueue
+}
+
+async function drainSendQueueOnce() {
   // Join-gate every drain. A PRIVMSG to a channel we never JOINed is silently
   // dropped by tmi.twitch.tv (no NOTICE). scheduleReconnect() can lose a queued
   // channel from its rejoin list — it early-returns when a reconnect is already
@@ -352,7 +398,9 @@ async function drainSendQueue() {
       // Strip CR/LF: they terminate an IRC line, so a newline in text would let
       // it inject a second command onto the wire. The composer's serializer
       // currently never emits them, but guard structurally at the wire boundary.
-      authState.ws.send(`${qPrefix}PRIVMSG #${channel} :${String(text).replace(/[\r\n]/g, ' ')}\r\n`)
+      const wire = twitchWireText(channel, text)
+      authState.ws.send(`${qPrefix}PRIVMSG #${channel} :${wire}\r\n`)
+      lastWireByChannel.set(channel, wire)
       authState.sendQueue.shift()
       log(`Drained queued msg to #${channel}`)
     } catch {
@@ -405,7 +453,9 @@ async function sendIrcMessage(channel, text, token, replyParentId, overrideNick)
       }
       // Strip CR/LF at the wire boundary — a newline in text would inject a
       // second IRC command (see the queue-drain send above).
-      authState.ws.send(`${prefix}PRIVMSG #${channel} :${String(text).replace(/[\r\n]/g, ' ')}\r\n`)
+      const wire = twitchWireText(channel, text)
+      authState.ws.send(`${prefix}PRIVMSG #${channel} :${wire}\r\n`)
+      lastWireByChannel.set(channel, wire)
       if (MC_DEBUG)
         console.warn(
           '[HS] IRC SEND →',

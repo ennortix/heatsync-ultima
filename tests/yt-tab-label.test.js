@@ -6,10 +6,12 @@
 import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { bgSource } from './bg-src.js'
+import { mainSource } from './main-src.js'
 
 const ROOT = join(import.meta.dir, '..')
-const MAIN = readFileSync(join(ROOT, 'src', 'multichat', 'main.js'), 'utf8')
-const BG = readFileSync(join(ROOT, 'chrome', 'background.js'), 'utf8')
+const MAIN = mainSource()
+const BG = bgSource()
 const MGMT = readFileSync(join(ROOT, 'src', 'multichat', 'channel-mgmt.js'), 'utf8')
 
 // The exact regex the label path uses to pull a videoId out of a stored url.
@@ -46,6 +48,16 @@ describe('wiring', () => {
   test('background answers yt_channel_handle and validates the id', () => {
     expect(BG).toContain("message.type === 'yt_channel_handle'")
     expect(BG).toMatch(/\^\[\\w-\]\{11\}\$/)
+  })
+  // The website syncs a youtube-only tab as { id: 'tab-<ts>-<rand>', youtube: 'lofigirl' }
+  // — a bare handle, and an id that is generated, not a name.
+  test('a bare synced handle labels the tab, and a tab-<ts> id never does', () => {
+    expect(MAIN).toContain('ch.youtube.match(/^([\\w.-]+)$/)')
+    expect(MAIN).toContain('(linked|yt|kick|twitch|tab)[-_]\\d+')
+    const handle = (y) => (y.match(/@([^/?]+)/) || y.match(/^([\w.-]+)$/))?.[1]
+    expect(handle('lofigirl')).toBe('lofigirl')
+    expect(handle('https://www.youtube.com/@lofigirl/live')).toBe('lofigirl')
+    expect(handle('https://www.youtube.com/watch?v=VGe-dpUmnos')).toBeUndefined()
   })
   test('youtube now has a duplicate guard like twitch and kick', () => {
     expect(MGMT).toContain('c.youtube === ytVal')

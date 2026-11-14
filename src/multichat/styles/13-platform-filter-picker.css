@@ -1,138 +1,10 @@
-    /* Per-tab platform filter toggles (T/K/Y). Sits AFTER the util cluster
-       (DOM order). Horizontal mode: tight content-sized strip on far right.
-       Vertical mode: full column width row below util. */
-    #hs-mc-platfilter {
-      display: flex;
-      flex: 0 0 auto;
-      /* Each button owns a COMPLETE box, same as the composer send chips.
-         This used to be a segmented control (gap:0, margin-left:-1px,
-         align-items:stretch) so neighbours shared one border line — which
-         reads as T and K missing their right edge, and stretch merged the
-         top edge into the row above. Two clusters of the same control now
-         look the same in both places. */
-      gap: 2px;
-      align-items: center;
-      margin-left: 0;
-    }
-    #hs-mc-platfilter:empty { display: none; margin: 0; }
-    /* Inside platfilter (horizontal strip): fixed 18x18, same box as the
-       composer send chips. These used to divide the cluster width with
-       flex:1 1 0, which lands the buttons on fractional x (measured .66/.33)
-       — and bitmap text on a sub-pixel x is exactly what smears. Vertical
-       (side-tab) mode below still fills the column on purpose. */
-    #hs-mc-platfilter .hs-mc-pf-btn {
-      flex: 0 0 18px !important;
-      width: 18px !important;
-      min-width: 18px !important;
-      max-width: 18px !important;
-    }
-    /* Keep every T/K/Y a COMPLETE colored box in the dissolved horizontal layout.
-       In top/bottom tabs #hs-mc-platfilter becomes display:contents (02-tab-bar),
-       which drops this container's gap and re-exposes the util cluster's
-       margin:-1px — that collapses adjacent platform-colored borders into one
-       shared line, so T/K read as missing their right edge (grey util buttons
-       hide it; colored ones can't). Pin a real right-gap on the button itself so
-       the separation survives the dropped container gap. */
-    body.hs-tabs-top #hs-mc-platfilter .hs-mc-pf-btn,
-    body.hs-tabs-bottom #hs-mc-platfilter .hs-mc-pf-btn {
-      margin: 0 2px 0 0 !important;
-    }
-    /* Vertical mode: platfilter spans full column width, buttons share row */
-    .hs-tabs-right #hs-mc-platfilter,
-    .hs-tabs-left #hs-mc-platfilter {
-      display: flex;
-      flex-direction: row;
-      flex-wrap: nowrap;
-      gap: 2px;
-      width: 100%;
-      box-sizing: border-box;
-      margin-left: 0;
-      flex: 0 0 auto;
-    }
-    .hs-tabs-right #hs-mc-platfilter .hs-mc-pf-btn,
-    .hs-tabs-left #hs-mc-platfilter .hs-mc-pf-btn {
-      flex: 1 1 0 !important;
-      width: auto !important;
-      min-width: 0 !important;
-      max-width: none !important;
-      height: 18px !important;
-      font-size: 13px !important;
-    }
-    .hs-mc-pf-btn {
-      background: transparent;
-      border: 1px solid;
-      color: #fff;
-      font-size: 13px;
-      font-weight: 700;
-      /* Explicit height: with align-items:center the button no longer takes
-         its height from the row, so it needs its own. 18px matches the
-         whisper-row grid and the vertical-mode override below. */
-      height: 18px;
-      padding: 0 4px;
-      cursor: pointer;
-      font-family: inherit;
-      line-height: 1;
-      box-sizing: border-box;
-      min-width: 0;
-      text-align: center;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-    /* ON state — OUTLINE: platform-colored border + letter on transparent.
-       Deliberately distinct from the composer's FILLED send chips — outline
-       = what you SEE, fill = where you SEND. This styling split (plus
-       location) is what disambiguates the twin T K Y clusters now that the
-       'show:'/'send:' text labels are gone. */
-    .hs-mc-pf-btn.hs-mc-pf-twitch { border-color: var(--hs-plat-twitch) !important; background: transparent !important; color: var(--hs-plat-twitch) !important; }
-    .hs-mc-pf-btn.hs-mc-pf-kick { border-color: var(--hs-plat-kick) !important; background: transparent !important; color: var(--hs-plat-kick) !important; }
-    .hs-mc-pf-btn.hs-mc-pf-youtube {
-      border-color: var(--hs-plat-youtube) !important;
-      background: transparent !important;
-      color: var(--hs-plat-youtube) !important;
-    }
-    /* OFF state — dim border + dim letter; the cue is losing the platform
-       color entirely. */
-    .hs-mc-pf-btn.off {
-      background: transparent !important;
-      color: #808080 !important;
-      border-color: #808080 !important;
-    }
-    .hs-mc-pf-btn:hover,
-    .hs-mc-pf-btn:active { background: #fff !important; color: #000 !important; border-color: #fff !important; }
-    .hs-mc-pf-btn.off:hover,
-    .hs-mc-pf-btn.off:active {
-      background: #fff !important;
-      color: #000 !important;
-      border-color: #fff !important;
-    }
-
-    /* Composer send-target chips — one small pill per linked platform,
-       shown only when the active channel tab has >1 linked platform (see
-       renderSendTargetChips, input.js). Sits between the input and the
-       emote button. FILLED when on — deliberately distinct from the
-       OUTLINE view-filter buttons in the tab strip (fill = where you
-       SEND, outline = what you SEE). */
-    #hs-mc-sendtargets {
-      display: flex;
-      flex: 0 0 auto;
-      align-items: center;
-      gap: 2px;
-      /* margin-left auto: no-op inline (input flex:1 absorbs slack), but
-         right-aligns the chips+emote cluster if the bar ever wraps. */
-      margin: 0 4px 0 auto;
-    }
-    #hs-mc-sendtargets:empty { display: none; margin: 0; }
+    /* Send-target toggles — one square per linked platform, in the edit-channel
+       form (showEditChannelForm). Outline look: platform color on black. */
     .hs-mc-st-btn {
       background: transparent;
       border: 1px solid;
       font-size: 13px;
       font-weight: 700;
-      /* INTEGER 18x18, identical to the tab-strip filter buttons. Padding-sized
-         boxes measured 17.81px wide and landed the glyphs on fractional x —
-         which is exactly what makes a bitmap font smear (same trap as the
-         whisper arrow's integer-width note). Fixed box, centred glyph, whole
-         pixels. */
       width: 18px;
       height: 18px;
       padding: 0;
@@ -158,33 +30,8 @@
     .hs-mc-st-btn.hs-mc-st-youtube { border-color: var(--hs-plat-youtube) !important; background: transparent !important; color: var(--hs-plat-youtube) !important; }
     .hs-mc-st-btn.off {
       background: transparent !important;
-      color: #808080 !important;
-      border-color: #808080 !important;
-    }
-    /* The send cluster's "where it goes" marker. Not a button — a one-glyph
-       label, dim so it never competes with the letters.
-
-       Sized and boxed exactly like .hs-whisper-arrow (02-tab-bar.css): pulled
-       OUT of the Cozette stack into a scalable mono face, because Cozette is
-       a bitmap font and only renders sharp at its native grid — scaling it up
-       just smears. The box is pinned to an integer height/width so a
-       fractional glyph advance can't push the chips next to it onto a
-       half-pixel and smear THEM (the same trap that hit "you" after the
-       whisper arrow). Flex handles the vertical centring here, so no
-       vertical-align hack is needed. */
-    .hs-mc-st-arrow {
-      color: #aaa;
-      font-family: ui-monospace, "DejaVu Sans Mono", "Liberation Mono", monospace;
-      font-size: 19px;
-      font-weight: 700;
-      display: inline-block;
-      height: 18px;
-      line-height: 18px;
-      width: 12px;
-      text-align: center;
-      overflow: visible;
-      align-self: center;
-      user-select: none;
+      color: var(--hs-border) !important;
+      border-color: var(--hs-border) !important;
     }
     .hs-mc-st-btn:hover,
     .hs-mc-st-btn:active { background: #fff !important; color: #000 !important; border-color: #fff !important; }
@@ -215,7 +62,7 @@
          land outside picker.contains(target), firing the dismiss handler. */
       min-width: 210px;
       background: #000;
-      border-top: 1px solid #808080;
+      border-top: 1px solid var(--hs-border);
       z-index: 1003;
       overflow: hidden;
       flex-direction: column;
@@ -229,7 +76,7 @@
     /* Picker tabs — pinned to bottom */
     #hs-mc-emote-picker .hs-mc-picker-tabs {
       display: flex !important;
-      border-top: 1px solid #808080;
+      border-top: 1px solid var(--hs-border);
       flex-shrink: 0 !important;
       min-height: 0 !important;
       margin-top: auto !important;
@@ -245,11 +92,11 @@
       gap: 5px !important;
       padding: 6px 4px !important;
       background: transparent !important;
-      color: #aaa !important;
+      color: var(--hs-muted) !important;
       border: none !important;
       cursor: pointer;
       font-size: 13px !important;
-      font-weight: 600 !important;
+      font-weight: 700 !important;
       line-height: 1 !important;
       text-align: center;
       visibility: visible !important;
@@ -281,7 +128,7 @@
     .hs-mc-tab-content,
     .hs-mc-picker-scroll {
       scrollbar-width: thin;
-      scrollbar-color: rgba(255,255,255,0.12) transparent;
+      scrollbar-color: #ffffff transparent;
     }
     .hs-mc-tab-content::-webkit-scrollbar,
     .hs-mc-picker-scroll::-webkit-scrollbar {
@@ -293,12 +140,12 @@
     }
     .hs-mc-tab-content::-webkit-scrollbar-thumb,
     .hs-mc-picker-scroll::-webkit-scrollbar-thumb {
-      background: rgba(255,255,255,0.12);
+      background: #ffffff;
       border-radius: 0;
     }
     .hs-mc-tab-content::-webkit-scrollbar-thumb:hover,
     .hs-mc-picker-scroll::-webkit-scrollbar-thumb:hover {
-      background: rgba(255,255,255,0.2);
+      background: #ffffff;
     }
     .hs-mc-picker-scroll {
       flex: 1;
@@ -312,36 +159,49 @@
     .hs-mc-picker-section-header {
       position: sticky;
       top: 0;
-      z-index: 1;
+      /* above the emotes: their wrappers sit at z-index 1 and their imgs at 2
+         (10-emotes.css), so a lower header let them scroll OVER the label */
+      z-index: 5;
       display: flex;
       align-items: center;
       gap: 5px;
       padding: 4px 6px 3px;
       font-size: 13px;
-      color: #808080;
+      color: var(--hs-border);
       background: #000;
-      border-top: 1px solid rgba(255,255,255,0.08);
+      border-top: none;
     }
     .hs-mc-picker-section:first-child .hs-mc-picker-section-header {
       border-top: none;
     }
     .hs-mc-picker-section-count {
-      color: #aaa;
+      color: var(--hs-muted);
       font-size: 13px;
-      background: rgba(255,255,255,0.06);
+      background: #000000;
       padding: 1px 5px;
       border-radius: 0;
     }
-    .hs-mc-picker-section-grid {
+    /* A section is ONE flex-wrap flow. Its emotes arrive in lazy chunks, and a
+       chunk that was its own flex box ended every 96 emotes on a short row and
+       started the next on a new line — gaps for no reason. A filled chunk is
+       display:contents so its emotes flow straight into the section; an unfilled
+       one is a full-width placeholder holding the scroll height until it fills. */
+    .hs-mc-picker-section {
       display: flex;
       flex-wrap: wrap;
       align-items: center;
       gap: 2px;
       padding: 6px;
     }
+    .hs-mc-picker-section > .hs-mc-picker-section-header {
+      flex: 0 0 100%;
+      box-sizing: border-box;
+    }
+    .hs-mc-picker-chunk.hs-mc-chunk-ready { display: contents; }
+    .hs-mc-picker-chunk:not(.hs-mc-chunk-ready) { flex: 0 0 100%; }
     .hs-mc-picker-header {
       padding: 8px !important;
-      border-bottom: 1px solid rgba(255,255,255,0.08) !important;
+      border-bottom: none !important;
       display: block !important;
       visibility: visible !important;
       background: #000 !important;
@@ -358,20 +218,20 @@
     }
     .hs-mc-search-icon {
       position: absolute;
-      left: 10px;
+      inset-inline-start: 10px;
       pointer-events: none;
-      opacity: 0.5;
-      color: #aaa;
+       color: var(--hs-muted);
       z-index: 2;
     }
     #hs-mc-emote-search {
       flex: 1;
       min-width: 0;
       width: auto;
-      padding: 4px 8px 4px 28px;
+      padding-block: 4px;
+      padding-inline: 28px 8px;
       background: #000;
       color: #fff;
-      border: 1px solid #808080;
+      border: 1px solid var(--hs-border);
       border-radius: 0;
       font-size: 13px;
       outline: none;
@@ -402,24 +262,24 @@
       font-family: inherit;
       border-radius: 0;
       line-height: 15px;
-      text-transform: uppercase;
+      text-transform: none;
       letter-spacing: 1px;
       transition: none;
     }
-    .hs-mc-src-chip[data-src="7tv"]  { color: #29d8f6; border-color: rgba(41,216,246,0.5); }
-    .hs-mc-src-chip[data-src="bttv"] { color: #d50014; border-color: rgba(213,0,20,0.5); }
-    .hs-mc-src-chip[data-src="ffz"]  { color: #0086c8; border-color: rgba(0,134,200,0.5); }
-    .hs-mc-src-chip[data-src="hs"]   { color: var(--hs-plat-hs); border-color: rgba(255,135,0,0.5); }
-    .hs-mc-src-chip.active[data-src="7tv"]  { background: #29d8f6; color: #000; border-color: #29d8f6; }
-    .hs-mc-src-chip.active[data-src="bttv"] { background: #d50014; color: #fff; border-color: #d50014; }
-    .hs-mc-src-chip.active[data-src="ffz"]  { background: #0086c8; color: #fff; border-color: #0086c8; }
-    .hs-mc-src-chip.active[data-src="hs"]   { background: var(--hs-plat-hs); color: #000; border-color: var(--hs-plat-hs); }
+    .hs-mc-src-chip[data-src="7tv"]  { color: #00ffff; border-color: #00ffff; }
+    .hs-mc-src-chip[data-src="bttv"] { color: #ff0000; border-color: #ff0000; }
+    .hs-mc-src-chip[data-src="ffz"]  { color: #8888ff; border-color: #8888ff; }
+    .hs-mc-src-chip[data-src="hs"]   { color: var(--hs-plat-hs); border-color: var(--hs-plat-hs); }
+    .hs-mc-src-chip.active[data-src="7tv"]  { background: #ffffff; color: #000000; border-color: #00ffff; }
+    .hs-mc-src-chip.active[data-src="bttv"] { background: #ffffff; color: #000000; border-color: #ff0000; }
+    .hs-mc-src-chip.active[data-src="ffz"]  { background: #ffffff; color: #000000; border-color: #8888ff; }
+    .hs-mc-src-chip.active[data-src="hs"]   { background: #ffffff; color: #000000; border-color: var(--hs-plat-hs); }
     .hs-mc-src-chip:hover { background: #fff !important; color: #000 !important; border-color: #fff !important; }
     /* Exact-match filter chip — orange (HeatSync) accent, distinct from the
        brand-colored provider chips. Same square metrics. */
     .hs-mc-exact-chip {
       background: transparent;
-      border: 1px solid rgba(255,255,255,0.5);
+      border: 1px solid #ffffff;
       color: #fff;
       font-size: 13px;
       font-weight: 700;
@@ -428,7 +288,7 @@
       font-family: inherit;
       border-radius: 0;
       line-height: 15px;
-      text-transform: uppercase;
+      text-transform: none;
       letter-spacing: 1px;
       transition: none;
     }
@@ -448,14 +308,14 @@
       font-family: inherit;
       font-size: 13px;
       font-weight: 700;
-      text-transform: uppercase;
+      text-transform: none;
       letter-spacing: 1px;
       cursor: pointer;
       transition: none;
     }
     .hs-mc-load-more:hover { background: #fff; color: #000; border-color: #fff; }
     #hs-mc-emote-search::placeholder {
-      color: #aaa;
+      color: var(--hs-muted);
     }
     .hs-mc-picker-emote {
       width: auto !important;
@@ -479,7 +339,7 @@
     .hs-mc-picker-empty {
       padding: 32px !important;
       text-align: center !important;
-      color: #aaa !important;
+      color: var(--hs-muted) !important;
       font-size: 13px !important;
       visibility: visible !important;
     }
@@ -491,11 +351,11 @@
       gap: 10px;
     }
     .hs-mc-cold-start-title { color: #fff; font-size: 14px; font-weight: 700; }
-    .hs-mc-cold-start-sub { color: #aaa; font-size: 13px; max-width: 260px; line-height: 1.4; }
+    .hs-mc-cold-start-sub { color: var(--hs-muted); font-size: 13px; max-width: 260px; line-height: 1.4; }
     .hs-mc-cold-start .hs-mc-load-more { width: auto; margin: 0; padding: 7px 14px; text-transform: none; letter-spacing: 0; }
     .hs-mc-picker-divider {
       height: 1px;
-      background: rgba(255,255,255,0.06);
+      background: #000000;
       margin: 4px 0;
     }
 
@@ -504,3 +364,108 @@
       --hs-emote-size: 32px;
     }
 
+
+    /* ── emoji tab: category row + a wrapping grid of square tiles ── */
+    .hs-mc-emoji-cats { display: flex; flex-wrap: wrap; gap: 2px; padding: 4px 4px 0; }
+    .hs-mc-emoji-cat, .hs-mc-emoji-tile {
+      background: #000;
+      color: #fff;
+      border: 1px solid transparent;
+      border-radius: 0;
+      font: inherit;
+      cursor: pointer;
+      padding: 0;
+    }
+    .hs-mc-emoji-cat { font-size: 17px; width: 28px; height: 28px; border-color: var(--hs-border); }
+    .hs-mc-emoji-cat.active { border-color: #fff; }
+    .hs-mc-emoji-grid { display: flex !important; flex-wrap: wrap; align-content: flex-start; gap: 2px; padding: 4px; }
+    .hs-mc-emoji-tile { font-size: 22px; width: 36px; height: 36px; }
+    .hs-mc-emoji-cat:hover, .hs-mc-emoji-cat:active, .hs-mc-emoji-tile:hover, .hs-mc-emoji-tile:active { background: #fff; color: #000; }
+    .hs-mc-emoji-grid .hs-mc-picker-empty { width: 100%; }
+
+    /* ── gifs tab ──────────────────────────────────────────────────────────
+       A real grid, not a wrapping flex row: keyboard navigation needs to know
+       how many columns there are, and only a grid will tell it (hsGifCols
+       reads grid-template-columns off the live element, so this stays right at
+       every overlay width without a breakpoint). */
+    .hs-mc-gif-grid {
+      display: grid !important;
+      grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+      grid-auto-rows: 82px;
+      align-content: start;
+      gap: 2px;
+      padding: 4px;
+    }
+    .hs-mc-gif-grid .hs-mc-gif-status,
+    .hs-mc-gif-grid .hs-mc-picker-empty {
+      grid-column: 1 / -1;
+    }
+    .hs-mc-gif-status {
+      color: var(--hs-muted);
+      font-size: 13px;
+      padding: 2px 2px 4px;
+      letter-spacing: 0.5px;
+    }
+    .hs-mc-gif {
+      position: relative;
+      display: block;
+      width: 100%;
+      height: 100%;
+      padding: 0;
+      margin: 0;
+      background: var(--hs-bg);
+      border: 1px solid #ffffff;
+      cursor: pointer;
+      overflow: hidden;
+      transition: none;
+    }
+    .hs-mc-gif > img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    /* Hover is white, the keyboard cursor is cyan — the same split every other
+       list in the overlay uses, so "where the mouse is" never reads as "where
+       enter will land". */
+    .hs-mc-gif:hover {
+      border-color: var(--hs-fg);
+      outline: 2px solid var(--hs-fg);
+      outline-offset: -2px;
+    }
+    .hs-mc-gif[data-sel='1'] {
+      border-color: var(--hs-sel);
+      outline: 2px solid var(--hs-sel);
+      outline-offset: -2px;
+    }
+    .hs-mc-gif-cap {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      font-size: 13px;
+      line-height: 1.3;
+      padding: 0 3px;
+      color: var(--hs-muted);
+      background: var(--hs-bg);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .hs-mc-gif:hover .hs-mc-gif-cap {
+      background: var(--hs-fg);
+      color: var(--hs-bg);
+    }
+    .hs-mc-gif[data-sel='1'] .hs-mc-gif-cap {
+      background: var(--hs-sel);
+      color: var(--hs-sel-fg);
+    }
+    /* The mode line. An unannounced mode is a bug report. */
+    .hs-mc-gif-mode {
+      flex-shrink: 0;
+      border-top: 1px solid var(--hs-border);
+      color: var(--hs-border);
+      font-size: 13px;
+      padding: 1px 6px;
+      letter-spacing: 1px;
+    }

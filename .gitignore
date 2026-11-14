@@ -11,3 +11,9 @@ chrome/multichat.js
 CLAUDE.md
 store-assets/
 build.log
+# build output — built into dist/ only; a stale copy here is removed by the next build
+chrome/multichat-core.js
+chrome/background.js
+chrome/emoji-data.iso.js
+chrome/emoji-data.main.js
+coverage/

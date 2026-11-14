@@ -6,7 +6,19 @@
 // handlers dead until hard refresh
 const _onceGuardsTooltips = {}
 
+// Command-receipt capture stack — the slash-command dispatcher wrapper
+// (runSlashCommandWithReceipt, src/multichat/input.js) pushes a frame here
+// while a handler runs, so an 'error' toast fired mid-command attaches its
+// text to that command's inline receipt instead of just scrolling past as a
+// toast. A stack, not one slot, so nothing breaks if a handler's own await
+// chain re-enters this (each frame only ever reads/writes itself). Empty the
+// overwhelming rest of the time — the check below is a length read.
+const _cmdReceiptStack = []
 function showToast(msg, type) {
+  if (type === 'error' && _cmdReceiptStack.length) {
+    const top = _cmdReceiptStack[_cmdReceiptStack.length - 1]
+    if (!top.reason) top.reason = msg // first error wins — usually the root cause
+  }
   // Routed through HsNotifs (notifs.js) — single source of truth for layers,
   // dedup, lifecycle. Adding/removing notif types happens there.
   try {
@@ -37,44 +49,9 @@ function ensureBadgeTooltip() {
   return badgeTooltip
 }
 
-// Inline badges render at 18px (1x). The tooltip shows them at 72px, so swap
-// to the crispest variant for the 72px preview instead of upscaling 18→72.
-// 7TV badges top out at 3x, FFZ at 4, so we list candidates descending and
-// probe each (see upgradeBadgeImg). Other sources are single-resolution.
-function hiResBadgeCandidates(src) {
-  if (!src) return []
-  if (src.includes('7tv'))
-    return ['4x', '3x', '2x'].map((s) =>
-      src.replace(/\/[1-4]x(\.\w+)?(\?.*)?$/i, (_m, ext, q) => `/${s}${ext || ''}${q || ''}`),
-    )
-  if (src.includes('frankerfacez'))
-    return ['4', '2'].map((s) => src.replace(/\/[1-4](\?.*)?$/, (_m, q) => `/${s}${q || ''}`))
-  // Twitch native badges (sub/bits/mod/vip) — URLs end in /1, /2, /3 (max 3, no 4x)
-  if (src.includes('jtvnw')) return ['3', '2'].map((s) => src.replace(/\/[1-3](\?.*)?$/, (_m, q) => `/${s}${q || ''}`))
-  return []
-}
-
-// Emote-preview pattern: keep 1x showing, probe each hi-res candidate, swap
-// img.src to the first that loads. No blank flash, no broken icon on 404.
-function upgradeBadgeImg(img, src) {
-  const cands = hiResBadgeCandidates(src).filter((u) => u && u !== src)
-  let i = 0
-  const tryNext = () => {
-    if (i >= cands.length || !img.isConnected) return
-    const url = cands[i++]
-    const probe = new Image()
-    probe.onload = () => {
-      if (img.isConnected && img.dataset.hsBadgeOrig === src) img.src = url
-    }
-    probe.onerror = tryNext
-    probe.src = url
-  }
-  tryNext()
-}
-
 function showBadgeTooltip(badgeImg, badgeName) {
   const tooltip = ensureBadgeTooltip()
-  document.body.appendChild(cleanup.trackNode(tooltip))
+  hsAppendLastIfNeeded(tooltip)
   const img = tooltip.querySelector('img')
   img.dataset.hsBadgeOrig = badgeImg.src
   img.src = badgeImg.src
@@ -160,7 +137,7 @@ function fitPreviewScale(baseW, baseH) {
   const availH = window.innerHeight - PREVIEW_VIEWPORT_MARGIN * 2 - PREVIEW_RESERVE_V
   return Math.min(STACK_PREVIEW_SCALE, availW / baseW, availH / baseH)
 }
-function buildStackPreview(box, stackEmotes) {
+function buildStackPreview(box, stackEmotes, onResize) {
   const liveImgs = [...stackEmotes.querySelectorAll('img')]
   const clone = stackEmotes.cloneNode(true)
   const imgs = [...clone.querySelectorAll('img')]
@@ -179,16 +156,24 @@ function buildStackPreview(box, stackEmotes) {
     // 16x (the giant tooltip). Pin each overlay to the size it renders at in
     // chat and switch to object-fit:contain so the hi-res asset scales DOWN
     // into that box (sharp, not huge); scale(4) supplies the 4x preview.
+    let pinned = true
     if (im.classList.contains('hs-mc-overlay-emote')) {
-      const lw = liveImgs[i]?.offsetWidth,
-        lh = liveImgs[i]?.offsetHeight
+      // Only a LOADED live img has a real box: a lazy one that never reached the
+      // viewport collapses to a few px, and pinning to that shrank the overlay to
+      // a sliver until the next hover (when it had loaded). Unloaded overlays keep
+      // their 1x asset instead, whose intrinsic size is what chat renders.
+      const live = liveImgs[i]
+      const lw = live?.naturalWidth ? live.offsetWidth : 0,
+        lh = live?.naturalWidth ? live.offsetHeight : 0
       if (lw && lh) {
         im.style.setProperty('width', `${lw}px`, 'important')
         im.style.setProperty('height', `${lh}px`, 'important')
         im.style.setProperty('object-fit', 'contain', 'important')
+      } else {
+        pinned = false
       }
     }
-    const hi = getHighResUrl(orig)
+    const hi = pinned ? getHighResUrl(orig) : null
     if (hi) im.src = hi
     im.removeAttribute('loading') // force eager — see sizeBox note below
     im.style.filter = ''
@@ -215,6 +200,10 @@ function buildStackPreview(box, stackEmotes) {
     clone.style.transform = `scale(${scale})`
     box.style.width = `${baseW * scale}px`
     box.style.height = `${baseH * scale}px`
+    // The tooltip is placed from its size, and this box changes size when the
+    // hi-res images land: re-place it, or a first hover stays mis-anchored
+    // until the pointer leaves and returns (when the images are cached).
+    onResize?.()
   }
   requestAnimationFrame(sizeBox)
   imgs.forEach((im) => {
@@ -231,7 +220,13 @@ function buildStackPreview(box, stackEmotes) {
 // Provider is inferred from the token SHAPE: "ffz*" is FrankerFaceZ, anything
 // ending in "!" is BetterTTV. Brand colours match the source chips already used
 // elsewhere in this tooltip.
-const HS_TT_PROVIDER_COLOR = { '7tv': '#29d8f6', bttv: '#d50014', ffz: '#0086c8', twitch: '#9147ff', kick: '#53fc18' }
+const HS_TT_PROVIDER_COLOR = {
+  '7tv': '#00ffff',
+  bttv: '#ff0000',
+  ffz: '#ffffff',
+  twitch: HS_PLAT_COLORS.twitch,
+  kick: '#00ff00',
+}
 
 function hsTtModProvider(tok) {
   if (/^ffz/i.test(tok)) return 'ffz'
@@ -267,7 +262,7 @@ function hsTtRenderComposition(nameEl, pieces, mods) {
     mods.forEach((m, i) => {
       if (i) nameEl.appendChild(hsTtChip(' ', null, 'tooltip-join'))
       const prov = hsTtModProvider(m)
-      const chip = hsTtChip(m, HS_TT_PROVIDER_COLOR[prov] || '#c8c8c8', 'tooltip-mod')
+      const chip = hsTtChip(m, HS_TT_PROVIDER_COLOR[prov] || '#ffffff', 'tooltip-mod')
       // c!#rrggbb tints — show the actual colour as the chip's own colour.
       const hex = m.match(/^c!#?([0-9a-fA-F]{6}|[0-9a-fA-F]{3})$/)
       if (hex) chip.style.color = `#${hex[1]}`
@@ -354,7 +349,9 @@ function showEmoteTooltip(e, emoteName, emoteUrl, state, source, hoveredImg, own
     ?.querySelector(':scope > .hs-mc-emote-stack-emotes')
   if (stackEmotes && stackEmotes.children.length > 1) {
     img.style.display = 'none'
-    buildStackPreview(stackBox, stackEmotes)
+    buildStackPreview(stackBox, stackEmotes, () => {
+      if (tooltip.classList.contains('visible')) positionTooltipAtElement(tooltip, hoveredImg || e.target)
+    })
     // Name lists the emotes in the nest, base first. A deep nest (50 overlays)
     // would otherwise join into a 500-char label that blows the tooltip past the
     // viewport — the composite IMAGE already shows every overlay, so the label
@@ -371,6 +368,18 @@ function showEmoteTooltip(e, emoteName, emoteUrl, state, source, hoveredImg, own
     for (const w of stackEmotes.children) for (const m of hsTtModsOf(w)) stackMods.push(m)
     if (pieces.length) hsTtRenderComposition(nameEl, pieces, stackMods)
     else nameEl.textContent = emoteName
+  } else if (state === 'cw') {
+    // A censored emote has no image to enlarge — preview the same category box
+    // the chat line shows, never a broken <img> for the withheld url.
+    const cwCat = (hoveredImg || e.target)?.closest?.('.hs-mc-emote-cw')?.dataset.cw || ''
+    const box = document.createElement('span')
+    box.className = 'hs-mc-emote-wrapper hs-mc-emote-cw'
+    box.dataset.cw = cwCat
+    box.textContent = cwCat
+    img.style.display = 'none'
+    stackBox.style.display = 'block'
+    stackBox.replaceChildren(box)
+    nameEl.textContent = emoteName
   } else {
     stackBox.style.display = 'none'
     stackBox.replaceChildren()
@@ -422,10 +431,11 @@ function showEmoteTooltip(e, emoteName, emoteUrl, state, source, hoveredImg, own
   // Show state with source for globals. 2-state model: 'unadded' is no
   // longer a user-facing tier (click pastes, doesn't add — auto-add fires
   // at send time silently), so fall it through to the source-label branch.
-  // data-inv marks emotes that render via a heatsync inventory (the sender's
-  // or the viewer's own — stamped by processEmotes' _lookup); those get the
-  // inventory label instead of the asset's original provider, so the same
-  // emote never reads "inventory" on your rows but "7TV" on the sender's.
+  // data-inv marks emotes that render via a heatsync inventory (stamped by
+  // processEmotes' _lookup). The label is VIEWER-relative: "inventory" only
+  // when it's in YOUR set (state 'owned'); a sender's inventory emote you
+  // don't own reads "Heatsync" — it's a heatsync-vouched emote you could
+  // add, and the label flips to "inventory" the moment you do.
   const wrapper = (hoveredImg || e.target)?.closest?.('.hs-mc-emote-wrapper')
   const fromInv = wrapper?.dataset.inv === '1' || hoveredImg?.dataset?.inv === '1'
   let label
@@ -433,8 +443,10 @@ function showEmoteTooltip(e, emoteName, emoteUrl, state, source, hoveredImg, own
     label = t('mc_emote_in_set')
   } else if (state === 'blocked') {
     label = t('mc_emote_blocked')
+  } else if (state === 'cw') {
+    label = (hoveredImg || e.target)?.closest?.('.hs-mc-emote-cw')?.dataset.cw || t('mc_tip_hidden')
   } else if (fromInv) {
-    label = t('mc_emote_in_set')
+    label = 'Heatsync'
   } else {
     // Global / channel / sub - show source with appropriate scope
     const sourceLabels = {
@@ -445,10 +457,10 @@ function showEmoteTooltip(e, emoteName, emoteUrl, state, source, hoveredImg, own
       kick: 'Kick',
       heatsync: 'Heatsync',
     }
-    const sourceName = sourceLabels[source] || source || 'unknown'
+    const sourceName = sourceLabels[source] || source || t('mc_common_unknown')
     if (state === 'sub') {
       // Twitch sub emote — show broadcaster as scope so it's specific
-      label = owner ? `${owner} sub (${sourceName})` : sourceName
+      label = owner ? t('mc_tip_owner_sub', [owner, sourceName]) : sourceName
     } else {
       label = sourceName
     }
@@ -458,7 +470,7 @@ function showEmoteTooltip(e, emoteName, emoteUrl, state, source, hoveredImg, own
   const staleActor = wrapper?.dataset.staleActor || ''
   const isStale = wrapper?.classList.contains('hs-state-stale')
   if (isStale) {
-    label = staleActor ? `${label} · removed by @${staleActor}` : `${label} · removed from channel`
+    label = staleActor ? t('mc_tip_removed_by', [label, staleActor]) : t('mc_tip_removed_from_channel', [label])
   }
   // v1.6 NSFW — flagged emotes get an explicit suffix so viewers who
   // opted in know which emotes are filtered for everyone else.
@@ -467,12 +479,12 @@ function showEmoteTooltip(e, emoteName, emoteUrl, state, source, hoveredImg, own
     wrapper?.classList.contains('hs-state-nsfw') ||
     pickerWrap?.classList.contains('hs-state-nsfw') ||
     hoveredImg?.classList?.contains?.('hs-state-nsfw')
-  if (isNsfw) label = `${label} · NSFW`
+  if (isNsfw) label = t('mc_tip_nsfw', [label])
   stateEl.textContent = label
   const srcClass =
     fromInv && state !== 'owned' && state !== 'blocked'
       ? ' src-heatsync'
-      : (state === 'global' || state === 'channel' || state === 'sub') && source
+      : state !== 'owned' && state !== 'blocked' && source
         ? ` src-${source.toLowerCase().replace(/[^a-z0-9]/g, '')}`
         : ''
   stateEl.className = `tooltip-source ${state || 'global'}${srcClass}${isStale ? ' stale' : ''}${isNsfw ? ' nsfw' : ''}`
@@ -489,7 +501,7 @@ function showEmoteTooltip(e, emoteName, emoteUrl, state, source, hoveredImg, own
 
 function showEmojiTooltip(targetEl, emoji, name) {
   const tooltip = ensureEmoteTooltip()
-  document.body.appendChild(cleanup.trackNode(tooltip))
+  hsAppendLastIfNeeded(tooltip)
   const img = tooltip.querySelector('img')
   const nameEl = tooltip.querySelector('.tooltip-name')
   const stateEl = tooltip.querySelector('.tooltip-source')
@@ -544,7 +556,9 @@ function refreshEmoteTooltip(emoteName, newState) {
   // used to chase unadded→owned ladder transitions collapses to a single
   // blocked-vs-not check.
   const hl = newState === 'blocked' ? 'var(--hs-danger)' : '#fff'
-  document.body.style.setProperty('--hs-highlight-color', hl)
+  _hlColor = hl
+  for (const el of document.querySelectorAll('.hs-emote-highlight, .hs-stack-hl'))
+    el.style.setProperty('--hs-highlight-color', hl)
 }
 
 function hideEmoteTooltip() {
@@ -560,6 +574,18 @@ function hideEmoteTooltip() {
       stackBox.replaceChildren()
     }
   }
+}
+
+// Emotes a logs surface draws itself (server-rendered archive lines, the chat
+// logs panel, a card's recent lines) are bare <img>s with no .hs-mc-emote class
+// and no wrapper, so the hover preview never saw them.
+function isLogEmoteImg(el) {
+  return (
+    el?.tagName === 'IMG' &&
+    (el.classList.contains('hs-archive-emote') ||
+      el.classList.contains('hs-cl-emote') ||
+      (el.classList.contains('emote') && !!el.closest('.hs-card-log-body')))
+  )
 }
 
 function setupEmoteTooltipHandlers() {
@@ -614,7 +640,8 @@ function setupEmoteTooltipHandlers() {
                 (target.classList.contains('hs-mc-emote') ||
                   target.classList.contains('hs-mc-picker-emote') ||
                   target.classList.contains('hs-input-emote') ||
-                  target.classList.contains('hs-discover-thumb'))
+                  target.classList.contains('hs-discover-thumb') ||
+                  isLogEmoteImg(target))
               ? target
               : null
       if (!img && !wrapper && !pickerWrap && !discoverItem) return
@@ -649,10 +676,8 @@ function setupEmoteTooltipHandlers() {
         effectiveState = stack.querySelector('.hs-mc-emote-wrapper.hs-state-blocked') ? 'blocked' : 'normal'
       }
       const sourceColor = effectiveState === 'blocked' ? 'var(--hs-danger)' : '#fff'
-      document.body.style.setProperty('--hs-highlight-color', sourceColor)
-      queryEmoteWrappers(emoteName).forEach((w) => {
-        w.classList.add('hs-emote-highlight')
-      })
+      _hlColor = sourceColor
+      hsOnScreen(queryEmoteWrappers(emoteName)).forEach((w) => hsSetEmoteHighlight(w, true))
     },
     'mc-emote-tooltip-mouseover',
   )
@@ -678,7 +703,8 @@ function setupEmoteTooltipHandlers() {
           : target.tagName === 'IMG' &&
               (target.classList.contains('hs-mc-emote') ||
                 target.classList.contains('hs-mc-picker-emote') ||
-                target.classList.contains('hs-input-emote'))
+                target.classList.contains('hs-input-emote') ||
+                isLogEmoteImg(target))
             ? target
             : null
       if (!img && !wrapper && !pickerWrap) return
@@ -687,11 +713,7 @@ function setupEmoteTooltipHandlers() {
 
       // Remove cross-highlight from all wrappers
       const emoteName = wrapper?.dataset.emoteName || img?.alt || img?.dataset.emoteName
-      if (emoteName) {
-        queryEmoteWrappers(emoteName).forEach((w) => {
-          w.classList.remove('hs-emote-highlight')
-        })
-      }
+      if (emoteName) hsClearEmoteHighlights()
     },
     'mc-emote-tooltip-mouseout',
   )
@@ -705,9 +727,7 @@ function setupEmoteTooltipHandlers() {
       _dismissRafPending = false
       if (emoteTooltip?.classList.contains('visible')) {
         hideEmoteTooltip()
-        document.querySelectorAll('.hs-emote-highlight').forEach((w) => {
-          w.classList.remove('hs-emote-highlight')
-        })
+        hsClearEmoteHighlights()
       }
       hideBadgeTooltip()
       // Skip link tooltip — mouse is still on the link, scroll-driven hides
@@ -754,8 +774,11 @@ function setupEmoteTooltipHandlers() {
             (target.classList?.contains('hs-mc-emote') ||
               target.classList?.contains('hs-mc-picker-emote') ||
               target.classList?.contains('hs-input-emote') ||
-              target.classList?.contains('hs-discover-thumb')))
-        const onUser = target?.closest?.('.hs-mc-user')
+              target.classList?.contains('hs-discover-thumb') ||
+              // log-line emotes too: without this the first mousemove after the
+              // preview opened dismissed it, so they could never be hovered
+              isLogEmoteImg(target)))
+        const onUser = target?.closest?.('.hs-mc-user') || target?.closest?.('.hs-hashtag')
         const onBadge = target?.tagName === 'IMG' && target.classList?.contains('hs-mc-badge-img')
 
         // Kill badge tooltip if not on a badge (or the tooltip itself).
@@ -772,9 +795,7 @@ function setupEmoteTooltipHandlers() {
         if (emoteTooltip?.classList.contains('visible')) {
           if (!onEmote && !target?.closest?.('#hs-emote-tooltip')) {
             hideEmoteTooltip()
-            document.querySelectorAll('.hs-emote-highlight').forEach((w) => {
-              w.classList.remove('hs-emote-highlight')
-            })
+            hsClearEmoteHighlights()
           }
           // Don't reposition — stays anchored to element
         }
@@ -816,12 +837,6 @@ function trackSubTenure(channel, username, months) {
   channelMap.set(username.toLowerCase(), months)
   while (channelMap.size > 500) channelMap.delete(channelMap.keys().next().value)
 }
-function formatSubTenure(months) {
-  // Concise: drop months when years resolve. Matches content.js + formatAge.
-  if (months >= 12) return `${Math.floor(months / 12)}y`
-  return `${months}mo`
-}
-
 // User hover tooltip (profile preview)
 let userTooltip = null
 const _profileCache = new Map() // platform:username -> { profile, ts }
@@ -877,7 +892,7 @@ async function resolveIdentity(name, opts = {}) {
   if (_profileInflight.has(cacheKey)) return _profileInflight.get(cacheKey)
   const p = (async () => {
     try {
-      const platParam = platform ? `?platform=${encodeURIComponent(platform)}` : ''
+      const platParam = platform ? `?platform=${encodeURIComponent(canonPlatform(platform))}` : ''
       const resp = await apiFetch(`/api/profile/${encodeURIComponent(name)}${platParam}`)
       if (!resp?.ok || !resp.data?.profile) {
         // On 429 / transient error, fall back to stale cache (any age) so
@@ -913,17 +928,6 @@ let _userTooltipTarget = null
 let _userTooltipResizeObs = null
 let _userTooltipMutObs = null
 
-// CozetteVector's OTF advance widths aren't integer multiples at 13px
-// (~5.984px per glyph), so any flex row of badges accumulates fractional
-// X positions on every child after the first. Bitmap glyphs rendered at
-// fractional X get sampled at sub-pixel offsets and smear — the "blurry"
-// tooltip badges. Rounding each badge's width UP to the next integer
-// resets the X of the next sibling to integer, killing the cascade.
-// BADGE_LEAFS lists the specific badge classes (visible chips, never
-// layout wrappers). Compound stat parents like .hs-pc-stat.op are rounded
-// because their .hs-pc-num child has fractional width that pushes the
-// sibling text node off integer; rounding the parent fixes the next
-// sibling-row badge.
 const TOOLTIP_BADGE_LEAFS = new Set([
   'hs-pc-platform',
   'hs-pc-name',
@@ -941,6 +945,9 @@ const TOOLTIP_BADGE_LEAFS = new Set([
 function roundTooltipBadgeWidths(tooltip) {
   if (!tooltip) return
   const els = tooltip.querySelectorAll('[class*="hs-pc-"], .hs-heat-num')
+  // Three passes, not write-then-read per badge: that was one forced layout for
+  // every badge on the card. Clear all, read all (one layout), write all.
+  const leafs = []
   for (const el of els) {
     let isBadge = false
     for (const c of el.classList)
@@ -951,10 +958,13 @@ function roundTooltipBadgeWidths(tooltip) {
     if (!isBadge) continue
     if (!el.textContent?.trim()) continue
     el.style.width = ''
-    const w = el.getBoundingClientRect().width
-    const rounded = Math.ceil(w)
-    if (Math.abs(w - rounded) > 0.01) el.style.width = `${rounded}px`
+    leafs.push(el)
   }
+  const widths = leafs.map((el) => el.getBoundingClientRect().width)
+  leafs.forEach((el, i) => {
+    const rounded = Math.ceil(widths[i])
+    if (Math.abs(widths[i] - rounded) > 0.01) el.style.width = `${rounded}px`
+  })
 }
 
 function ensureUserTooltip() {
@@ -970,22 +980,36 @@ function ensureUserTooltip() {
     userTooltip = document.createElement('div')
     userTooltip.id = 'hs-user-tooltip'
     document.body.appendChild(cleanup.trackNode(userTooltip))
-    // Keep tooltip away from the hovered username even as content fills in async
-    // (followage badge, sub tenure badge, lazy-loaded data — all change height)
+    // Keep tooltip away from the hovered username even as content fills in
+    // async (followage badge, sub tenure badge, lazy-loaded data — all
+    // change height). Observes the SHELL, which only usefully resizes during
+    // the loading state — once a real .hs-card child mounts, it's
+    // position:fixed (card.css) and takes itself out of the shell's flow, so
+    // the shell stops tracking its growth. The MutationObserver below covers
+    // that case instead (it fires on every DOM change, which is every case
+    // this comment originally cared about); this one stays for the rarer
+    // non-mutation resize (e.g. a webfont finishing load mid-loading-state).
     if (typeof ResizeObserver !== 'undefined') {
       _userTooltipResizeObs = new ResizeObserver(() => {
         if (_userTooltipTarget && userTooltip.classList.contains('visible') && document.contains(_userTooltipTarget)) {
-          positionTooltipAtElement(userTooltip, _userTooltipTarget)
+          positionTooltipAtElement(hsExtTooltipPositionTarget(userTooltip), _userTooltipTarget)
         }
       })
       cleanup.trackObserver(_userTooltipResizeObs)
       _userTooltipResizeObs.observe(userTooltip)
     }
-    // MutationObserver — round badge widths whenever the tooltip's subtree
-    // changes (sync renderProfileCard + async sub-tenure + followage adds
-    // children at different times; this catches all paths).
+    // MutationObserver — rounds badge widths AND repositions (see above)
+    // whenever the tooltip's subtree changes (sync renderProfileCard + async
+    // sub-tenure + followage/pronoun/banner all add/change children at
+    // different times; this catches every path, including growth inside the
+    // now out-of-flow .hs-card that ResizeObserver on the shell can't see).
     if (typeof MutationObserver !== 'undefined') {
-      _userTooltipMutObs = new MutationObserver(() => roundTooltipBadgeWidths(userTooltip))
+      _userTooltipMutObs = new MutationObserver(() => {
+        roundTooltipBadgeWidths(userTooltip)
+        if (_userTooltipTarget && userTooltip.classList.contains('visible') && document.contains(_userTooltipTarget)) {
+          positionTooltipAtElement(hsExtTooltipPositionTarget(userTooltip), _userTooltipTarget)
+        }
+      })
       cleanup.trackObserver(_userTooltipMutObs)
       _userTooltipMutObs.observe(userTooltip, { childList: true, subtree: true })
     }
@@ -999,215 +1023,249 @@ function formatCompact(n) {
   return String(n)
 }
 
-function getAccountAge(dateStr) {
-  if (!dateStr) return null
-  const d = new Date(dateStr)
-  if (Number.isNaN(d.getTime())) return null
-  const now = new Date()
-  const y = now.getFullYear() - d.getFullYear()
-  const m = now.getMonth() - d.getMonth()
-  const days = now.getDate() - d.getDate()
-  if (y > 0) return `${y}y`
-  if (m > 0) return `${m}m`
-  return `${Math.max(0, days)}d`
+// Bio autolinker — @mention/#tag as trusted HTML for hsCardHtml's renderBio
+// dependency. hs-card-bio-mention reuses the existing .hs-mc-user click
+// handler (profile-card.js); hs-card-bio-tag is a plain external link.
+function hsExtRenderBio(text) {
+  return String(text || '')
+    .split(/(@[A-Za-z0-9_]{3,25}|#[A-Za-z0-9]{1,30})/g)
+    .map((s) => {
+      if (!s) return ''
+      if (s[0] === '@' && s.length >= 4) {
+        return `<span class="hs-mc-user hs-card-bio-mention" data-username="${escapeHtml(s.slice(1))}">@${escapeHtml(s.slice(1))}</span>`
+      }
+      if (s[0] === '#' && s.length >= 2) {
+        return `<a class="hs-card-bio-tag" href="https://heatsync.org/feed/tags/${encodeURIComponent(s.slice(1).toLowerCase())}" target="_blank" rel="noopener noreferrer">#${escapeHtml(s.slice(1))}</a>`
+      }
+      return escapeHtml(s)
+    })
+    .join('')
 }
 
-function getCompactRelTime(dateStr) {
-  if (!dateStr) return ''
-  const ms = Date.now() - new Date(dateStr).getTime()
-  const d = Math.floor(ms / 86400000)
-  if (d > 365) return `${Math.floor(d / 365)}y ago`
-  if (d > 30) return `${Math.floor(d / 30)}mo ago`
-  if (d > 0) return `${d}d ago`
-  const h = Math.floor(ms / 3600000)
-  if (h > 0) return `${h}h ago`
-  return 'just now'
+// ── POST /api/card — the one card-fetch, shared by peek and panel/full ─────
+// Used to be up to two separate round trips per open (GET /api/profile, then
+// GET /api/twitch/followage) with no corpus/recent/note at all — this is the
+// site's own `_fetchCardPayload` (client/events/hover-previews.js), ported.
+// A 60s LRU + in-flight dedupe means a hover immediately followed by a click
+// on the same identity is ONE request, not two, and a repeat hover/reopen
+// within the window is zero. Keyed exactly like `_profileCache` above
+// (`platform:username`) so `_patchProfileCacheRel`/`_pcKnownCrossLinks`
+// (profile-card.js) can patch this cache too after a follow/block toggle.
+const _cardCache = new Map() // platform:username -> { payload, ts }
+const _cardInflight = new Map() // platform:username -> Promise
+const CARD_CACHE_TTL = 60 * 1000
+
+// Every channel this session has open, as `platform:channel` tokens — the
+// server's "also in #channel" corpus scoping (openChannels body param,
+// resolveChatterOverlap server-side). Mirrors the site's own
+// _viewerChannelTokens, off the extension's own multi-channel config instead
+// of the site's channelBuffer.
+function cardOpenChannels() {
+  const out = new Set()
+  for (const c of config.channels || []) {
+    if (c.twitch) out.add(`twitch:${String(c.twitch).toLowerCase()}`)
+    if (c.kick) out.add(`kick:${String(c.kick).toLowerCase()}`)
+  }
+  return [...out]
 }
 
-function renderProfileCard(p, platform) {
-  const pfp = p.twitch_profile_pic || p.kick_profile_pic || p.profile_image_url || 'https://heatsync.org/anon.webp'
-  const displayName = p.display_name || p.username || 'unknown'
-
-  // Role
-  const bt = p.twitch_broadcaster_type
-  let roleStr = '',
-    roleCls = ''
-  if (bt === 'partner') {
-    roleStr = 'partner'
-    roleCls = 'val-partner'
-  } else if (bt === 'affiliate') {
-    roleStr = 'affiliate'
-    roleCls = 'val-affiliate'
-  } else if (p.role === 'admin') {
-    roleStr = 'admin'
-    roleCls = 'val-admin'
-  } else if (p.role === 'staff') {
-    roleStr = 'staff'
-    roleCls = 'val-staff'
+async function fetchCardPayload(platform, login, channel) {
+  const key = `${String(platform || 'twitch').toLowerCase()}:${String(login).toLowerCase()}`
+  const cached = _cardCache.get(key)
+  if (cached && Date.now() - cached.ts < CARD_CACHE_TTL) return cached.payload
+  const flying = _cardInflight.get(key)
+  if (flying) return flying
+  const body = {
+    // the card route's zod enum is strict: rows say 'yt', the wire says 'youtube'
+    platform: canonPlatform(platform || 'twitch'),
+    login,
+    channel: channel || undefined,
+    openChannels: cardOpenChannels(),
   }
+  const p = apiFetch('/api/card', { method: 'POST', body })
+    // A stale heatsync login (token the server no longer accepts, cookie as stale
+    // as the stored token) answers 401 — and a card is public data, so it is shown
+    // anonymously (minus the viewer's own note) instead of "couldn't load".
+    .then((resp) => (resp?.status === 401 ? apiFetch('/api/card', { method: 'POST', body, auth: false }) : resp))
+    .then((resp) => {
+      if (!(resp?.ok && resp.data)) {
+        // A failed request (timeout, 5xx, rate limit) is not "no such person".
+        // Flag it and keep it OUT of the 60s cache, so the next open asks again
+        // instead of replaying an empty card for a minute.
+        return { profile: null, followage: null, corpus: null, note: null, recent: null, failed: true }
+      }
+      const payload = resp.data
+      _cardCache.set(key, { payload, ts: Date.now() })
+      if (_cardCache.size > 300) _cardCache.delete(_cardCache.keys().next().value)
+      return payload
+    })
+    .finally(() => {
+      _cardInflight.delete(key)
+    })
+  _cardInflight.set(key, p)
+  return p
+}
 
-  // Account age
-  const dates = [p.twitch_created_at, p.kick_created_at].filter(Boolean)
-  const oldest = dates.length ? dates.reduce((a, b) => (new Date(b) < new Date(a) ? b : a)) : null
-  const age = getAccountAge(oldest)
+// The shared card model + renderer (src/lib/card-{time,model,render}.js,
+// mirrored byte-for-byte from the site — scripts/sync-site-copies.sh) is now
+// the ONE "which platform/login", heat-tier and relative-time rule for the
+// hover tooltip, replacing this file's own copies (see card-model.js's own
+// header for the exact bugs that duplication caused). `capabilities: {}` and
+// the omitted `ctx.viewerId` are deliberate: the 'peek' variant never renders
+// actions/notes/footer regardless, and the extension has no reliable
+// heatsync-account viewer id to compare against here.
+//
+// The ext-only enhancements the site doesn't have — live Twitch followage,
+// IRC-observed sub tenure, pronoundb pronouns — go through the shared
+// model's own host hooks (ctx.extraSheet, ctx.pronouns), same as the site
+// would use for its own host-only data. `extras` are whatever's resolved so
+// far; showUserTooltip re-calls this (a cheap pure function) and replaces
+// the tooltip's innerHTML each time a fetch resolves — see `paint()` there.
+// Only the channel banner image + its resolved accent color stay a
+// post-render DOM patch (applyTooltipBanner below): the banner is its own
+// cached fetch outside this payload entirely, by design (see the plan's
+// architecture note — "banner stays its own cached request").
+function renderProfileCard(p, platform, extras = {}) {
+  const uname = (p.username || p.twitch_username || p.kick_username || p.youtube_username || '').toLowerCase()
+  const model = hsCardModel(
+    { profile: p },
+    {
+      hint: { platform: platform || undefined, login: uname || undefined },
+      capabilities: {},
+      pronouns: extras.pronouns || null,
+      extraSheet: extras.sheetRows || [],
+    },
+    { formatCompactNumber: formatCompact },
+  )
+  return hsCardHtmlL10n(model, {
+    variant: 'peek',
+    escapeHtml,
+    renderBio: hsExtRenderBio,
+    renderPlusBadge: typeof renderPlusTenureToken === 'function' ? renderPlusTenureToken : undefined,
+    renderBadge: typeof renderHsBadgeToken === 'function' ? renderHsBadgeToken : undefined,
+    paintColor: typeof sanitizeColor === 'function' ? sanitizeColor : undefined,
+  })
+}
 
-  // Live indicator HTML helper
-  const liveStr = (vc) => `<span class="hs-pc-live">${vc > 0 ? `🔴 ${escapeHtml(formatCompact(vc))}` : '🔴'}</span>`
+// Sync (no fetch) sub-tenure row, from the local IRC-observed subTenureMap —
+// shared by both the real-profile path (folded into hsCardModel's
+// ctx.extraSheet, via renderProfileCard above) and the no-heatsync-account
+// fallback below (which has no model to feed, so it DOM-patches instead via
+// hsExtUpsertSheetRow). Same {k,label,value,tone} shape hsCardModel's own
+// `row()` helper produces.
+function computeSubTenureRow(username, msgChannel) {
+  const channelLogin = msgChannel || getTooltipChannelContext()
+  if (!channelLogin) return null
+  const channelMap = subTenureMap.get(channelLogin)
+  const months = channelMap?.get(username.toLowerCase())
+  if (!months) return null
+  const isSelfChannel = isSelf({ user: channelLogin, platform: 'twitch' })
+  const tenure = hsCardTenureMonths(months) || `${months}mo`
+  return isSelfChannel
+    ? { k: 'sub-tenure', label: t('mc_tip_row_they'), value: t('mc_tip_sub_to_you', [tenure]), tone: 'they-sub' }
+    : { k: 'sub-tenure', label: t('mc_tip_row_ch_sub'), value: `${channelLogin} ${tenure}`, tone: 'ch' }
+}
 
-  // Bio with @mention/#tag autolinks
-  const bioHtml = p.bio
-    ? String(p.bio)
-        .split(/(@[A-Za-z0-9_]{3,25}|#[A-Za-z0-9]{1,30})/g)
-        .map((s) => {
-          if (!s) return ''
-          if (s[0] === '@' && s.length >= 4)
-            return `<span class="hs-mc-user hs-pc-bio-mention" data-username="${escapeHtml(s.slice(1))}">@${escapeHtml(s.slice(1))}</span>`
-          if (s[0] === '#' && s.length >= 2)
-            return `<a class="hs-pc-bio-tag" href="https://heatsync.org/tags/${encodeURIComponent(s.slice(1).toLowerCase())}" target="_blank" rel="noopener noreferrer">#${escapeHtml(s.slice(1))}</a>`
-          return escapeHtml(s)
-        })
-        .join('')
-    : ''
-  const bio = bioHtml ? `<div class="hs-pc-bio">${bioHtml}</div>` : ''
-
-  // Stats
-  const stats = p.stats || {}
-  const heat = stats.total_heat || 0
-  const op = stats.op_count || p.opCount || 0
-  const mop = stats.mop_count || p.mopCount || 0
-  const re = stats.re_count || p.reCount || 0
-  const followers = Math.max(stats.followers || 0, p.twitch_followers || 0, p.kick_followers || 0)
-
-  // Native chat badges (Twitch sub/mod/vip + 7TV/FFZ/BTTV/Chatterino) —
-  // mirrors the .hs-pcard-id-chips row in the click-card. Uses the same
-  // helpers, which return escaped <img> markup safe for innerHTML.
-  let nativeBadges = ''
-  try {
-    const userId = p.twitch_user_id || p.twitch_id || null
-    const uname = p.username || p.twitch_username || p.kick_username || ''
-    const recent = uname && typeof getRecentMessagesFromUser === 'function' ? getRecentMessagesFromUser(uname) : []
-    const recentTwitch = recent.find((m) => (m.platform || 'twitch') === 'twitch' && m.badges)
-    if (recentTwitch && typeof renderBadges === 'function') {
-      nativeBadges += renderBadges(recentTwitch.badges, recentTwitch.channel)
-    }
-    if (userId && typeof renderThirdPartyBadges === 'function') {
-      nativeBadges += renderThirdPartyBadges(String(userId))
-    }
-  } catch {}
-
-  // Build property-sheet rows. data-k attributes let the async update paths
-  // (fetchAndShowFollowage etc) locate specific rows after the fetch lands.
-  const sheetRows = []
-  const sheetRow = (label, value, valCls, key) =>
-    sheetRows.push(
-      `<dt>${escapeHtml(label)}</dt><dd class="${valCls || ''}" data-k="${escapeHtml(key || label)}">${value}</dd>`,
+// Live Twitch followage rows from a resolved followage result (payload.followage
+// off /api/card, or the degraded-fallback gqlFollowageDirect) — same
+// dual-use shape as computeSubTenureRow above (feeds ctx.extraSheet for the
+// real-profile path, hsExtUpsertSheetRow for the fallback path). When the
+// channel context IS the viewer (hovering a chatter in your own channel
+// tab), the literal "ch follow" row would duplicate the heatsync "they → you"
+// rel-row from the model's own sheet, so it's skipped; channelFollowedAt
+// still fills the you-follow row's age in that case.
+function computeFollowageRows(channelLogin, isSelfChannel, result) {
+  const rows = []
+  if (!isSelfChannel) {
+    rows.push(
+      result.followedAt
+        ? {
+            k: 'ch-follow',
+            label: t('mc_tip_row_ch_follow'),
+            value: `${channelLogin} ${hsCardRelativeTime(result.followedAt)}`,
+            tone: 'ch',
+          }
+        : {
+            k: 'ch-follow',
+            label: t('mc_tip_row_ch_follow'),
+            value: t('mc_input_not_following', [channelLogin]),
+            tone: 'dim',
+          },
     )
+    if (result.channelFollowedAt)
+      rows.push({ k: 'ch-follows', label: t('mc_tip_row_follower'), value: channelLogin, tone: 'ch' })
+  } else if (result.channelFollowedAt) {
+    rows.push({
+      k: 'you-follow',
+      label: t('mc_tip_row_you'),
+      value: t('mc_tip_follow_ago', [hsCardRelativeTime(result.channelFollowedAt)]),
+      tone: 'you-follow',
+    })
+  }
+  if (result.followerCount != null) {
+    rows.push({
+      k: 'followers',
+      label: t('mc_tip_row_followers'),
+      value: formatCompact(result.followerCount),
+      tone: 'followers',
+    })
+  }
+  return rows
+}
 
-  // Private note (local) — surfaced on hover so a mod sees their annotation
-  // without opening the full card. Top row for at-a-glance; truncated with the
-  // full text in the title. hsNoteGet lives in user-notes.js (same bundle) —
-  // alias-aware, so a note saved on any linked platform identity surfaces.
-  const _noteUser = p.username || p.twitch_username || p.kick_username || ''
-  const _note = (typeof hsNoteGet === 'function' && hsNoteGet(_noteUser, null)?.text) || ''
-  if (_note) {
-    const _short = _note.length > 60 ? `${_note.slice(0, 60)}…` : _note
-    sheetRows.push(
-      `<dt>note</dt><dd data-k="note" style="color:#fff" title="${escapeHtml(_note)}">${escapeHtml(_short)}</dd>`,
+// `/api/card`'s corpus part (msg count/first-seen/"also in") as one sheet
+// row, for the no-heatsync-account fallback below — same text card-model.js's
+// own buildCorpusRow produces for the panel's `full`/`panel` variants
+// (renderChatter/renderCorpusRow), flattened into hsExtUpsertSheetRow's plain
+// dt/dd shape since this path DOM-patches instead of going through the model.
+function cardCorpusSheetRow(corpus, skipChannel) {
+  if (!corpus) return null
+  const parts = []
+  if (corpus.messages > 0) parts.push(t('mc_tip_corpus_msgs', [formatCompact(corpus.messages)]))
+  if (corpus.firstDay)
+    parts.push(
+      corpus.firstChannel
+        ? t('mc_tip_corpus_since_ch', [corpus.firstDay, corpus.firstChannel])
+        : t('mc_tip_corpus_since', [corpus.firstDay]),
     )
+  const skip = skipChannel ? String(skipChannel).toLowerCase() : null
+  const also = (corpus.also || []).filter((c) => c.toLowerCase() !== skip)
+  if (also.length) {
+    const shown = also
+      .slice(0, 3)
+      .map((c) => `#${c}`)
+      .join(' ')
+    parts.push(also.length > 3 ? `${shown} +${also.length - 3}` : shown)
   }
+  if (!parts.length) return null
+  return { k: 'corpus', label: t('mc_tip_row_logs'), value: parts.join(' · '), tone: '' }
+}
 
-  // Platform identity rows — value text brand-colored, live dot inline.
-  if (p.twitch_username) {
-    const live = p.twitch_is_live ? ` ${liveStr(Number(p.twitch_viewer_count) || 0)}` : ''
-    sheetRow('ttv', escapeHtml(p.twitch_username) + live, 'val-ttv', 'ttv')
+// Ext-only sheet-row DOM patch — used ONLY by the no-heatsync-account
+// fallback below, which has no hsCardModel to feed (renderChatter's minimal
+// shape would drop the native badges/paint that fallback path exists for).
+// The real-profile path (renderProfileCard) goes through ctx.extraSheet
+// instead. Row shape matches card-render.js's own renderSheet output
+// exactly, so card.css's tone styling applies unmodified either way.
+function hsExtUpsertSheetRow(sheetEl, key, label, value, tone) {
+  if (!sheetEl) return
+  const existingDd = sheetEl.querySelector(`.hs-card-sheet-row dd[data-k="${key}"]`)
+  if (existingDd) {
+    existingDd.textContent = value
+    if (tone) existingDd.closest('.hs-card-sheet-row').dataset.tone = tone
+    return
   }
-  if (p.kick_username) {
-    const live = p.kick_is_live ? ` ${liveStr(Number(p.kick_viewer_count) || 0)}` : ''
-    sheetRow('kick', escapeHtml(p.kick_username) + live, 'val-kick', 'kick')
-  }
-  if (p.youtube_username || p.youtube_channel_id) {
-    const yname = p.youtube_username || p.youtube_channel_id
-    const live = p.youtube_is_live ? ` ${liveStr(Number(p.youtube_viewer_count) || 0)}` : ''
-    sheetRow('yt', escapeHtml(yname) + live, 'val-yt', 'yt')
-  }
-  if (age) sheetRow('acctage', escapeHtml(age), 'val-age', 'acctage')
-  if (roleStr) sheetRow('type', escapeHtml(roleStr), roleCls, 'type')
-  if (p.twitch_verified) sheetRow('verified', '✓ twitch', 'val-ttv', 'verified-ttv')
-  if (p.kick_verified) sheetRow('verified', '✓ kick', 'val-kick', 'verified-kick')
-
-  const heatHtml = heatSpanHtml(heat)
-  if (heatHtml) sheetRow('heat', heatHtml, 'val-heat', 'heat')
-  const posts = op + mop + re
-  if (posts > 0) sheetRow('posts', escapeHtml(formatCompact(posts)), '', 'posts')
-  if (followers > 0) sheetRow('followers', escapeHtml(formatCompact(followers)), 'val-followers', 'followers')
-
-  // Relationship — covers all four angles across Twitch and Kick.
-  // Timestamps: platform-verified only (Twitch helix followed_at / sub started_at,
-  // Kick equivalents). Heatsync's own DB carries created_at sync timestamps that
-  // do NOT reflect the actual platform relationship date — they read as the
-  // signup/sync date for every profile (e.g. "5mo" everywhere) and lie about
-  // multi-year Twitch follows. Show bare label when no platform date exists.
-  const rel = p.relationship || {}
-  // They → you (follow) — platform-verified flag only
-  const followsYou = rel.profileFollowsViewerOnTwitch || rel.profileFollowsViewerOnKick
-  if (followsYou) {
-    const since = rel.profileFollowsViewerOnTwitchSince || rel.profileFollowsViewerOnKickSince
-    const ageStr = since ? ` ${getCompactRelTime(since).replace(' ago', '')}` : ''
-    sheetRow('they', escapeHtml(`follow you${ageStr}`), 'val-they-follow', 'follows-you')
-  }
-  // They → you (sub) — platform-verified flag only
-  const subsYou = rel.profileSubbedToViewerOnTwitch || rel.profileSubbedToViewerOnKick
-  if (subsYou) {
-    const since = rel.profileTwitchSubSince || rel.profileKickSubSince
-    const rawTier = rel.profileTwitchSubTier || rel.profileKickSubTier
-    const tierNum = typeof rawTier === 'string' ? Math.round(Number(rawTier) / 1000) : rawTier
-    const tierStr = tierNum && tierNum > 1 ? ` T${tierNum}` : ''
-    const ageStr = since ? ` ${getCompactRelTime(since).replace(' ago', '')}` : ''
-    sheetRow('they', escapeHtml(`sub to you${tierStr}${ageStr}`), 'val-they-sub', 'subs-you')
-  }
-  // You → them (follow) — ?? respects explicit false from canonical youFollow
-  const youFollow = rel.youFollow ?? rel.isFollowing ?? rel.followsOnTwitch ?? rel.followsOnKick
-  if (youFollow) {
-    const since = rel.followsOnTwitchSince || rel.followsOnKickSince
-    const ageStr = since ? ` ${getCompactRelTime(since).replace(' ago', '')}` : ''
-    sheetRow('you', escapeHtml(`follow${ageStr}`), 'val-you-follow', 'you-follow')
-  }
-  // You → them (sub) — normalize tier
-  const youSub = rel.youSub ?? rel.isSubscribed ?? rel.subscribedOnTwitch ?? rel.subscribedOnKick
-  if (youSub) {
-    const rawTier = rel.twitchSubTier || rel.kickSubTier || rel.subTier
-    const tierNum = typeof rawTier === 'string' ? Math.round(Number(rawTier) / 1000) : rawTier
-    const tier = tierNum || 1
-    const since = rel.twitchSubSince || rel.kickSubSince
-    const ageStr = since ? ` ${getCompactRelTime(since).replace(' ago', '')}` : ''
-    sheetRow('you', escapeHtml(`sub${tier > 1 ? ` T${tier}` : ''}${ageStr}`), 'val-you-sub', 'you-sub')
-  }
-  if (followsYou && youFollow) sheetRow('rel', 'mutual', 'val-mutual', 'mutual-follow')
-  if (subsYou && youSub) sheetRow('rel', 'mutual sub', 'val-mutual-sub', 'mutual-sub')
-
-  const sheetHtml = sheetRows.length ? `<dl class="hs-pc-sheet">${sheetRows.join('')}</dl>` : ''
-
-  // Paint the header name with the user's 7TV cosmetic when known.
-  const nameUid = String(p.twitch_user_id || p.twitch_id || '')
-  const namePaint = userPaintStyle(nameUid, (p.username || p.twitch_username || '').toLowerCase(), platform)
-  // HeatSync paint (own-platform cosmetic) wins over 7TV — same precedence rule
-  // as the live sender row (see hsPaintRender in paints.js). Twitch-keyed uid.
-  const nameHsPaint = nameUid ? hsPaintRender(nameUid, displayName) : null
-
-  // Hero banner placeholder — wraps the whole card so the banner sits behind
-  // the avatar/info row. Filled async by pcApplyBanner once the Twitch GQL
-  // response lands; until then the gradient placeholder (from CSS) carries
-  // the layout so the tooltip doesn't resize after fetch.
-  return `
-      <div class="hs-pc-hero"><div class="hs-pc-hero-img"></div><div class="hs-pc-hero-scrim"></div></div>
-      <div class="hs-pc-body">
-        ${pfp ? `<img class="hs-pc-avatar" src="${escapeHtml(pfp)}" alt="${escapeHtml(displayName)}">` : ''}
-        <div class="hs-pc-info">
-          <div class="hs-pc-header">${nativeBadges || `<span class="hs-pc-name${nameHsPaint ? ` ${nameHsPaint.cls}` : ''}"${nameHsPaint ? nameHsPaint.splitAttr : ''} style="${nameHsPaint ? '' : namePaint}">${nameHsPaint ? nameHsPaint.html : escapeHtml(displayName)}</span>`}</div>
-          ${bio}
-          ${sheetHtml}
-        </div>
-      </div>`
+  const row = document.createElement('div')
+  row.className = 'hs-card-sheet-row'
+  if (tone) row.dataset.tone = tone
+  const dt = document.createElement('dt')
+  dt.textContent = label
+  const dd = document.createElement('dd')
+  dd.dataset.k = key
+  dd.textContent = value
+  row.appendChild(dt)
+  row.appendChild(dd)
+  sheetEl.appendChild(row)
 }
 
 // Async banner fetch + apply for the hover tooltip. Mirrors pcApplyBanner in
@@ -1221,59 +1279,58 @@ async function applyTooltipBanner(tooltip, profile, platform, username, gen) {
   const banner = await fetchBannerChain(chain)
   if (!banner) return
   if (gen !== _profileGen) return
-  const hero = tooltip.querySelector('.hs-pc-hero')
-  if (!hero) return
-  const heroImg = hero.querySelector('.hs-pc-hero-img')
-  // safeUrl gates protocol + escape quote/backslash so a crafted banner URL
-  // can't break out of url("…") and inject CSS.
-  const safe = safeUrl(banner.bannerUrl || banner.offlineUrl)
-  if (safe && heroImg) {
-    const probe = new Image()
-    probe.onload = () => {
-      if (gen !== _profileGen) return
-      heroImg.style.backgroundImage = `url("${safe.replace(/\\/g, '%5C').replace(/"/g, '%22')}")`
-      hero.classList.add('hs-pc-hero-loaded')
-      if (_userTooltipTarget) positionTooltipAtElement(tooltip, _userTooltipTarget)
-    }
-    probe.referrerPolicy = 'no-referrer'
-    probe.src = safe
-  }
+  // The hover card does NOT paint the banner. It is a 48px crop of art made for
+  // a wide page header, so it showed a slice of whatever the streamer put there
+  // (often their own name in a logo, doubled over the name right under it). The
+  // hero stays collapsed (card.css: height 0 until .hs-card-hero-loaded); the
+  // full card keeps the banner. The accent colour below still comes from it.
   // Fallback path leaves the avatar as anon.webp — fill it from the banner
   // fetch's profile_pic (kick api hands this back next to the banner URL).
   // Skip if a real avatar is already in place (success path uses heatsync data).
   if (banner.profileUrl) {
-    const avatar = tooltip.querySelector('.hs-pc-avatar')
+    const avatar = tooltip.querySelector('.hs-card-avatar')
     if (avatar && (avatar.src || '').includes('anon.webp')) {
       // safeUrl-gate like every other avatar path (social.js/main.js) — profileUrl
       // comes from Kick v2 / YT HTML extraction, neither URL-validated by the BG.
-      const safe = safeUrl(banner.profileUrl)
-      if (safe) avatar.src = safe
+      const safeAv = safeUrl(banner.profileUrl)
+      if (safeAv) avatar.src = safeAv
     }
   }
-  if (banner.accent) {
-    tooltip.style.setProperty('--hs-pc-accent', banner.accent)
-    hero.classList.add('hs-pc-hero-accent')
-  }
-  if (banner.sourcePlatform) hero.dataset.source = banner.sourcePlatform
+  // Same CSSOM-at-mount discipline as data-color/data-accent — card.css's
+  // .hs-card-avatar border reads var(--hs-card-accent, var(--hs-card-border)),
+  // so setting the property is the whole "apply" step.
+  if (banner.accent) hsExtApplyAccent(tooltip, banner.accent)
+}
+
+// Applies a resolved accent hex the same CSSOM-at-mount way every other
+// per-user color in this app uses under CSP — never inline style= on a
+// template. Shared by the tooltip and the overlay panel (pcApplyBanner).
+function hsExtApplyAccent(root, hex) {
+  const card = root.querySelector('.hs-card') || root
+  card.style.setProperty('--hs-card-accent', hex)
 }
 
 // Async pronoun fetch + apply for the hover tooltip — mirrors
 // applyTooltipBanner's fire-and-forget shape. Twitch-only (pronoundb has no
-// Kick/YouTube platform). Appends a chip into .hs-pc-header, next to the
-// native badges / name. Bails if the tooltip moved to a different user while
-// the fetch was in flight (gen check, same pattern as the rest of this file).
+// Kick/YouTube platform). Appends a .hs-card-pronouns chip into
+// .hs-card-identity, right after the name — the same slot hsCardHtml would
+// have filled synchronously had model.pronouns been known at render time.
+// Bails if the tooltip moved to a different user while the fetch was in
+// flight (gen check, same pattern as the rest of this file).
 async function applyTooltipPronouns(tooltip, twitchUserId, gen) {
   if (!twitchUserId || typeof fetchPronouns !== 'function') return
   const data = await fetchPronouns('twitch', twitchUserId)
   if (gen !== _profileGen) return
   const words = data?.pronouns
   if (!words?.length) return
-  const header = tooltip.querySelector('.hs-pc-header')
-  if (!header || header.querySelector('.hs-pc-pronoun')) return
+  const identity = tooltip.querySelector('.hs-card-identity')
+  if (!identity || identity.querySelector('.hs-card-pronouns')) return
   const chip = document.createElement('span')
-  chip.className = 'hs-pc-pronoun'
+  chip.className = 'hs-card-pronouns'
   chip.textContent = words.join('/').toLowerCase()
-  header.appendChild(chip)
+  const name = identity.querySelector('.hs-card-name')
+  if (name?.nextSibling) identity.insertBefore(chip, name.nextSibling)
+  else identity.appendChild(chip)
 }
 
 // Determine Twitch channel context for followage lookups
@@ -1301,6 +1358,106 @@ function getTooltipChannelContext(userPlatform) {
   return getLiveChannel()
 }
 
+// Renders whatever followage rows are available right now — from
+// `payload.followage` when /api/card resolved it cleanly, or (only when that
+// part came back degraded/absent, and only for twitch) the in-page GQL
+// fallback (gqlFollowageDirect, twitch-api.js). Shared by both the
+// real-profile paint() and the no-account fallback below; the caller decides
+// where the rows land (extraSheet array vs a DOM-patched sheet element).
+// `onRows` always fires on a LATER microtask, never in the same call stack
+// as this call — a caller invoked from inside its own render pass (the
+// panel's renderProfileCardView does exactly this) would otherwise recurse
+// into itself synchronously the moment `followage` is already known
+// (non-degraded, the common case since /api/card resolves it up front), and
+// the recursive render can detach/replace the DOM nodes the outer call is
+// still mid-way through touching. Callers own their own staleness check
+// inside `onRows` (tooltip: `gen !== _profileGen`; panel:
+// `activeProfileCard !== openedFor` — two different signals, so that check
+// can't live in here).
+function resolveFollowageRows(username, channelLogin, followage, onRows) {
+  if (!channelLogin) return
+  const isSelfChannel = isSelf({ user: channelLogin, platform: 'twitch' })
+  if (followage && !followage.degraded) {
+    Promise.resolve().then(() => onRows(computeFollowageRows(channelLogin, isSelfChannel, followage)))
+    return
+  }
+  if (typeof gqlFollowageDirect !== 'function') return
+  gqlFollowageDirect(username, channelLogin).then((result) => {
+    if (!result) return
+    onRows(computeFollowageRows(channelLogin, isSelfChannel, result))
+  })
+}
+
+// No-heatsync-account hover card — populated from client-only signals so
+// kick/yt chatters with no linked profile still get a real card: chat badges
+// from recent msgs, platform-link row, color-tinted name. Not on the shared
+// card model (renderChatter's minimal shape would drop the badges/paint this
+// path exists for) — hand-built HTML, enhanced the old DOM-patch way.
+// `payload` is still whatever /api/card returned (a no-account chatter still
+// gets a real corpus/followage — the server's resolveCardCorpus/Followage
+// key off platform+login, not a matched profile row).
+function renderTooltipFallback(tooltip, username, platform, color, gen, msgChannel, payload) {
+  const safeName = escapeHtml(username)
+  const safeColor = sanitizeColor(color || '#fff')
+  let nativeBadges = ''
+  try {
+    const recent = typeof getRecentMessagesFromUser === 'function' ? getRecentMessagesFromUser(username) : []
+    const rTwitch = recent.find((m) => (m.platform || 'twitch') === 'twitch' && m.badges)
+    if (rTwitch && typeof renderBadges === 'function') nativeBadges += renderBadges(rTwitch.badges, rTwitch.channel)
+    const rKick = recent.find((m) => m.platform === 'kick' && m.badges)
+    if (rKick && typeof renderBadges === 'function') nativeBadges += renderBadges(rKick.badges, rKick.channel, 'kick')
+    const rYt = recent.find((m) => m.platform === 'youtube' && m.badges)
+    if (rYt && typeof renderBadges === 'function') nativeBadges += renderBadges(rYt.badges, rYt.channel, 'youtube')
+  } catch {}
+  const platTone = platform === 'kick' ? 'kick' : platform === 'youtube' || platform === 'yt' ? 'yt' : 'ttv'
+  const platLabel = platTone === 'ttv' ? 'ttv' : platTone
+  // No brand-color class here (val-ttv/val-kick/val-yt are gone with the old
+  // card's CSS) — card.css's own tone vocabulary has no platform-brand entry
+  // to borrow (see its data-tone list), so this is plain text, same as any
+  // other sheet value with no tone.
+  const platRow = `<div class="hs-card-sheet-row"><dt>${platLabel}</dt><dd data-k="${platTone}">${safeName}</dd></div>`
+  // Resolve the twitch-space uid the same way userPaintStyle does internally,
+  // so HeatSync-paint precedence (which needs the uid) can win over 7TV — same
+  // rule as the live sender row (see hsPaintRender in paints.js).
+  const fbLower = username.toLowerCase()
+  const fbUid =
+    platform === 'twitch' && typeof knownUserIds !== 'undefined' && typeof userKey === 'function'
+      ? knownUserIds.get(userKey(fbLower, 'twitch')) || ''
+      : ''
+  const namePaint = platform === 'twitch' ? userPaintStyle(fbUid, fbLower, 'twitch') : ''
+  const nameHsPaint = fbUid ? hsPaintRender(fbUid, username) : null
+  const header = nativeBadges
+    ? nativeBadges
+    : `<strong class="hs-card-name${nameHsPaint ? ` ${nameHsPaint.cls}` : ''}"${nameHsPaint ? nameHsPaint.splitAttr : ''} style="${escapeHtml(nameHsPaint ? hsNameColourDecl(safeColor) : namePaint || `color:${safeColor}`)}">${nameHsPaint ? nameHsPaint.html : safeName}</strong>`
+  // NOTE: innerHTML XSS-safe — username via escapeHtml, color via sanitizeColor (hex-only),
+  // nativeBadges from renderBadges which emits escaped <img> markup
+  tooltip.innerHTML = `<div class="hs-card hs-card-peek"><div class="hs-card-hero"><div class="hs-card-hero-img"></div><div class="hs-card-hero-scrim"></div></div><div class="hs-card-body"><div class="hs-card-identity"><img class="hs-card-avatar" src="https://heatsync.org/anon.webp" alt="">${header}</div><dl class="hs-card-sheet">${platRow}</dl></div></div>`
+  if (_userTooltipTarget) positionTooltipAtElement(hsExtTooltipPositionTarget(tooltip), _userTooltipTarget)
+  const subRow = computeSubTenureRow(username, msgChannel)
+  if (subRow)
+    hsExtUpsertSheetRow(tooltip.querySelector('.hs-card-sheet'), subRow.k, subRow.label, subRow.value, subRow.tone)
+  const corpusRow = cardCorpusSheetRow(payload?.corpus, getTooltipChannelContext(platform))
+  if (corpusRow)
+    hsExtUpsertSheetRow(
+      tooltip.querySelector('.hs-card-sheet'),
+      corpusRow.k,
+      corpusRow.label,
+      corpusRow.value,
+      corpusRow.tone,
+    )
+  if (!platform || platform === 'twitch') {
+    const channelLogin = getTooltipChannelContext(platform)
+    resolveFollowageRows(username, channelLogin, payload?.followage, (rows) => {
+      if (gen !== _profileGen) return
+      const sheetEl = tooltip.querySelector('.hs-card-sheet')
+      if (!sheetEl) return
+      for (const r of rows) hsExtUpsertSheetRow(sheetEl, r.k, r.label, r.value, r.tone)
+    })
+  }
+  applyTooltipBanner(tooltip, null, platform, username, gen)
+  applyTooltipPronouns(tooltip, fbUid, gen)
+}
+
 // NOTE: innerHTML usage is XSS-safe — all user content goes through escapeHtml() in renderProfileCard
 // (escapeHtml converts &, <, >, ", ' to HTML entities before any innerHTML assignment)
 async function showUserTooltip(targetEl, username, color, platform) {
@@ -1315,212 +1472,78 @@ async function showUserTooltip(targetEl, username, color, platform) {
   const msgChannel = targetEl.closest?.('.hs-mc-msg')?.dataset?.msgChannel
 
   // Show loading state immediately (username is escaped via escapeHtml)
-  tooltip.innerHTML = `<div class="hs-pc-loading" style="color:${color || '#fff'}">${escapeHtml(username)}...</div>`
+  tooltip.innerHTML = `<div class="hs-pc-loading" style="color:${sanitizeColor(color || '#fff')}">${escapeHtml(username)}...</div>`
   tooltip.classList.add('visible')
   positionTooltipAtElement(tooltip, targetEl)
 
-  // Check cache (keyed by platform:username to avoid cross-platform collisions)
-  const cacheKey = `${platform || 'unknown'}:${username.toLowerCase()}`
-  const cached = _profileCache.get(cacheKey)
-  if (cached && Date.now() - cached.ts < PROFILE_CACHE_TTL) {
-    if (gen !== _profileGen) return
-    // NOTE: innerHTML is XSS-safe — all user content goes through escapeHtml() in renderProfileCard
-    tooltip.innerHTML = renderProfileCard(cached.profile, platform)
-    appendSubTenureBadge(tooltip, username, msgChannel)
-    positionTooltipAtElement(tooltip, targetEl)
-    fetchAndShowFollowage(tooltip, username, gen, platform)
-    applyTooltipBanner(tooltip, cached.profile, platform, username, gen)
-    applyTooltipPronouns(tooltip, cached.profile?.twitch_user_id || cached.profile?.twitch_id, gen)
+  // One POST /api/card — profile, corpus, server-recent, followage and (when
+  // logged in) the note, all in the one round trip. 60s LRU + in-flight
+  // dedupe (fetchCardPayload above) means a click right after this hover
+  // reuses the same payload instead of firing a second request.
+  const channelLogin = getTooltipChannelContext(platform)
+  const payload = await fetchCardPayload(platform || 'twitch', username, channelLogin)
+  if (gen !== _profileGen) return // user moved away
+  const profile = payload.profile
+
+  if (!profile) {
+    renderTooltipFallback(tooltip, username, platform, color, gen, msgChannel, payload)
     return
   }
 
-  // Fetch profile — pass platform so server can disambiguate same-name users across platforms
-  const platParam = platform ? `?platform=${encodeURIComponent(platform)}` : ''
-  const resp = await apiFetch(`/api/profile/${encodeURIComponent(username)}${platParam}`)
-  if (gen !== _profileGen) return // user moved away
-
-  let profile = null
-  if (resp?.ok && resp.data?.profile) {
-    profile = resp.data.profile
-  } else if (platform === 'kick') {
-    // Cross-platform probe — most unregistered kick chatters share their
-    // handle on twitch. Same-name twitch hit lands a full profile (heat,
-    // follows, banner, partner status) for what would otherwise be a bare
-    // fallback. Only fires when the kick lookup misses.
-    const twResp = await apiFetch(`/api/profile/${encodeURIComponent(username)}?platform=twitch`)
-    if (gen !== _profileGen) return
-    if (twResp?.ok && twResp.data?.profile) profile = twResp.data.profile
-  }
-
-  if (profile) {
-    _profileCache.set(cacheKey, { profile, ts: Date.now() })
-    while (_profileCache.size > PROFILE_CACHE_MAX) _profileCache.delete(_profileCache.keys().next().value)
+  // The real-profile path: sub tenure is sync (no fetch, already known), so
+  // it's in the model from the very first paint. Followage (already in
+  // `payload`, or the degraded-fallback gql lookup) and pronouns resolve
+  // async and re-call paint() with the model fed through ctx.extraSheet/
+  // ctx.pronouns — a cheap full re-render (pure functions, no DOM diffing),
+  // not a DOM patch, per the same discipline the site's own host uses.
+  // applyTooltipBanner is idempotent (its own local cache resolves instantly
+  // on repeat calls) so it's safe to re-run after every paint() — a re-render
+  // wipes the hero's background-image, which only a fresh apply restores.
+  const subRow = computeSubTenureRow(username, msgChannel)
+  let followageRows = []
+  let pronouns = null
+  const paint = () => {
     // NOTE: innerHTML XSS-safe — renderProfileCard escapes everything
-    tooltip.innerHTML = renderProfileCard(profile, platform)
-    appendSubTenureBadge(tooltip, username, msgChannel)
-    positionTooltipAtElement(tooltip, targetEl)
-    fetchAndShowFollowage(tooltip, username, gen, platform)
+    tooltip.innerHTML = renderProfileCard(profile, platform, {
+      pronouns,
+      sheetRows: [subRow, ...followageRows].filter(Boolean),
+    })
+    // the card only stamps who the name is; this paints it (colour + paints)
+    hsNameCardsIn(tooltip)
+    positionTooltipAtElement(hsExtTooltipPositionTarget(tooltip), targetEl)
     applyTooltipBanner(tooltip, profile, platform, username, gen)
-    applyTooltipPronouns(tooltip, profile?.twitch_user_id || profile?.twitch_id, gen)
-  } else {
-    // Fallback — populated from client-only signals so kick chatters with
-    // no heatsync acct still get a real card: chat badges from recent msgs,
-    // platform-link row, color-tinted name. applyTooltipBanner extends to
-    // also fill the avatar from kick.com profile_pic.
-    const safeName = escapeHtml(username)
-    const safeColor = sanitizeColor(color || '#fff')
-    let nativeBadges = ''
-    try {
-      const recent = typeof getRecentMessagesFromUser === 'function' ? getRecentMessagesFromUser(username) : []
-      const rTwitch = recent.find((m) => (m.platform || 'twitch') === 'twitch' && m.badges)
-      if (rTwitch && typeof renderBadges === 'function') nativeBadges += renderBadges(rTwitch.badges, rTwitch.channel)
-      const rKick = recent.find((m) => m.platform === 'kick' && m.badges)
-      if (rKick && typeof renderBadges === 'function') nativeBadges += renderBadges(rKick.badges, rKick.channel, 'kick')
-      const rYt = recent.find((m) => m.platform === 'youtube' && m.badges)
-      if (rYt && typeof renderBadges === 'function') nativeBadges += renderBadges(rYt.badges, rYt.channel, 'youtube')
-    } catch {}
-    const platRow =
-      platform === 'kick'
-        ? `<dt>kick</dt><dd class="val-kick" data-k="kick">${safeName}</dd>`
-        : platform === 'youtube' || platform === 'yt'
-          ? `<dt>yt</dt><dd class="val-yt" data-k="yt">${safeName}</dd>`
-          : `<dt>ttv</dt><dd class="val-ttv" data-k="ttv">${safeName}</dd>`
-    // Resolve the twitch-space uid the same way userPaintStyle does internally,
-    // so HeatSync-paint precedence (which needs the uid) can win over 7TV — same
-    // rule as the live sender row (see hsPaintRender in paints.js).
-    const fbLower = username.toLowerCase()
-    const fbUid =
-      platform === 'twitch' && typeof knownUserIds !== 'undefined' && typeof userKey === 'function'
-        ? knownUserIds.get(userKey(fbLower, 'twitch')) || ''
-        : ''
-    const namePaint = platform === 'twitch' ? userPaintStyle(fbUid, fbLower, 'twitch') : ''
-    const nameHsPaint = fbUid ? hsPaintRender(fbUid, username) : null
-    const header = nativeBadges
-      ? nativeBadges
-      : `<span class="hs-pc-name${nameHsPaint ? ` ${nameHsPaint.cls}` : ''}"${nameHsPaint ? nameHsPaint.splitAttr : ''} style="${nameHsPaint ? '' : namePaint || `color:${safeColor}`}">${nameHsPaint ? nameHsPaint.html : safeName}</span>`
-    // NOTE: innerHTML XSS-safe — username via escapeHtml, color via sanitizeColor (hex-only),
-    // nativeBadges from renderBadges which emits escaped <img> markup
-    tooltip.innerHTML = `<div class="hs-pc-hero"><div class="hs-pc-hero-img"></div><div class="hs-pc-hero-scrim"></div></div><div class="hs-pc-body"><img class="hs-pc-avatar" src="https://heatsync.org/anon.webp" alt=""><div class="hs-pc-info"><div class="hs-pc-header">${header}</div><dl class="hs-pc-sheet">${platRow}</dl></div></div>`
-    appendSubTenureBadge(tooltip, username, msgChannel)
-    fetchAndShowFollowage(tooltip, username, gen, platform)
-    applyTooltipBanner(tooltip, null, platform, username, gen)
-    applyTooltipPronouns(tooltip, fbUid, gen)
+  }
+  paint()
+
+  if (!platform || platform === 'twitch') {
+    resolveFollowageRows(username, channelLogin, payload.followage, (rows) => {
+      if (gen !== _profileGen) return
+      followageRows = rows
+      paint()
+    })
+  }
+  const twitchUid = profile.twitch_user_id || profile.twitch_id
+  if (twitchUid && typeof fetchPronouns === 'function') {
+    fetchPronouns('twitch', twitchUid).then((data) => {
+      if (gen !== _profileGen) return
+      if (data?.pronouns?.length) {
+        pronouns = data.pronouns.join('/').toLowerCase()
+        paint()
+      }
+    })
   }
 }
 
-// Append sub tenure as a sheet row (sync, no fetch). Dedupes via data-k.
-function appendSubTenureBadge(tooltip, username, msgChannel) {
-  const channelLogin = msgChannel || getTooltipChannelContext()
-  if (!channelLogin) return
-  const channelMap = subTenureMap.get(channelLogin)
-  if (!channelMap) return
-  const months = channelMap.get(username.toLowerCase())
-  if (!months) return
-  const sheet = tooltip.querySelector('.hs-pc-sheet')
-  if (!sheet) return
-  if (sheet.querySelector('dd[data-k="sub-tenure"]')) return
-  const isSelfChannel =
-    typeof currentUsername === 'string' &&
-    currentUsername &&
-    channelLogin.toLowerCase() === currentUsername.toLowerCase()
-  const dt = document.createElement('dt')
-  const dd = document.createElement('dd')
-  dd.dataset.k = 'sub-tenure'
-  if (isSelfChannel) {
-    dt.textContent = 'they'
-    dd.className = 'val-they-sub'
-    dd.textContent = `sub to you ${formatSubTenure(months)}`
-  } else {
-    dt.textContent = 'ch sub'
-    dd.className = 'val-ch'
-    dd.textContent = `${channelLogin} ${formatSubTenure(months)}`
-  }
-  sheet.appendChild(dt)
-  sheet.appendChild(dd)
-}
-
-// Async followage fetch — appends to tooltip after profile renders (DOM methods, no innerHTML)
-async function fetchAndShowFollowage(tooltip, username, gen, userPlatform) {
-  // Only show followage for Twitch users (followage API is Twitch-only)
-  if (userPlatform && userPlatform !== 'twitch') return
-  const channelLogin = getTooltipChannelContext(userPlatform)
-  if (!channelLogin) return
-  if (typeof lookupFollowage !== 'function') return
-  const result = await lookupFollowage(username, channelLogin)
-  if (gen !== _profileGen || !result) return
-  // When the channel context IS the viewer (e.g. you're hovering a chatter
-  // in your own channel tab), the followage rows duplicate the heatsync
-  // "they → you" rel-row. Skip the literal Twitch followage row in that
-  // case. Still process channelFollowedAt below for the you-follow age fill.
-  const isSelfChannel =
-    typeof currentUsername === 'string' &&
-    currentUsername &&
-    channelLogin.toLowerCase() === currentUsername.toLowerCase()
-  const sheetEl = tooltip.querySelector('.hs-pc-sheet')
-  const upsertRow = (key, label, value, valCls) => {
-    if (!sheetEl) return
-    const existing = sheetEl.querySelector(`dd[data-k="${key}"]`)
-    if (existing) {
-      existing.textContent = value
-      if (valCls) existing.className = valCls
-      return
-    }
-    const dt = document.createElement('dt')
-    dt.textContent = label
-    const dd = document.createElement('dd')
-    if (valCls) dd.className = valCls
-    dd.dataset.k = key
-    dd.textContent = value
-    sheetEl.appendChild(dt)
-    sheetEl.appendChild(dd)
-  }
-  if (!isSelfChannel) {
-    if (result.followedAt) {
-      const age = getCompactRelTime(result.followedAt).replace(' ago', '')
-      upsertRow('ch-follow', 'ch follow', `${channelLogin} ${age}`, 'val-ch')
-    } else {
-      upsertRow('ch-follow', 'ch follow', `not following ${channelLogin}`, 'val-affiliate')
-    }
-  }
-  // Channel follows this user.
-  if (result.channelFollowedAt && !isSelfChannel) {
-    upsertRow('ch-follows', 'follower', channelLogin, 'val-ch')
-  }
-  // When channel === viewer, channelFollowedAt is the viewer's authoritative
-  // Twitch follow date. Use it to fill in (or override) the you-follow row.
-  if (isSelfChannel && result.channelFollowedAt) {
-    const sheet = tooltip.querySelector('.hs-pc-sheet')
-    const youFollowVal = sheet?.querySelector('dd[data-k="you-follow"]')
-    const ageStr = ` ${getCompactRelTime(result.channelFollowedAt).replace(' ago', '')}`
-    if (youFollowVal) {
-      youFollowVal.textContent = `follow${ageStr}`
-    } else if (sheet) {
-      const dt = document.createElement('dt')
-      dt.textContent = 'you'
-      const dd = document.createElement('dd')
-      dd.className = 'val-you-follow'
-      dd.dataset.k = 'you-follow'
-      dd.textContent = `follow${ageStr}`
-      sheet.appendChild(dt)
-      sheet.appendChild(dd)
-    }
-  }
-  // Update follower count from live data
-  const sheet = tooltip.querySelector('.hs-pc-sheet')
-  if (sheet && result.followerCount != null) {
-    const followerVal = sheet.querySelector('dd[data-k="followers"]')
-    if (followerVal) {
-      followerVal.textContent = formatCompact(result.followerCount)
-    } else {
-      const dt = document.createElement('dt')
-      dt.textContent = 'followers'
-      const dd = document.createElement('dd')
-      dd.dataset.k = 'followers'
-      dd.textContent = formatCompact(result.followerCount)
-      sheet.appendChild(dt)
-      sheet.appendChild(dd)
-    }
-  }
+// The shared card (card-render.js's .hs-card-peek output) is mounted AS A
+// CHILD of #hs-user-tooltip, and card.css gives it its own position:fixed —
+// nested inside #hs-user-tooltip's own position:fixed shell (09-tooltips-
+// menus.css). Positioning the outer shell would do nothing useful once the
+// inner card exists (position:fixed always resolves against the viewport,
+// not an ancestor, so the inner element's own left/top is what actually
+// matters); this resolves to whichever one is real right now. Falls back to
+// the shell itself during the loading state, before any .hs-card exists.
+function hsExtTooltipPositionTarget(tooltip) {
+  return tooltip.querySelector('.hs-card') || tooltip
 }
 
 function positionTooltipAtElement(tooltip, targetEl) {
@@ -1581,6 +1604,50 @@ function positionTooltipAtElement(tooltip, targetEl) {
   tooltip.style.top = `${Math.round(y)}px`
 }
 
+// The cross-highlight lives on the wrapper AND on its stack. The stack's styling
+// used to key off `:has(.hs-emote-highlight)`, and a :has() rule makes the
+// browser re-check the whole page on every DOM insertion (~20ms with a busy
+// chat) — a plain class on the stack costs nothing.
+// The plate colour rides on the highlighted elements themselves. It used to be
+// written to <body>: a custom property is inherited, so changing it there
+// restyled the whole page on every emote hover and unhover (32ms of style+layout
+// per step at cpu x4, traced 2026-10-29). On the handful of matched wrappers it
+// restyles only them and their ::before.
+let _hlColor = '#fff'
+// Only the copies you can see get the plate. A popular emote is on a third of 500
+// rows, and lighting them all was ~130 class + style writes (and a subtree restyle
+// each) per hover AND per unhover; the rest are off screen. The feed is held while
+// the pointer rests here and a scroll dismisses the highlight, so a row cannot
+// scroll into view still unlit. Rects are read first, writes after: one layout.
+function hsOnScreen(list) {
+  const vh = innerHeight
+  const out = []
+  for (const w of list) {
+    const r = w.getBoundingClientRect()
+    if (r.bottom > 0 && r.top < vh) out.push(w)
+  }
+  return out
+}
+function hsSetEmoteHighlight(w, on) {
+  const stack = w.closest?.('.hs-mc-emote-stack')
+  w.classList.toggle('hs-emote-highlight', on)
+  stack?.classList.toggle('hs-stack-hl', on)
+  for (const el of stack ? [w, stack] : [w]) {
+    if (on) el.style.setProperty('--hs-highlight-color', _hlColor)
+    else el.style.removeProperty('--hs-highlight-color')
+  }
+}
+function hsClearEmoteHighlights() {
+  for (const w of document.querySelectorAll('.hs-emote-highlight')) {
+    w.classList.remove('hs-emote-highlight')
+    w.style.removeProperty('--hs-highlight-color')
+  }
+  for (const s of document.querySelectorAll('.hs-stack-hl')) {
+    s.classList.remove('hs-stack-hl')
+    s.style.removeProperty('--hs-highlight-color')
+  }
+}
+
 function hideUserTooltip() {
   _profileGen++
   _userTooltipTarget = null
@@ -1593,7 +1660,7 @@ function setupUserTooltipHandlers() {
   if (_onceGuardsTooltips.userTooltipSetup) return
   _onceGuardsTooltips.userTooltipSetup = true
 
-  // 120ms hover-intent debounce: scrolling chat passes the cursor across
+  // 50ms hover-intent debounce: scrolling chat passes the cursor across
   // 10+ usernames in a single scroll-tick. Without debounce every one
   // fires apiFetch immediately. Cache hits already render instantly so
   // those bypass the debounce; only cold lookups wait.
@@ -1617,8 +1684,8 @@ function setupUserTooltipHandlers() {
         const color = target.style.color
         const platform = target.dataset.platform || null
         const cacheKey = `${platform || 'unknown'}:${username.toLowerCase()}`
-        const cached = _profileCache.get(cacheKey)
-        if (cached && Date.now() - cached.ts < PROFILE_CACHE_TTL) {
+        const cached = _cardCache.get(cacheKey)
+        if (cached && Date.now() - cached.ts < CARD_CACHE_TTL) {
           // Cache hit: render synchronously, no debounce needed.
           clearUserHoverTimer()
           showUserTooltip(target, username, color, platform)
@@ -1632,7 +1699,7 @@ function setupUserTooltipHandlers() {
             _userHoverTimer = null
             if (_userHoverTarget !== target || !document.contains(target)) return
             showUserTooltip(target, username, color, platform)
-          }, 120)
+          }, 50)
         }
 
         // Highlight all matching usernames
@@ -1640,7 +1707,15 @@ function setupUserTooltipHandlers() {
         if (name) {
           const overlay = document.getElementById('hs-mc-overlay')
           if (overlay) {
-            overlay.querySelectorAll(`.hs-mc-user[data-username="${CSS.escape(name)}"]`).forEach((el) => {
+            // Only the copies on screen: a chatter with a hundred rows in history
+            // paid ~2ms of restyle per copy on hover and again on unhover (~100ms
+            // each way), for names nobody could see. All rects are read before any
+            // class is written, so it is one layout, not one per copy.
+            const copies = [...overlay.querySelectorAll(`.hs-mc-user[data-username="${CSS.escape(name)}"]`)]
+            const rects = copies.map((el) => el.getBoundingClientRect())
+            const vh = window.innerHeight
+            copies.forEach((el, i) => {
+              if (rects[i].bottom < 0 || rects[i].top > vh) return
               el.classList.add('hs-user-highlight')
             })
           }
@@ -1677,7 +1752,7 @@ function setupUserTooltipHandlers() {
 // Uses textContent (no innerHTML) so the username string is never parsed as HTML.
 function showUserSkeleton(targetEl, username, color) {
   const tooltip = ensureUserTooltip()
-  document.body.appendChild(cleanup.trackNode(tooltip))
+  hsAppendLastIfNeeded(tooltip)
   _userTooltipTarget = targetEl
   while (tooltip.firstChild) tooltip.removeChild(tooltip.firstChild)
   const loading = document.createElement('div')
@@ -1711,7 +1786,7 @@ function showLinkTooltip(e, url) {
   _linkHoverUrl = url
   _linkTargetEl = e.target.closest('.hs-mc-link') || e.target
   const tip = ensureLinkTooltip()
-  document.body.appendChild(cleanup.trackNode(tip))
+  hsAppendLastIfNeeded(tip)
   let hostname = ''
   try {
     hostname = new URL(url).hostname
@@ -1859,7 +1934,7 @@ function setupLinkTooltipHandlers() {
       const link = e.target.closest('.hs-mc-link')
       if (link) {
         cancelLinkHide()
-        showLinkTooltip(e, link.href)
+        showLinkTooltip(e, link.href || link.dataset.href)
         return
       }
       // Hovering the tooltip itself keeps it open (lets user read/click image).
@@ -1886,8 +1961,24 @@ function setupLinkTooltipHandlers() {
     'mousedown',
     (e) => {
       const link = e.target.closest?.('.hs-mc-link')
-      if (link?.href) prefetchLinkPreview(link.href)
+      const href = link?.href || link?.dataset.href
+      if (href) prefetchLinkPreview(href)
     },
     'mc-link-prefetch-mousedown',
+  )
+
+  // A link inside a card's recent lines is an inert span (the card row is not a
+  // link) — it carries its url as data-href and opens it here.
+  cleanup.addEventListener(
+    document,
+    'click',
+    (e) => {
+      const span = e.target.closest?.('span.hs-mc-link[data-href]')
+      if (!span || !/^https?:\/\//i.test(span.dataset.href)) return
+      e.preventDefault()
+      e.stopPropagation()
+      window.open(span.dataset.href, '_blank', 'noopener,noreferrer')
+    },
+    'mc-link-span-click',
   )
 }

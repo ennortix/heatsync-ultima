@@ -1,0 +1,10178 @@
+// Content script - Inject into Twitch/Kick chat
+;(() => {
+  // Debug logging - set to false for production
+  const HEATSYNC_DEBUG = false
+  const log = HEATSYNC_DEBUG ? console.log.bind(console, '[heatsync]') : () => {}
+  const warn = HEATSYNC_DEBUG ? console.warn.bind(console, '[heatsync]') : () => {}
+
+  // Cooldown for extension-reload postMessage handler — prevents page JS
+  // from hammering chrome.runtime.reload() in a tight loop.
+  let _lastExtReloadMs = 0
+
+  log('🚀 Script loaded on:', window.location.href)
+
+  const isKick = window.location.hostname.includes('kick.com')
+
+  // The overlay (#hs-mc-container) fully replaces + hides native chat once mounted.
+  // After that, all native-chat-row DOM enhancement (per-message emote render,
+  // cosmetics, coloring, heat borders, timeout-dim, msg cache, the native emote
+  // bridge, existing-message re-sweeps) is invisible dead work on a display:none
+  // subtree. Gate those paths on this. Latches true once the container is seen (it
+  // persists), so it's a single O(1) check thereafter. Safe-degradation: if the
+  // overlay ever fails to mount, this stays false → native processing runs as a
+  // fallback, so gating can't blank the screen.
+  let _hsOverlayActive = false
+  function isOverlayActive() {
+    return _hsOverlayActive || (_hsOverlayActive = !!document.getElementById('hs-mc-container'))
+  }
+
+  // --- user-key helpers (content script) ---
+  // Inlined because lib/ is bundled into other targets only.
+  // Canonical source: src/lib/user-key.js — keep in sync if either changes.
+  function canonPlatform(platform) {
+    return platform === 'yt' ? 'youtube' : platform
+  }
+  function userKey(username, platform) {
+    const u = String(username == null ? '' : username)
+      .toLowerCase()
+      .replace(/^@/, '')
+    if (!u) return ''
+    const p = canonPlatform(platform)
+    return p ? `${p}:${u}` : u
+  }
+  function userSetMatches(set, username, platform, aliasKeys) {
+    if (!set || set.size === 0) return false
+    const u = String(username == null ? '' : username)
+      .toLowerCase()
+      .replace(/^@/, '')
+    if (!u) return false
+    if (set.has(u)) return true
+    if (set.has(userKey(u, platform))) return true
+    // Legacy short-form keys: entries stored as `yt:<name>` before platform
+    // canonicalization must keep matching youtube rows.
+    if (canonPlatform(platform) === 'youtube' && set.has(`yt:${u}`)) return true
+    if (aliasKeys) {
+      for (const k of aliasKeys) {
+        if (k && set.has(k)) return true
+      }
+    }
+    return false
+  }
+
+  // Chrome compatibility - use 'browser' namespace like Firefox
+  // Firefox uses native browser API
+
+  const API_URL = 'https://heatsync.org' // Production server
+
+  // heatsync.org gate — return BEFORE any chat/style injection runs. The
+  // extension's content script gets matched on heatsync.org for OAuth-token
+  // pickup (auth_token query param after Twitch login redirect), but the
+  // rest of this file (~3000 lines: emote stacking, profile cards, native
+  // chat decoration, style block injection) is designed for twitch.tv /
+  // kick.com chat overlays. Letting any of it run on heatsync.org pollutes
+  // the site with !important style rules (.hs-pc-live red badge etc.) and
+  // makes heatsync.org's own CSS fight the extension's cascade. Handle the
+  // OAuth case + bail. Valid `return` because this file is wrapped in an
+  // IIFE (line 2).
+  if (window.location.hostname === 'heatsync.org' || window.location.hostname.endsWith('.heatsync.org')) {
+    log(' 🔍 Content script on heatsync.org — OAuth-only mode')
+    // Announce presence so the site's install nudge can detect the ext.
+    // ISOLATED world shares the DOM — page main-world JS reads dataset.hsExt.
+    document.documentElement.dataset.hsExt = '1'
+    // Kick-send-via-relay capability beacon — this version wires
+    // kick:relay_send / kick:relay_ack in background.js, so any install
+    // running this code supports it. (The comment used to name a third
+    // message, chat:send_kick, which appears nowhere but the comment; the
+    // relay itself is real and is what the beacon promises.) Same dataset-on-shared-DOM
+    // mechanism as hsExt above (a page-injected window global isn't visible
+    // across the isolated/main world boundary). heatsync.org's chips UI
+    // feature-detects via document.documentElement.dataset.hsKickRelay === '1'.
+    document.documentElement.dataset.hsKickRelay = '1'
+    try {
+      const urlParams = new URLSearchParams(window.location.search)
+      const urlToken = urlParams.get('auth_token')
+      if (urlToken && /^[\w-]+\.[\w-]+\.[\w-]+$/.test(urlToken)) {
+        log(' ✓ Found auth_token in URL, sending to background (length:', urlToken.length, ')')
+        // backend echoes the nonce as ext_state (plain `state` is the OAuth CSRF token)
+        const urlState = urlParams.get('ext_state') || null
+        try {
+          chrome.runtime.sendMessage({ type: 'set_auth_token', token: urlToken, state: urlState })
+        } catch {}
+        window.history.replaceState({}, document.title, window.location.pathname)
+      }
+    } catch {}
+
+    // The site clears the toolbar badge through here. heatsync.org posts
+    // `heatsync-notifs-viewed` the moment its unread total hits zero
+    // (client/managers/notification-manager.js), and background.js has always
+    // had a `notifs_viewed` handler waiting — but nothing joined the two, so
+    // the message went nowhere and the handler never ran once. The badge's
+    // only correction was hydrateUnreadNotifCount() on the next websocket
+    // auth, which on a long-lived socket can be hours after the user actually
+    // read them.
+    window.addEventListener('message', (event) => {
+      // Same-window, same-origin only: this runs on heatsync.org, and the
+      // sender is the page's own main-world script.
+      if (event.source !== window) return
+      if (event.origin !== window.location.origin) return
+      if (event.data?.type !== 'heatsync-notifs-viewed') return
+      try {
+        chrome.runtime.sendMessage({ type: 'notifs_viewed' })
+      } catch {}
+    })
+
+    return
+  }
+
+  // Native emote selectors for stackAdjacentOverlayEmotes — pre-joined to avoid per-call allocation
+  const NATIVE_EMOTE_SELECTORS = [
+    'img.chat-line__message--emote', // Classic Twitch
+    'img[data-a-target="emote-name"]', // Data attribute variant
+    '.chat-image__container', // Container variant
+    'img.chat-image', // Simple chat image
+    '.emote-button img', // Button wrapped
+    '[class*="emote"] img', // Any class containing "emote"
+    'img[alt][src*="static-cdn.jtvnw.net"]', // Twitch CDN emotes by URL
+    'img[alt][src*="emoticons"]', // Emoticons URL pattern
+    'img[alt][src*="files.kick.com"]', // Kick CDN emotes
+    'img[alt][src*="kick-emote"]', // Kick emote variant
+  ].join(', ')
+
+  // Combined selector for stackAdjacentOverlayEmotes (heatsync + native, single querySelectorAll)
+  const COMBINED_EMOTE_SELECTOR = `.heatsync-emote-wrapper, ${NATIVE_EMOTE_SELECTORS}`
+
+  // Re-injection guard. background.js re-executes content.js on extension
+  // update/reload (manifest content scripts don't auto re-inject). Without this,
+  // OLD + NEW both run: doubled MutationObservers, doubled listeners, 2x CPU.
+  try {
+    if (typeof window.__heatsyncContentLifecycle?.abort === 'function') {
+      window.__heatsyncContentLifecycle.abort()
+    }
+  } catch (_) {}
+
+  // Lifecycle controller — abort() tears down ALL listeners, timers, observers
+  const lifecycle = new AbortController()
+  const { signal } = lifecycle
+  const _timers = { intervals: [], timeouts: [], observers: [] }
+  signal.addEventListener('abort', () => {
+    _timers.intervals.forEach(clearInterval)
+    _timers.timeouts.forEach(clearTimeout)
+    _timers.observers.forEach((o) => o.disconnect())
+    try {
+      chrome.runtime.onMessage.removeListener(_onMessageMain)
+    } catch (_) {}
+    try {
+      chrome.runtime.onMessage.removeListener(_onMessageKickRelay)
+      chrome.runtime.onMessage.removeListener(_onMessageKickPing)
+    } catch (_) {}
+    try {
+      chrome.storage.onChanged.removeListener(_onStorageChanged)
+    } catch (_) {}
+    try {
+      chrome.storage.onChanged.removeListener(_onAutoClaimStorageChanged)
+    } catch (_) {}
+  })
+  // Bug #4 (bfcache): only abort on REAL unloads. For bfcache-bound pagehide
+  // (ev.persisted) the page is frozen intact and may be restored — the
+  // AbortController is single-use, so aborting would leave every { signal }
+  // listener permanently unattachable on restore. Keeping the lifecycle alive
+  // means the restored page resumes with observers/timers intact; if the page
+  // is evicted instead, it's destroyed wholesale — nothing leaks.
+  window.addEventListener('pagehide', (ev) => {
+    if (!ev.persisted) lifecycle.abort()
+  })
+  // On bfcache restore, re-hook the chat observer + rescan — the restored DOM
+  // is the pre-nav snapshot and may have missed messages / a swapped container.
+  window.addEventListener('pageshow', (ev) => {
+    if (!ev.persisted) return
+    try {
+      watchForNewMessages()
+    } catch (_) {}
+    try {
+      if (emoteInventory.length > 0 || globalEmotes.length > 0) processExistingMessages()
+    } catch (_) {}
+  })
+  // Export abort handle so a future re-injection of this script can tear us down.
+  // _hsTakenOver flips iff someone outside this closure called our abort — i.e.
+  // a NEW content.js instance took over. Internal abort() calls go via
+  // `lifecycle.abort()` directly and leave the flag false.
+  let _hsTakenOver = false
+  window.__heatsyncContentLifecycle = {
+    abort: () => {
+      _hsTakenOver = true
+      try {
+        lifecycle.abort()
+      } catch (_) {}
+    },
+  }
+
+  // URL path segments that are NEVER channels. ONE list — the open-channel
+  // reporter fed 'login' (oauth redirect page) to the BG as a live channel on
+  // 2026-07-14, which IRC-joined it and spawned ghost tabs. Single source of
+  // truth is src/lib/reserved-paths.js, embedded into this bundle's lib scope.
+  const TWITCH_EXCLUDED_PATHS = RESERVED_PATHS
+
+  // Fast context-death detector. chrome.runtime.id becomes undefined sync on
+  // extension reload. Once dead: tear down listeners immediately, then defer
+  // the page reload to visibility — active tab reloads in 1–5s, background
+  // tabs wait until user focuses them. This avoids the N-tab thundering React
+  // mount herd that crashes Chrome when many Twitch tabs reload at once.
+  // If a NEW content.js instance arrives before reload fires, skip the reload.
+  const _hsCtxDeathTimer = setInterval(() => {
+    // chrome.runtime?.id access can throw "Extension context invalidated" on
+    // orphaned content scripts — without try/catch the detector silently dies
+    // each tick and reload never arms.
+    let alive = false
+    try {
+      alive = !!chrome.runtime?.id
+    } catch (_) {
+      alive = false
+    }
+    if (alive) return
+    clearInterval(_hsCtxDeathTimer)
+    extensionContextValid = false
+    try {
+      lifecycle.abort()
+    } catch (_) {}
+    if (window.__heatsyncReloadScheduled) return
+    window.__heatsyncReloadScheduled = true
+    const doReload = () => {
+      if (_hsTakenOver) return
+      try {
+        location.reload()
+      } catch (_) {}
+    }
+    if (document.visibilityState === 'visible') {
+      setTimeout(doReload, 1000 + Math.random() * 4000)
+    } else {
+      document.addEventListener('visibilitychange', function once() {
+        if (document.visibilityState !== 'visible') return
+        document.removeEventListener('visibilitychange', once)
+        setTimeout(doReload, 500 + Math.random() * 2000)
+      })
+    }
+  }, 2000)
+  _timers.intervals.push(_hsCtxDeathTimer)
+
+  // Port-based ctx-death detector. chrome.runtime.connect() opens a long-lived
+  // port to BG. When the extension is invalidated, port.onDisconnect fires
+  // SYNCHRONOUSLY before chrome.runtime becomes undefined and before Chrome
+  // can suspend the orphaned script's setInterval — catches the cases the 2s
+  // interval misses. The port also distinguishes "ext gone" from "SW just
+  // idle-suspended": on disconnect, if chrome.runtime?.id still resolves, the
+  // ext is alive (SW restarting), so we re-open the port and don't reload.
+  function _hsOpenCtxDeathPort() {
+    let port
+    try {
+      if (!chrome?.runtime?.connect) return
+      port = chrome.runtime.connect({ name: 'heatsync-ctx-death' })
+    } catch (_) {
+      return
+    }
+    port.onDisconnect.addListener(() => {
+      let alive = false
+      try {
+        alive = !!chrome.runtime?.id
+      } catch (_) {
+        alive = false
+      }
+      if (alive) {
+        // SW idle-suspended (ext alive). Re-open after a beat — that wakes SW.
+        setTimeout(_hsOpenCtxDeathPort, 500)
+        return
+      }
+      // Ext truly gone — arm reload via the same dedupe flag.
+      extensionContextValid = false
+      try {
+        lifecycle.abort()
+      } catch (_) {}
+      if (window.__heatsyncReloadScheduled) return
+      window.__heatsyncReloadScheduled = true
+      const doReload = () => {
+        if (_hsTakenOver) return
+        try {
+          location.reload()
+        } catch (_) {}
+      }
+      if (document.visibilityState === 'visible') {
+        setTimeout(doReload, 1000 + Math.random() * 4000)
+      } else {
+        document.addEventListener('visibilitychange', function once() {
+          if (document.visibilityState !== 'visible') return
+          document.removeEventListener('visibilitychange', once)
+          setTimeout(doReload, 500 + Math.random() * 2000)
+        })
+      }
+    })
+  }
+  _hsOpenCtxDeathPort()
+
+  // WeakMap for emote overlay references — avoids DOM property leaks
+  const overlayMap = new WeakMap()
+
+  // Optional perf tracer. window.__hsPerfTrace = true at runtime to log slow
+  // callbacks into window.__hsPerfLog. Source captured at registration so
+  // anonymous arrows still get a stable identifier.
+  function _hsPerfWrap(fn, ms, kind) {
+    let src = ''
+    try {
+      const stack = new Error().stack || ''
+      const lines = stack.split('\n')
+      for (const line of lines) {
+        if (!line || (line.includes('content.js') && line.includes('_hsPerfWrap'))) continue
+        if (!line || line.includes('_hsPerfWrap') || line.includes('cleanup.set')) continue
+        src = line.trim().slice(0, 160)
+        break
+      }
+    } catch {}
+    return function () {
+      if (!window.__hsPerfTrace) return fn.apply(this, arguments)
+      const t = performance.now()
+      try {
+        return fn.apply(this, arguments)
+      } finally {
+        const d = performance.now() - t
+        if (d > 50) {
+          ;(window.__hsPerfLog ||= []).push({ side: 'twitch', kind, ms, dur: Math.round(d), at: Math.round(t), src })
+          if (window.__hsPerfLog.length > 300) window.__hsPerfLog.shift()
+        }
+      }
+    }
+  }
+
+  // Helpers matching old cleanup API but wired to AbortController
+  const cleanup = {
+    setInterval(fn, ms) {
+      const id = setInterval(_hsPerfWrap(fn, ms, 'interval'), ms)
+      _timers.intervals.push(id)
+      return id
+    },
+    setIntervalIfVisible(fn, ms) {
+      const w = _hsPerfWrap(fn, ms, 'intervalIfVisible')
+      const id = setInterval(() => {
+        if (!document.hidden) w()
+      }, ms)
+      _timers.intervals.push(id)
+      return id
+    },
+    clearInterval(id) {
+      clearInterval(id)
+      const idx = _timers.intervals.indexOf(id)
+      if (idx !== -1) _timers.intervals.splice(idx, 1)
+    },
+    clearTimeout(id) {
+      clearTimeout(id)
+      const idx = _timers.timeouts.indexOf(id)
+      if (idx !== -1) _timers.timeouts.splice(idx, 1)
+    },
+    setTimeout(fn, ms) {
+      const w = _hsPerfWrap(fn, ms, 'timeout')
+      const id = setTimeout(() => {
+        const idx = _timers.timeouts.indexOf(id)
+        if (idx !== -1) _timers.timeouts.splice(idx, 1)
+        w()
+      }, ms)
+      _timers.timeouts.push(id)
+      return id
+    },
+    addEventListener(target, event, handler) {
+      target.addEventListener(event, handler, { signal })
+    },
+    trackObserver(obs) {
+      _timers.observers.push(obs)
+      return obs
+    },
+    untrackObserver(obs) {
+      const i = _timers.observers.indexOf(obs)
+      if (i !== -1) _timers.observers.splice(i, 1)
+    },
+  }
+
+  // hsSched — cooperative scheduler used by boot-burst processors. Goal: never
+  // hold the main thread > ~4ms while we still have a backlog. Burns time in
+  // budget slices, yields, resumes. Listens for scroll/wheel/touchmove and
+  // pauses non-urgent work while the user is actively scrolling, so chat-page
+  // scroll never competes with backfill processing for the main thread.
+  const hsSched = (() => {
+    let _scrollIdle = true
+    let _scrollIdleTimer = null
+    const markBusy = () => {
+      _scrollIdle = false
+      if (_scrollIdleTimer) clearTimeout(_scrollIdleTimer)
+      _scrollIdleTimer = setTimeout(() => {
+        _scrollIdle = true
+        _scrollIdleTimer = null
+      }, 180)
+    }
+    // capture+passive so we don't perturb wheel/scroll perf ourselves
+    for (const ev of ['scroll', 'wheel', 'touchmove', 'pointerdown']) {
+      try {
+        window.addEventListener(ev, markBusy, { passive: true, capture: true, signal })
+      } catch (e) {
+        // Lose these and the busy-yield never engages: emote processing stops
+        // backing off during scroll, which reads as jank, not as an error.
+        swallow(e, 'busy-listener-content')
+      }
+    }
+    const _yield = () => {
+      // scheduler.yield() (Chrome 129+) returns priority back to caller after
+      // browser deals with input/paint. Falls back to a macrotask which lets
+      // the event loop process input before resuming us.
+      if (typeof scheduler !== 'undefined' && typeof scheduler.yield === 'function') {
+        return scheduler.yield()
+      }
+      return new Promise((r) => setTimeout(r, 0))
+    }
+    const untilIdle = async () => {
+      // Bounded wait — never starve processing if scroll never stops.
+      let waited = 0
+      while (!_scrollIdle && waited < 2000) {
+        await new Promise((r) => setTimeout(r, 60))
+        waited += 60
+      }
+    }
+    const idle = (fn, { timeout = 2000, priority = 'background' } = {}) => {
+      if (typeof scheduler !== 'undefined' && typeof scheduler.postTask === 'function') {
+        return scheduler.postTask(fn, { priority })
+      }
+      if (typeof window.requestIdleCallback === 'function') {
+        return new Promise((r) =>
+          requestIdleCallback(
+            () => {
+              try {
+                r(fn())
+              } catch (_e) {
+                r()
+              }
+            },
+            { timeout },
+          ),
+        )
+      }
+      return new Promise((r) =>
+        setTimeout(() => {
+          try {
+            r(fn())
+          } catch (_e) {
+            r()
+          }
+        }, 0),
+      )
+    }
+    // Process items[] with `fn`. Yield to browser whenever the current slice
+    // exceeds budgetMs. Pauses during active scroll. Total wall-clock can be
+    // anything — caller cares about main-thread smoothness, not total time.
+    const chunk = async (items, fn, { budgetMs = 4, respectScroll = true } = {}) => {
+      let t0 = performance.now()
+      for (let i = 0; i < items.length; i++) {
+        if (respectScroll && !_scrollIdle) await untilIdle()
+        try {
+          fn(items[i], i)
+        } catch (e) {
+          try {
+            log(' chunk fn err:', e?.message)
+          } catch {}
+        }
+        if (performance.now() - t0 > budgetMs) {
+          await _yield()
+          t0 = performance.now()
+        }
+      }
+    }
+    return {
+      yield: _yield,
+      idle,
+      chunk,
+      untilIdle,
+      get scrollIdle() {
+        return _scrollIdle
+      },
+    }
+  })()
+
+  // Track if extension context is still valid
+  let extensionContextValid = true
+
+  // Cached allEmotes map — rebuilt only when emote data changes
+  let cachedAllEmotes = null
+  // Same as cachedAllEmotes but with viewer-inventory variants stripped. Used as
+  // the channel/global fallback for OTHER senders' messages so the viewer's
+  // personal set doesn't bleed into renders of users who don't actually have
+  // the emote. cachedAllEmotes (with inventory) is still used for own renders
+  // + picker + autocomplete + tab-complete suggestions.
+  let cachedNonInventoryEmotes = null
+  // Channel-only render map (non-inventory, non-global). Channel emotes are
+  // authoritative in their own channel for EVERY sender, so they must beat a
+  // sender's colliding personal set — but only for names the channel carries;
+  // names it doesn't fall through to the sender's set, then global. Mirrors the
+  // multichat panel's channel > senderEmotes > global order.
+  let cachedChannelEmotes = null
+  // Own-message render map: channel > inventory > global. Channel emotes are
+  // authoritative in their own channel for EVERYONE — so the viewer's own messages
+  // render a channel emote identically to how other chatters see it. Inventory still
+  // fills every name the channel doesn't carry (emote sovereignty preserved). Without
+  // this, a personal-inventory emote sharing a name with a (different) channel emote
+  // made the viewer's own messages diverge from the rest of chat.
+  let cachedOwnEmotes = null
+  // name → emote[] in priority order (inventory[0], channel[1..], global[N..]).
+  // Same-named emotes from different sources are kept as siblings so right-click
+  // block on the active one swaps to the next non-blocked variant in DOM.
+  let cachedAllEmoteVariants = null
+  let allEmotesDirty = true
+  let emoteGeneration = 0
+
+  // Emote display size
+  let hsEmoteSize = 1
+  const HS_EMOTE_BASE_PX = 28
+  function applyEmoteSize() {
+    document.documentElement.style.setProperty('--hs-emote-height', `${HS_EMOTE_BASE_PX * hsEmoteSize}px`)
+  }
+
+  // Unicode emoji size (1x/2x/4x) — mirrors multichat's hs_emoji_size.
+  let hsEmojiSize = 2
+  function applyEmojiSize() {
+    document.documentElement.style.setProperty('--hs-emoji-scale', String(hsEmojiSize))
+  }
+
+  // Diag probe — writes a small page-state snapshot to chrome.storage.local.hs_diag_page
+  // so the SW's buildDiagSnapshot() can include "what browser context did the bug fire in"
+  // alongside the error ring buffer. DOM-probes peer extensions (7TV/FFZ/BTTV/Chatterino)
+  // because their injected DOM is the #1 source of repro-only-on-some-users breakage.
+  // (Unhandled errors are captured by lib/error-reporter.js writing hs_errors directly.)
+  // Cached peer-ext presence — refreshed by _writeDiagPage (2s/8s/URL change).
+  // Gates native-chat cosmetic injection: when the real 7TV/BTTV/FFZ extension
+  // is co-installed it renders its own badges/paints on native rows — injecting
+  // ours too produces visible duplicates.
+  let _peerExts = []
+  function _detectPeerExts() {
+    const c = []
+    try {
+      if (window.FrankerFaceZ || document.querySelector('.ffz-emoticon, .ffz-badge, [class^="ffz-"]')) c.push('ffz')
+    } catch {}
+    try {
+      if (window.SevenTV || document.querySelector('[class^="seventv-"], .seventv-emote')) c.push('7tv')
+    } catch {}
+    try {
+      if (window.BetterTTV || document.querySelector('[data-provider="bttv"], .bttv-emote')) c.push('bttv')
+    } catch {}
+    try {
+      if (document.querySelector('chatterino-injected, [class^="chatterino-"]')) c.push('chatterino')
+    } catch {}
+    return c
+  }
+  function _writeDiagPage() {
+    try {
+      const plat = window.location.hostname.includes('kick.com')
+        ? 'kick'
+        : window.location.hostname.includes('youtube.com')
+          ? 'yt'
+          : window.location.hostname.includes('twitch.tv')
+            ? 'twitch'
+            : 'other'
+      _peerExts = _detectPeerExts()
+      const snap = {
+        ts: Date.now(),
+        plat,
+        channel: getPageChannel(),
+        conflicts: _peerExts,
+      }
+      chrome.storage.local.set({ hs_diag_page: snap }, () => {
+        void chrome.runtime.lastError
+      })
+    } catch {}
+  }
+  // Initial + re-probe after host SPA settles + on URL change.
+  cleanup.setTimeout(_writeDiagPage, 2000)
+  cleanup.setTimeout(_writeDiagPage, 8000)
+  let _lastDiagUrl = location.href
+  cleanup.setIntervalIfVisible(() => {
+    if (location.href !== _lastDiagUrl) {
+      _lastDiagUrl = location.href
+      _writeDiagPage()
+    }
+  }, 5000)
+
+  // Safe wrapper for chrome.runtime.sendMessage - handles context invalidation
+  async function safeSendMessage(message, _retry = 0) {
+    if (!extensionContextValid) {
+      warn(' Extension context invalidated - please refresh the page')
+      return { success: false, error: 'Extension context invalidated' }
+    }
+    try {
+      return await browser.runtime.sendMessage(message)
+    } catch (err) {
+      if (err.message?.includes('Extension context invalidated') || err.message?.includes('context invalidated')) {
+        extensionContextValid = false
+        warn(' ⚠️ Extension was reloaded - please refresh this page')
+        showToast(t('common_extension_updated'), 'warning')
+      } else if (
+        _retry < 5 &&
+        (err.message?.includes('Receiving end does not exist') ||
+          err.message?.includes('Could not establish connection'))
+      ) {
+        // Service worker waking up — retry with backoff (200, 400, 800, 1600, 3200ms)
+        await new Promise((r) => setTimeout(r, 200 * 2 ** _retry))
+        return safeSendMessage(message, _retry + 1)
+      }
+      throw err
+    }
+  }
+
+  // Auth bridge removed — it wrote the raw heatsync token into a
+  // page-readable DOM dataset (host-page JS could exfiltrate it). The only
+  // consumer (heatsync-button.js, ISOLATED world) now reads chrome.storage
+  // directly. Remove any bridge node a previous version left in the DOM.
+  try {
+    document.getElementById('__heatsync_auth_bridge')?.remove()
+  } catch {}
+
+  function _onStorageChanged(changes, areaName) {
+    if (changes.hs_emote_size != null) {
+      hsEmoteSize = parseFloat(changes.hs_emote_size.newValue) || 1
+      applyEmoteSize()
+    }
+    if (changes.hs_emoji_size != null) {
+      const v = changes.hs_emoji_size.newValue
+      hsEmojiSize = v === 1 || v === 2 || v === 4 ? v : 2
+      applyEmojiSize()
+    }
+    // Live-apply ui_settings changes from options page (sync storage)
+    if (areaName === 'sync' && changes.ui_settings) {
+      const next = changes.ui_settings.newValue
+      if (next) applyUiSettings(next)
+    }
+    // Per-user color overrides — update map + reapply
+    if (changes.hs_user_colors) {
+      rebuildUserColorMap(changes.hs_user_colors.newValue)
+      applyUserColorsToVisibleMessages()
+    }
+    if (areaName === 'local' && changes.chat_filter_rules) {
+      nativeRules.load(changes.chat_filter_rules.newValue)
+      nativeRules.repaint()
+    }
+    if (changes.hs_dim_timeouts) dimTimeoutsEnabled = changes.hs_dim_timeouts.newValue !== false
+  }
+  chrome.storage.onChanged.addListener(_onStorageChanged)
+
+  // Per-user color overrides (right-click username → set color)
+  const _userColors = new Map() // username (lower) → '#rrggbb'
+  function rebuildUserColorMap(raw) {
+    _userColors.clear()
+    if (!raw) return
+    const arr = Array.isArray(raw)
+      ? raw
+      : typeof raw === 'object'
+        ? Object.entries(raw).map(([username, color]) => ({ username, color }))
+        : []
+    for (const entry of arr) {
+      if (entry?.username && /^#[0-9a-fA-F]{6}$/.test(entry.color || '')) {
+        _userColors.set(String(entry.username).toLowerCase(), entry.color)
+      }
+    }
+  }
+  function applyUserColorToMessage(messageElement, username) {
+    const lower = String(username || '').toLowerCase()
+    if (!lower) return
+    const color = _userColors.get(lower)
+    if (!color) return
+    const userEl = messageElement.querySelector(
+      '.chat-author__display-name, [data-a-target="chat-message-username"], button.inline.font-bold',
+    )
+    if (userEl) {
+      userEl.style.setProperty('--hs-user-color', color)
+      userEl.classList.add('hs-user-colored')
+    }
+  }
+  function applyUserColorsToVisibleMessages() {
+    document.querySelectorAll('.hs-user-colored').forEach((el) => {
+      el.classList.remove('hs-user-colored')
+      el.style.removeProperty('--hs-user-color')
+    })
+    if (!_userColors.size) return
+    document.querySelectorAll('.chat-line__message, [data-index]').forEach((msg) => {
+      const userEl = msg.querySelector(
+        '.chat-author__display-name, [data-a-target="chat-message-username"], button.inline.font-bold',
+      )
+      if (!userEl) return
+      const lower = (userEl.textContent || '').toLowerCase().trim()
+      const color = _userColors.get(lower)
+      if (color) {
+        userEl.style.setProperty('--hs-user-color', color)
+        userEl.classList.add('hs-user-colored')
+      }
+    })
+  }
+
+  // Initial load of user color settings
+  chrome.storage.local
+    .get(['hs_user_colors'])
+    .then((d) => {
+      rebuildUserColorMap(d.hs_user_colors)
+    })
+    .catch(() => {})
+
+  // Highlight rules on native rows, and the old-filter fold with the overlay off
+  // on this site (native-filter-rules.js — the overlay's engine, embedded by build.js)
+  const nativeRules = createNativeFilterRules({
+    document,
+    storage: browser.storage,
+    send: safeSendMessage,
+    site: isKick ? 'kick' : 'twitch',
+    me: () => getCurrentUsername() || '',
+    engine: { compileFilterRules, evaluateFilterRules },
+    legacy: { foldLegacyFilters, LEGACY_LOCAL_KEYS, LEGACY_UI_KEYS },
+    syncEligible: isLargeKeySyncEligible,
+  })
+  nativeRules.start()
+
+  // User color picker popup (right-click username → open)
+  // hs-exempt-start: swatches are the USER's name-colour choices, not our chrome
+  const HS_USER_COLOR_SWATCHES = [
+    '#fff',
+    '#ffd700',
+    '#ff4d4d',
+    '#ff66cc',
+    '#cc66ff',
+    '#6666ff',
+    '#33ccff',
+    '#33ffcc',
+    '#66ff66',
+    '#a3ff00',
+    '#ffaa00',
+    '#ff5500',
+    '#ffffff',
+    '#bbbbbb',
+    '#888888',
+    '#000000',
+  ]
+  // hs-exempt-end
+  let _ucpEl = null
+  let _ucpOffClick = null // outside-click listener — removed on EVERY close path
+  let _ucpAttachTimer = null // pending deferred-attach; cancelled if we close first
+  function closeUserColorPicker() {
+    if (_ucpAttachTimer) {
+      clearTimeout(_ucpAttachTimer)
+      _ucpAttachTimer = null
+    }
+    if (_ucpOffClick) {
+      document.removeEventListener('mousedown', _ucpOffClick, true)
+      _ucpOffClick = null
+    }
+    if (_ucpEl) {
+      _ucpEl.remove()
+      _ucpEl = null
+    }
+  }
+  function persistUserColors() {
+    const arr = Array.from(_userColors.entries()).map(([username, color]) => ({ username, color }))
+    browser.storage.local.set({ hs_user_colors: arr }).catch(() => {})
+  }
+  function setUserColor(username, color) {
+    const lower = String(username || '').toLowerCase()
+    if (!lower) return
+    if (color && /^#[0-9a-fA-F]{6}$/.test(color)) {
+      _userColors.set(lower, color)
+    } else {
+      _userColors.delete(lower)
+    }
+    persistUserColors()
+    applyUserColorsToVisibleMessages()
+  }
+  function openUserColorPicker(username, x, y) {
+    closeUserColorPicker()
+    const lower = username.toLowerCase()
+    const current = _userColors.get(lower) || '#fff'
+
+    const el = document.createElement('div')
+    el.id = 'hs-user-color-picker'
+    el.style.left = `${Math.min(x, window.innerWidth - 240)}px`
+    el.style.top = `${Math.min(y, window.innerHeight - 200)}px`
+
+    const header = document.createElement('div')
+    header.className = 'hs-ucp-header'
+    header.textContent = t('cs_color_for', [username])
+    el.appendChild(header)
+
+    const swatches = document.createElement('div')
+    swatches.className = 'hs-ucp-swatches'
+    for (const sw of HS_USER_COLOR_SWATCHES) {
+      const cell = document.createElement('div')
+      cell.className = 'hs-ucp-swatch'
+      cell.style.background = sw
+      cell.title = sw
+      cell.addEventListener('click', () => {
+        setUserColor(username, sw)
+        closeUserColorPicker()
+      })
+      swatches.appendChild(cell)
+    }
+    el.appendChild(swatches)
+
+    const row = document.createElement('div')
+    row.className = 'hs-ucp-row'
+    const colorInput = document.createElement('input')
+    colorInput.type = 'color'
+    colorInput.value = current
+    const hexInput = document.createElement('input')
+    hexInput.type = 'text'
+    hexInput.value = current
+    hexInput.maxLength = 7
+    hexInput.placeholder = '#fff'
+    colorInput.addEventListener('input', () => {
+      hexInput.value = colorInput.value
+    })
+    hexInput.addEventListener('input', () => {
+      if (/^#[0-9a-fA-F]{6}$/.test(hexInput.value)) colorInput.value = hexInput.value
+    })
+    const applyBtn = document.createElement('button')
+    applyBtn.textContent = t('cs_set')
+    applyBtn.addEventListener('click', () => {
+      setUserColor(username, hexInput.value || colorInput.value)
+      closeUserColorPicker()
+    })
+    const clearBtn = document.createElement('button')
+    clearBtn.textContent = t('cs_clear')
+    clearBtn.addEventListener('click', () => {
+      setUserColor(username, null)
+      closeUserColorPicker()
+    })
+    row.appendChild(colorInput)
+    row.appendChild(hexInput)
+    row.appendChild(applyBtn)
+    row.appendChild(clearBtn)
+    el.appendChild(row)
+
+    document.body.appendChild(el)
+    _ucpEl = el
+
+    // Deferred one tick so the click that opened the picker doesn't immediately
+    // trip the outside-click handler. closeUserColorPicker owns removal (via
+    // _ucpOffClick) AND cancels this pending attach (via _ucpAttachTimer), so a
+    // reopen before the tick fires can't strand off1 as a permanent document
+    // listener — the bug this whole path guards against.
+    _ucpAttachTimer = setTimeout(() => {
+      _ucpAttachTimer = null
+      const off = (ev) => {
+        if (!_ucpEl || _ucpEl.contains(ev.target)) return
+        closeUserColorPicker()
+      }
+      _ucpOffClick = off
+      document.addEventListener('mousedown', off, true)
+    }, 0)
+  }
+
+  // Predictions/polls chip — fed by MAIN-world GQL captures
+  let _eventChipEl = null
+  let _eventChipDismissTimer = null
+  function closeEventChip() {
+    if (_eventChipEl) {
+      _eventChipEl.remove()
+      _eventChipEl = null
+    }
+    cleanup.clearTimeout(_eventChipDismissTimer)
+    _eventChipDismissTimer = null
+  }
+  function renderEventChip({ kind, title, rows }) {
+    closeEventChip()
+    const el = document.createElement('div')
+    el.className = 'hs-event-chip'
+
+    const close = document.createElement('span')
+    close.className = 'hs-event-close'
+    hsXify(close)
+    close.addEventListener('click', closeEventChip)
+    el.appendChild(close)
+
+    const titleEl = document.createElement('div')
+    titleEl.className = 'hs-event-title'
+    titleEl.textContent = (kind === 'poll' ? t('cs_poll') : t('cs_prediction')) + (title || t('cs_active'))
+    el.appendChild(titleEl)
+
+    for (const r of (rows || []).slice(0, 8)) {
+      const row = document.createElement('div')
+      row.className = 'hs-event-row'
+      const lbl = document.createElement('span')
+      lbl.textContent = r.label || ''
+      const val = document.createElement('span')
+      val.textContent = r.value || ''
+      row.appendChild(lbl)
+      row.appendChild(val)
+      el.appendChild(row)
+    }
+
+    document.body.appendChild(el)
+    _eventChipEl = el
+    _eventChipDismissTimer = cleanup.setTimeout(closeEventChip, 5 * 60 * 1000)
+  }
+  function renderEventChipFromGql(op, data) {
+    if (!data || typeof data !== 'object') return
+    // Best-effort shape extraction — Twitch GQL shapes vary
+    const u = data.user || data.channel || data
+    const event = u?.predictionEvent || u?.activePoll || data?.event || data?.poll || data?.prediction
+    if (!event) return
+    const isPoll = /Poll/i.test(op) || event.choices
+    if (isPoll) {
+      const choices = event.choices || []
+      const total = choices.reduce((s, c) => s + (c.totalVotes || c.votes || 0), 0) || 1
+      const rows = choices.map((c) => ({
+        label: (c.title || c.text || '').slice(0, 32),
+        value: `${(((c.totalVotes || c.votes || 0) / total) * 100).toFixed(0)}%`,
+      }))
+      renderEventChip({ kind: 'poll', title: (event.title || '').slice(0, 64), rows })
+      return
+    }
+    // Prediction shape
+    const outcomes = event.outcomes || []
+    const totalPts = outcomes.reduce((s, o) => s + (o.totalPoints || 0), 0) || 1
+    const rows = outcomes.map((o) => ({
+      label: (o.title || '').slice(0, 32),
+      value: `${(((o.totalPoints || 0) / totalPts) * 100).toFixed(0)}%`,
+    }))
+    renderEventChip({ kind: 'prediction', title: (event.title || '').slice(0, 64), rows })
+  }
+
+  // FFZ/BTTV modifier WYSIWYG preview in chat input box.
+  // As the user types `Kappa w! h! ffzX c!#888`, the inserted Kappa <img>
+  // inside `.wysiwig-chat-input-emote` previews wide+tall+flipped+tinted live.
+  const HS_INPUT_EMOTE_SELECTOR = '.wysiwig-chat-input-emote, span[data-slate-node="element"][data-slate-void]'
+  const HS_INPUT_EDITOR_SELECTOR = '[data-slate-editor="true"], .chat-wysiwyg-input__editor, [data-testid="chat-input"]'
+  // Walk forward from emoteSpan and collect modifier text nodes (until the next emote).
+  // Returns { mods, hue, modTextElements } — elements are the parent spans we need to chip-style.
+  function _hsCollectModsAfterSpan(emoteSpan) {
+    const out = { mods: [], hue: null, modTextElements: [], plainTextEncountered: false }
+    const block = emoteSpan.closest('p, [data-slate-node="element"]:not([data-slate-void])') || emoteSpan.parentElement
+    if (!block) return out
+    const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT)
+    let n = walker.nextNode()
+    let found = false
+    while (n) {
+      if (n === emoteSpan) {
+        found = true
+      } else if (found) {
+        if (n.nodeType === 1 && n !== emoteSpan && n.matches?.(HS_INPUT_EMOTE_SELECTOR)) break
+        if (n.nodeType === 3) {
+          const tx = (n.textContent || '').trim()
+          if (!tx) {
+            n = walker.nextNode()
+            continue
+          }
+          // Try parsing tokens; stop at first non-modifier
+          const tokens = tx.split(/\s+/).filter(Boolean)
+          let allConsumed = true
+          for (const tok of tokens) {
+            if (HS_MODIFIER_CLASSES[tok]) {
+              out.mods.push(HS_MODIFIER_CLASSES[tok])
+              continue
+            }
+            const m = tok.match(HS_C_HEX_RE)
+            if (m) {
+              out.hue = hsHexToHueDeg(m[1])
+              continue
+            }
+            allConsumed = false
+            break
+          }
+          if (allConsumed) {
+            // Mark for chip styling — entire text is modifiers
+            if (n.parentElement) out.modTextElements.push(n.parentElement)
+          } else {
+            out.plainTextEncountered = true
+            break
+          }
+        }
+      }
+      n = walker.nextNode()
+    }
+    return out
+  }
+
+  function applyInputModifierPreview(editor) {
+    if (!editor || !_uiPrefs.emoteModifiers) return
+    const spans = editor.querySelectorAll(HS_INPUT_EMOTE_SELECTOR)
+    for (const span of spans) {
+      const img = span.querySelector('img')
+      if (!img) continue
+      const { mods, hue, modTextElements } = _hsCollectModsAfterSpan(span)
+      const key = `${mods.join(',')}|${hue == null ? '' : hue}`
+      if (span.dataset.hsModCache === key) continue
+      span.dataset.hsModCache = key
+
+      // Reset previous mod styles on this span/img
+      span.style.removeProperty('transform')
+      span.style.removeProperty('transform-origin')
+      span.style.removeProperty('margin-left')
+      span.style.removeProperty('margin-right')
+      span.style.removeProperty('margin-top')
+      span.style.removeProperty('margin-bottom')
+      span.style.removeProperty('--hs-mod-scale')
+      img.style.removeProperty('filter')
+
+      if (!mods.length && hue == null) {
+        // Restore any previously-chipped mod-text spans we no longer recognize
+        continue
+      }
+
+      // Multiset compose then clamp at ±4x per axis (layout limit)
+      let sx = 1,
+        sy = 1,
+        filter = ''
+      for (const m of mods) {
+        if (m === 'wide') sx *= 2
+        else if (m === 'tall') sy *= 2
+        else if (m === 'hflip') sx *= -1
+        else if (m === 'vmirror') sy *= -1
+      }
+      sx = Math.min(Math.max(sx, -4), 4)
+      sy = Math.min(Math.max(sy, -4), 4)
+      if (mods.includes('cursed')) filter += ' hue-rotate(45deg) saturate(2)'
+      if (hue != null) filter += ` hue-rotate(${hue}deg) saturate(1.6)`
+
+      // Apply transform to the WRAPPER span (so all visual artifacts scale together)
+      if (sx !== 1 || sy !== 1) {
+        span.style.setProperty('transform', `scale(${sx}, ${sy})`, 'important')
+        span.style.setProperty('transform-origin', 'center', 'important')
+        const fx = Math.abs(sx),
+          fy = Math.abs(sy)
+        if (fx > 1) {
+          const halfX = `calc(1em * ${(fx - 1) / 2})`
+          span.style.setProperty('margin-left', halfX, 'important')
+          span.style.setProperty('margin-right', halfX, 'important')
+        }
+        if (fy > 1) {
+          const halfY = `calc(1em * ${(fy - 1) / 2})`
+          span.style.setProperty('margin-top', halfY, 'important')
+          span.style.setProperty('margin-bottom', halfY, 'important')
+        }
+        span.style.setProperty('--hs-mod-scale', String(Math.max(fx, fy)))
+      }
+      if (filter.trim()) img.style.setProperty('filter', filter, 'important')
+
+      // Style the modifier text as an invisible chip + make non-editable so
+      // it merges with the preceding emote — single backspace removes both.
+      for (const el of modTextElements) {
+        el.classList.add('hs-input-mod-chip')
+        el.setAttribute('contenteditable', 'false')
+        el.dataset.hsModChipText = el.textContent || ''
+      }
+    }
+    // Clean stale chips: any element with the chip class whose text is no longer
+    // a pure modifier sequence gets reset.
+    editor.querySelectorAll('.hs-input-mod-chip').forEach((el) => {
+      const tx = (el.textContent || '').trim()
+      const tokens = tx.split(/\s+/).filter(Boolean)
+      const allMods = tokens.length && tokens.every((t) => HS_MODIFIER_CLASSES[t] || HS_C_HEX_RE.test(t))
+      if (!allMods) el.classList.remove('hs-input-mod-chip')
+    })
+
+    // Zero-width overlay stacking in input — when a known-overlay emote (rain0,
+    // hat0, RainTime, cvMask, etc.) sits AFTER another emote, pull it back over
+    // the previous emote with negative margin so it visually overlays.
+    // Walk through emote spans in order; track previous BASE.
+    let prevBaseSpan = null
+    const allInputEmotes = editor.querySelectorAll(HS_INPUT_EMOTE_SELECTOR)
+    for (const span of allInputEmotes) {
+      const img = span.querySelector('img')
+      const name = img?.alt || ''
+      const isOverlayName = _hsIsLikelyOverlayName(name)
+      if (isOverlayName && prevBaseSpan) {
+        span.classList.add('hs-input-overlay-on-prev')
+      } else {
+        span.classList.remove('hs-input-overlay-on-prev')
+        prevBaseSpan = span
+      }
+    }
+  }
+  // Hardcoded zero-width / known-overlay heuristic for input
+  const HS_KNOWN_OVERLAY_NAMES = new Set([
+    'RainTime',
+    'IceCold',
+    'cvMask',
+    'cvHazmat',
+    'SoSnowy',
+    'SantaHat',
+    'ReinDeer',
+    'TombStone',
+    'HypeChat',
+    'Hyperextend',
+    '3Below',
+    'TwitchVibes',
+    'SoCool',
+    'CandyCane',
+    'Holidays',
+    'Holiday',
+    'withcoffee',
+    'rain',
+    'fog',
+    'snow',
+    'ash',
+    'fire',
+  ])
+  function _hsIsLikelyOverlayName(name) {
+    if (!name) return false
+    if (HS_KNOWN_OVERLAY_NAMES.has(name)) return true
+    // A real emote literally named "lerolero0" is standalone — honor only its
+    // own zero-width flag, never the trailing-0 heuristic. Defer to the shared
+    // detector when we have a direct cache hit.
+    const direct = cachedAllEmotes?.get(name)
+    if (direct) return isZeroWidthEmote(name, direct, cachedAllEmotes)
+    // ends-with-0 convention: "rain0" → "rain" is the base, this is overlay.
+    if (name.endsWith('0') && name.length > 1) return true
+    return false
+  }
+  function applyInputModifiersToAllEditors() {
+    document.querySelectorAll(HS_INPUT_EDITOR_SELECTOR).forEach(applyInputModifierPreview)
+  }
+  let _hsInputModRaf = 0
+  function scheduleInputModifierPreview() {
+    if (_hsInputModRaf) return
+    _hsInputModRaf = requestAnimationFrame(() => {
+      _hsInputModRaf = 0
+      applyInputModifiersToAllEditors()
+    })
+  }
+  cleanup.addEventListener(
+    document,
+    'input',
+    (e) => {
+      if (!_uiPrefs.emoteModifiers) return
+      if (e.target.closest?.(HS_INPUT_EDITOR_SELECTOR)) scheduleInputModifierPreview()
+    },
+    'input-modifier-preview',
+  )
+
+  // Backspace handler: when cursor is right after a modifier chip,
+  // delete the chip + the preceding emote atomically (single keypress).
+  cleanup.addEventListener(
+    document,
+    'keydown',
+    (e) => {
+      if (!_uiPrefs.emoteModifiers) return
+      if (e.key !== 'Backspace' && e.key !== 'Delete') return
+      const editor = e.target.closest?.(HS_INPUT_EDITOR_SELECTOR)
+      if (!editor) return
+      const sel = window.getSelection?.()
+      if (!sel || sel.rangeCount === 0) return
+      const range = sel.getRangeAt(0)
+      if (!range.collapsed) return
+      // Look for a chip immediately before cursor
+      const node = range.startContainer
+      let probe = null
+      if (node.nodeType === 3 && range.startOffset === 0) {
+        probe = node.previousSibling || node.parentElement?.previousSibling
+      } else if (node.nodeType === 1) {
+        probe = range.startOffset > 0 ? node.childNodes[range.startOffset - 1] : null
+      }
+      // Walk up to find a chip element
+      while (probe && probe.nodeType === 1 && !probe.classList?.contains('hs-input-mod-chip')) {
+        if (probe.querySelector?.('.hs-input-mod-chip')) break
+        probe = probe.previousSibling
+      }
+      if (probe?.nodeType !== 1) return
+      const chip = probe.classList?.contains('hs-input-mod-chip') ? probe : probe.querySelector?.('.hs-input-mod-chip')
+      if (!chip) return
+      // Found a chip — also find the preceding emote span to delete with it
+      let prev = chip.previousSibling
+      while (prev && !(prev.nodeType === 1 && prev.matches?.(HS_INPUT_EMOTE_SELECTOR))) {
+        prev = prev.previousSibling
+      }
+      e.preventDefault()
+      e.stopPropagation()
+      // Remove chip + preceding emote in one go
+      try {
+        chip.remove()
+        if (prev) prev.remove()
+        scheduleInputModifierPreview()
+        // Trigger Slate to re-normalize
+        editor.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'deleteContentBackward' }))
+      } catch {}
+    },
+    { capture: true },
+    // Capture on purpose: this stops propagation to keep Twitch's own
+    // backspace handling from running, which only works ahead of it.
+    'input-modifier-backspace',
+  )
+  cleanup.addEventListener(
+    document,
+    'keyup',
+    (e) => {
+      if (!_uiPrefs.emoteModifiers) return
+      if (e.target.closest?.(HS_INPUT_EDITOR_SELECTOR)) scheduleInputModifierPreview()
+    },
+    'input-modifier-preview-keyup',
+  )
+  // Also catch programmatic changes (Slate void inserts) via observer
+  const _hsInputObserver = cleanup.trackObserver(new MutationObserver(scheduleInputModifierPreview))
+  function attachInputModifierObserver() {
+    if (!_uiPrefs.emoteModifiers) return
+    document.querySelectorAll(HS_INPUT_EDITOR_SELECTOR).forEach((ed) => {
+      if (ed.dataset.hsInputModObserver) return
+      ed.dataset.hsInputModObserver = '1'
+      _hsInputObserver.observe(ed, { childList: true, subtree: true, characterData: true })
+    })
+  }
+  cleanup.setTimeout(attachInputModifierObserver, 1500)
+  cleanup.setInterval(attachInputModifierObserver, 5000)
+
+  // Shared right-click menu state + placement/dismiss (used by the username menu).
+  let _emoteMenuEl = null
+  let _emoteMenuCleanup = null
+  // Focus that was active before the menu opened — restored on close so
+  // keyboard/screen-reader users land back where they were, not at <body>.
+  let _emoteMenuOpenerEl = null
+  function closeEmoteMenu() {
+    if (_emoteMenuEl) {
+      _emoteMenuEl.remove()
+      _emoteMenuEl = null
+    }
+    if (_emoteMenuCleanup) {
+      try {
+        _emoteMenuCleanup()
+      } catch {}
+      _emoteMenuCleanup = null
+    }
+    if (_emoteMenuOpenerEl?.isConnected) {
+      try {
+        _emoteMenuOpenerEl.focus({ preventScroll: true })
+      } catch (_) {}
+    }
+    _emoteMenuOpenerEl = null
+  }
+  // Shared placement + dismiss wiring for right-click menus (emote + message).
+  // Measures off-screen, edge-flips, then wires mousedown/key/blur/scroll dismiss.
+  function placeAndWireMenu(el, x, y, kbdHandlers = {}) {
+    el.setAttribute('role', 'menu')
+    _emoteMenuOpenerEl = document.activeElement
+    el.style.visibility = 'hidden'
+    el.style.left = '0px'
+    el.style.top = '0px'
+    document.body.appendChild(el)
+    _emoteMenuEl = el
+
+    const mw = el.offsetWidth
+    const mh = el.offsetHeight
+    const vw = window.innerWidth
+    const vh = window.innerHeight
+    const flipX = x + mw + 8 > vw
+    const flipY = y + mh + 8 > vh
+    const left = flipX ? Math.max(4, x - mw) : Math.min(x, vw - mw - 4)
+    const top = flipY ? Math.max(4, y - mh) : Math.min(y, vh - mh - 4)
+    el.style.left = `${left}px`
+    el.style.top = `${top}px`
+    if (flipX) el.classList.add('hs-em-flip-x')
+    if (flipY) el.classList.add('hs-em-flip-y')
+    el.style.visibility = ''
+    try {
+      el.focus({ preventScroll: true })
+    } catch {}
+
+    const onDown = (ev) => {
+      if (!_emoteMenuEl || _emoteMenuEl.contains(ev.target)) return
+      closeEmoteMenu()
+    }
+    const onKey = (ev) => {
+      if (!_emoteMenuEl) return
+      if (ev.key === 'Escape') {
+        ev.preventDefault()
+        closeEmoteMenu()
+        return
+      }
+      const fn = kbdHandlers[ev.key]
+      if (fn) {
+        ev.preventDefault()
+        try {
+          fn()
+        } catch {}
+        closeEmoteMenu()
+      }
+    }
+    const onScroll = () => closeEmoteMenu()
+    setTimeout(() => {
+      document.addEventListener('mousedown', onDown, true)
+      document.addEventListener('keydown', onKey, true)
+      window.addEventListener('blur', closeEmoteMenu, { once: true })
+      // No capture: a capturing scroll listener fires on the chat container's
+      // constant auto-scroll, killing the menu the instant it opens. Menu is
+      // position:fixed so it stays put — only dismiss on genuine window scroll.
+      window.addEventListener('scroll', onScroll, { passive: true, once: true })
+      _emoteMenuCleanup = () => {
+        document.removeEventListener('mousedown', onDown, true)
+        document.removeEventListener('keydown', onKey, true)
+        window.removeEventListener('blur', closeEmoteMenu)
+        window.removeEventListener('scroll', onScroll)
+      }
+    }, 0)
+  }
+
+  // Non-sensitive postMessage handlers (no tokens)
+  cleanup.addEventListener(
+    window,
+    'message',
+    async (event) => {
+      if (event.source !== window) return
+      if (event.origin !== window.location.origin) return
+
+      if (event.data?.type === 'heatsync-settings-changed' && event.data.settings) {
+        const expected = window.HS?.getMainWorldNonce?.()
+        if (!expected || event.data.nonce !== expected) return
+        log(' Settings changed via postMessage:', event.data.settings)
+        applyUiSettings(event.data.settings)
+      }
+
+      // Native Twitch emotes from autocomplete-hook.js (MAIN world) — store for multichat.
+      // Nonce not available here (autocomplete-hook.js has no nonce access); apply strict
+      // payload validation instead: safe name charset, CDN-only URLs, array cap.
+      if (event.data?.type === 'heatsync-native-emotes' && Array.isArray(event.data.emotes)) {
+        const EMOTE_CDN_RE =
+          /^https:\/\/(static-cdn\.jtvnw\.net\/emoticons|cdn\.7tv\.app|cdn\.betterttv\.net|cdn\.frankerfacez\.com)\//
+        const EMOTE_NAME_RE = /^[A-Za-z0-9_:\-()]+$/
+        const raw = event.data.emotes.slice(0, 2000) // cap array to 2000 entries
+        const emotes = raw
+          .filter(
+            (e) =>
+              e &&
+              typeof e.name === 'string' &&
+              e.name.length >= 1 &&
+              e.name.length <= 64 &&
+              EMOTE_NAME_RE.test(e.name) &&
+              (!e.url || (typeof e.url === 'string' && e.url.length <= 300 && EMOTE_CDN_RE.test(e.url))),
+          )
+          // Rebuild fresh whitelisted objects — never store page-supplied objects
+          // verbatim (extra fields = storage bloat + fake owned-emote injection).
+          .map((e) => {
+            const out = { name: e.name }
+            if (e.url) out.url = e.url
+            if (typeof e.hash === 'string' && /^[\w-]{1,100}$/.test(e.hash)) out.hash = e.hash
+            if (typeof e.owner === 'string' && /^\w{1,25}$/.test(e.owner)) out.owner = e.owner
+            if (out.owner && typeof e.ownerDisplay === 'string' && e.ownerDisplay.length <= 50) {
+              out.ownerDisplay = e.ownerDisplay
+            }
+            if (typeof e.tier === 'string' && /^[a-z0-9]{1,16}$/i.test(e.tier)) out.tier = e.tier
+            return out
+          })
+        log(' Received', emotes.length, 'native Twitch emotes from MAIN world')
+        chrome.storage.local.set({ native_twitch_emotes: emotes })
+      }
+
+      // Predictions/polls chip from MAIN-world GQL interception
+      if (event.data?.type === 'heatsync-gql-data' && _uiPrefs.showPredictionsChip) {
+        const expected = window.HS?.getMainWorldNonce?.()
+        if (!expected || event.data.nonce !== expected) return
+        const op = String(event.data.operation || '')
+        if (/Prediction|Poll/i.test(op)) {
+          try {
+            renderEventChipFromGql(op, event.data.data)
+          } catch {}
+        }
+      }
+    },
+    'auth-message-handler',
+  )
+
+  // Native Twitch chat: paste/drop image/video → upload → insert as text.
+  //
+  // Lives here (isolated world), not in autocomplete-hook.js (MAIN world),
+  // on purpose: MAIN-world code runs in the page's own JS context, which any
+  // twitch.tv page script (ads, third-party embeds) shares. If the upload
+  // itself were triggered from there, any such script could window.postMessage
+  // straight into it and spend the user's own auth token uploading arbitrary
+  // bytes — no DOM interaction needed at all. Doing the upload here, gated on
+  // a real paste/drop event's clipboardData/dataTransfer, keeps the privileged
+  // action (spending the auth token) out of reach of a bare postMessage.
+  // Insertion still has to cross to MAIN world (Slate lives there) — that
+  // bridge only carries text, the same class of thing heatsync-insert-emote
+  // already exposes to any page script today.
+  function isTwitchChatInput(target) {
+    return !!(target?.closest?.('[data-slate-editor="true"]') || target?.closest?.('[data-a-target="chat-input"]'))
+  }
+  if (window.location.hostname.includes('twitch.tv')) {
+    cleanup.addEventListener(
+      document,
+      'paste',
+      async (e) => {
+        if (!isTwitchChatInput(e.target)) return
+        const items = e.clipboardData?.items
+        if (!items) return
+        const files = []
+        for (const item of items) {
+          if (item.kind === 'file' && (item.type.startsWith('image/') || item.type.startsWith('video/'))) {
+            const file = item.getAsFile()
+            if (file) files.push(file)
+          }
+        }
+        if (!files.length) return
+        e.preventDefault()
+        const urls = await window.HS.uploadMediaFiles(files)
+        if (urls.length) window.postMessage({ type: 'heatsync-insert-text', text: urls.join(' ') }, location.origin)
+      },
+      // Capture on purpose — must beat Slate's own bubble-phase paste handling.
+      { capture: true },
+      'twitch-media-paste',
+    )
+    cleanup.addEventListener(
+      document,
+      'drop',
+      async (e) => {
+        if (!isTwitchChatInput(e.target)) return
+        const files = e.dataTransfer?.files
+        if (!files?.length) return
+        e.preventDefault()
+        const urls = await window.HS.uploadMediaFiles(Array.from(files))
+        if (urls.length) window.postMessage({ type: 'heatsync-insert-text', text: urls.join(' ') }, location.origin)
+      },
+      { capture: true },
+      'twitch-media-drop',
+    )
+  }
+
+  // Inject CSS for emote hover effects (full emote background like website)
+  const style = document.createElement('style')
+  style.id = 'heatsync-emote-styles'
+  style.textContent = `
+  /* CSS containment localizes layout/paint changes to a single message —
+     when a badge or paint is applied async, only that message reflows. */
+  .chat-line__message {
+    contain: layout style;
+  }
+
+  /* Backfilled messages — slightly dimmed to distinguish from live */
+  .heatsync-backfill {
+    opacity: 0.85 !important;
+    padding: 5px 20px !important;
+    line-height: 20px !important;
+    font-size: 13px !important;
+  }
+  .heatsync-backfill .chat-author__display-name {
+    font-weight: 700 !important;
+    font-size: 13px !important;
+  }
+  .heatsync-backfill .text-fragment {
+    font-size: 13px !important;
+    color: #fff !important;
+  }
+
+  /* Heatsync emote base styles */
+  .heatsync-emote-wrapper {
+    position: relative !important;
+    display: inline-block !important;
+    vertical-align: middle !important;
+    line-height: 0 !important;
+    font-size: 0 !important;
+  }
+  .heatsync-emote-wrapper > img {
+    display: block !important;
+    width: auto !important;
+    height: auto !important;
+    max-width: none !important;
+    max-height: none !important;
+    /* Lift the emote above the hover ::before plate (wrapper z1, stack z3) so
+       it shows in full color on the gray hover bg instead of being hidden. */
+    position: relative !important;
+    z-index: 4 !important;
+  }
+  .heatsync-emote-wrapper.heatsync-own-emote > img {
+    height: var(--hs-emote-height, 28px) !important;
+  }
+  .heatsync-emote-wrapper.heatsync-overlay > img {
+    height: auto !important;
+  }
+
+  /* Tighten gap between consecutive heatsync emotes (e.g. "eel1 eel2 eel3")
+     so the run reads as one continuous image instead of spaced-out tiles.
+     Negative margin pulls the wrapper over the preceding whitespace text node. */
+  .heatsync-emote-wrapper + .heatsync-emote-wrapper,
+  .heatsync-emote-wrapper + .heatsync-emote-stack,
+  .heatsync-emote-stack + .heatsync-emote-wrapper,
+  .heatsync-emote-stack + .heatsync-emote-stack {
+    margin-left: -3px !important;
+  }
+
+  /* Emote cursor */
+  img[src*="cdn.7tv.app"],
+  img[src*="cdn.betterttv.net"],
+  img[src*="cdn.frankerfacez.com"] {
+    cursor: pointer !important;
+  }
+
+  /* Locally name-blocked emotes — fully hidden but kept in flow (not display:none)
+     so the element stays right-clickable for unblock; a dim/grayscale image was
+     still legible for gore/NSFW content, which defeats the point of blocking. The picture is
+     slid out of its box so the dashed outline stays: opacity 0 would hide it too and
+     leave nothing to right-click. */
+  img[data-hs-name-blocked] {
+    object-fit: none !important;
+    object-position: 10000px 10000px !important;
+    outline: 2px dashed #ffffff !important;
+    outline-offset: -2px !important;
+    cursor: pointer !important;
+  }
+
+  /* Blocked emotes - gray outline always visible (compensate for modifier scale via --hs-mod-scale) */
+  img[data-heatsync-state="blocked"] {
+    outline: calc(2px / var(--hs-mod-scale, 1)) solid #ffffff !important;
+    outline-offset: calc(-2px / var(--hs-mod-scale, 1)) !important;
+  }
+
+  /* Blocked emotes - subtle gray outline normally
+     Outline width inverse-scales with modifier transform so visual stays 2px
+     even when wrapper has scale(2,1) etc. */
+  .heatsync-emote-wrapper.emote-overlay-blocked > img.heatsync-emote {
+    object-fit: none !important;
+    object-position: 10000px 10000px !important; /* the picture slides out of its box and is clipped; the outline stays (opacity hid both, object-view-box inset(100%) is ignored) */
+    outline: calc(2px / var(--hs-mod-scale, 1)) dashed #ffffff !important;
+    outline-offset: calc(-2px / var(--hs-mod-scale, 1)) !important;
+  }
+
+  /* Blocked emotes inside expanded stacks - keep dimensions locked so layout doesn't shift */
+  .heatsync-emote-stack.expanded .heatsync-emote-wrapper.emote-overlay-blocked {
+    min-width: var(--hs-emote-width, 28px) !important;
+    min-height: var(--hs-emote-height, 28px) !important;
+  }
+
+  /* Blocked emotes - white outline when expanded (managing) */
+  .heatsync-emote-stack.expanded .heatsync-emote-wrapper.emote-overlay-blocked > img.heatsync-emote {
+    outline-color: #fff !important;
+  }
+
+  /* Emote preview tooltip - OUR ONLY TOOLTIP (minimal Chatterino style) */
+  .heatsync-emote-preview {
+    position: fixed !important;
+    z-index: 5000 !important;
+    pointer-events: none !important;
+    background: #000000 !important;
+    border: none !important;
+    border-radius: 0 !important;
+    padding: 6px !important;
+    max-width: none !important;
+    max-height: none !important;
+    overflow: visible !important;
+    display: none !important; /* Hidden by default, shown on hover */
+  }
+
+  .heatsync-emote-preview img {
+    display: block !important;
+    object-fit: contain !important;
+    margin: 0 auto !important;
+    image-rendering: pixelated !important;
+  }
+
+  .heatsync-emote-preview-name {
+    color: #fff !important;
+    font-size: 13px !important;
+    font-weight: 700 !important;
+    text-align: center !important;
+    margin-top: 4px !important;
+    font-family: monospace !important;
+  }
+
+  /* Stacked emotes preview - horizontal layout */
+  .heatsync-stacked-preview {
+    display: flex !important;
+    flex-direction: row !important;
+    gap: 12px !important;
+    align-items: flex-start !important;
+  }
+
+  .heatsync-stacked-emote-item {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+  }
+
+  .heatsync-stacked-emote-item img {
+    display: block !important;
+    max-width: 128px !important;
+    max-height: 128px !important;
+    width: auto !important;
+    height: auto !important;
+    object-fit: contain !important;
+  }
+
+  /* ============================================ */
+  /* HEAT MESSAGE BORDERS (by heat tier)          */
+  /* ============================================ */
+  /* Emojis — scaled by --hs-emoji-scale (1/2/4x) from hs_emoji_size storage. */
+  .heatsync-emoji {
+    font-size: calc(1em * var(--hs-emoji-scale, 1)) !important;
+    line-height: 1 !important;
+    vertical-align: middle !important;
+    display: inline-block !important;
+  }
+
+  /* A heatsync emote in the twitch input is a bare 1x image (a 7tv emote can be 8px tall); chat gives
+     them the row height, so the input does too. Twitch's own emotes are already row-sized. */
+  [data-a-target="chat-input"] img.chat-line__message--emote:not([src*="jtvnw.net"]),
+  .chat-line__message img.chat-line__message--emote:not([src*="jtvnw.net"]) {
+    height: var(--hs-emote-height, 28px) !important;
+    width: auto !important;
+    max-width: none !important;
+  }
+
+  /* twitch builds an emote it was handed under our placeholder id from a placeholder address; the real image
+     is swapped in a moment later. Until then the picture is not shown, so no broken image flashes. */
+  img[src*="__FFZ__999999"],
+  img[srcset*="__FFZ__999999"] {
+    visibility: hidden !important;
+  }
+
+  /* the row you just sent: twitch draws it as its own emote (a heatsync one is a proxied 1x image) in a fixed
+     square box, so a wide emote came out squeezed. The box takes the image's width. */
+  .chat-line__message .chat-image__container:has(img.chat-line__message--emote:not([src*="jtvnw.net"])) {
+    width: auto !important;
+    height: auto !important;
+  }
+
+  /* Emote overlay stacking (7TV zero-width emotes) */
+  .heatsync-emote-stack {
+    display: inline-flex !important;
+    position: relative !important;
+    vertical-align: middle !important;
+    align-items: center !important;
+    justify-content: center !important;
+    overflow: visible !important;
+    transition: gap 0.12s ease, padding 0.12s ease, background 0.12s ease !important;
+  }
+
+  /* Force overflow visible on Twitch emote containers inside stacks */
+  .heatsync-emote-stack .chat-line__message--emote-button,
+  .heatsync-emote-stack .chat-line__message--emote-button *,
+  .heatsync-emote-stack [class*="emote-button"],
+  .heatsync-emote-stack [class*="emote-button"] * {
+    overflow: visible !important;
+  }
+
+  /* Base emote in stack - sets the size */
+  /* Note: collapse button (×) is first-child, so use :not(.heatsync-overlay) for base */
+  .heatsync-emote-stack > .heatsync-emote-wrapper:not(.heatsync-overlay) {
+    position: relative !important;
+    z-index: 1 !important;
+  }
+
+  /* Collapsed stack: every emote shares one grid cell, so the stack is as wide as its widest
+     emote and the narrower ones centre over/under it. A wide overlay (a curtain) widens the
+     stack to the right instead of spilling left over the username. */
+  .heatsync-emote-stack:not(.expanded) {
+    display: inline-grid !important;
+    justify-items: center !important;
+    align-items: center !important;
+  }
+  .heatsync-emote-stack:not(.expanded) > .heatsync-emote-wrapper,
+  .heatsync-emote-stack:not(.expanded) > .heatsync-emoji {
+    grid-area: 1 / 1 !important;
+    position: relative !important;
+    width: auto !important;
+    height: auto !important;
+    margin-left: 0 !important;
+  }
+  .heatsync-emote-stack > .heatsync-overlay,
+  .heatsync-emote-stack > .heatsync-emote-wrapper.heatsync-overlay {
+    z-index: 2 !important;
+    /* pointer-events: auto so wide overlays can be hovered directly */
+    pointer-events: auto !important;
+  }
+
+  /* Overlay images keep native 1x size, no constraints */
+  .heatsync-emote-stack > .heatsync-overlay img,
+  .heatsync-emote-stack > .heatsync-emote-wrapper.heatsync-overlay img {
+    width: auto !important;
+    height: auto !important;
+    max-width: none !important;
+    max-height: none !important;
+    object-fit: none !important;
+  }
+
+  /* ============================================ */
+  /* EMOTE STACK EXPAND/COLLAPSE (website parity) */
+  /* ============================================ */
+
+  /* Clickable indicator on collapsed stacks */
+  .heatsync-emote-stack {
+    cursor: pointer !important;
+  }
+
+  /* Collapsed stack count badge */
+  .heatsync-emote-stack:not(.expanded)::after {
+    content: attr(data-stack-count) !important;
+    position: absolute !important;
+    top: -4px !important;
+    right: -6px !important;
+    background: #fff !important;
+    color: #000 !important;
+    font-size: 13px !important;
+    font-weight: bold !important;
+    line-height: 1 !important;
+    padding: 1px 3px !important;
+    border-radius: 0 !important;
+    z-index: 10 !important;
+    pointer-events: none !important;
+    opacity: 0 !important;
+    transition: opacity 0.1s !important;
+  }
+  .heatsync-emote-stack:not(.expanded):hover::after {
+    opacity: 1 !important;
+  }
+
+  /* Expanded state - spread emotes horizontally as an absolute popout
+     so the wider expanded width doesn't push subsequent text to a new line.
+     Anchored to the static position of the collapsed stack via auto left/top. */
+  .heatsync-emote-stack.expanded {
+    display: inline-flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    align-items: center !important;
+    gap: 6px !important;
+    background: #000000 !important;
+    border-radius: 0 !important;
+    padding: 4px 8px !important;
+    position: absolute !important;
+    z-index: 100 !important;
+  }
+
+  /* When expanded, overlays become relative (side-by-side) */
+  .heatsync-emote-stack.expanded > .heatsync-overlay,
+  .heatsync-emote-stack.expanded > .heatsync-emote-wrapper.heatsync-overlay {
+    position: relative !important;
+    top: auto !important;
+    left: auto !important;
+    transform: none !important;
+    pointer-events: auto !important;
+    transition: position 0s, top 0s, left 0s, transform 0.12s ease !important;
+  }
+
+
+  /* Collapse button (×) - hidden by default */
+  .heatsync-stack-collapse {
+    display: none !important;
+  }
+  /* Show collapse button when expanded */
+  .heatsync-emote-stack.expanded .heatsync-stack-collapse {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 16px !important;
+    height: 16px !important;
+    background: #000000 !important;
+    color: #fff !important;
+    border-radius: 0 !important;
+    font-size: 13px !important;
+    cursor: pointer !important;
+    margin-right: 4px !important;
+    flex-shrink: 0 !important;
+    z-index: 10 !important;
+    pointer-events: auto !important;
+  }
+  .heatsync-emote-stack.expanded .heatsync-stack-collapse:hover {
+    background: #fff !important;
+    color: #000 !important;
+  }
+
+  /* Block all button (⊘) - hidden by default */
+  .heatsync-stack-block-all {
+    display: none !important;
+  }
+  /* Show block-all button when expanded */
+  .heatsync-emote-stack.expanded .heatsync-stack-block-all {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 16px !important;
+    height: 16px !important;
+    background: #000000 !important;
+    color: #fff !important;
+    border-radius: 0 !important;
+    font-size: 13px !important;
+    cursor: pointer !important;
+    margin-left: 4px !important;
+    flex-shrink: 0 !important;
+    z-index: 10 !important;
+    pointer-events: auto !important;
+  }
+  .heatsync-emote-stack.expanded .heatsync-stack-block-all:hover {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+
+  /* Username mention links — hover underline */
+  .hs-username-colored,
+  .hs-mention-colored {
+    text-decoration: none !important;
+    transition: text-decoration 0.1s !important;
+  }
+  .hs-username-colored:hover,
+  .hs-mention-colored:hover {
+    text-decoration: underline !important;
+  }
+
+  /* Muted users — grey username, hide all message content via CSS (React-safe) */
+  .hs-user-muted .chat-author__display-name,
+  .hs-user-muted [data-a-target="chat-message-username"],
+  .hs-user-muted button.inline.font-bold {
+    color: #ffffff !important;
+    background: none !important;
+    -webkit-background-clip: unset !important;
+    -webkit-text-fill-color: #ffffff !important;
+    animation: none !important;
+    text-shadow: none !important;
+  }
+  /* Hide message body, text, emotes, links — everything after the username */
+  .hs-user-muted [data-a-target="chat-line-message-body"],
+  .hs-user-muted .text-fragment,
+  .hs-user-muted .mention-fragment,
+  .hs-user-muted .heatsync-emote-wrapper,
+  .hs-user-muted .heatsync-emote-stack,
+  .hs-user-muted .link-fragment,
+  .hs-user-muted span.font-normal,
+  .hs-user-muted .chat-line__message--emote-button,
+  .hs-user-muted [class*="emote-button"] {
+    display: none !important;
+  }
+
+  /* Timed-out / banned user messages — dimmed but visible */
+  .hs-timed-out {
+    opacity: 0.5 !important;
+  }
+
+  /* Third-party cosmetic badges (BTTV/FFZ/7TV) */
+  .hs-cosmetic-badge {
+    /* !important + max-* so the site's native chat image CSS can't balloon
+       these in lite mode (native chat has no competing CSS in the overlay,
+       so the bug only showed with the panel off). */
+    display: inline-block !important;
+    width: 18px !important;
+    height: 18px !important;
+    max-width: 18px !important;
+    max-height: 18px !important;
+    vertical-align: middle !important;
+    margin-right: 2px !important;
+    cursor: default !important;
+  }
+
+  /* Badge hover tooltip — 4x preview with name */
+  #hs-badge-tooltip {
+    position: fixed;
+    z-index: 999999;
+    background: #000;
+    border: 2px solid #ffffff;
+    border-radius: 0;
+    padding: 8px;
+    pointer-events: none;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+  }
+  #hs-badge-tooltip.active {
+    display: flex;
+  }
+  #hs-badge-tooltip img {
+    display: block !important;
+    width: 72px !important;
+    height: 72px !important;
+    object-fit: contain;
+    image-rendering: pixelated;
+    image-rendering: -moz-crisp-edges;
+  }
+  #hs-badge-tooltip .hs-badge-tooltip-name {
+    color: #fff;
+    font-size: 13px;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+  #hs-badge-tooltip .hs-badge-tooltip-source {
+    font-size: 13px;
+    font-weight: 700;
+    padding: 2px 6px;
+    margin: 2px -8px -8px;
+    width: calc(100% + 16px);
+    text-align: center;
+    background: #000000;
+    color: #fff;
+  }
+
+  /* FFZ-style emote modifiers (w! h! ffzX ffzY c!#hex etc.) */
+  .heatsync-emote-wrapper.heatsync-mod-wide { padding-right: 1ch !important; }
+  .heatsync-emote-wrapper.heatsync-mod-tall { vertical-align: top !important; }
+
+  /* Modifier text in chat input — fully hidden (transparent + zero-size).
+     The modifier still exists in the Slate model so backspace/edit work,
+     but it takes zero visual space → next emote (raintime overlay) sits
+     directly adjacent to the actual emote, not past a "w!" placeholder. */
+  .hs-input-mod-chip {
+    display: inline-block !important;
+    font-size: 0 !important;
+    line-height: 0 !important;
+    width: 0 !important;
+    height: 0 !important;
+    color: transparent !important;
+    opacity: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+    vertical-align: middle !important;
+    user-select: text !important;
+    pointer-events: none !important;
+  }
+  /* Zero-width overlay emotes in input — pull the next emote back over
+     the previous one so it visually stacks (raintime sits over Kappa). */
+  .wysiwig-chat-input-emote.hs-input-overlay-on-prev {
+    margin-left: calc(-1 * var(--hs-emote-width, 28px)) !important;
+    position: relative !important;
+    z-index: 2 !important;
+    pointer-events: none !important;
+  }
+  .heatsync-emote-wrapper.heatsync-mod-cursed > img {
+    animation: hs-mod-cursed 1.2s linear infinite !important;
+  }
+  @keyframes hs-mod-cursed {
+    0%   { filter: hue-rotate(0deg)   saturate(1.4); }
+    25%  { filter: hue-rotate(90deg)  saturate(1.4); }
+    50%  { filter: hue-rotate(180deg) saturate(1.4); }
+    75%  { filter: hue-rotate(270deg) saturate(1.4); }
+    100% { filter: hue-rotate(360deg) saturate(1.4); }
+  }
+
+  /* Highlight rule match on a native row (native-filter-rules.js) */
+  .chat-line__message.hs-keyword-match,
+  .hs-keyword-match {
+    background-color: #000000 !important;
+    box-shadow: inset 0 0 0 1px #ffffff !important;
+  }
+
+  /* Show deleted/timeout messages (toggle .hs-show-cleared on <html>) */
+  .hs-show-cleared .chat-line__message--deleted,
+  .hs-show-cleared [class*="chat-line__message"][class*="deleted"],
+  .hs-show-cleared .chat-line__message--moderated {
+    display: block !important;
+    opacity: 0.55 !important;
+  }
+  .hs-show-cleared .chat-line__message--deleted *,
+  .hs-show-cleared [class*="chat-line__message"][class*="deleted"] * {
+    text-decoration: line-through !important;
+  }
+
+  /* Per-user color override (right-click username → set color) */
+  .hs-user-colored {
+    color: var(--hs-user-color, inherit) !important;
+  }
+
+  /* User color picker popup */
+  #hs-user-color-picker {
+    position: fixed; z-index: 2147483646;
+    background: #000; color: #fff;
+    border: 1px solid #fff;
+    padding: 8px; min-width: 220px;
+    font-family: monospace; font-size: 13px;
+  }
+  #hs-user-color-picker .hs-ucp-header {
+    font-size: 13px; opacity: 0.8; margin-bottom: 6px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  #hs-user-color-picker .hs-ucp-swatches {
+    display: grid; grid-template-columns: repeat(8, 1fr); gap: 3px; margin-bottom: 6px;
+  }
+  #hs-user-color-picker .hs-ucp-swatch {
+    width: 20px; height: 20px; cursor: pointer;
+    border: 1px solid #ffffff;
+  }
+  #hs-user-color-picker .hs-ucp-swatch:hover { border-color: #fff; }
+  #hs-user-color-picker .hs-ucp-row { display: flex; gap: 4px; }
+  #hs-user-color-picker input[type=color] { width: 32px; height: 24px; padding: 0; border: 1px solid #ffffff; background: #000; }
+  #hs-user-color-picker input[type=text] { flex: 1; background: #000; color: #fff; border: 1px solid #ffffff; padding: 2px 4px; font-family: inherit; font-size: 13px; }
+  #hs-user-color-picker button {
+    background: #000; color: #fff; border: 1px solid #ffffff;
+    padding: 2px 8px; cursor: pointer; font: inherit;
+  }
+  #hs-user-color-picker button:hover { background: #fff; color: #000; }
+
+  /* Right-click username menu */
+  .hs-ctx-menu {
+    position: fixed; z-index: 2147483646;
+    background: #000; color: #fff;
+    border: 1px solid #fff;
+    padding: 0; min-width: 220px; max-width: 280px;
+    font-family: monospace; font-size: 13px;
+    animation: hs-em-in 80ms ease-out;
+    transform-origin: top left;
+  }
+  @keyframes hs-em-in {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+  .hs-ctx-menu.hs-em-flip-x { transform-origin: top right; }
+  .hs-ctx-menu.hs-em-flip-y { transform-origin: bottom left; }
+  .hs-ctx-menu.hs-em-flip-x.hs-em-flip-y { transform-origin: bottom right; }
+  .hs-ctx-menu .hs-em-header {
+    padding: 4px 10px; font-size: 13px; color: #ffffff;
+    text-transform: none; letter-spacing: 0.5px;
+    background: #000000;
+  }
+  .hs-ctx-menu .hs-em-item {
+    padding: 6px 10px; cursor: pointer; user-select: none;
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 8px;
+  }
+  .hs-ctx-menu .hs-em-item:hover { background: #fff; color: #000; }
+  .hs-ctx-menu .hs-em-item:hover .hs-em-kbd { background: #000; color: #fff; border-color: #000; }
+  .hs-ctx-menu .hs-em-item.hs-em-danger { color: #ff0000; }
+  .hs-ctx-menu .hs-em-item.hs-em-danger:hover { background: #fff; color: #000; }
+  .hs-ctx-menu .hs-em-item.hs-em-good { color: #00ff00; }
+  .hs-ctx-menu .hs-em-item.hs-em-good:hover { background: #fff; color: #000; }
+  .hs-ctx-menu .hs-em-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .hs-ctx-menu .hs-em-kbd {
+    display: inline-block; min-width: 14px; padding: 0 4px;
+    border: 1px solid #ffffff; background: #000000; color: #ffffff;
+    font-size: 13px; line-height: 14px; text-align: center;
+  }
+  .hs-ctx-menu .hs-em-sep { height: 1px; background: #000000; margin: 2px 0; }
+
+  /* Predictions/polls chip */
+  .hs-event-chip {
+    position: fixed; right: 12px; bottom: 12px;
+    z-index: 9999;
+    background: #000; color: #fff;
+    border: 1px solid #fff;
+    padding: 6px 10px;
+    font-family: monospace; font-size: 13px;
+    max-width: 280px;
+  }
+  .hs-event-chip .hs-event-title { font-weight: 700; margin-bottom: 4px; }
+  .hs-event-chip .hs-event-row {
+    display: flex; justify-content: space-between; gap: 8px;
+    padding: 1px 0; opacity: 0.85;
+  }
+  .hs-event-chip .hs-event-close {
+    position: absolute; top: 2px; right: 4px;
+    cursor: pointer; opacity: 0.5;
+  }
+  .hs-event-chip .hs-event-close:hover { opacity: 1; background: #fff; color: #000; }
+`
+  // Twitch SPA navigations can sweep injected <style> tags from <head>.
+  // Keep the node referenced and re-append whenever it goes missing — the
+  // message observer calls this per batch (getElementById when healthy).
+  function ensureEmoteStyles() {
+    if (document.getElementById('heatsync-emote-styles')) return
+    try {
+      document.head.appendChild(style)
+    } catch (_) {}
+  }
+  ensureEmoteStyles()
+  log(' 🎨 CSS injected for emote hover effects')
+
+  // Badge hover tooltip for cosmetic badges (BTTV/FFZ/7TV/Chatterino)
+  function createBadgeTooltip() {
+    const tooltip = document.createElement('div')
+    tooltip.id = 'hs-badge-tooltip'
+    const img = document.createElement('img')
+    const name = document.createElement('span')
+    name.className = 'hs-badge-tooltip-name'
+    const source = document.createElement('span')
+    source.className = 'hs-badge-tooltip-source'
+    tooltip.appendChild(img)
+    tooltip.appendChild(name)
+    tooltip.appendChild(source)
+    document.body.appendChild(tooltip)
+    return tooltip
+  }
+
+  function showBadgeTooltip(badgeImg) {
+    const tooltip = document.getElementById('hs-badge-tooltip') || createBadgeTooltip()
+    const img = tooltip.querySelector('img')
+    // 1x first (always renders), then silently upgrade to the crispest variant.
+    img.dataset.hsBadgeOrig = badgeImg.src
+    img.src = badgeImg.src
+    upgradeBadgeImg(img, badgeImg.src)
+    img.alt = badgeImg.alt || ''
+    const nameEl = tooltip.querySelector('.hs-badge-tooltip-name')
+    if (nameEl) nameEl.textContent = badgeImg.title || badgeImg.alt || ''
+    const src = badgeImg.src
+    const sourceLabel = src.includes('betterttv')
+      ? 'BTTV'
+      : src.includes('frankerfacez')
+        ? 'FFZ'
+        : src.includes('7tv')
+          ? '7TV'
+          : src.includes('chatterino')
+            ? 'Chatterino'
+            : ''
+    const srcEl = tooltip.querySelector('.hs-badge-tooltip-source')
+    if (srcEl) srcEl.textContent = sourceLabel
+
+    // Reset position before measuring so stale offsets don't bias offsetWidth
+    tooltip.style.left = '0px'
+    tooltip.style.top = '0px'
+    tooltip.style.transform = 'none'
+    tooltip.classList.add('active')
+    // Force reflow + measure
+    const ttW = tooltip.offsetWidth || 200
+    const ttH = tooltip.offsetHeight || 100
+    const rect = badgeImg.getBoundingClientRect()
+    const pad = 8
+    const centerX = rect.left + rect.width / 2
+    // Clamp left edge directly (no transform translateX) so we never assume width prematurely
+    let leftPx = centerX - ttW / 2
+    if (leftPx < pad) leftPx = pad
+    if (leftPx + ttW > window.innerWidth - pad) leftPx = window.innerWidth - ttW - pad
+    // Above badge by default. If no room above, flip below.
+    let topPx
+    if (rect.top >= ttH + pad) {
+      topPx = rect.top - ttH - pad
+    } else {
+      topPx = rect.bottom + pad
+    }
+    if (topPx < pad) topPx = pad
+    if (topPx + ttH > window.innerHeight - pad) topPx = window.innerHeight - ttH - pad
+    tooltip.style.left = `${leftPx}px`
+    tooltip.style.top = `${topPx}px`
+    tooltip.style.transform = 'none'
+  }
+
+  function hideBadgeTooltip() {
+    const tooltip = document.getElementById('hs-badge-tooltip')
+    if (tooltip) tooltip.classList.remove('active')
+  }
+  // Delegated badge tooltip — single listener on document instead of per-image
+  ;(function setupBadgeTooltipDelegation() {
+    document.addEventListener(
+      'mouseover',
+      (e) => {
+        const badge = e.target.closest('.hs-cosmetic-badge')
+        if (badge) showBadgeTooltip(badge)
+      },
+      { capture: true, signal },
+    )
+    document.addEventListener(
+      'mouseout',
+      (e) => {
+        if (e.target.closest('.hs-cosmetic-badge')) hideBadgeTooltip()
+      },
+      { capture: true, signal },
+    )
+    // Hide a cosmetic badge whose image fails to load (e.g. 7TV CDN QUIC errors)
+    // so we never render a broken-image icon. error doesn't bubble, but it fires
+    // in the capture phase on document. Later messages create fresh imgs that
+    // retry once the CDN recovers.
+    document.addEventListener(
+      'error',
+      (e) => {
+        const t = e.target
+        if (t instanceof HTMLImageElement && t.classList.contains('hs-cosmetic-badge')) t.style.display = 'none'
+      },
+      { capture: true, signal },
+    )
+  })()
+
+  // =============================================================================
+  // EMOTE HOVER OVERLAY (solid colored rectangle on hover)
+  // Uses event delegation - survives React re-renders
+  // =============================================================================
+
+  let activeOverlay = null
+
+  function isEmoteImage(el) {
+    if (el.tagName !== 'IMG') return false
+    if (el.classList.contains('pfp') || el.classList.contains('cluster-pfp-img')) return false
+    if (el.classList.contains('hs-mc-badge-img')) return false
+    if (el.closest('#emote-picker-btn')) return false
+    // Multichat WYSIWYG input chip — class match keeps the hover-overlay
+    // working on blocked input emotes whose src has been swapped to a 1×1
+    // transparent placeholder (none of the URL checks below would match).
+    if (el.classList.contains('hs-input-emote')) return true
+    const src = el.src || ''
+    // Exclude icon images (not emotes)
+    if (src.includes('/icons/')) return false
+    // Exclude FFZ badge images (room mod/vip badges use cdn.frankerfacez.com/room-badge/)
+    if (src.includes('cdn.frankerfacez.com/room-badge/')) return false
+    return (
+      src.includes('cdn.7tv.app') ||
+      src.includes('cdn.betterttv.net') ||
+      src.includes('cdn.frankerfacez.com') ||
+      src.includes('heatsync.org') ||
+      src.includes('static-cdn.jtvnw.net/emoticons')
+    )
+  }
+
+  function getEmoteColor(img) {
+    // 2-state palette: blocked = red, else white (project hover convention).
+    // Input chips are an exception — solid-white overlay blends into the
+    // multichat input chrome and the emote becomes invisible mid-hover. Use
+    // #808080 there so the hover state is visually distinct without obscuring
+    // the chip image underneath.
+    const state = img.dataset?.heatsyncState
+    if (state === 'blocked') return '#ff0000'
+    if (img.classList?.contains('hs-state-blocked') || img.dataset?.state === 'blocked') return '#ff0000'
+    // Blocked heatsync emotes live in .heatsync-emote-wrapper.emote-overlay-blocked
+    // (the prior .emote-hover-wrapper/.blocked names matched nothing, so this always
+    // fell through to white — and the white hover overlay then covered the red block
+    // plate, hiding the indicator entirely in native chat / lite mode). Paint red so
+    // the hover state matches the ::before block plate and stays visible on any bg.
+    const wrapper = img.closest?.('.heatsync-emote-wrapper')
+    if (wrapper?.classList.contains('emote-overlay-blocked')) return '#ff0000'
+    return '#fff'
+  }
+
+  function showEmoteOverlay(img) {
+    if (activeOverlay) activeOverlay.remove()
+
+    // Use the rendered content dimensions (excludes CSS padding/border)
+    // For <img>, clientWidth/Height includes padding, so subtract it
+    const rect = img.getBoundingClientRect()
+    const cs = getComputedStyle(img)
+    const padT = parseFloat(cs.paddingTop) || 0
+    const padL = parseFloat(cs.paddingLeft) || 0
+    const padR = parseFloat(cs.paddingRight) || 0
+    const padB = parseFloat(cs.paddingBottom) || 0
+    const bT = parseFloat(cs.borderTopWidth) || 0
+    const bL = parseFloat(cs.borderLeftWidth) || 0
+    const bR = parseFloat(cs.borderRightWidth) || 0
+    const bB = parseFloat(cs.borderBottomWidth) || 0
+    const contentW = rect.width - padL - padR - bL - bR
+    const contentH = rect.height - padT - padB - bT - bB
+    const contentX = rect.left + padL + bL
+    const contentY = rect.top + padT + bT
+    const color = getEmoteColor(img)
+
+    const overlay = document.createElement('div')
+    overlay.className = 'heatsync-hover-overlay'
+    overlay.style.cssText = `
+    position: fixed;
+    top: ${contentY}px;
+    left: ${contentX}px;
+    width: ${contentW}px;
+    height: ${contentH}px;
+    background: ${color};
+    pointer-events: none;
+    z-index: 4999;
+  `
+    // White (non-blocked) hover: a fixed overlay sits OVER the emote, so we can't
+    // put white *behind* it — instead paint white and lay a DARKENED copy of the
+    // emote on top (brightness 0.2 = dark shape on white, not a silhouette). Same
+    // white-bg + dark-emote look as the multichat overlay / picker / site. Blocked
+    // stays a solid red cover.
+    if (color === '#fff') {
+      const di = document.createElement('img')
+      di.src = img.currentSrc || img.src
+      di.style.cssText = 'width:100%;height:100%;object-fit:contain;filter:brightness(0.2);'
+      overlay.appendChild(di)
+    }
+
+    document.body.appendChild(overlay)
+    activeOverlay = overlay
+
+    // Store reference on img for cleanup
+    overlayMap.set(img, overlay)
+  }
+
+  function hideEmoteOverlay(img) {
+    const overlay = overlayMap.get(img)
+    if (overlay) {
+      overlay.remove()
+      overlayMap.delete(img)
+    }
+    if (activeOverlay) {
+      activeOverlay.remove()
+      activeOverlay = null
+    }
+  }
+
+  // Event delegation for emote hover
+  document.addEventListener(
+    'mouseover',
+    (e) => {
+      if (isEmoteImage(e.target)) {
+        showEmoteOverlay(e.target)
+      }
+    },
+    { capture: true, signal },
+  )
+
+  document.addEventListener(
+    'mouseout',
+    (e) => {
+      if (isEmoteImage(e.target)) {
+        hideEmoteOverlay(e.target)
+      }
+    },
+    { capture: true, signal },
+  )
+
+  // Combined mousemove killswitch (overlay + preview). Single dispatch, passive.
+  // _hsPreviewKill is registered later by the emote hover module.
+  document.addEventListener(
+    'mousemove',
+    throttle((e) => {
+      if (activeOverlay && !isEmoteImage(e.target)) {
+        activeOverlay.remove()
+        activeOverlay = null
+      }
+      if (typeof window._hsPreviewKill === 'function') window._hsPreviewKill(e)
+    }, 16),
+    { passive: true, signal },
+  )
+
+  // Emote preloading removed — browser caches images natively after first render.
+  // Firefox ORB blocks moz-extension:// origin preloads anyway.
+
+  // UI hiding settings (Chatterino-style)
+  let uiHidingStyle = null
+
+  // =============================================================================
+  // SIMPLE HEADER/LEADERBOARD HIDING
+  // Dead simple CSS injection - no React patching complexity
+  // =============================================================================
+
+  let headerHidingStyle = null
+
+  function enableHeaderHiding() {
+    if (headerHidingStyle) return // Already enabled
+
+    log(' Enabling header hiding...')
+
+    headerHidingStyle = document.createElement('style')
+    headerHidingStyle.id = 'heatsync-hide-header-css'
+
+    // Target chat header AND leaderboard/banners
+    headerHidingStyle.textContent = `
+    /* Main chat header - "Stream Chat" bar */
+    .stream-chat-header,
+    [class*="stream-chat-header"],
+    [data-a-target="chat-room-header-label"],
+    [class*="chat-header"],
+    [class*="ChatHeader"] {
+      display: none !important;
+    }
+
+    /* Channel leaderboard - the marquee ticker at top of chat */
+    .channel-leaderboard,
+    [class*="channel-leaderboard"],
+    [class*="marquee-animation"],
+    [class*="LeaderboardFlex"],
+    [class*="leaderboard-flex"] {
+      display: none !important;
+    }
+
+    /* Pinned cheers, community highlights, hype trains — intentionally NOT hidden.
+       These are live event UIs that users and streamers rely on. */
+  `
+
+    document.head.appendChild(headerHidingStyle)
+    log(' Header hiding CSS injected')
+  }
+
+  // =============================================================================
+  // END HEADER HIDING
+  // =============================================================================
+
+  // Cached UI prefs for runtime feature gating (default-on except where noted)
+  const _uiPrefs = {
+    emoteModifiers: true,
+    userColors: true,
+    showClearedMessages: false,
+    showPredictionsChip: true,
+    anonChat: false,
+  }
+
+  function applyUiSettings(settings) {
+    if (!settings) return
+
+    log(' Applying UI hiding settings:', settings)
+    // Update cached UI prefs (default-on if absent in settings)
+    for (const k of Object.keys(_uiPrefs)) {
+      if (settings[k] !== undefined) _uiPrefs[k] = !!settings[k]
+    }
+    // These native chat-column elements live inside chat-room__content, which the
+    // overlay hides entirely — so their per-element toggles were dead UI clutter and
+    // were removed from the settings schema. Force-hide them unconditionally: this
+    // still guards each element during the brief cold-boot / SPA-nav flash before
+    // hs-native-hidden engages, at zero settings-UI cost.
+    for (const k of [
+      'hideChannelPoints',
+      'hideHypeTrain',
+      'hideHypeChat',
+      'hidePinnedHypeChats',
+      'hideCombos',
+      'hideBitsBtns',
+      'hideCharity',
+      'hideDrops',
+      'hidePolls',
+      'hidePredictions',
+      'hideGiftBanner',
+      'hideCommunityHighlights',
+      'hideSharedChatBanner',
+    ]) {
+      settings[k] = true
+    }
+    // Toggle deleted-message visibility CSS
+    document.documentElement.classList.toggle('hs-show-cleared', !!_uiPrefs.showClearedMessages)
+    // Anon-mode flag — read by typing/presence interceptors
+    document.documentElement.classList.toggle('hs-anon-chat', !!_uiPrefs.anonChat)
+
+    // Remove existing UI hiding style
+    if (uiHidingStyle) {
+      uiHidingStyle.remove()
+      uiHidingStyle = null
+    }
+
+    // Also remove any old hide-header style
+    document.getElementById('heatsync-hide-header')?.remove()
+
+    // Build CSS for enabled settings
+    const rules = []
+
+    // The native chat header is always hidden (popout: the bar is useless; normal:
+    // the collapse arrow is a separate element and survives).
+    enableHeaderHiding()
+
+    // ─── anti-features pack — Twitch UI noise toggles ─────────────────────────
+    // Each toggle adds one or more selectors to the hide rules block. Pure CSS,
+    // no JS observer — Twitch DOM regenerates and our display:none re-matches.
+    // Selectors target both data-a-target attrs (stable) and class substrings.
+    if (settings.hideChannelPoints) {
+      rules.push('[data-test-selector="community-points-summary"] { display: none !important; }')
+      rules.push('.community-points-summary { display: none !important; }')
+      rules.push('button[aria-label*="Channel Points"i] { display: none !important; }')
+    }
+    if (settings.hideHypeTrain) {
+      rules.push(
+        '[class*="hype-train-banner"], [class*="hype-train-rewards"], [class*="hype-train-progress"] { display: none !important; }',
+      )
+    }
+    if (settings.hideHypeChat) {
+      rules.push('[data-a-target="hype-chat-button"], [aria-label*="Hype Chat"i] { display: none !important; }')
+    }
+    if (settings.hidePinnedHypeChats) {
+      rules.push('[class*="pinned-paid-chat"], [class*="paid-pinned-chat"] { display: none !important; }')
+    }
+    if (settings.hideCharity) {
+      rules.push(
+        '[data-test-selector*="charity"i], [class*="charity-callout"], [class*="charity-banner"] { display: none !important; }',
+      )
+    }
+    if (settings.hideDrops) {
+      rules.push(
+        '[data-test-selector*="drops"i], [class*="drops-callout"], [class*="drops-banner"], [aria-label*="Drops"i] { display: none !important; }',
+      )
+    }
+    if (settings.hidePolls) {
+      rules.push(
+        '[data-test-selector*="poll"i]:not([data-test-selector*="settings"i]), [class*="poll-banner"], [class*="active-poll"] { display: none !important; }',
+      )
+    }
+    if (settings.hidePredictions) {
+      rules.push(
+        '[data-test-selector*="prediction"i], [class*="prediction-banner"], [class*="active-prediction"], [aria-label*="Prediction"i] { display: none !important; }',
+      )
+    }
+    if (settings.hideGiftBanner) {
+      rules.push(
+        '[class*="gift-sub-banner"], [class*="mass-gift-sub"], [class*="community-gift"] { display: none !important; }',
+      )
+    }
+    if (settings.hideCommunityHighlights) {
+      rules.push(
+        '.community-highlight-stack__top, .community-highlight-stack__backlog, [class*="community-highlight"] { display: none !important; }',
+      )
+    }
+    if (settings.hideSharedChatBanner) {
+      rules.push('[class*="shared-chat-banner"], [data-test-selector*="shared-chat"i] { display: none !important; }')
+    }
+    if (settings.hideCombos) {
+      rules.push(
+        '[data-a-target="combo-button"], [class*="combo-button"], [class*="combos-bar"] { display: none !important; }',
+      )
+    }
+    if (settings.hideBitsBtns) {
+      rules.push(
+        '[data-a-target="bits-button"], [aria-label*="Cheer with Bits"i], [aria-label*="Get Bits"i] { display: none !important; }',
+      )
+    }
+
+    if (rules.length > 0) {
+      uiHidingStyle = document.createElement('style')
+      uiHidingStyle.id = 'heatsync-ui-hiding'
+      uiHidingStyle.textContent = rules.join('\n')
+      document.head.appendChild(uiHidingStyle)
+      log(' Applied UI hiding CSS:', rules.length, 'rules')
+    }
+
+    // heatsync name paints follow their own switch
+    hsPaintsEnabled = namePaintsOn(settings.showNamePaints)
+  }
+  // Load and apply UI settings on startup
+  ;(async function loadUiSettings() {
+    try {
+      const stored = await browser.storage.sync.get('ui_settings')
+      const settings = sanitizeUiSettings(stored.ui_settings || {})
+      // Always run applyUiSettings so popout auto-hides header even with no stored settings
+      applyUiSettings(settings)
+    } catch (err) {
+      warn(' Failed to load UI settings:', err)
+    }
+  })()
+  // Load emote size setting
+  ;(async function loadEmoteSize() {
+    try {
+      const stored = await browser.storage.local.get('hs_emote_size')
+      if (stored.hs_emote_size != null) {
+        hsEmoteSize = parseFloat(stored.hs_emote_size) || 1
+      }
+      applyEmoteSize()
+    } catch {
+      applyEmoteSize()
+    }
+  })()
+
+  // Load emoji size setting (1x/2x/4x — replaces legacy bigEmoji toggle)
+  ;(async function loadEmojiSize() {
+    try {
+      const stored = await browser.storage.local.get('hs_emoji_size')
+      const v = stored.hs_emoji_size
+      if (v === 1 || v === 2 || v === 4) hsEmojiSize = v
+      applyEmojiSize()
+    } catch {
+      applyEmojiSize()
+    }
+  })()
+
+  // Emote-load progress — rendered inline in the multichat overlay's top
+  // statusbar via the shared HsNotifs layer (set on window by multichat.js,
+  // same isolated world). No floating box. On heatsync.org the overlay isn't
+  // injected, so HsNotifs is absent and these calls no-op.
+  function showLoadingStatus(text) {
+    log(' showLoadingStatus:', text)
+    try {
+      window.HsNotifs?.emit('emote-loading', { text })
+    } catch (_) {}
+  }
+
+  function hideLoadingStatus() {
+    try {
+      window.HsNotifs?.dismissByKey('emote-loading', 'emote-loading')
+    } catch (_) {}
+  }
+
+  let emoteInventory = []
+  let globalEmotes = []
+  let channelEmotes = [] // Channel owner's emotes (for THIS tab's channel only)
+  let currentChannelOwner = null // Track channel owner for emote filtering
+
+  // Hoisted regex constants — avoids per-call allocation in hot paths
+  const COLOR_RE = /^(#[0-9a-f]{3,8}|rgb\(.+\)|[a-z]+)$/i
+  const SUB_TENURE_RE = /(\d+)-Month Subscriber/i
+
+  // Get channel name from current page URL
+  function getPageChannel() {
+    const url = window.location.href
+    if (url.includes('twitch.tv')) {
+      const match = url.match(/\/popout\/([^/]+)\/chat/) || url.match(/twitch\.tv\/([^/?]+)/)
+      const ch = match ? match[1]?.toLowerCase() : null
+      return ch && !RESERVED_PATHS.has(ch) ? ch : null
+    }
+    if (url.includes('kick.com')) {
+      // Handle popout/embed URLs: /popout/channel/chat or /embed/channel/chat
+      const popoutMatch = url.match(/kick\.com\/(?:popout|embed)\/([^/?]+)/)
+      if (popoutMatch) return popoutMatch[1]?.toLowerCase() || null
+      const match = url.match(/kick\.com\/([^/?]+)/)
+      const ch = match ? match[1]?.toLowerCase() : null
+      return ch && !RESERVED_PATHS.has(ch) ? ch : null
+    }
+    return null
+  }
+  let _mentionRegex = null // Cached mention regex (rebuilt on username change)
+  let _mentionUser = null // Username the regex was built for
+  const HS_WS_SPLIT = /(\s+)/ // Hoisted: avoids per-message regex allocation in hot paths
+  let blockedEmotes = new Set()
+  // Names blocked locally — covers emotes we never wrap (native Twitch sub/follower/bits).
+  // Right-click any img[alt] in chat to toggle. Persisted in chrome.storage.local.
+  let localBlockedEmoteNames = new Set()
+  // Tracks user-initiated block/unblock per hash so a late `emote_blocked` /
+  // `emote_unblocked` broadcast (from server WS echo of the previous action)
+  // can't reverse a fresh local toggle. Symptom this fixes: scrolled-to-bottom
+  // chat keeps re-blocking emotes the user just unblocked because each new
+  // message runs processMessage with a stale blockedEmotes set.
+  const recentBlockToggle = new Map() // hash -> { state: 'blocked'|'unblocked', at: ms }
+  const BLOCK_TOGGLE_GRACE_MS = 5000
+  function markLocalBlockToggle(hash, state) {
+    if (!hash) return
+    recentBlockToggle.set(hash, { state, at: Date.now() })
+    if (recentBlockToggle.size > 200) {
+      const cutoff = Date.now() - BLOCK_TOGGLE_GRACE_MS
+      for (const [h, e] of recentBlockToggle) if (e.at < cutoff) recentBlockToggle.delete(h)
+    }
+  }
+  function recentBlockToggleState(hash) {
+    const e = recentBlockToggle.get(hash)
+    if (!e) return null
+    if (Date.now() - e.at > BLOCK_TOGGLE_GRACE_MS) {
+      recentBlockToggle.delete(hash)
+      return null
+    }
+    return e.state
+  }
+  const mutedUsers = new Set()
+  let blockedUsers = new Set()
+  let followedByCurrentUser = new Set()
+  const pendingEmoteBroadcasts = new Map() // "username:emoteName" -> { ...emoteData, addedAt }
+  // Secondary index: username (lowercase) -> Set of emote names (for O(1) lookup in processMessage)
+  const pendingBroadcastsByUser = new Map()
+  function _addBroadcast(key, data) {
+    pendingEmoteBroadcasts.set(key, data)
+    const colon = key.indexOf(':')
+    if (colon !== -1) {
+      const user = key.slice(0, colon)
+      const emoteName = key.slice(colon + 1)
+      if (!pendingBroadcastsByUser.has(user)) pendingBroadcastsByUser.set(user, new Map())
+      pendingBroadcastsByUser.get(user).set(emoteName, data)
+    }
+  }
+  function _deleteBroadcast(key) {
+    pendingEmoteBroadcasts.delete(key)
+    const colon = key.indexOf(':')
+    if (colon !== -1) {
+      const user = key.slice(0, colon)
+      const emoteName = key.slice(colon + 1)
+      const userMap = pendingBroadcastsByUser.get(user)
+      if (userMap) {
+        userMap.delete(emoteName)
+        if (userMap.size === 0) pendingBroadcastsByUser.delete(user)
+      }
+    }
+  }
+  cleanup.setIntervalIfVisible(() => {
+    const now = Date.now()
+    for (const [key, entry] of pendingEmoteBroadcasts) {
+      if (now - entry.addedAt > 30000) _deleteBroadcast(key)
+    }
+  }, 30000)
+
+  // Per-sender heatsync + personal (7TV/BTTV) emote sets, keyed "twitch:<id>".
+  // PERSISTENT (no TTL) overlay layered under live broadcasts — unlike the 10s
+  // broadcast window, this renders another user's ADDED emotes (e.g. a BTTV emote
+  // they added to heatsync that isn't in their BTTV account) in chat history and
+  // after refresh, not just while they're actively posting. Twitch-only: the
+  // endpoint + 7TV/BTTV fetches need a numeric platform id, which getTwitchUserId
+  // provides but Kick's DOM path does not. Mirrors the cosmetics fetch machinery.
+  const senderHeatsyncEmotes = new Map() // "twitch:<id>" / "kick:<username>" -> Map<name, {name,url,hash,zeroWidth,source}> | null (fetched-empty)
+  const SENDER_EMOTE_MAX = 500
+  const senderEmotePending = new Set()
+  const SENDER_EMOTE_PENDING_MAX = 10
+  let senderEmoteBatchTimer = null
+  // Freshness so a sender's newly-added emotes propagate — without a TTL the set was
+  // fetched once and never re-validated. In-memory, so a reload also re-fetches.
+  const senderEmoteFetchedAt = new Map() // "twitch:<id>" -> ts
+  const SENDER_EMOTE_REFETCH_MS = 5 * 60 * 1000
+  const pendingOperations = new Set() // Track in-flight operations to prevent double-clicks
+  const pendingRemovals = new Set() // Emote names pending removal — suppress inventory_update re-adds
+  const _pendingRemovalSnapshots = new Map() // name → emote object, for rollback on emote_removing_cancel
+  // O(1) lookup sets — rebuilt when arrays change (via allEmotesDirty flag)
+  let inventoryHashSet = new Set()
+  let cachedEmotesByHash = new Map() // hash → emote, O(1) lookup for hover previews
+  let globalNameSet = new Set()
+
+  // Rebuild combined emote map eagerly (called from event handlers + fallback in processMessage)
+  function rebuildEmoteMapIfDirty() {
+    if (!allEmotesDirty && cachedAllEmotes) return
+    allEmotesDirty = false
+    cachedAllEmotes = new Map()
+    cachedAllEmoteVariants = new Map()
+
+    // Normalize + push a variant into the per-name array. Inventory variants
+    // go first (highest priority), then channel, then global. Dedupe by hash so
+    // a single source can't list the same emote twice.
+    const _addVariant = (emote, source) => {
+      const rawUrl = emote.url || ''
+      const url = rawUrl.startsWith('http') ? rawUrl : `${API_URL}${rawUrl}`
+      const norm = Object.assign({}, emote, {
+        url,
+        hash: emote.hash || btoa(rawUrl),
+        isGlobal: source === 'global',
+        inInventory: source === 'inventory',
+      })
+      norm.isThirdParty =
+        url.includes('cdn.7tv.app') ||
+        url.includes('cdn.betterttv.net') ||
+        url.includes('cdn.frankerfacez.com') ||
+        url.includes('static-cdn.jtvnw.net')
+      let arr = cachedAllEmoteVariants.get(emote.name)
+      if (!arr) {
+        arr = []
+        cachedAllEmoteVariants.set(emote.name, arr)
+      }
+      if (arr.some((v) => v.hash === norm.hash)) return
+      arr.push(norm)
+    }
+
+    // Inventory FIRST (highest priority — user's own emotes always win).
+    // Subscription emotes are skipped: Twitch's native DOM gates them via the
+    // IRC emotes= tag, so re-imagifying them would surface them for non-entitled senders.
+    emoteInventory.forEach((emote) => {
+      if (emote.subscription) return
+      _addVariant(emote, 'inventory')
+    })
+
+    // Channel emotes (third-party only — BTTV/FFZ/7TV/Twitch).
+    // Skip Twitch sub/follower/bits-tier emotes for the same reason as above.
+    rankEmotePool(channelEmotes, 'channel').forEach((emote) => {
+      if (!emote.source) return
+      if (
+        emote.source === 'twitch' &&
+        (emote.tier ||
+          emote.emote_type === 'subscriptions' ||
+          emote.emote_type === 'follower' ||
+          emote.emote_type === 'bitstier')
+      )
+        return
+      _addVariant(emote, 'channel')
+    })
+
+    // Global emotes LAST (lowest priority, fallback only).
+    rankEmotePool(globalEmotes, 'global').forEach((emote) => {
+      _addVariant(emote, 'global')
+    })
+
+    // cachedAllEmotes points to the highest-priority variant — preserves existing
+    // single-lookup callers (replaceEmotesWithStacking, autocomplete, picker).
+    for (const [name, variants] of cachedAllEmoteVariants) {
+      cachedAllEmotes.set(name, variants[0])
+    }
+    // cachedNonInventoryEmotes: first non-inventory variant per name. Channel
+    // and global variants only — what other senders can legitimately render.
+    cachedNonInventoryEmotes = new Map()
+    for (const [name, variants] of cachedAllEmoteVariants) {
+      const v = variants.find((x) => !x.inInventory)
+      if (v) cachedNonInventoryEmotes.set(name, v)
+    }
+    // cachedOwnEmotes: variants[0] = inventory > channel > global, the sender's choice.
+    cachedOwnEmotes = new Map()
+    cachedChannelEmotes = new Map()
+    for (const [name, variants] of cachedAllEmoteVariants) {
+      const channelV = variants.find((x) => !x.inInventory && !x.isGlobal)
+      // Your own line is YOUR pick (rule 6: inventory → channel → globals), the same picture
+      // the composer chip showed when you sent it — variants[0] is the inventory copy when
+      // you hold the name. Channel emotes only fill names you don't hold.
+      cachedOwnEmotes.set(name, variants[0])
+      if (channelV) cachedChannelEmotes.set(name, channelV)
+    }
+
+    // Rebuild O(1) lookup sets
+    inventoryHashSet = new Set()
+    for (const e of emoteInventory) inventoryHashSet.add(e.hash)
+    globalNameSet = new Set()
+    for (const e of globalEmotes) globalNameSet.add(e.name)
+    // Index every variant hash so hover preview / tooltip can resolve a swapped-in
+    // variant just as well as the original primary.
+    cachedEmotesByHash = new Map()
+    for (const variants of cachedAllEmoteVariants.values()) {
+      for (const v of variants) {
+        if (v.hash) cachedEmotesByHash.set(v.hash, v)
+      }
+    }
+  }
+
+  // Toast — use shared-utils if available, inline fallback
+  const showToast =
+    window.HS?.showToast ||
+    ((msg, type) => {
+      try {
+        if (window.HsNotifs && document.getElementById('hs-notif-layer-statusbar')) {
+          window.HsNotifs.emit('toast', { text: msg, level: type })
+          return
+        }
+      } catch (_) {}
+      const el = document.getElementById('heatsync-toast')
+      if (el) el.remove()
+      const t = document.createElement('div')
+      t.id = 'heatsync-toast'
+      t.textContent = msg
+      t.style.cssText =
+        'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#000;color:#fff;border:1px solid #fff;padding:6px 14px;font:bold 12px monospace;z-index:10001;border-radius:0;'
+      document.body.appendChild(t)
+      cleanup.setTimeout(() => t.remove(), 2500)
+    })
+
+  // heatsync.org gate moved to the top of this file (right after API_URL).
+  // The early-return there means we never reach this point on heatsync.org,
+  // so the legacy block here is removed — OAuth handling already done.
+
+  // Normalize emote URL - fix URLs that got saved with wrong base domain
+  function normalizeEmoteUrl(url) {
+    if (!url) return url
+    // Fix URLs that were resolved to wrong domain (e.g., twitch.tv, kick.com)
+    const wrongDomains = ['twitch.tv', 'kick.com', 'localhost']
+    for (const domain of wrongDomains) {
+      if (url.includes(domain) && (url.includes('/emotes/') || url.includes('/uploads/'))) {
+        // Extract the path after /emotes/ or /uploads/
+        const match = url.match(/\/(emotes|uploads)\/.+$/)
+        if (match) {
+          return `${API_URL}${match[0]}`
+        }
+      }
+    }
+    // If relative URL, add API_URL
+    if (url.startsWith('/emotes/') || url.startsWith('/uploads/')) {
+      return `${API_URL}${url}`
+    }
+    return url
+  }
+
+  // Request inventory - try storage first, then message
+  async function loadInventory() {
+    const loadStart = performance.now()
+    showLoadingStatus('loading emotes...')
+
+    // Try storage first (instant access)
+    try {
+      const storageStart = performance.now()
+      const stored = await browser.storage.local.get([
+        'global_emotes',
+        'emote_inventory',
+        'blocked_emotes',
+        'local_blocked_emotes',
+        'channel_emotes_map',
+        'blocked_users',
+        'local_blocked_emote_names',
+      ])
+      if (Array.isArray(stored.local_blocked_emote_names)) {
+        localBlockedEmoteNames = new Set(stored.local_blocked_emote_names)
+      }
+      log(` ⏱️ Storage read took ${(performance.now() - storageStart).toFixed(0)}ms`)
+
+      if (stored.global_emotes && stored.global_emotes.length > 0) {
+        globalEmotes = stored.global_emotes
+        // Normalize URLs when loading from storage
+        emoteInventory = (stored.emote_inventory || []).map((e) => ({
+          ...e,
+          url: normalizeEmoteUrl(e.url),
+        }))
+        // server blocks + the ones filed while logged out (background persists them apart)
+        blockedEmotes = new Set([...(stored.blocked_emotes || []), ...(stored.local_blocked_emotes || [])])
+        if (stored.blocked_users) blockedUsers = new Set(stored.blocked_users)
+        // Load only THIS channel's emotes from the per-channel map
+        const myChannel = getPageChannel()
+        const myPlatform = window.location.hostname.includes('kick.com') ? 'kick' : 'twitch'
+        const myEmotes =
+          myChannel && stored.channel_emotes_map
+            ? stored.channel_emotes_map[`${myPlatform}/${myChannel}`] || stored.channel_emotes_map[myChannel] || []
+            : []
+        channelEmotes = myEmotes.map((e) => ({
+          ...e,
+          url: normalizeEmoteUrl(e.url),
+        }))
+        currentChannelOwner = myChannel
+
+        log(
+          ` ✅ Loaded from storage in ${(performance.now() - loadStart).toFixed(0)}ms:`,
+          emoteInventory.length,
+          'personal,',
+          globalEmotes.length,
+          'global,',
+          channelEmotes.length,
+          'channel',
+        )
+        // If globals are warm but channel emotes are missing, ask BG to refetch.
+        // Channel emotes only refilled via the join_channel handler chain, which
+        // is racing the live-paint that's about to render existing DOM messages.
+        // Without an explicit refetch trigger here, channel emotes for the
+        // current page can stay empty for several seconds (or forever on a
+        // cold-cache page-load if BG init misses the trigger).
+        if (myChannel && channelEmotes.length === 0) {
+          try {
+            safeSendMessage({ type: 'get_picker_emotes', channel: myChannel }).catch(() => {})
+          } catch {}
+        }
+        hideLoadingStatus()
+        debouncedProcessExistingMessages()
+        updateEmoteBridge() // Update Twitch autocomplete hook
+        // Fetch cosmetic badges (BTTV/FFZ/Chatterino) — not cached in storage
+        fetchCosmeticBadges()
+        return
+      }
+    } catch (err) {
+      warn(' Storage read failed:', err)
+    }
+
+    // Fallback: message passing with retry (service worker will wait for init)
+    log(' Storage empty, trying message passing...')
+    showLoadingStatus('fetching emotes...')
+    let attempts = 0
+    const maxAttempts = 10 // More retries for MV3 service worker wakeup
+    const baseDelay = 300
+
+    while (attempts < maxAttempts) {
+      try {
+        showLoadingStatus(`loading emotes... (${attempts + 1}/${maxAttempts})`)
+        const response = await safeSendMessage({ type: 'get_inventory' })
+
+        if (response) {
+          emoteInventory = response.emotes || []
+          globalEmotes = response.globalEmotes || []
+          blockedEmotes = new Set(response.blocked || [])
+          window.postMessage({ type: 'heatsync-blocked-sync', hashes: Array.from(blockedEmotes) }, location.origin)
+
+          // Fetch followed users for profile card
+          safeSendMessage({ type: 'get_followed_users' })
+            .then((r) => {
+              if (r?.users) followedByCurrentUser = new Set(r.users)
+            })
+            .catch(() => {})
+
+          // Fetch bulk BTTV/FFZ/Chatterino badges
+          fetchCosmeticBadges()
+
+          // Fetch HeatSync API colors for followed users + current user
+          safeSendMessage({ type: 'get_follow_history' })
+            .then((resp) => {
+              if (resp?.colors && typeof resp.colors === 'object') {
+                for (const [login, color] of Object.entries(resp.colors)) {
+                  if (color) heatsyncColorMap.set(login.toLowerCase(), color)
+                }
+              }
+              // Also load current user's own HeatSync color from storage
+              chrome.storage.local
+                .get('user_info')
+                .then((data) => {
+                  if (data.user_info?.color && data.user_info?.username) {
+                    heatsyncColorMap.set(data.user_info.username.toLowerCase(), data.user_info.color)
+                  }
+                  log(' HeatSync colors loaded:', heatsyncColorMap.size)
+                  applyHeatsyncColorsToExisting()
+                })
+                .catch(() => {
+                  log(' HeatSync colors loaded:', heatsyncColorMap.size)
+                  applyHeatsyncColorsToExisting()
+                })
+            })
+            .catch(() => {})
+
+          log(' Received inventory via message:', emoteInventory.length, 'personal,', globalEmotes.length, 'global')
+
+          if (globalEmotes.length > 0) {
+            log(
+              ' Sample global emotes:',
+              globalEmotes.slice(0, 5).map((e) => e.name),
+            )
+            hideLoadingStatus()
+            debouncedProcessExistingMessages()
+            updateEmoteBridge() // Update Twitch autocomplete hook
+            return
+          }
+        }
+      } catch (err) {
+        if (err?.message?.includes('Extension context invalidated')) {
+          extensionContextValid = false
+          return
+        }
+        log('loadInventory attempt', attempts, 'failed:', err?.message)
+      }
+
+      attempts++
+      if (attempts < maxAttempts) {
+        // Exponential backoff: 300, 450, 675, 1012, etc (capped at 2s)
+        const delay = Math.min(baseDelay * 1.5 ** (attempts - 1), 2000)
+        await new Promise((resolve) => setTimeout(resolve, delay))
+      }
+    }
+
+    hideLoadingStatus()
+    log(' Will receive emotes when service worker broadcasts them')
+
+    // Safety net: if emotes arrive late via broadcast, we need to ensure existing messages get processed.
+    // Set up a one-shot listener that fires processExistingMessages on first emote data arrival.
+    const _lateEmoteHandler = (msg) => {
+      if (msg.type === 'inventory_update' || msg.type === 'global_emotes_update') {
+        chrome.runtime.onMessage.removeListener(_lateEmoteHandler)
+        // Emote data just arrived — make sure observer is running and reprocess
+        watchForNewMessages()
+        setupUsernameColoringObserver()
+      }
+    }
+    chrome.runtime.onMessage.addListener(_lateEmoteHandler)
+    // Also clean up if emotes never come (don't leak listener forever)
+    cleanup.setTimeout(() => chrome.runtime.onMessage.removeListener(_lateEmoteHandler), 120000)
+  }
+
+  // Create emote bridge BEFORE loading inventory so updateEmoteBridge() works
+  if (window.location.hostname.includes('twitch.tv')) {
+    injectTwitchAutocompleteHook()
+    // Persist the real Twitch local_storage_device_id to chrome.storage as soon
+    // as early-inject-main.js populates the dataset. SW reads this for off-twitch
+    // follow propagation (gql.twitch.tv/integrity wants the localStorage device
+    // id, not unique_id cookie). Without this, off-twitch follows get
+    // "failed integrity check" from twitch.
+    const _pollDeviceId = cleanup.setInterval(() => {
+      try {
+        const id = document.documentElement.dataset.hsTwitchDeviceId
+        if (!id) return
+        cleanup.clearInterval(_pollDeviceId)
+        chrome.storage?.local?.set?.({ hs_twitch_device_id: id })
+      } catch {}
+    }, 500)
+  }
+
+  loadInventory()
+
+  // Listen for updates from background script
+  // Named function + remove-before-add prevents listener stacking on extension reload
+  function _onMessageMain(message) {
+    // Validate message
+    if (!message || typeof message !== 'object' || !message.type) {
+      warn(' Invalid message received:', message)
+      return
+    }
+
+    log(' Received message:', message.type, message)
+
+    try {
+      switch (message.type) {
+        case 'loading_status':
+          if (message.done) {
+            hideLoadingStatus()
+          } else {
+            showLoadingStatus(message.text)
+          }
+          break
+
+        case 'inventory_update': {
+          // Normalize URLs when receiving inventory update
+          let newInv = (message.emotes || []).map((e) => ({
+            ...e,
+            url: normalizeEmoteUrl(e.url),
+          }))
+          // Filter out emotes pending removal (race: fetchEmoteInventory runs before DELETE completes)
+          if (pendingRemovals.size > 0) {
+            const serverNames = new Set(newInv.map((e) => e.name))
+            // Clear pendingRemovals for emotes confirmed gone from server
+            for (const name of pendingRemovals) {
+              if (!serverNames.has(name)) pendingRemovals.delete(name)
+            }
+            // Filter any still-pending (server hasn't caught up yet)
+            if (pendingRemovals.size > 0) {
+              newInv = newInv.filter((e) => !pendingRemovals.has(e.name))
+            }
+          }
+
+          // Skip reprocessing if inventory hasn't actually changed (prevents stack rebuild on 60s poll)
+          const oldHashes = new Set(emoteInventory.map((e) => e.hash))
+          const newHashes = new Set(newInv.map((e) => e.hash))
+          const removedHashes = [...oldHashes].filter((h) => !newHashes.has(h))
+          const addedHashes = [...newHashes].filter((h) => !oldHashes.has(h))
+          const inventoryChanged = removedHashes.length > 0 || addedHashes.length > 0
+          // When the only delta is removal of emotes we already know are blocked,
+          // skip the full reprocess — updateEmoteState/hideBlockedEmote already
+          // swapped the wrapper visuals. Avoids a chat-wide DOM rebuild flicker
+          // every time the user blocks an emote that was in their inventory.
+          const blockOnlyRemoval =
+            addedHashes.length === 0 && removedHashes.length > 0 && removedHashes.every((h) => blockedEmotes.has(h))
+
+          emoteInventory = newInv
+          allEmotesDirty = true
+          _tabEmoteMapDirty = true
+          rebuildEmoteMapIfDirty()
+          log(
+            ' Inventory updated:',
+            emoteInventory.length,
+            'emotes',
+            inventoryChanged
+              ? blockOnlyRemoval
+                ? '(BLOCK-ONLY REMOVAL — skipping reprocess)'
+                : '(CHANGED)'
+              : '(unchanged)',
+          )
+
+          // On YOUR OWN channel the owner tier is your inventory, so drop owner entries you
+          // no longer hold. Only those: the channel's ffz/7tv/bttv/twitch/kick emotes (they
+          // carry a `source`) are not in your inventory and must survive every poll, and on
+          // anyone else's channel the owner tier is theirs, not yours.
+          if (channelEmotes.length > 0 && isOwnChannelPage()) {
+            const before = channelEmotes.length
+            channelEmotes = pruneOwnerTier(channelEmotes, emoteInventory)
+            if (channelEmotes.length !== before) {
+              log(' 🔄 Synced channel emotes with inventory:', before, '→', channelEmotes.length)
+            }
+          }
+
+          // Surgical add updates: when emotes are added back (e.g. unblock restored
+          // them to inventory), wrappers already in the DOM just need their overlay
+          // class flipped to "owned". Skip reprocess if every added hash already
+          // has wrappers — saves a chat-wide rebuild.
+          let surgicalAddOnly = false
+          if (inventoryChanged && !blockOnlyRemoval && removedHashes.length === 0 && addedHashes.length > 0) {
+            const updates = []
+            let allHaveWrappers = true
+            for (const h of addedHashes) {
+              const els = document.querySelectorAll(`[data-emote-hash="${h}"]`)
+              if (els.length === 0) {
+                allHaveWrappers = false
+                break
+              }
+              els.forEach((el) => {
+                const name = el.dataset.emoteName || el.querySelector('.heatsync-emote')?.dataset?.emoteName
+                if (name) updates.push([h, name])
+              })
+            }
+            if (allHaveWrappers && updates.length > 0) {
+              for (const [h, n] of updates) updateEmoteState(h, n, 'added')
+              surgicalAddOnly = true
+            }
+          }
+
+          if (inventoryChanged && !blockOnlyRemoval && !surgicalAddOnly) {
+            emoteGeneration++
+            debouncedProcessExistingMessages()
+          }
+          updateEmoteBridge() // Update Twitch autocomplete hook
+          // Notify MAIN world (heatsync-button.js) to refresh panel if open
+          window.postMessage({ type: 'heatsync-inventory-update', count: emoteInventory.length }, location.origin)
+          break
+        }
+
+        case 'emote_added':
+          // Emote was successfully added to your set
+          pendingRemovals.delete(message.emoteName)
+          allEmotesDirty = true
+          emoteGeneration++
+          log(' ✅ Emote added to your set:', message.emoteName)
+          if (!emoteInventory.some((e) => e.hash === message.hash)) {
+            emoteInventory.push({
+              name: message.emoteName,
+              hash: message.hash,
+              url: message.url,
+            })
+          }
+          rebuildEmoteMapIfDirty()
+          updateEmoteState(message.hash, message.emoteName, 'added')
+          updateEmoteBridge() // Update Twitch autocomplete hook
+          // Notify MAIN world (heatsync-button.js) to refresh panel if open
+          window.postMessage({ type: 'heatsync-inventory-update', count: emoteInventory.length }, location.origin)
+          break
+
+        case 'emote_removing': {
+          // Background is about to remove this emote — suppress it in new messages immediately.
+          // Snapshot the emote before filtering so a cancel can restore it without waiting
+          // for the periodic re-fetch.
+          pendingRemovals.add(message.emoteName)
+          const _snap = emoteInventory.find(
+            (e) => e.name === message.emoteName || (message.hash && e.hash === message.hash),
+          )
+          if (_snap) _pendingRemovalSnapshots.set(message.emoteName, _snap)
+          emoteInventory = emoteInventory.filter((e) => e.name !== message.emoteName)
+          allEmotesDirty = true
+          _tabEmoteMapDirty = true
+          rebuildEmoteMapIfDirty()
+          // Optimistic visual tier-drop on existing rendered messages: pickActiveVariant
+          // now sees inventoryHashSet sans this emote and skips the inventory variant in
+          // favor of channel/global siblings.
+          if (message.hash || message.emoteName) {
+            updateEmoteState(message.hash || '', message.emoteName, 'neutral')
+          }
+          log(' ⏳ Emote removal starting:', message.emoteName)
+          break
+        }
+
+        case 'emote_removing_cancel': {
+          // Removal failed — restore the eagerly-removed emote so existing wrappers
+          // tier-up back to the inventory variant and new messages re-render with it.
+          pendingRemovals.delete(message.emoteName)
+          const _snap = _pendingRemovalSnapshots.get(message.emoteName)
+          if (_snap && !emoteInventory.some((e) => e.name === _snap.name)) {
+            emoteInventory.push(_snap)
+          }
+          _pendingRemovalSnapshots.delete(message.emoteName)
+          allEmotesDirty = true
+          _tabEmoteMapDirty = true
+          rebuildEmoteMapIfDirty()
+          if (_snap) {
+            updateEmoteState(_snap.hash || '', _snap.name, 'added')
+          }
+          log(' ↩️ Emote removal cancelled:', message.emoteName)
+          break
+        }
+
+        case 'emote_removed':
+          // Emote was successfully removed from your set
+          pendingRemovals.add(message.emoteName)
+          _pendingRemovalSnapshots.delete(message.emoteName)
+          allEmotesDirty = true
+          emoteGeneration++
+          _tabEmoteMapDirty = true
+          log(' ✅ Emote removed from your set:', message.emoteName)
+          emoteInventory = emoteInventory.filter((e) => e.hash !== message.hash && e.name !== message.emoteName)
+          // Clear any stale broadcasts for this emote
+          for (const key of pendingEmoteBroadcasts.keys()) {
+            if (key.endsWith(`:${message.emoteName}`)) {
+              _deleteBroadcast(key)
+            }
+          }
+          rebuildEmoteMapIfDirty()
+          updateEmoteState(message.hash, message.emoteName, 'neutral')
+          updateEmoteBridge()
+          window.postMessage({ type: 'heatsync-inventory-update', count: emoteInventory.length }, location.origin)
+          break
+
+        case 'global_emotes_update':
+          globalEmotes = message.emotes
+          allEmotesDirty = true
+          emoteGeneration++
+          rebuildEmoteMapIfDirty()
+          log(' Global emotes updated:', globalEmotes.length)
+          if (globalEmotes.length > 0) {
+            log(
+              ' Sample global emotes:',
+              globalEmotes.slice(0, 5).map((e) => e.name),
+            )
+          }
+          debouncedProcessExistingMessages() // Re-process existing messages with new globals
+          updateEmoteBridge() // Update Twitch autocomplete hook
+          break
+
+        case 'channel_emotes_update': {
+          // Only accept emotes for THIS tab's channel and platform
+          const myChannel = getPageChannel()
+          const emoteOwner = (message.channelOwner || '').toLowerCase()
+          if (myChannel && emoteOwner && emoteOwner !== myChannel) {
+            log(' Ignoring channel emotes for', emoteOwner, '(this tab is', `${myChannel})`)
+            break
+          }
+          if (message.platform) {
+            const myPlatform = window.location.hostname.includes('kick.com') ? 'kick' : 'twitch'
+            if (message.platform !== myPlatform) {
+              log(' Ignoring channel emotes for platform', message.platform, '(this tab is', `${myPlatform})`)
+              break
+            }
+          }
+          const newEmotes = (message.emotes || []).map((e) => ({
+            ...e,
+            url: normalizeEmoteUrl(e.url),
+          }))
+          // Skip reprocessing if emotes haven't actually changed (e.g. cached broadcast on rejoin)
+          if (
+            channelEmotes.length === newEmotes.length &&
+            channelEmotes.length > 0 &&
+            channelEmotes.every((e, i) => e.hash === newEmotes[i]?.hash && e.name === newEmotes[i]?.name)
+          ) {
+            log(' Channel emotes unchanged for', emoteOwner, '- skipping reprocess')
+            break
+          }
+          channelEmotes = newEmotes
+          allEmotesDirty = true
+          emoteGeneration++
+          rebuildEmoteMapIfDirty()
+          currentChannelOwner = emoteOwner || null
+          log(' Channel owner emotes updated:', channelEmotes.length, 'for channel:', currentChannelOwner)
+          if (channelEmotes.length > 0) {
+            log(
+              ' Sample channel emotes:',
+              channelEmotes.slice(0, 5).map((e) => e.name),
+            )
+          }
+          debouncedProcessExistingMessages()
+          updateEmoteBridge()
+          break
+        }
+
+        case 'emote_blocked':
+          // Drop the broadcast if the user just locally unblocked this hash —
+          // it's a stale echo from a prior block, not a fresh action.
+          if (recentBlockToggleState(message.hash) === 'unblocked') break
+          blockedEmotes.add(message.hash)
+          hideBlockedEmote(message.hash)
+          window.postMessage({ type: 'heatsync-blocked-sync', hashes: Array.from(blockedEmotes) }, location.origin)
+          break
+
+        case 'emote_unblocked':
+          if (recentBlockToggleState(message.hash) === 'blocked') break
+          blockedEmotes.delete(message.hash)
+          showUnblockedEmote(message.hash)
+          window.postMessage({ type: 'heatsync-blocked-sync', hashes: Array.from(blockedEmotes) }, location.origin)
+          break
+
+        case 'followed_users_updated':
+          followedByCurrentUser = new Set(message.users || [])
+          log(' Followed users updated:', followedByCurrentUser.size)
+          break
+
+        case 'emote_add_failed': {
+          log(' ❌ Failed to add emote:', message.emoteName, message.error)
+          // Logged-out is the common case, not a failure — collapse the per-emote
+          // red errors into one gentle deduped nudge (statusbar dedupes identical
+          // text to ×N). Real failures still surface the actual error.
+          const addErr = String(message.error || '')
+          if (/not logged in/i.test(addErr)) {
+            showToast(t('mc_emote_add_login'), 'info')
+          } else {
+            showToast(t('content_toast_failed_add', [message.emoteName, addErr]), 'error')
+          }
+          // 2-state model: no `add:` pendingOperations keys exist anymore;
+          // stack-click + auto-add-on-send register under different keys.
+          // No emote_remove_failed handler — removal failures come back as
+          // { success:false, error } from remove_from_inventory and toast there.
+          break
+        }
+
+        case 'user_muted': {
+          // Key may be namespaced (twitch:alice) or legacy bare (alice). Store as
+          // received; DOM ops need the bare display name so extract it.
+          const muteBare = message.username?.includes(':') ? message.username.split(':')[1] : message.username
+          mutedUsers.add(message.username)
+          muteUser(muteBare || message.username)
+          break
+        }
+
+        case 'user_unmuted': {
+          const unmuteBare = message.username?.includes(':') ? message.username.split(':')[1] : message.username
+          mutedUsers.delete(message.username)
+          if (unmuteBare && unmuteBare !== message.username) mutedUsers.delete(unmuteBare) // clear legacy bare
+          unmuteUser(unmuteBare || message.username)
+          break
+        }
+
+        case 'user_blocked': {
+          const blockBare = message.username?.includes(':') ? message.username.split(':')[1] : message.username
+          blockedUsers.add(message.username)
+          hideBlockedUser(blockBare || message.username)
+          break
+        }
+
+        case 'user_unblocked': {
+          const unblockBare = message.username?.includes(':') ? message.username.split(':')[1] : message.username
+          blockedUsers.delete(message.username)
+          if (unblockBare && unblockBare !== message.username) blockedUsers.delete(unblockBare) // clear legacy bare
+          unhideBlockedUser(unblockBare || message.username)
+          break
+        }
+
+        case 'channel_emote_added':
+          // Handled by multichat.js as a persistent stream-event. Also clear the
+          // stale-ghost class from any previously-rendered emote of that name in
+          // the native Twitch/Kick chat DOM (we use Twitch's own wrapper class).
+          if (message.emote?.name) {
+            try {
+              const sel = `[data-emote-name="${CSS.escape(message.emote.name)}"]`
+              document.querySelectorAll(sel).forEach((el) => {
+                el.classList.remove('hs-state-stale')
+                delete el.dataset.staleActor
+                delete el.dataset.staleAt
+              })
+            } catch (_e) {}
+          }
+          break
+
+        case 'cosmetics_invalidated':
+          // 7TV EventAPI pushed a user update — drop the local cache for that
+          // twitch ID and trigger a fresh lookup. We DON'T strip badges from DOM
+          // here (no flicker): applyCosmeticsToMessage diff-updates the badge
+          // src in-place if changed, removes if revoked, or no-ops if unchanged.
+          if (message.twitchId) {
+            cosmeticsCache.delete(message.twitchId)
+            // Clear the fast-path bail flag on existing messages so applyPending
+            // can re-run the diff-update after the next fetch lands.
+            const sel = `[data-hs-cosmetic-applied-for="${CSS.escape(message.twitchId)}"]`
+            document.querySelectorAll(sel).forEach((el) => {
+              delete el.dataset.hsCosmeticDone
+            })
+            queueCosmeticsLookup(message.twitchId)
+          }
+          break
+
+        case 'channel_emote_removed':
+          // Handled by multichat.js as a persistent stream-event. Also patch the
+          // native Twitch/Kick chat DOM: query existing rendered emotes by name
+          // and add hs-state-stale + actor metadata so they dim in-place.
+          if (message.emoteName) {
+            try {
+              const sel = `[data-emote-name="${CSS.escape(message.emoteName)}"]`
+              document.querySelectorAll(sel).forEach((el) => {
+                el.classList.add('hs-state-stale')
+                if (message.actor) el.dataset.staleActor = message.actor
+                el.dataset.staleAt = String(Date.now())
+              })
+            } catch (_e) {}
+          }
+          break
+
+        case 'emote_removed_broadcast': {
+          // Another user removed an emote, clear their pending broadcast
+          const removeKey = `${message.username.toLowerCase()}:${message.emoteName}`
+          if (pendingEmoteBroadcasts.has(removeKey)) {
+            log(' 🗑️ Clearing broadcast (user removed emote):', removeKey)
+            _deleteBroadcast(removeKey)
+          }
+          // Also drop the name from any cached sender_emote_set so old messages
+          // from that user stop imagifying it. Matches multichat panel behavior.
+          if (message.emoteName) {
+            for (const [, inner] of senderHeatsyncEmotes) {
+              if (inner?.delete?.(message.emoteName)) {
+                // Removed — also bust freshness so next message triggers refetch
+              }
+            }
+          }
+          break
+        }
+
+        case 'emote_added_broadcast':
+          // Different user added an emote. Drop freshness for all cached senders
+          // so next message render refetches their set and picks up the new emote.
+          senderEmoteFetchedAt.clear()
+          break
+
+        case 'emote_broadcast': {
+          // Reject broadcasts for emotes we're actively removing (WS echo race condition)
+          if (pendingRemovals.has(message.emoteName)) {
+            log(' 🚫 Rejecting broadcast for removed emote:', message.emoteName)
+            break
+          }
+          // Defense-in-depth: re-validate emote URL at content-script intake.
+          // Background already filters, but content trusts no one.
+          {
+            const u = message.emoteData?.url
+            if (typeof u !== 'string' || !u) break
+            const isAbs = u.startsWith('http://') || u.startsWith('https://')
+            const isRel = u.startsWith('/')
+            if (!isAbs && !isRel) break
+            if (isAbs && !u.startsWith('https://')) break
+            if (
+              typeof message.emoteName !== 'string' ||
+              message.emoteName.length === 0 ||
+              message.emoteName.length > 100
+            )
+              break
+            if (typeof message.username !== 'string' || !/^[a-zA-Z0-9_]{1,32}$/.test(message.username)) break
+          }
+          // Another user sent an emote, store for upcoming message
+          const broadcastKey = `${message.username.toLowerCase()}:${message.emoteName}`
+          log(' 📥 RECEIVED BROADCAST:', {
+            username: message.username,
+            emoteName: message.emoteName,
+            key: broadcastKey,
+            emoteUrl: message.emoteData?.url,
+            pendingCount: pendingEmoteBroadcasts.size,
+          })
+          _addBroadcast(broadcastKey, { ...message.emoteData, addedAt: Date.now() })
+
+          // Retroactively process recent messages from this user
+          retroactivelyProcessBroadcast(message.username, message.emoteName, message.emoteData)
+
+          // Clear after 10 seconds - long enough for race conditions, short enough to prevent stale renders
+          cleanup.setTimeout(() => {
+            if (pendingEmoteBroadcasts.has(broadcastKey)) {
+              log(' ⏰ Broadcast expired:', broadcastKey)
+              _deleteBroadcast(broadcastKey)
+            }
+          }, 10000)
+          break
+        }
+
+        case 'ui_settings_changed':
+          applyUiSettings(message.settings)
+          break
+
+        case 'cosmetics_update': {
+          const bttv = Object.entries(message.bttvBadges || {})
+          const ffz = new BadgeIndex(message.ffzBadges)
+          const chat = new BadgeIndex(message.chatterinoBadges)
+          // Never let an empty broadcast wipe populated maps.
+          if (bttv.length + ffz.size + chat.size > 0) {
+            bttvBadgeMap = new Map(bttv)
+            ffzBadgeMap = ffz
+            chatterinoBadgeMap = chat
+            reapplyBadgesToExistingMessages()
+          }
+          break
+        }
+
+        case 'follow_colors':
+          if (message.colors && typeof message.colors === 'object') {
+            for (const [login, color] of Object.entries(message.colors)) {
+              if (color) heatsyncColorMap.set(login.toLowerCase(), color)
+            }
+            while (heatsyncColorMap.size > HEATSYNC_COLOR_MAP_MAX)
+              heatsyncColorMap.delete(heatsyncColorMap.keys().next().value)
+            log(' HeatSync colors loaded:', heatsyncColorMap.size)
+            applyHeatsyncColorsToExisting()
+          }
+          break
+
+        case 'heat_batch_update':
+          // Server pushes user-heat updates every 60s for changed users.
+          // Update the username-keyed cache directly — saves a full /api/users/heat
+          // round-trip per user. Re-render heat borders so visible messages reflect
+          // the new tier without waiting for the next batch flush.
+          if (Array.isArray(message.updates)) {
+            const now = Date.now()
+            for (const u of message.updates) {
+              if (!u || typeof u.username !== 'string') continue
+              const key = u.username.toLowerCase()
+              if (heatCache.size >= HEAT_CACHE_MAX) {
+                heatCache.delete(heatCache.keys().next().value)
+              }
+              heatCache.set(key, {
+                heat: typeof u.userHeat === 'number' ? u.userHeat : 0,
+                op: typeof u.op === 'number' ? u.op : 0,
+                re: typeof u.re === 'number' ? u.re : 0,
+                fetchedAt: now,
+              })
+            }
+            applyHeatBorders()
+          }
+          break
+
+        default:
+          log(' Unknown message type:', message.type)
+      }
+    } catch (err) {
+      console.error('[heatsync] onMessage handler error:', err)
+    }
+  }
+  chrome.runtime.onMessage.removeListener(_onMessageMain)
+  chrome.runtime.onMessage.addListener(_onMessageMain)
+
+  // Kick chat-mode relay — PUT /api/v1/chatrooms/<id>. Route confirmed by kick
+  // itself: GET on it answers 405 "Supported methods: PUT". Body mirrors the
+  // shape GET /api/v2/channels/<slug>/chatroom returns (laravel resource
+  // symmetry), e.g. { slow_mode: { enabled: true, message_interval: 10 } }.
+  // Lives here for the same reason the send relay does: kick's mutations need
+  // the tab's own cookies alongside the XSRF + bearer pair.
+  function _onMessageKickChatMode(message, _sender, sendResponse) {
+    if (message.type !== 'kick_chatmode_relay') return
+    const headers = {
+      'Content-Type': 'application/json',
+      'X-XSRF-TOKEN': decodeURIComponent(message.xsrfToken),
+    }
+    if (message.sessionToken) headers.Authorization = `Bearer ${decodeURIComponent(message.sessionToken)}`
+    fetch(`https://kick.com/api/v1/chatrooms/${encodeURIComponent(message.chatroomId)}`, {
+      method: 'PUT',
+      headers,
+      credentials: 'include',
+      body: JSON.stringify(message.body || {}),
+      signal: AbortSignal.timeout(10000),
+    })
+      .then((r) =>
+        r.text().then((t) => {
+          let row = null
+          try {
+            row = JSON.parse(t)
+          } catch {}
+          // The PUT echoes the authoritative chatroom row — hand it back so the
+          // caller can confirm without a second (cached, stale) read.
+          if (r.ok) sendResponse({ ok: true, row })
+          else sendResponse({ ok: false, error: `${r.status}: ${t.slice(0, 160)}` })
+        }),
+      )
+      .catch((e) => sendResponse({ ok: false, error: e.message }))
+    return true // async sendResponse
+  }
+  chrome.runtime.onMessage.removeListener(_onMessageKickChatMode)
+  chrome.runtime.onMessage.addListener(_onMessageKickChatMode)
+
+  // Kick send relay — only active on kick.com tabs
+  // Separate listener because it needs async sendResponse (return true)
+  function _onMessageKickRelay(message, _sender, sendResponse) {
+    if (message.type !== 'kick_send_relay') return
+    // Reply-shaped when the caller carries a parent ref (kick's own client
+    // payload shape: type 'reply' + original_message/original_sender metadata).
+    // kick-send.js falls back to a flat send if kick 4xxes the reply shape.
+    const _kickBody = message.reply?.id
+      ? {
+          content: message.content,
+          type: 'reply',
+          metadata: {
+            original_message: { id: message.reply.id, content: message.reply.content || '' },
+            original_sender: {
+              id: message.reply.senderId != null ? Number(message.reply.senderId) : 0,
+              username: message.reply.senderUsername || '',
+            },
+          },
+        }
+      : { content: message.content, type: 'message' }
+    const _kickSendHeaders = {
+      'Content-Type': 'application/json',
+      'X-XSRF-TOKEN': decodeURIComponent(message.xsrfToken),
+    }
+    // Kick requires Authorization: Bearer <session_token> on sends now —
+    // cookies+XSRF alone 403 "User is not authenticated" (2026-07).
+    if (message.sessionToken) _kickSendHeaders.Authorization = `Bearer ${decodeURIComponent(message.sessionToken)}`
+    fetch(`https://kick.com/api/v2/messages/send/${message.channelId}`, {
+      method: 'POST',
+      headers: _kickSendHeaders,
+      credentials: 'include',
+      body: JSON.stringify(_kickBody),
+      signal: AbortSignal.timeout(10000),
+    })
+      .then((r) => {
+        if (r.ok) {
+          sendResponse({ ok: true })
+          return
+        }
+        r.text()
+          .then((t) =>
+            sendResponse({
+              ok: false,
+              error: explainKickSendError(r.status, t),
+              status: r.status,
+              code: kickSendErrorCode(t),
+            }),
+          )
+          .catch(() =>
+            sendResponse({ ok: false, error: explainKickSendError(r.status, ''), status: r.status, code: null }),
+          )
+      })
+      // A 10s AbortSignal.timeout beats kick-send.js's own 30s sentinel, so the
+      // abort — not the sentinel — is what sendKickMessage sees. Normalize it to
+      // the literal 'timeout' so it hits the no-auto-retry path (the POST may
+      // already be live in chat; retrying would double-post). Other errors keep
+      // their message — a connection failure means the POST never landed, so a
+      // retry is safe there.
+      .catch((e) => sendResponse({ ok: false, error: e.name === 'TimeoutError' ? 'timeout' : e.message }))
+    return true // async sendResponse
+  }
+
+  // Machine-readable code for send-body shapes kick-send.js's retry logic
+  // needs to recognize (INVALID_EMOTE_ERROR → strip emote tokens and resend).
+  // Kept separate from explainKickSendError's human text so a retry decision
+  // never depends on parsing user-facing copy.
+  function kickSendErrorCode(raw) {
+    if (/INVALID_EMOTE/i.test(String(raw || ''))) return 'invalid_emote'
+    return null
+  }
+
+  // Translate kick's send-endpoint rejection into the same copy twitch's IRC
+  // NOTICE handler uses for the equivalent case (src/_locales/en/messages.json
+  // mc_irc_notice_*) — never the raw status/body, which used to land straight
+  // in the retry toast as e.g. '403: {"status":{"message":"..."}}'. Kick's
+  // exact wording isn't pinned down here (no confirmed-live sample of every
+  // mode's rejection body, unlike the chatroom-PUT explain() above), so this
+  // matches on the response's own message text rather than a fixed status
+  // code per condition, and degrades to a clean generic line instead of ever
+  // surfacing kick's raw body.
+  function explainKickSendError(status, raw) {
+    let body = null
+    try {
+      body = JSON.parse(raw)
+    } catch (_) {}
+    const msg = String(body?.message || body?.status?.message || raw || '').toLowerCase()
+    if (/ban/.test(msg)) return 'you are banned from this channel'
+    if (/follow/.test(msg) && /only/.test(msg)) return 'followers-only mode — follow the channel to chat'
+    if (/subscri/.test(msg) && /only/.test(msg)) return 'subscribers-only — sub to chat here'
+    if (/slow/.test(msg)) return 'slow mode — please wait a moment'
+    if (status === 429 || /rate.?limit/.test(msg)) return 'kick rate limited — wait a moment'
+    if (status === 401 || status === 403 || /not authenticated|not logged in|unauthenticated|unauthorized/.test(msg)) {
+      return "you're not logged into kick (or your session expired)"
+    }
+    if (status >= 500) return `kick server error (${status})`
+    return `kick rejected the message (${status})`
+  }
+  if (window.location.hostname.includes('kick.com')) {
+    chrome.runtime.onMessage.removeListener(_onMessageKickRelay)
+    chrome.runtime.onMessage.addListener(_onMessageKickRelay)
+  }
+
+  // A refused kick mod call in words a mod can act on; '' for anything else.
+  function explainKickMod(status) {
+    if (status === 401 || status === 403) return "you're not a mod on kick here (or your kick session expired)"
+    if (status === 404) return 'user or message not found on kick'
+    if (status === 429) return 'kick rate limited — wait a moment'
+    if (status >= 500) return `kick server error (${status})`
+    return ''
+  }
+
+  // Kick mod relay — ban / timeout / unban / delete-message.
+  // Runs on kick.com tab so X-XSRF-TOKEN + session cookies are same-origin.
+  function _onMessageKickModRelay(message, _sender, sendResponse) {
+    if (message.type !== 'kick_mod_relay') return
+    const xsrf = decodeURIComponent(message.xsrfToken || '')
+    const baseHeaders = {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      'X-XSRF-TOKEN': xsrf,
+    }
+    // Same bearer requirement as kick_send_relay (2026-07 kick auth change).
+    if (message.sessionToken) baseHeaders.Authorization = `Bearer ${decodeURIComponent(message.sessionToken)}`
+    let url, method, body
+    const slug = encodeURIComponent(String(message.slug || ''))
+    const username = String(message.username || '').replace(/^@/, '')
+    if (message.web) {
+      // web.kick.com moderation (banned words, message-moderation levels,
+      // chatters). The background built this from a whitelist; the relay still
+      // refuses anything that is not that host + route. Kick's own client sends
+      // the bearer only (no xsrf, no cookies) to web.kick.com.
+      const w = message.web
+      if (
+        !message.sessionToken ||
+        (w.method !== 'GET' && w.method !== 'PUT') ||
+        !/^https:\/\/web\.kick\.com\/api\/v1\/channels\/\d+\/chat\/(?:banned-words|moderation-rules|active-chatters)$/.test(
+          w.url,
+        )
+      ) {
+        sendResponse({ ok: false, error: message.sessionToken ? 'unknown action' : 'kick_not_logged_in' })
+        return true
+      }
+      const headers = {
+        Accept: 'application/json',
+        Authorization: baseHeaders.Authorization,
+        'x-app-platform': 'web',
+      }
+      if (w.body) headers['Content-Type'] = 'application/json'
+      fetch(w.url, {
+        method: w.method,
+        headers,
+        body: w.body ? JSON.stringify(w.body) : undefined,
+        signal: AbortSignal.timeout(8000),
+      })
+        .then(async (r) => {
+          if (r.ok) {
+            const data = await r.json().catch(() => null)
+            sendResponse({ ok: true, data: data?.data ?? data ?? {} })
+          } else {
+            sendResponse({
+              ok: false,
+              status: r.status,
+              error: explainKickMod(r.status) || `kick refused it (${r.status})`,
+            })
+          }
+        })
+        .catch((e) =>
+          sendResponse({ ok: false, error: e.name === 'TimeoutError' ? 'kick request timed out' : e.message }),
+        )
+      return true
+    }
+    if (message.action === 'ban') {
+      url = `https://kick.com/api/v2/channels/${slug}/bans`
+      method = 'POST'
+      body = { banned_username: username, permanent: true }
+      if (message.reason) body.reason = message.reason
+    } else if (message.action === 'timeout') {
+      url = `https://kick.com/api/v2/channels/${slug}/bans`
+      method = 'POST'
+      body = {
+        banned_username: username,
+        permanent: false,
+        duration: Math.max(1, Math.floor(Number(message.durationMin) || 10)),
+      }
+      if (message.reason) body.reason = message.reason
+    } else if (message.action === 'unban') {
+      url = `https://kick.com/api/v2/channels/${slug}/bans/${encodeURIComponent(username)}`
+      method = 'DELETE'
+      body = null
+    } else if (message.action === 'delete') {
+      if (!message.chatroomId || !message.messageId) {
+        sendResponse({ ok: false, error: 'missing params' })
+        return true
+      }
+      url = `https://kick.com/api/v2/chatrooms/${encodeURIComponent(message.chatroomId)}/messages/${encodeURIComponent(message.messageId)}`
+      method = 'DELETE'
+      body = null
+    } else {
+      sendResponse({ ok: false, error: 'unknown action' })
+      return true
+    }
+    const init = {
+      method,
+      headers: baseHeaders,
+      credentials: 'include',
+      signal: AbortSignal.timeout(8000),
+    }
+    if (body) init.body = JSON.stringify(body)
+    // Translate the raw HTTP status into something a moderator can act on, instead
+    // of surfacing "403: {json blob}" in the toast.
+    const explain = (status, raw) => explainKickMod(status) || `${status}: ${String(raw || '').slice(0, 160)}`
+    fetch(url, init)
+      .then((r) => {
+        if (r.ok || r.status === 204) {
+          sendResponse({ ok: true })
+          return
+        }
+        r.text()
+          .then((t) => sendResponse({ ok: false, error: explain(r.status, t) }))
+          .catch(() => sendResponse({ ok: false, error: explain(r.status, '') }))
+      })
+      .catch((e) =>
+        sendResponse({ ok: false, error: e.name === 'TimeoutError' ? 'kick request timed out' : e.message }),
+      )
+    return true
+  }
+  if (window.location.hostname.includes('kick.com')) {
+    chrome.runtime.onMessage.removeListener(_onMessageKickModRelay)
+    chrome.runtime.onMessage.addListener(_onMessageKickModRelay)
+  }
+
+  // Kick bridge ready signal. background opens a hidden kick.com tab when a send
+  // has none to ride and polls this until it answers. Registered AFTER the three
+  // relay listeners above, in the same synchronous pass, so an answer means send,
+  // chat-mode and mod relays are all listening.
+  function _onMessageKickPing(message, _sender, sendResponse) {
+    if (message.type !== 'kick_bridge_ping') return
+    sendResponse({ ok: true })
+  }
+  if (window.location.hostname.includes('kick.com')) {
+    chrome.runtime.onMessage.removeListener(_onMessageKickPing)
+    chrome.runtime.onMessage.addListener(_onMessageKickPing)
+  }
+
+  // Debounce reprocessing so rapid emote updates only trigger one pass
+  let reprocessDebounce = null
+  function debouncedProcessExistingMessages() {
+    clearTimeout(reprocessDebounce)
+    reprocessDebounce = cleanup.setTimeout(() => processExistingMessages(), 200)
+  }
+
+  // Collect chatters from a message without full processing (for two-pass approach)
+  function collectChatterFromMessage(messageElement) {
+    if (messageElement.dataset.hsChattersCollected) return
+    const usernameElement = messageElement.querySelector(
+      '.chat-author__display-name, [data-a-target="chat-message-username"], button.inline.font-bold',
+    )
+    if (!usernameElement) return
+
+    const username = usernameElement.textContent?.trim().toLowerCase()
+    if (!username || username.length === 0 || username.length > 30) return
+
+    messageElement.dataset.hsChattersCollected = '1'
+    // Skip if already known (don't override with potentially different computed color)
+    if (knownChatters.has(username)) return
+
+    const color = usernameElement.style.color || '#ffffff'
+    knownChatters.set(username, color)
+  }
+
+  // Process existing chat messages
+  function processExistingMessages() {
+    // Overlay up → native rows are hidden; skip the full re-sweep (fires on channel
+    // switch + every inventory/emote change).
+    if (isOverlayActive()) return
+    const startTime = performance.now()
+    const chatContainer = findChatContainer()
+    log(' 🔍 processExistingMessages: chatContainer=', chatContainer ? 'FOUND' : 'NULL')
+    if (!chatContainer) return
+
+    const gen = emoteGeneration
+
+    // Single combined query — Twitch (chat-line + user-notice) + Kick ([data-index]).
+    // Two separate querySelectorAll calls on chat root cost ~2 full subtree scans.
+    const messages = chatContainer.querySelectorAll('.chat-line__message, .user-notice-line, [data-index]')
+
+    log(' 📨 Found', messages.length, 'messages to process')
+
+    // TWO-PASS APPROACH for username coloring (Chatterino-style):
+    // Pass 1: Collect ALL chatters first so we know everyone who has spoken
+    const messageArray = Array.from(messages)
+    for (const msg of messageArray) {
+      collectChatterFromMessage(msg)
+    }
+    log(` 👥 Collected ${knownChatters.size} chatters for username coloring`)
+    if (knownChatters.size > 0 && knownChatters.size <= 20) {
+      log(' Known chatters:', [...knownChatters.keys()].join(', '))
+    }
+
+    // Pass 2: Process messages (now username coloring will work for all known chatters)
+    // Filter by generation: messages from older generations need reprocessing
+    const unprocessed = messageArray.filter((msg) => msg.dataset.heatsyncGeneration !== gen)
+    if (unprocessed.length === 0) return
+
+    // Process visible tail first (bottom = on-screen). Both halves go through
+    // hsSched.chunk: 4ms budget per slice, yields between, pauses while user
+    // is actively scrolling. Replaces the old "10 msgs per rAF" loop that
+    // could spend 150ms on one frame when processMessage hit a heavy msg.
+    const VISIBLE_ESTIMATE = 50
+    const tail = unprocessed.slice(-VISIBLE_ESTIMATE)
+    const head = unprocessed.length > VISIBLE_ESTIMATE ? unprocessed.slice(0, -VISIBLE_ESTIMATE) : []
+
+    ;(async () => {
+      // Tail gets a slightly larger budget — these are on-screen, user is
+      // most likely to notice "missing cosmetics" on them, so we err toward
+      // painting them sooner. Still bounded so scroll never feels locked.
+      await hsSched.chunk(tail, processMessage, { budgetMs: 5 })
+      if (head.length > 0) {
+        // Head is offscreen by definition (chat is bottom-anchored). Drop to
+        // background priority so it never competes with input or animation.
+        await hsSched.idle(async () => {
+          await hsSched.chunk(head, processMessage, { budgetMs: 3 })
+        })
+      }
+      log(
+        ` ⏱️ Processed ${unprocessed.length} messages (${tail.length} tail, ${head.length} head) in ${(performance.now() - startTime).toFixed(0)}ms`,
+      )
+    })()
+  }
+
+  // ============================================================
+  // Chat message cache — persist messages across page reloads
+  // Matches website behavior: 2000 msgs/channel, 24h TTL, debounced saves
+  // ============================================================
+  const MSG_CACHE_MAX = 500
+  const MSG_CACHE_TTL = 24 * 60 * 60 * 1000 // 24 hours
+  let msgCacheBuffer = [] // in-memory buffer of {id, user, text, color, ts}
+  const msgCacheIds = new Set() // O(1) dedup lookup for message IDs
+  let msgCacheSaveTimer = null
+  let msgCacheChannel = null
+
+  function getMsgCacheKey(channel) {
+    return `hs_msg_cache_${channel}`
+  }
+
+  // Extract serializable data from a DOM message element
+  function serializeMessage(el) {
+    const id = el.getAttribute('data-msg-id') || ''
+    const user = getUsername(el)
+    if (!user) return null
+    const textEl = el.querySelector('[data-a-target="chat-message-text"], .text-fragment, span.font-normal')
+    const text = textEl?.textContent?.trim() || ''
+    if (!text) return null
+    const nameEl = el.querySelector('.chat-author__display-name, button.inline.font-bold')
+    const color = nameEl?.style?.color || '#ffffff'
+    // Twitch user-id (for cosmetic re-application on restore — without this,
+    // restored cached messages get no 7TV badge / paint / BTTV / FFZ / Chatterino)
+    const uid = el.getAttribute('data-user-id') || ''
+    // twitch's own badge images ([src, alt]); drawn again on restore
+    const badges = []
+    for (const b of el.querySelectorAll('img.chat-badge')) {
+      if (b.src?.startsWith('https://static-cdn.jtvnw.net/') && badges.length < 8) badges.push([b.src, b.alt || ''])
+    }
+    return { id, user, text, color, uid, badges, ts: Date.now() }
+  }
+
+  // Capture a message into the cache buffer (called from MutationObserver)
+  function captureMessageToCache(el) {
+    if (!msgCacheChannel) return
+    const msg = serializeMessage(el)
+    if (!msg) return
+    // Dedup by id (O(1) via Set)
+    if (msg.id && msgCacheIds.has(msg.id)) return
+    if (msg.id) msgCacheIds.add(msg.id)
+    msgCacheBuffer.push(msg)
+    // Trim to cap
+    if (msgCacheBuffer.length > MSG_CACHE_MAX) {
+      const removed = msgCacheBuffer.splice(0, msgCacheBuffer.length - MSG_CACHE_MAX)
+      for (const r of removed) if (r.id) msgCacheIds.delete(r.id)
+    }
+    // Debounced save
+    scheduleMsgCacheSave()
+  }
+
+  function scheduleMsgCacheSave() {
+    if (msgCacheSaveTimer) return
+    msgCacheSaveTimer = cleanup.setTimeout(() => {
+      msgCacheSaveTimer = null
+      saveMsgCache()
+    }, 5000) // 5s debounce
+  }
+
+  function saveMsgCache() {
+    if (!msgCacheChannel || msgCacheBuffer.length === 0) return
+    try {
+      const key = getMsgCacheKey(msgCacheChannel)
+      localStorage.setItem(
+        key,
+        JSON.stringify({
+          messages: msgCacheBuffer.slice(-MSG_CACHE_MAX),
+          channel: msgCacheChannel,
+          savedAt: Date.now(),
+        }),
+      )
+    } catch (_e) {
+      // localStorage full — evict oldest channel caches
+      try {
+        const keys = []
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i)
+          if (k?.startsWith('hs_msg_cache_')) keys.push(k)
+        }
+        if (keys.length > 5) {
+          // Remove oldest 3
+          const sorted = keys
+            .map((k) => {
+              try {
+                return { k, t: JSON.parse(localStorage.getItem(k)).savedAt || 0 }
+              } catch {
+                return { k, t: 0 }
+              }
+            })
+            .sort((a, b) => a.t - b.t)
+          for (let i = 0; i < 3 && i < sorted.length; i++) localStorage.removeItem(sorted[i].k)
+          // Retry save
+          localStorage.setItem(
+            getMsgCacheKey(msgCacheChannel),
+            JSON.stringify({
+              messages: msgCacheBuffer.slice(-MSG_CACHE_MAX),
+              channel: msgCacheChannel,
+              savedAt: Date.now(),
+            }),
+          )
+        }
+      } catch {}
+    }
+  }
+
+  // Load cached messages and render them into the chat container
+  function restoreMsgCache(channel, chatContainer) {
+    // Skip on Kick — injecting Twitch-classed DOM into React virtual scroll corrupts it
+    if (isKick) return 0
+    try {
+      const raw = localStorage.getItem(getMsgCacheKey(channel))
+      if (!raw) return 0
+      const data = JSON.parse(raw)
+      if (!data.messages?.length) return 0
+      // Check TTL
+      if (Date.now() - (data.savedAt || 0) > MSG_CACHE_TTL) {
+        localStorage.removeItem(getMsgCacheKey(channel))
+        return 0
+      }
+
+      // Collect existing message IDs from DOM for dedup
+      const existingIds = new Set()
+      const existingTexts = new Set()
+      chatContainer.querySelectorAll('[data-msg-id]').forEach((el) => existingIds.add(el.dataset.msgId))
+      chatContainer.querySelectorAll('.chat-line__message').forEach((el) => {
+        const user = el.querySelector('.chat-author__display-name')?.textContent?.trim()
+        const text = el.querySelector('[data-a-target="chat-message-text"]')?.textContent?.trim()
+        if (user && text) existingTexts.add(`${user.toLowerCase()}:${text.substring(0, 80)}`)
+      })
+
+      const fragment = document.createDocumentFragment()
+      let inserted = 0
+
+      for (const msg of data.messages) {
+        // skip malformed cache entries (legacy/partial blobs) instead of letting
+        // one bad item throw and abort the whole scrollback restore
+        if (!msg || typeof msg.user !== 'string' || typeof msg.text !== 'string') continue
+        if (msg.id && existingIds.has(msg.id)) continue
+        const dedupKey = `${msg.user.toLowerCase()}:${msg.text.substring(0, 80)}`
+        if (existingTexts.has(dedupKey)) continue
+        existingTexts.add(dedupKey)
+
+        const div = document.createElement('div')
+        div.className = `chat-line__message heatsync-cached${msg.timedOut ? ' hs-timed-out' : ''}`
+        div.setAttribute('data-heatsync-cached', 'true')
+        if (msg.id) div.setAttribute('data-msg-id', msg.id)
+        // Restore twitch user id so cosmetics pipeline picks up these messages
+        if (msg.uid && /^\d+$/.test(msg.uid)) div.setAttribute('data-user-id', msg.uid)
+        if (msg.user) div.setAttribute('data-a-user', msg.user.toLowerCase())
+
+        const nameSpan = document.createElement('span')
+        nameSpan.className = 'chat-author__display-name'
+        nameSpan.setAttribute('data-a-target', 'chat-message-username')
+        nameSpan.style.color = msg.color
+        nameSpan.textContent = msg.user
+
+        const colonSpan = document.createElement('span')
+        colonSpan.setAttribute('aria-hidden', 'true')
+        colonSpan.textContent = ': '
+
+        const textSpan = document.createElement('span')
+        textSpan.className = 'text-fragment'
+        textSpan.setAttribute('data-a-target', 'chat-message-text')
+        textSpan.textContent = msg.text
+
+        if (Array.isArray(msg.badges)) {
+          for (const [src, alt] of msg.badges.slice(0, 8)) {
+            if (typeof src !== 'string' || !src.startsWith('https://static-cdn.jtvnw.net/')) continue
+            const img = document.createElement('img')
+            img.className = 'chat-badge'
+            img.alt = String(alt || '').slice(0, 80)
+            img.src = src
+            img.style.cssText = 'width:18px;height:18px;vertical-align:middle;margin-right:4px;display:inline-block;'
+            div.appendChild(img)
+          }
+        }
+        div.appendChild(nameSpan)
+        div.appendChild(colonSpan)
+        div.appendChild(textSpan)
+        fragment.appendChild(div)
+        inserted++
+      }
+
+      if (inserted > 0) {
+        chatContainer.insertBefore(fragment, chatContainer.firstChild)
+        log(` 💾 Restored ${inserted} cached messages`)
+        // Seed the in-memory buffer with cached data
+        msgCacheBuffer = data.messages
+        // Cosmetics back-fill: cached entries from older builds didn't store
+        // the twitch id. Look up uid by username from any live (uid-bearing)
+        // message in the chat and stamp it on cached messages so 7TV/BTTV/
+        // FFZ/Chatterino badges + 7TV paint apply to history too.
+        backfillCachedMessageUids(chatContainer)
+      }
+      return inserted
+    } catch (e) {
+      log(' Cache restore error:', e)
+      return 0
+    }
+  }
+
+  function backfillCachedMessageUids(chatContainer) {
+    try {
+      const usernameToUid = new Map()
+      chatContainer.querySelectorAll('.chat-line__message[data-user-id]').forEach((el) => {
+        const uid = el.getAttribute('data-user-id')
+        const username =
+          el.dataset.aUser || el.querySelector('.chat-author__display-name')?.textContent?.trim().toLowerCase()
+        if (uid && username) usernameToUid.set(username, uid)
+      })
+      if (usernameToUid.size === 0) return 0
+      let stamped = 0
+      chatContainer.querySelectorAll('.chat-line__message:not([data-user-id])').forEach((el) => {
+        const username =
+          el.dataset.aUser || el.querySelector('.chat-author__display-name')?.textContent?.trim().toLowerCase()
+        if (!username) return
+        const uid = usernameToUid.get(username)
+        if (!uid) return
+        el.setAttribute('data-user-id', uid)
+        el.dataset.hsCosmeticUserId = uid
+        const usernameEl = el.querySelector('.chat-author__display-name, [data-a-target="chat-message-username"]')
+        applyCosmeticsToMessage(el, uid, usernameEl)
+        queueCosmeticsLookup(uid)
+        stamped++
+      })
+      if (stamped > 0) log(` 🎨 Back-filled uid on ${stamped} cached messages from username map`)
+      return stamped
+    } catch (e) {
+      log(' backfillCachedMessageUids error:', e?.message)
+      return 0
+    }
+  }
+
+  // Initialize cache for current channel
+  function initMsgCache(channel) {
+    msgCacheChannel = channel
+    if (msgCacheBuffer.length === 0) {
+      // Load existing cache into memory buffer
+      try {
+        const raw = localStorage.getItem(getMsgCacheKey(channel))
+        if (raw) {
+          const data = JSON.parse(raw)
+          if (data.messages?.length && Date.now() - (data.savedAt || 0) < MSG_CACHE_TTL) {
+            msgCacheBuffer = data.messages
+          }
+        }
+      } catch {}
+    }
+  }
+
+  // Badges on a backfilled row: it is built from the IRC line, which carries them only as a tag. The image
+  // urls come from multichat-core's badge sets (window.__hsBadgeKit); a row is filled once every badge of
+  // it resolves, so rows that came before the sets landed are completed on the 'hs-badges-loaded' event.
+  function fillBackfillBadges() {
+    const kit = window.__hsBadgeKit
+    if (!kit) return
+    for (const row of document.querySelectorAll('[data-hs-badges]')) {
+      const name = row.querySelector('.chat-author__display-name')
+      if (!name) continue
+      const channel = row.dataset.hsBadgeChannel
+      const pairs = row.dataset.hsBadges.split(',')
+      const drawn = new Set((row.dataset.hsBadgesDrawn || '').split(',').filter(Boolean))
+      for (const pair of pairs) {
+        if (drawn.has(pair)) continue
+        const [setId, version] = pair.split('/')
+        const url = kit.urlFor(channel, setId, version)
+        // not known yet (the channel's sets may still be on their way), or not a twitch image: retried on the next event
+        if (!url || !url.startsWith('https://static-cdn.jtvnw.net/')) continue
+        const img = document.createElement('img')
+        img.className = 'chat-badge'
+        img.alt = t('cs_badge_alt', [kit.titleFor(channel, setId, version) || setId])
+        img.src = url
+        img.style.cssText = 'width:18px;height:18px;vertical-align:middle;margin-right:4px;display:inline-block;'
+        name.before(img)
+        drawn.add(pair)
+      }
+      row.dataset.hsBadgesDrawn = [...drawn].join(',')
+      if (drawn.size === pairs.length) delete row.dataset.hsBadges
+      else if (!_badgeLoadAsked.has(channel)) {
+        _badgeLoadAsked.add(channel)
+        kit.load(channel)
+      }
+    }
+  }
+  const _badgeLoadAsked = new Set()
+  const BADGE_TAG_RE = /^[\w-]+\/[\w.-]+(,[\w-]+\/[\w.-]+)*$/
+  window.addEventListener('hs-badges-loaded', fillBackfillBadges)
+
+  // Backfill chat history from robotty recent-messages API
+  // Fires once per channel join, fetches ~500 recent messages, deduplicates against
+  // native Twitch messages, and inserts missing ones at the top of the chat container.
+  async function backfillChatHistory() {
+    const chatContainer = findChatContainer()
+    if (!chatContainer) return
+    if (chatContainer.dataset.heatsyncBackfilled) return
+    chatContainer.dataset.heatsyncBackfilled = 'true'
+
+    // Extract channel name from URL
+    const match =
+      window.location.href.match(/\/popout\/([^/]+)\/chat/) || window.location.href.match(/twitch\.tv\/([^/?]+)/)
+    const channel = match?.[1]?.toLowerCase()
+    if (!channel) return
+
+    if (TWITCH_EXCLUDED_PATHS.has(channel)) return
+
+    log(' 📜 Backfilling chat history for', channel)
+
+    try {
+      // Relayed through the SW: direct cross-origin fetches from content
+      // scripts trip Cloudflare bot heuristics (edge 503).
+      const data = await new Promise((resolve) => {
+        try {
+          chrome.runtime.sendMessage({ type: 'fetch_recent_messages', channel }, (resp) => {
+            if (chrome.runtime.lastError) resolve(null)
+            else resolve(resp)
+          })
+        } catch {
+          resolve(null)
+        }
+      })
+      if (!data) {
+        log(' Backfill fetch failed')
+        return
+      }
+      if (!data.messages?.length) return
+
+      // Collect existing message IDs from DOM for dedup
+      const existingIds = new Set()
+      const existingTexts = new Set()
+      // rows restored from the local cache before older builds kept badges: the history line has them
+      const cachedNoBadges = new Map()
+      chatContainer.querySelectorAll('[data-msg-id]').forEach((el) => {
+        existingIds.add(el.dataset.msgId)
+        if (el.classList.contains('heatsync-cached') && !el.querySelector('.chat-badge')) {
+          cachedNoBadges.set(el.dataset.msgId, el)
+        }
+      })
+      // Fallback dedup: collect username+text combos from visible messages
+      chatContainer.querySelectorAll('.chat-line__message').forEach((el) => {
+        const user = el.querySelector('.chat-author__display-name')?.textContent?.trim()
+        const text = el.querySelector('[data-a-target="chat-message-text"]')?.textContent?.trim()
+        if (user && text) existingTexts.add(`${user.toLowerCase()}:${text.substring(0, 80)}`)
+      })
+
+      const fragment = document.createDocumentFragment()
+      let inserted = 0
+
+      for (const line of data.messages) {
+        // Parse PRIVMSG
+        const m = line.match(/@([^ ]+) :([^!]+)![^ ]+ PRIVMSG #(\w+) :(.+)/)
+        if (!m) continue
+
+        const tags = {}
+        m[1].split(';').forEach((t) => {
+          const [k, v] = t.split('=')
+          tags[k] = v
+        })
+        const msgId = tags.id || ''
+        const username = tags['display-name'] || m[2]
+        const text = m[4]
+        const color = tags.color || '#ffffff'
+        const userId = tags['user-id'] || ''
+
+        // Dedup: skip if message ID already in DOM
+        if (msgId && existingIds.has(msgId)) {
+          const cached = cachedNoBadges.get(msgId)
+          if (cached && BADGE_TAG_RE.test(tags.badges || '')) {
+            cached.dataset.hsBadges = tags.badges
+            cached.dataset.hsBadgeChannel = channel
+          }
+          continue
+        }
+        // Dedup: skip if username+text matches (fallback)
+        const dedupKey = `${username.toLowerCase()}:${text.substring(0, 80)}`
+        if (existingTexts.has(dedupKey)) continue
+        existingTexts.add(dedupKey) // prevent dupes within backfill batch too
+
+        // Build DOM element matching Twitch chat structure
+        const div = document.createElement('div')
+        div.className = 'chat-line__message heatsync-backfill'
+        div.setAttribute('data-heatsync-backfill', 'true')
+        if (msgId) div.setAttribute('data-msg-id', msgId)
+        // Stamp twitch user-id from IRC tag so cosmetics (7tv badge/paint, bttv,
+        // ffz, chatterino) work on backfilled messages too — robotty's tags
+        // include this; without it the cosmetic pipeline silently no-ops.
+        if (/^\d+$/.test(userId)) div.setAttribute('data-user-id', userId)
+        if (username) div.setAttribute('data-a-user', username.toLowerCase())
+
+        const nameSpan = document.createElement('span')
+        nameSpan.className = 'chat-author__display-name'
+        nameSpan.setAttribute('data-a-target', 'chat-message-username')
+        nameSpan.style.color = color
+        nameSpan.textContent = username
+
+        const colonSpan = document.createElement('span')
+        colonSpan.setAttribute('aria-hidden', 'true')
+        colonSpan.textContent = ': '
+
+        const textSpan = document.createElement('span')
+        textSpan.className = 'text-fragment'
+        textSpan.setAttribute('data-a-target', 'chat-message-text')
+        textSpan.textContent = text // textContent is safe, no innerHTML
+
+        // the IRC badges tag ("moderator/1,subscriber/108"): drawn by fillBackfillBadges once the badge sets are known
+        if (BADGE_TAG_RE.test(tags.badges || '')) {
+          div.dataset.hsBadges = tags.badges
+          div.dataset.hsBadgeChannel = channel
+        }
+
+        div.appendChild(nameSpan)
+        div.appendChild(colonSpan)
+        div.appendChild(textSpan)
+        fragment.appendChild(div)
+        inserted++
+      }
+
+      if (inserted > 0) {
+        // Preserve scroll position: inserting 500 messages at the top would push
+        // the user's view up by ~500 message-heights. Capture scrollTop relative
+        // to scrollHeight, insert, then restore so the visible content stays put.
+        const scroller =
+          chatContainer.closest('[class*="chat-scrollable-area__message-container"]')?.parentElement ||
+          chatContainer.parentElement
+        const wasAtBottom = scroller && scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 50
+        const prevScrollHeight = scroller?.scrollHeight || 0
+        chatContainer.insertBefore(fragment, chatContainer.firstChild)
+        if (scroller) {
+          if (wasAtBottom) {
+            scroller.scrollTop = scroller.scrollHeight
+          } else {
+            // Maintain visual stability: anchor by adding the height delta
+            scroller.scrollTop += scroller.scrollHeight - prevScrollHeight
+          }
+        }
+        log(` 📜 Backfilled ${inserted} messages`)
+        fillBackfillBadges()
+        // Process emotes in backfilled messages
+        processExistingMessages()
+        // Re-run cosmetic uid back-fill: robotty backfill adds new usernames
+        // (with uids) that may match older cached messages still missing uid.
+        backfillCachedMessageUids(chatContainer)
+      }
+
+      // cached rows that just got their badge tag
+      fillBackfillBadges()
+
+      // Capture all native Twitch messages into cache (ones that were already in DOM)
+      if (msgCacheChannel) {
+        chatContainer
+          .querySelectorAll('.chat-line__message:not([data-heatsync-cached]):not([data-heatsync-backfill])')
+          .forEach((el) => {
+            captureMessageToCache(el)
+          })
+        saveMsgCache() // Force save after initial capture
+      }
+    } catch (e) {
+      log(' Backfill error:', e)
+    }
+  }
+
+  // Find Twitch or Kick chat container (cached — invalidated on nav via invalidateChatContainerCache)
+  let _cachedChatContainer = null
+  function findChatContainer() {
+    // Return cache if still in DOM
+    if (_cachedChatContainer && document.contains(_cachedChatContainer)) return _cachedChatContainer
+
+    // Twitch popout chat
+    if (window.location.hostname.includes('twitch.tv')) {
+      _cachedChatContainer =
+        document.querySelector('.chat-scrollable-area__message-container') ||
+        document.querySelector('.chat-list--default')
+    } else if (window.location.hostname.includes('kick.com')) {
+      _cachedChatContainer =
+        document.querySelector('#chatroom-messages .no-scrollbar') ||
+        document.querySelector('#chatroom-messages') ||
+        document.querySelector('#channel-chatroom')
+    } else {
+      _cachedChatContainer = null
+    }
+
+    return _cachedChatContainer
+  }
+  function invalidateChatContainerCache() {
+    _cachedChatContainer = null
+  }
+
+  // Cache username once detected
+  let cachedUsername = null
+  let usernameDetectionAttempts = 0
+  const MAX_USERNAME_ATTEMPTS = 30 // More attempts to handle slow page loads
+  let usernameDetectionRetryTimer = null
+
+  // Track all chatters who have sent messages (for username coloring)
+  // LRU Map: re-insert on get to maintain access order, evict oldest when > 500
+  const knownChatters = new (class extends Map {
+    get(k) {
+      if (!this.has(k)) return undefined
+      const v = super.get(k)
+      super.delete(k)
+      super.set(k, v)
+      return v
+    }
+  })()
+
+  // Recently-active chatters — feeds the native autocomplete hooks so a chatter
+  // you just saw talk leads bare-word Tab completion above emotes (parity with the
+  // overlay's getRecencyMap). Time-windowed (last 10 min, cap 150 unique) so
+  // "recent" matches what the user sees, not a flat count that ages out in seconds
+  // on fast chat. Newest kept at the Map tail via delete-then-set.
+  const RECENT_CHATTER_MAX = 150
+  const RECENT_CHATTER_WINDOW_MS = 10 * 60 * 1000
+  const recentChatterTimes = new Map() // lower -> { dn, t }
+  function recordRecentChatter(lower, display) {
+    if (!lower) return
+    recentChatterTimes.delete(lower)
+    recentChatterTimes.set(lower, { dn: display || lower, t: Date.now() })
+    while (recentChatterTimes.size > 600) recentChatterTimes.delete(recentChatterTimes.keys().next().value)
+    scheduleRecentChatterBridge()
+  }
+  function buildRecentChatterList() {
+    // newest-first, within the time window, capped — { name: display, l: lower }
+    // Absolute floor (last 10 REAL minutes), not relative to the newest entry —
+    // otherwise a channel that went quiet would still lead with whoever talked in
+    // its final pre-quiet 10 min. Stamps are Date.now(), so this is exact.
+    const entries = [...recentChatterTimes.entries()]
+    const floor = Date.now() - RECENT_CHATTER_WINDOW_MS
+    const out = []
+    for (let k = entries.length - 1; k >= 0 && out.length < RECENT_CHATTER_MAX; k--) {
+      const [l, v] = entries[k]
+      if (v.t && v.t < floor) break
+      out.push({ name: v.dn, l })
+    }
+    return out
+  }
+  let _recentChatterBridgeTimer = null
+  function scheduleRecentChatterBridge() {
+    // Twitch's hook is MAIN-world — push the serialized list onto the DOM bridge,
+    // throttled (recency changes every message; autocomplete reads the cache).
+    if (_recentChatterBridgeTimer) return
+    _recentChatterBridgeTimer = cleanup.setTimeout(() => {
+      _recentChatterBridgeTimer = null
+      try {
+        const bridge = document.getElementById('heatsync-emote-bridge')
+        if (bridge) bridge.dataset.recentChatters = JSON.stringify(buildRecentChatterList())
+      } catch (_) {}
+    }, 1500)
+  }
+
+  // Sub tenure tracking — extracted from Twitch badge alt text (subscriber badge)
+  const subTenureMap = new Map() // usernameLC -> months
+
+  // ============================================
+  // HEAT CACHE + BATCH FETCHER
+  // ============================================
+  const HEAT_CACHE_MAX = 1000
+  // 10min TTL — heat doesn't change fast enough to justify the 2min refetch
+  // storm. At 30k users this drops /api/users/heat traffic by ~5x. The full
+  // fix is server-pushed heat updates over WS (tracked server-side).
+  const HEAT_CACHE_TTL = 600000 // 10 min
+  // 5s debounce + per-client jitter — at 30k users a 2s synchronized debounce
+  // produced ~15k req/sec spikes against the same 100-user batch endpoint.
+  const HEAT_BATCH_INTERVAL = 5000
+  const heatCache = new Map() // username -> { heat, op, re, fetchedAt }
+  // Periodic cleanup — prune stale entries every 5 min
+  cleanup.setIntervalIfVisible(() => {
+    const now = Date.now()
+    for (const [k, v] of heatCache) {
+      if (now - v.fetchedAt > HEAT_CACHE_TTL) heatCache.delete(k)
+    }
+  }, 300000)
+  const heatPending = new Set() // usernames awaiting batch fetch
+  let heatBatchTimer = null
+  let heatFirstBatch = true // first batch fires immediately
+
+  // Third-party cosmetics
+  let bttvBadgeMap = new Map()
+  let ffzBadgeMap = new BadgeIndex([])
+  let chatterinoBadgeMap = new BadgeIndex([])
+  const heatsyncColorMap = new Map() // username → HeatSync API color (from follow:colors)
+  const HEATSYNC_COLOR_MAP_MAX = 2000
+  let dimTimeoutsEnabled = true // dim timed-out/banned messages instead of hiding
+  const originalMessageBodies = new Map() // msg-id → cloned childNodes array (for restoring on timeout)
+  const cosmeticsCache = new Map()
+  const chatterTwitchIds = new Map() // lowerUser → twitch uid (mention cosmetics lookup)
+  const CHATTER_IDS_MAX = 500
+  let _selfTwitchIdRegistered = false
+  const COSMETICS_TTL = 30 * 60 * 1000
+  // Re-fetch null-cosmetic users every 5min so newly-added 7TV badges/paints
+  // don't get masked for the full 30min TTL.
+  const COSMETICS_NEGATIVE_TTL = 5 * 60 * 1000
+  const COSMETICS_MAX = 500
+  const cosmeticsPending = new Set()
+  const COSMETICS_PENDING_MAX = 500
+  let cosmeticsBatchTimer = null
+
+  // HeatSync name paints on native rows — twitch id space; kick via kick_<id>
+  // (see the block above applyKickCosmeticsToMessage). State lives up here so
+  // no message handler can reach a const before it is initialised.
+  const hsPaintCache = new Map() // uid -> { spec: object|null, hash: string|null }
+  const hsPaintPending = new Set()
+  const hsPaintHashes = new Map() // hash -> compiled css rule
+  let hsPaintTimer = null
+  let hsPaintSheet = null
+  let hsPaintsEnabled = true // showNamePaints
+
+  // Kick cosmetics (7TV paints/badges by username)
+  const kickCosmeticsCache = new Map() // username → { paint, badge, fetchedAt }
+  const kickCosmeticsPending = new Set()
+  let kickCosmeticsBatchTimer = null
+
+  // Heat tier ramp — the site's VT320 ladder (client/config/colors.js): white
+  // while cold, yellow warming, red at blowing-up and above. Tier thickens the
+  // border; hue steps, never fades.
+  const HEAT_GRADIENT = [
+    '#ffffff',
+    '#ffffff',
+    '#ffffff',
+    '#ffffff',
+    '#ffff00',
+    '#ffff00',
+    '#ffff00',
+    '#ffff00',
+    '#ff0000',
+    '#ff0000',
+  ]
+
+  function getHeatTier(heat) {
+    if (heat >= 5000) return 9
+    if (heat >= 1000) return 8
+    if (heat >= 500) return 7
+    if (heat >= 200) return 6
+    if (heat >= 100) return 5
+    if (heat >= 50) return 4
+    if (heat >= 20) return 3
+    if (heat >= 5) return 2
+    if (heat >= 1) return 1
+    return 0
+  }
+
+  function queueHeatLookup(username) {
+    const key = username.toLowerCase()
+    if (heatCache.has(key) && Date.now() - heatCache.get(key).fetchedAt < HEAT_CACHE_TTL) return
+    heatPending.add(key)
+
+    if (heatFirstBatch) {
+      // First batch fires immediately after initial chat load
+      heatFirstBatch = false
+      cleanup.setTimeout(() => flushHeatBatch(), 0)
+    } else if (!heatBatchTimer) {
+      // Add per-client jitter so 30k tabs don't synchronize their batches.
+      const jitter = Math.random() * HEAT_BATCH_INTERVAL
+      heatBatchTimer = cleanup.setTimeout(() => {
+        heatBatchTimer = null
+        flushHeatBatch()
+      }, HEAT_BATCH_INTERVAL + jitter)
+    }
+  }
+
+  async function flushHeatBatch() {
+    if (heatPending.size === 0) return
+    const batch = [...heatPending].slice(0, 100)
+    batch.forEach((u) => heatPending.delete(u))
+
+    try {
+      const data = await HS.apiFetch('/api/users/heat', {
+        method: 'POST',
+        body: { usernames: batch },
+      })
+      if (!data) return
+
+      const users = data.users
+      const now = Date.now()
+      for (const [name, data] of Object.entries(users)) {
+        if (heatCache.size >= HEAT_CACHE_MAX) {
+          heatCache.delete(heatCache.keys().next().value)
+        }
+        heatCache.set(name, { ...data, fetchedAt: now })
+      }
+      // Mark users not in response as 0 heat (they exist but no posts)
+      for (const name of batch) {
+        if (!heatCache.has(name) || heatCache.get(name).fetchedAt !== now) {
+          if (heatCache.size >= HEAT_CACHE_MAX) {
+            heatCache.delete(heatCache.keys().next().value)
+          }
+          heatCache.set(name, { heat: 0, op: 0, re: 0, fetchedAt: now })
+        }
+      }
+
+      applyHeatBorders()
+    } catch (err) {
+      log(' Heat batch fetch failed:', err.message)
+    }
+
+    // If more pending, schedule another batch (jittered)
+    if (heatPending.size > 0 && !heatBatchTimer) {
+      const jitter = Math.random() * HEAT_BATCH_INTERVAL
+      heatBatchTimer = cleanup.setTimeout(() => {
+        heatBatchTimer = null
+        flushHeatBatch()
+      }, HEAT_BATCH_INTERVAL + jitter)
+    }
+  }
+
+  function applyHeatBorderToElement(messageElement, heat) {
+    if (heat < 5) return // no visual for low heat
+    const tier = getHeatTier(heat)
+    const color = HEAT_GRADIENT[tier]
+    const borderWidth = tier >= 8 ? 6 : tier >= 5 ? 5 : tier >= 3 ? 4 : 3
+    const s = messageElement.style
+    // box-shadow inset doesn't reflow the chat (border-left did) — kills flicker
+    // when heat data arrives after messages render.
+    s.setProperty('box-shadow', `inset ${borderWidth}px 0 0 0 ${color}`)
+    messageElement.dataset.hsHeatApplied = '1'
+  }
+
+  function applyHeatBorders() {
+    const chatContainer = findChatContainer()
+    if (!chatContainer) return
+
+    const messages = chatContainer.querySelectorAll(
+      '.chat-line__message:not([data-hs-heat-applied]), [data-index]:not([data-hs-heat-applied])',
+    )
+    for (const msg of messages) {
+      const username = getUsername(msg)
+      if (!username) continue
+      const cached = heatCache.get(username.toLowerCase())
+      if (cached) {
+        applyHeatBorderToElement(msg, cached.heat)
+      }
+    }
+  }
+
+  // Get current user's username from Twitch DOM
+  // First layer that has the name wins (null layers skipped). Order IS the precedence.
+  function layeredEmoteMap(layers) {
+    const live = layers.filter(Boolean)
+    return {
+      get(name) {
+        for (const m of live) {
+          const e = m.get(name)
+          if (e) return e
+        }
+        return undefined
+      },
+      has(name) {
+        return live.some((m) => m.has(name))
+      },
+      get size() {
+        return live.reduce((n, m) => n + m.size, 0)
+      },
+    }
+  }
+
+  // Drop owner-tier entries (no `source`) the inventory no longer holds; every sourced entry stays.
+  function pruneOwnerTier(channelList, inventory) {
+    const held = new Set(inventory.map((e) => e.hash))
+    return channelList.filter((e) => e.source || held.has(e.hash))
+  }
+
+  // true when this tab is the viewer's own channel (the only place the owner tier == inventory)
+  function isOwnChannelPage() {
+    const me = (getCurrentUsername() || '').toLowerCase()
+    const page = (getPageChannel() || '').toLowerCase()
+    return !!me && !!page && me === page
+  }
+
+  function getCurrentUsername() {
+    // Return cached value if we already found it
+    if (cachedUsername) {
+      return cachedUsername
+    }
+
+    // Stop trying after MAX_USERNAME_ATTEMPTS (prevent console spam)
+    if (usernameDetectionAttempts >= MAX_USERNAME_ATTEMPTS) {
+      return null
+    }
+
+    usernameDetectionAttempts++
+
+    // Try multiple methods to find username
+    let username = null
+
+    // Method 1: localStorage JSON object (most reliable - works everywhere)
+    try {
+      const twitchUserJson = localStorage.getItem('twilight.user')
+      if (twitchUserJson) {
+        const parsed = JSON.parse(twitchUserJson)
+        username = parsed?.displayName || parsed?.login
+        // Self twitch ID — register with background NOW (no need to wait for
+        // a chat message) so 7TV cosmetics fetch + EventAPI sub start ASAP.
+        const selfTwitchId = parsed?.id
+        if (selfTwitchId && /^\d+$/.test(String(selfTwitchId)) && !_selfTwitchIdRegistered) {
+          _selfTwitchIdRegistered = true
+          safeSendMessage({ type: 'register_self_twitch_id', twitchId: String(selfTwitchId) })
+        }
+        if (username && username.length > 0 && username.length < 30) {
+          log(' ✅ Found username from localStorage JSON:', username)
+          cachedUsername = username.toLowerCase()
+          return cachedUsername
+        }
+      }
+    } catch (_e) {
+      // JSON parse might fail
+    }
+
+    // Method 2: localStorage displayName string
+    try {
+      const twitchStorage = localStorage.getItem('twilight.user.displayName')
+      if (twitchStorage) {
+        username = twitchStorage.replace(/"/g, '').trim()
+        if (username && username.length > 0 && username.length < 30) {
+          log(' ✅ Found username from localStorage displayName:', username)
+          cachedUsername = username.toLowerCase()
+          return cachedUsername
+        }
+      }
+    } catch (_e) {
+      // localStorage access might fail
+    }
+
+    // Method 3: User menu button
+    const userButton = document.querySelector('[data-a-target="user-menu-toggle"]')
+    if (userButton) {
+      const ariaLabel = userButton.getAttribute('aria-label')
+      if (ariaLabel) {
+        // Try different patterns
+        username = ariaLabel
+          .replace('User Menu. The user name is ', '')
+          .replace('User menu: ', '')
+          .replace('User Menu ', '')
+          .trim()
+        if (username && username.length > 0 && username.length < 30 && !username.includes(' ')) {
+          log(' ✅ Found username from user menu button:', username)
+          cachedUsername = username.toLowerCase()
+          return cachedUsername
+        }
+      }
+    }
+
+    // Method 4: Figure element
+    const figure = document.querySelector('[data-a-target="user-menu-toggle"] figure[aria-label]')
+    if (figure) {
+      username = figure.getAttribute('aria-label')
+      if (username && username.length > 0 && username.length < 30 && !username.includes(' ')) {
+        log(' ✅ Found username from figure:', username)
+        cachedUsername = username.toLowerCase()
+        return cachedUsername
+      }
+    }
+
+    // Method 5: Chat input data attribute
+    const chatInput = document.querySelector('[data-a-target="chat-input"]')
+    if (chatInput) {
+      username = chatInput.getAttribute('data-a-user')
+      if (username && username.length > 0 && username.length < 30) {
+        log(' ✅ Found username from chat input:', username)
+        cachedUsername = username.toLowerCase()
+        return cachedUsername
+      }
+    }
+
+    // Method 6: Cookie fallback - look for twilight-user or name cookie
+    try {
+      const cookies = document.cookie
+      // Twitch stores username in 'name' cookie
+      const nameMatch = cookies.match(/(?:^|;\s*)name=([^;]+)/)
+      if (nameMatch) {
+        username = decodeURIComponent(nameMatch[1]).replace(/"/g, '')
+        // Validate: must be alphanumeric/underscore, not a timestamp
+        if (username && username.length > 0 && username.length < 30 && /^[a-zA-Z0-9_]+$/.test(username)) {
+          log(' ✅ Found username from name cookie:', username)
+          cachedUsername = username.toLowerCase()
+          return cachedUsername
+        }
+      }
+    } catch (_e) {
+      // Cookie access might fail
+    }
+
+    // Kick methods
+    if (window.location.hostname.includes('kick.com')) {
+      // Method K1: Kick stores session data in localStorage
+      try {
+        const kickSession = localStorage.getItem('kick-session')
+        if (kickSession) {
+          const session = JSON.parse(kickSession)
+          const name = session?.user?.username || session?.username
+          if (name && /^[a-zA-Z0-9_]+$/.test(name)) {
+            log(' ✅ Found Kick username from session storage:', name)
+            cachedUsername = name.toLowerCase()
+            return cachedUsername
+          }
+        }
+      } catch {}
+      // Method K2: Kick nav bar username link (current DOM)
+      const kickUserLink = document.querySelector('a[href*="/dashboard"], nav a[href^="/"]')
+      if (kickUserLink) {
+        const href = kickUserLink.getAttribute('href')
+        const match = href?.match(/^\/([a-zA-Z0-9_]+)(?:\/|$)/)
+        if (match?.[1] && !RESERVED_PATHS.has(match[1].toLowerCase())) {
+          log(' ✅ Found Kick username from nav link:', match[1])
+          cachedUsername = match[1].toLowerCase()
+          return cachedUsername
+        }
+      }
+      // Method K3: Kick chat input identity — look for "Send a message" placeholder owner
+      const kickChatIdentity = document.querySelector('.chat-identity-name, [class*="chat-identity"] span')
+      if (kickChatIdentity?.textContent?.trim()) {
+        const name = kickChatIdentity.textContent.trim()
+        if (name.length > 0 && name.length < 30 && /^[a-zA-Z0-9_]+$/.test(name)) {
+          log(' ✅ Found Kick username from chat identity:', name)
+          cachedUsername = name.toLowerCase()
+          return cachedUsername
+        }
+      }
+    }
+
+    // Schedule retry if we haven't found it yet and attempts < MAX
+    if (usernameDetectionAttempts < MAX_USERNAME_ATTEMPTS && !usernameDetectionRetryTimer) {
+      usernameDetectionRetryTimer = cleanup.setTimeout(() => {
+        usernameDetectionRetryTimer = null
+        const found = getCurrentUsername()
+        if (found) {
+          log(' ✅ Username found on retry:', found)
+        }
+      }, 1000)
+    }
+
+    // Only log failure on first and every 10th attempt (reduce spam)
+    if (usernameDetectionAttempts === 1 || usernameDetectionAttempts % 10 === 0) {
+      log(' ⚠️ Could not find username after', usernameDetectionAttempts, 'attempts')
+    }
+
+    return null
+  }
+
+  // Highlight messages that mention the current user ONLY
+  function highlightUserMentions(messageElement, authorElement, preQueriedTextElements) {
+    const currentUser = getCurrentUsername()
+    if (!currentUser) {
+      return // Skip if username not detected yet
+    }
+    // Cache mention regex — only rebuild when username changes
+    if (currentUser !== _mentionUser) {
+      _mentionRegex = new RegExp(`\\b${currentUser.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i')
+      _mentionUser = currentUser
+    }
+
+    // CRITICAL: Skip messages sent BY the current user (don't highlight your own messages)
+    const _authorEl =
+      authorElement ||
+      messageElement.querySelector(
+        '.chat-author__display-name, [data-a-target="chat-message-username"], button.inline.font-bold',
+      )
+    const messageAuthor = _authorEl?.textContent?.toLowerCase()?.trim()
+    if (messageAuthor === currentUser) {
+      return // Don't highlight your own messages
+    }
+    // Blocked users can't ping you — no highlight, no notification (covers the
+    // unprotected observer path where the message is hidden but still in DOM).
+    // userSetMatches checks legacy bare keys first so pre-namespace entries still work.
+    if (messageAuthor && userSetMatches(blockedUsers, messageAuthor, isKick ? 'kick' : 'twitch', [])) {
+      return
+    }
+
+    let shouldHighlight = false
+
+    // Check explicit @mention elements (Twitch has .mention-fragment, Kick uses inline text)
+    const mentions = messageElement.querySelectorAll('.mention-fragment, [data-a-target="chat-message-mention"]')
+
+    // Check each mention to see if it matches current user
+    for (const mention of mentions) {
+      const mentionText = mention.textContent.toLowerCase().replace('@', '').trim()
+      if (mentionText === currentUser) {
+        shouldHighlight = true
+        break
+      }
+    }
+
+    // Also check if username appears as standalone word in message BODY (not author)
+    if (!shouldHighlight) {
+      const textFragments =
+        preQueriedTextElements ||
+        messageElement.querySelectorAll('.text-fragment, [data-a-target="chat-message-text"], span.font-normal')
+      for (const frag of textFragments) {
+        const fragText = frag.textContent.toLowerCase()
+        if (_mentionRegex?.test(fragText)) {
+          shouldHighlight = true
+          break
+        }
+      }
+    }
+
+    if (shouldHighlight) {
+      // FFZ-style: Just add a CSS class - let the stylesheet handle it
+      log(' 🔴 FOUND MENTION OF YOU! Adding .hs-mentioned class')
+
+      // Find the parent message element (Twitch: .chat-line__message, Kick: [data-index])
+      let parent = messageElement
+      while (parent && !parent.classList.contains('chat-line__message') && !parent.hasAttribute('data-index')) {
+        parent = parent.parentElement
+      }
+
+      const targetElement =
+        parent && (parent.classList.contains('chat-line__message') || parent.hasAttribute('data-index'))
+          ? parent
+          : messageElement
+
+      // One notification per message: emote re-sweeps re-run this on rows
+      // already marked — re-sending mention_detected spams notifications.
+      if (targetElement.classList.contains('hs-mentioned')) return
+
+      // Add the class (CSS handles the rest with high specificity)
+      targetElement.classList.add('hs-mentioned')
+
+      log(' 🔴 Added .hs-mentioned class to:', targetElement.className)
+
+      // Notify background for browser notification (if hs_notifications enabled)
+      const msgText = Array.from(
+        messageElement.querySelectorAll(
+          '.text-fragment, [data-a-target="chat-message-text"], .mention-fragment, span.font-normal',
+        ),
+      )
+        .map((el) => el.textContent)
+        .join(' ')
+        .trim()
+      safeSendMessage({
+        type: 'mention_detected',
+        username: messageAuthor || '',
+        text: msgText.slice(0, 200),
+        platform: isKick ? 'kick' : 'twitch',
+      }).catch(() => {})
+    }
+  }
+
+  // Color @username mentions AND any username from known chatters (Chatterino-style)
+  // Uses inline span injection - called repeatedly by MutationObserver
+  function colorUsernameMentions(messageElement, preQueriedFragments, emotes) {
+    if (!knownChatters.size) return
+    // Use pre-queried fragments when available (avoids redundant DOM query from processMessage)
+    const textFragments =
+      preQueriedFragments ||
+      messageElement.querySelectorAll('.text-fragment, [data-a-target="chat-message-text"], span.font-normal')
+
+    for (const fragment of textFragments) {
+      // Skip if already has our colored spans (check for our marker class)
+      if (fragment.querySelector('.hs-username-colored')) continue
+      if (!fragment.textContent) continue
+      if (!document.contains(fragment)) continue
+
+      // Rewrite TEXT NODES only. The fragment may already contain rendered
+      // emote <img>s (our injection pass runs first) — the old
+      // textContent-split + replaceChildren flattened the whole fragment and
+      // destroyed them (emotes reverted to text/vanished whenever the same
+      // fragment also named a known chatter). Element children stay put.
+      const textNodes = []
+      for (const n of fragment.childNodes) {
+        if (n.nodeType === Node.TEXT_NODE && n.nodeValue) textNodes.push(n)
+      }
+      for (const tn of textNodes) {
+        const words = tn.nodeValue.split(HS_WS_SPLIT) // Keep whitespace
+        const newNodes = []
+        let hasMatch = false
+
+        for (const word of words) {
+          const cleanWord = word
+            .replace(/[@,.:!?]/g, '')
+            .trim()
+            .toLowerCase()
+
+          // Check if this word is a known chatter
+          // a word that is an emote in this row is the emote, not the chatter of the same name
+          // (wollip's personal emote "wollip")
+          if (cleanWord && knownChatters.has(cleanWord) && !emotes?.has(word.trim())) {
+            const color = knownChatters.get(cleanWord)
+            const span = document.createElement('span')
+            span.className = 'hs-username-colored'
+            const safeColor = COLOR_RE.test(color) ? color : '#ffffff'
+            span.style.cssText = `color: ${safeColor}; font-weight: bold; cursor: pointer;`
+            span.textContent = word
+            span.dataset.hsUsername = cleanWord
+            applyMentionCosmetics(span, cleanWord)
+            newNodes.push(span)
+            hasMatch = true
+          } else {
+            newNodes.push(document.createTextNode(word))
+          }
+        }
+
+        if (!hasMatch) continue
+        try {
+          tn.replaceWith(...newNodes)
+        } catch (_e) {
+          // Silently skip on React conflict
+        }
+      }
+    }
+
+    // Also color @mention elements (Twitch's explicit mentions)
+    // Always make mentions hoverable for profile cards, even if user hasn't chatted yet
+    const mentions = messageElement.querySelectorAll('.mention-fragment, [data-a-target="chat-message-mention"]')
+    for (const mention of mentions) {
+      if (mention.classList.contains('hs-mention-colored')) continue
+      const username = mention.textContent.replace('@', '').trim().toLowerCase()
+      if (!username) continue
+      const color = knownChatters.get(username) || heatsyncColorMap.get(username) || '#fff'
+      const safeColor = COLOR_RE.test(color) ? color : '#fff'
+      mention.style.cssText = `color: ${safeColor}; font-weight: bold; cursor: pointer; pointer-events: auto;`
+      mention.classList.add('hs-mention-colored')
+      mention.dataset.hsUsername = username
+      applyMentionCosmetics(mention, username)
+    }
+  }
+
+  // Mentions carry the mentioned user's 7TV paint, same as their username
+  // element does. Paint may arrive after the mention rendered — the
+  // data-hs-cosmetic-mention stamp lets applyPendingCosmetics catch up.
+  function applyMentionCosmetics(el, username) {
+    if (isKick) {
+      const c = kickCosmeticsCache.get(username)
+      if (c?.paint && !el.dataset.hsPaintApplied) applyPaintToElement(el, c.paint)
+      return
+    }
+    const uid = chatterTwitchIds.get(username)
+    if (!uid) return
+    el.dataset.hsCosmeticMention = uid
+    // their saved heatsync paint (outranks 7tv, same as on their own name)
+    stampHsNativePaint(el, uid)
+    const c = cosmeticsCache.get(uid)
+    if (c?.paint) {
+      if (!el.dataset.hsPaintApplied) applyPaintToElement(el, c.paint)
+    } else if (!c) {
+      queueCosmeticsLookup(uid)
+    }
+  }
+
+  // MutationObserver for persistent username coloring (survives React re-renders)
+  // usernameColoringObserver merged into messageObserver (single observer pattern).
+  let usernameClickHandlerInstalled = false
+
+  // Lock/unlock helpers for emote stacks. Per-stack MutationObserver attached
+  // only when locked — bounded by # locked stacks (typically 0-2). Replaces the
+  // old subtree-on-chat scan that fired on every React class mutation in the
+  // entire chat tree (major OOM source over long sessions).
+  function lockStack(stack) {
+    if (!stack || stack._hsLockObserver) return
+    stack.dataset.hsLocked = '1'
+    stack.classList.add('expanded')
+    const obs = new MutationObserver(() => {
+      if (stack.dataset.hsLocked === '1' && !stack.classList.contains('expanded')) {
+        stack.classList.add('expanded')
+      }
+    })
+    obs.observe(stack, { attributes: true, attributeFilter: ['class'] })
+    // Track it: if twitch prunes this locked row from chat before the user
+    // closes it, unlockStack never runs and the observer would keep the
+    // detached subtree alive for the whole session. Tracked, teardown
+    // disconnects it instead.
+    cleanup.trackObserver(obs)
+    stack._hsLockObserver = obs
+  }
+  function unlockStack(stack) {
+    if (!stack) return
+    delete stack.dataset.hsLocked
+    stack.classList.remove('expanded')
+    if (stack._hsLockObserver) {
+      stack._hsLockObserver.disconnect()
+      cleanup.untrackObserver(stack._hsLockObserver)
+      stack._hsLockObserver = null
+    }
+  }
+
+  function setupUsernameColoringObserver() {
+    log(' setupUsernameColoringObserver called')
+
+    // ALWAYS install click handler first (before any early returns)
+    // NOTE: Profile card click handler in setupProfileCard() handles username clicks now.
+    // This handler only prevents default navigation on colored usernames.
+    if (!usernameClickHandlerInstalled) {
+      usernameClickHandlerInstalled = true
+      log(' ✅ Username click handler deferred to profile card')
+
+      // Emote stack expand/collapse handlers
+      // Click-to-expand, stays open until × button. Bulletproof — nothing else collapses.
+
+      // CRITICAL: Intercept mousedown/pointerdown on stacks in capture phase
+      // Right-click generates mousedown BEFORE contextmenu — Twitch React handles
+      // mousedown on emote buttons and re-renders the message, destroying our stack DOM.
+      // Must stop propagation before it reaches any React handler.
+      for (const evt of ['mousedown', 'pointerdown']) {
+        document.addEventListener(
+          evt,
+          (e) => {
+            // Block right/middle-click on ANY emote wrapper (stack or standalone) from
+            // reaching Twitch React. Otherwise React handles the mousedown, re-renders
+            // the chat message, and wipes our wrapper mid-block — visible flicker.
+            const target = e.target.closest('.heatsync-emote-stack, .heatsync-emote-wrapper')
+            if (!target) return
+            if (e.button === 2 || e.button === 1) {
+              e.stopPropagation()
+            }
+          },
+          { capture: true, signal },
+        )
+      }
+
+      document.addEventListener(
+        'click',
+        (e) => {
+          // Handle collapse button (×) — the ONLY way to close an expanded stack
+          const collapseBtn = e.target.closest('.heatsync-stack-collapse')
+          if (collapseBtn) {
+            e.preventDefault()
+            e.stopPropagation()
+            const stack = collapseBtn.closest('.heatsync-emote-stack')
+            unlockStack(stack)
+            return
+          }
+
+          // Handle block-all / show-all toggle button (⊘ ↔ ◉)
+          const blockAllBtn = e.target.closest('.heatsync-stack-block-all')
+          if (blockAllBtn) {
+            e.preventDefault()
+            e.stopPropagation()
+            const stack = blockAllBtn.closest('.heatsync-emote-stack')
+            if (stack) {
+              const emoteWrappers = stack.querySelectorAll('.heatsync-emote-wrapper')
+              const allBlocked = Array.from(emoteWrappers).every((wrapper) =>
+                wrapper.classList.contains('emote-overlay-blocked'),
+              )
+              const names = []
+
+              // Server stores blocks by hash only — skip emotes without a hash to
+              // avoid corrupting state with name-keyed entries that won't sync.
+              // Reconcile every leg: the background reports an HTTP failure by
+              // RESOLVING {success:false}, so the old fire-and-forget sends left
+              // a "blocked: A, B, C" toast standing even when the server took
+              // none of them. Apply optimistically, await each, revert the ones
+              // that failed, and toast the truth.
+              const type = allBlocked ? 'unblock_emote' : 'block_emote'
+              const applied = []
+              emoteWrappers.forEach((wrapper) => {
+                const hash = wrapper.dataset.emoteHash
+                const name = wrapper.dataset.emoteName
+                if (!hash) return // server can't (un)block without a hash
+                if (allBlocked) {
+                  blockedEmotes.delete(hash)
+                  markLocalBlockToggle(hash, 'unblocked')
+                  updateEmoteState(hash, name, globalNameSet.has(name) ? 'global' : 'neutral')
+                } else {
+                  blockedEmotes.add(hash)
+                  markLocalBlockToggle(hash, 'blocked')
+                  updateEmoteState(hash, name, 'blocked')
+                }
+                if (name) names.push(name)
+                applied.push({ hash, name, wrapper })
+              })
+              blockAllBtn.textContent = allBlocked ? '⊘' : '◉'
+              blockAllBtn.title = allBlocked ? t('btn_block_all') : t('btn_show_all')
+              showToast(
+                t(allBlocked ? 'content_toast_unblocked' : 'content_toast_blocked', [names.join(', ')]),
+                allBlocked ? 'success' : 'info',
+              )
+              ;(async () => {
+                const results = await Promise.all(
+                  applied.map((a) =>
+                    safeSendMessage({ type, hash: a.hash })
+                      .then((r) => (r && r.success === false ? { ...a, ok: false } : { ...a, ok: true }))
+                      .catch(() => ({ ...a, ok: false })),
+                  ),
+                )
+                const failed = results.filter((r) => !r.ok)
+                if (!failed.length) return
+                // Revert the failed legs to their pre-click state so local state
+                // stops disagreeing with the server.
+                for (const f of failed) {
+                  if (allBlocked) {
+                    blockedEmotes.add(f.hash)
+                    markLocalBlockToggle(f.hash, 'blocked')
+                    updateEmoteState(f.hash, f.name, 'blocked')
+                  } else {
+                    blockedEmotes.delete(f.hash)
+                    markLocalBlockToggle(f.hash, 'unblocked')
+                    updateEmoteState(f.hash, f.name, globalNameSet.has(f.name) ? 'global' : 'neutral')
+                  }
+                }
+                // If every leg failed, the whole toggle didn't happen — put the
+                // button label back too.
+                if (failed.length === results.length) {
+                  blockAllBtn.textContent = allBlocked ? '◉' : '⊘'
+                  blockAllBtn.title = allBlocked ? t('btn_show_all') : t('btn_block_all')
+                }
+                showToast(
+                  t(allBlocked ? 'content_toast_unblock_failed' : 'content_toast_block_failed', [
+                    failed
+                      .map((f) => f.name)
+                      .filter(Boolean)
+                      .join(', '),
+                  ]),
+                  'error',
+                )
+              })()
+            }
+            return
+          }
+
+          // Click anywhere on a stack → absorb click (prevent mute/other handlers)
+          const stack = e.target.closest('.heatsync-emote-stack')
+          if (stack) {
+            if (!stack.classList.contains('expanded')) {
+              // Collapsed → bulk-insert every emote in the stack in DOM order,
+              // adding unowned heatsync emotes to the user's inventory first.
+              // Right-click still expands (for per-emote interaction).
+              e.preventDefault()
+              e.stopPropagation()
+              const wrappers = stack.querySelectorAll('.heatsync-emote-wrapper')
+              const addPromises = []
+              wrappers.forEach((wrapper) => {
+                const hash = wrapper.dataset.emoteHash || ''
+                const emoteName = wrapper.dataset.emoteName
+                if (!emoteName) return
+                const isBlocked = hash ? blockedEmotes.has(hash) : blockedEmotes.has(emoteName)
+                if (isBlocked) return // Skip blocked emotes — don't insert or add
+                const imgEl = wrapper.querySelector('img')
+                const emoteUrl = imgEl?.src || ''
+                const inInv = inventoryHashSet.has(hash)
+                const isGlobalEmote = wrapper.classList.contains('emote-overlay-global') || globalNameSet.has(emoteName)
+                // Add to inventory: only own heatsync emotes (have hash, not third-party global)
+                if (!inInv && hash && !isGlobalEmote) {
+                  // Resolve to the name only if it actually persisted — the old
+                  // code pushed the name synchronously and toasted "added" before
+                  // the write resolved, so a {success:false} (rate limit, expired
+                  // token, dup slot) or reject claimed a save that never happened,
+                  // then reverted on the next inventory poll with no explanation.
+                  addPromises.push(
+                    safeSendMessage({
+                      type: 'add_to_inventory',
+                      emoteName,
+                      emoteHash: hash,
+                      emoteUrl,
+                    })
+                      .then((result) => {
+                        if (result?.success) {
+                          inventoryHashSet.add(result.hash || hash)
+                          updateEmoteState(hash, emoteName, 'added')
+                          return emoteName
+                        }
+                        return null
+                      })
+                      .catch(() => null),
+                  )
+                }
+                // Insert into chat input via MAIN-world hook (handles Slate editor)
+                window.postMessage(
+                  {
+                    type: 'heatsync-insert-emote',
+                    name: emoteName,
+                    hash: hash || emoteName,
+                    url: emoteUrl,
+                  },
+                  location.origin,
+                )
+              })
+              if (addPromises.length) {
+                Promise.all(addPromises).then((names) => {
+                  const added = names.filter(Boolean)
+                  if (added.length) showToast(t('mc_emote_added', [added.join(', ')]), 'success')
+                })
+              }
+            } else {
+              // Expanded stack — absorb ALL clicks to prevent Twitch React re-render
+              // which would destroy the stack DOM. Emote insert handled below.
+              e.preventDefault()
+              e.stopImmediatePropagation()
+              // If clicked on an emote wrapper, trigger insert directly (since bubble handler won't fire)
+              const wrapper = e.target.closest('.heatsync-emote-wrapper')
+              if (wrapper) {
+                const hash = wrapper.dataset.emoteHash || ''
+                const emoteName = wrapper.dataset.emoteName
+                const isBlocked = hash ? blockedEmotes.has(hash) : blockedEmotes.has(emoteName)
+                if (isBlocked) {
+                  // BLOCKED → UNBLOCK on left click
+                  safeSendMessage({ type: 'unblock_emote', hash }).then((result) => {
+                    if (result?.success) {
+                      blockedEmotes.delete(hash)
+                      markLocalBlockToggle(hash, 'unblocked')
+                      updateEmoteState(hash, emoteName, 'neutral')
+                      showToast(t('content_toast_unblocked', [emoteName]), 'success')
+                    } else {
+                      showToast(t('content_toast_unblock_failed', [emoteName]), 'error')
+                    }
+                  })
+                } else {
+                  // NOT BLOCKED → INSERT into chat
+                  const imgEl = wrapper.querySelector('img')
+                  const emoteUrl = imgEl?.src || ''
+                  window.postMessage(
+                    {
+                      type: 'heatsync-insert-emote',
+                      name: emoteName,
+                      hash: hash || emoteName,
+                      url: emoteUrl,
+                    },
+                    location.origin,
+                  )
+                }
+              }
+            }
+            return
+          }
+
+          // Click outside does NOT close expanded stacks — only × button closes them
+        },
+        { capture: true, signal },
+      )
+
+      // Right-click on stack — capture phase so we beat Twitch React + bubble
+      // handlers. Instant block/unblock toggle on the wrapper under the cursor;
+      // stack auto-expands (lockStack) so siblings stay visible during the op.
+      document.addEventListener(
+        'contextmenu',
+        (e) => {
+          if (!hsGateOn('right-click-block')) return // live subsystem gate
+          const stack = e.target.closest('.heatsync-emote-stack')
+          if (!stack) return
+          e.preventDefault()
+          e.stopImmediatePropagation()
+          if (!stack.classList.contains('expanded')) {
+            lockStack(stack)
+          }
+          const wrapper = e.target.closest('.heatsync-emote-wrapper')
+          if (!wrapper) return
+          const hash = wrapper.dataset.emoteHash
+          const emoteName = wrapper.dataset.emoteName
+          if (!hash) return
+
+          const isBlocked = blockedEmotes.has(hash)
+          const isGlobalEmote = wrapper.classList.contains('emote-overlay-global') || globalNameSet.has(emoteName)
+          const inInv = inventoryHashSet.has(hash)
+          if (isBlocked) {
+            const restoredState = isGlobalEmote ? 'global' : 'neutral'
+            blockedEmotes.delete(hash)
+            markLocalBlockToggle(hash, 'unblocked')
+            updateEmoteState(hash, emoteName, restoredState)
+            safeSendMessage({ type: 'unblock_emote', hash }).then((result) => {
+              if (!result?.success) {
+                blockedEmotes.add(hash)
+                markLocalBlockToggle(hash, 'blocked')
+                updateEmoteState(hash, emoteName, 'blocked')
+                showToast(t('content_toast_failed_unblock', [String(result?.error || 'Unknown error')]), 'error')
+              }
+              stack.classList.add('expanded')
+            })
+          } else if (removeOwnedEmote(wrapper, hash, emoteName)) {
+            stack.classList.add('expanded')
+          } else {
+            blockedEmotes.add(hash)
+            markLocalBlockToggle(hash, 'blocked')
+            updateEmoteState(hash, emoteName, 'blocked')
+            safeSendMessage({ type: 'block_emote', hash }).then((result) => {
+              if (!result?.success) {
+                blockedEmotes.delete(hash)
+                markLocalBlockToggle(hash, 'unblocked')
+                updateEmoteState(hash, emoteName, inInv ? 'added' : isGlobalEmote ? 'global' : 'neutral')
+                showToast(t('content_toast_failed_block', [String(result?.error || 'Unknown error')]), 'error')
+              } else {
+                showToast(t('content_toast_blocked', [emoteName]), 'info')
+              }
+              stack.classList.add('expanded')
+            })
+          }
+        },
+        { capture: true, signal },
+      )
+
+      log(' ✅ Emote stack expand/collapse handler installed')
+    }
+
+    // Observer setup folded into watchForNewMessages (single unified observer).
+    // This function now only installs click handlers above.
+  }
+
+  // Mixed-content emote replacement for text leaves that also hold native platform
+  // emote <img> inline (Kick renders message text in `span.font-normal` with native
+  // emotes interleaved as <img>). replaceEmotesWithStacking() reads textContent +
+  // replaceChildren(), which would WIPE those native <img>. So for mixed leaves we
+  // wrap each bare text-node child in its own span and run the existing emote
+  // machinery on the span only — native <img> are siblings outside the spans and
+  // are never touched. Pure-text leaves (all of Twitch) never hit this path.
+  // Re-entry (retro pass after a sender's emote set resolves) finds the
+  // hs-textfrag spans from the first pass and re-runs the machinery on the
+  // still-unresolved ones — spans that already hold a wrapper are skipped
+  // (same guard the pure-leaf path uses), so nothing double-wraps.
+  function replaceEmotesPreservingImgs(leaf, allEmotes) {
+    // Snapshot — replaceWith mutates the live childNodes list mid-iteration.
+    for (const node of Array.from(leaf.childNodes)) {
+      if (node.nodeType === 3) {
+        if (!node.nodeValue?.trim()) continue
+        const span = document.createElement('span')
+        span.className = 'hs-textfrag'
+        span.textContent = node.nodeValue
+        node.replaceWith(span)
+        replaceEmotesWithStacking(span, allEmotes)
+      } else if (node.nodeType === 1 && node.classList.contains('hs-textfrag')) {
+        // Retro-upgrade: text was wrapped on a prior pass but its emotes
+        // hadn't resolved yet (kick sender sets arrive after first render).
+        if (node.querySelector('.heatsync-emote-wrapper')) continue
+        replaceEmotesWithStacking(node, allEmotes)
+      }
+    }
+  }
+
+  // Process individual message for emote replacement
+  function processMessage(messageElement) {
+    if (!messageElement?.isConnected) return
+    if (messageElement.dataset.heatsyncGeneration === emoteGeneration) return
+
+    messageElement.dataset.heatsyncGeneration = emoteGeneration
+
+    // Cache message body for timeout restoration (before emote processing modifies it)
+    if (dimTimeoutsEnabled) {
+      const msgId = messageElement.dataset.msgId || messageElement.getAttribute('data-msg-id')
+      if (msgId && !originalMessageBodies.has(msgId)) {
+        const body = messageElement.querySelector('[data-a-target="chat-line-message-body"]')
+        if (body) {
+          // Snapshot child nodes as clones — avoids per-message innerHTML
+          // serialization of the live subtree (the largest per-message CPU cost).
+          const nodes = []
+          for (const n of body.childNodes) nodes.push(n.cloneNode(true))
+          originalMessageBodies.set(msgId, { nodes, ts: Date.now() })
+          if (originalMessageBodies.size > 300) {
+            originalMessageBodies.delete(originalMessageBodies.keys().next().value)
+          }
+        }
+      }
+    }
+
+    const textElements = messageElement.querySelectorAll('.text-fragment, span.font-normal')
+    if (textElements.length === 0) return
+
+    // Query author element once — passed to highlightUserMentions/colorUsernameMentions to avoid re-querying
+    const usernameElement = messageElement.querySelector(
+      '.chat-author__display-name, [data-a-target="chat-message-username"], button.inline.font-bold',
+    )
+    const username = usernameElement ? usernameElement.textContent.trim() : ''
+    const lowerUser = username ? username.toLowerCase() : ''
+
+    if (username) {
+      // Add to known chatters (for username coloring) - HeatSync API color > Twitch native > white
+      const hsColor = heatsyncColorMap.get(lowerUser)
+      if (hsColor) {
+        if (usernameElement) usernameElement.style.color = hsColor
+        knownChatters.set(lowerUser, hsColor)
+      } else if (!knownChatters.has(lowerUser)) {
+        const color = usernameElement?.style.color || '#ffffff'
+        knownChatters.set(lowerUser, color)
+        while (knownChatters.size > 500) knownChatters.delete(knownChatters.keys().next().value)
+      }
+      // Stamp recency for native tab-complete (preserves canonical display case).
+      recordRecentChatter(lowerUser, username)
+
+      // Extract sub tenure from Twitch subscriber badge alt text
+      if (!subTenureMap.has(lowerUser)) {
+        const badgeImgs = messageElement.querySelectorAll('[data-a-target="chat-badge"] img, .chat-badge img')
+        for (const img of badgeImgs) {
+          const alt = img.alt || img.getAttribute('aria-label') || ''
+          const match = alt.match(SUB_TENURE_RE)
+          if (match) {
+            subTenureMap.set(lowerUser, parseInt(match[1], 10))
+            while (subTenureMap.size > 500) subTenureMap.delete(subTenureMap.keys().next().value)
+            break
+          }
+        }
+      }
+
+      // Heat border — apply from cache or queue for batch fetch
+      const cached = heatCache.get(lowerUser)
+      if (cached && Date.now() - cached.fetchedAt < HEAT_CACHE_TTL) {
+        applyHeatBorderToElement(messageElement, cached.heat)
+      } else {
+        queueHeatLookup(lowerUser)
+      }
+    }
+
+    // Resolve the sender's id once — drives BOTH cosmetics and the
+    // sender-emote overlay. Tagging + the emote fetch run regardless of the
+    // cosmetics toggle so disabling cosmetics never stops emotes from resolving.
+    let twitchUid = ''
+    if (!isKick && username) {
+      twitchUid = getTwitchUserId(messageElement) || ''
+      if (twitchUid) {
+        messageElement.dataset.hsCosmeticUserId = twitchUid
+        if (!chatterTwitchIds.has(lowerUser)) {
+          chatterTwitchIds.set(lowerUser, twitchUid)
+          while (chatterTwitchIds.size > CHATTER_IDS_MAX) chatterTwitchIds.delete(chatterTwitchIds.keys().next().value)
+        }
+        // Lazy-fetch this sender's heatsync + personal emote set (persistent
+        // overlay) so their added emotes resolve in native chat, not just during
+        // a live broadcast. Deduped/cached — fires at most once per sender.
+        queueSenderEmotes(`twitch:${twitchUid}`)
+      }
+    } else if (isKick && username) {
+      // Kick native rows have no numeric id in the DOM — the BG resolves
+      // kick:<username> (7TV /users/kick/{name} + server batch endpoint),
+      // same as the overlay's cross-user path. Stamp the dataset here (not
+      // only in the cosmetics branch) so retro-render works with cosmetics off.
+      messageElement.dataset.hsCosmeticKickUser = lowerUser
+      queueSenderEmotes(`kick:${lowerUser}`)
+    }
+
+    // The user's own heatsync paint is not a third-party cosmetic: it rides
+    // outside the cosmetics gate, like the overlay's.
+    if (!isKick && twitchUid && usernameElement) stampHsNativePaint(usernameElement, twitchUid)
+
+    // Apply third-party cosmetics (BTTV/FFZ badges + 7TV paints/badges)
+    if (isKick) {
+      if (username) {
+        messageElement.dataset.hsCosmeticKickUser = lowerUser
+        applyKickCosmeticsToMessage(messageElement, lowerUser)
+        queueKickCosmeticsLookup(lowerUser)
+      }
+    } else if (twitchUid) {
+      applyCosmeticsToMessage(messageElement, twitchUid, usernameElement)
+      queueCosmeticsLookup(twitchUid)
+      // Discover self twitch ID once per session and register with the
+      // background so 7TV EventAPI can push real-time cosmetic updates.
+      if (!_selfTwitchIdRegistered) {
+        const me = getCurrentUsername()
+        if (me && username && me.toLowerCase() === lowerUser) {
+          _selfTwitchIdRegistered = true
+          safeSendMessage({ type: 'register_self_twitch_id', twitchId: twitchUid })
+        }
+      }
+    }
+
+    // Check if user is blocked (hard hide). userSetMatches checks legacy bare keys
+    // first (global-match) then the platform-scoped key, so pre-namespace stored
+    // entries keep working and twitch:alice never hides an unrelated kick:alice.
+    if (userSetMatches(blockedUsers, lowerUser, isKick ? 'kick' : 'twitch', [])) {
+      messageElement.style.display = 'none'
+      return
+    }
+
+    // Check if user is muted — strip content, gray username.
+    // Same userSetMatches pattern so overlay-mute's namespaced keys reach native chat.
+    if (userSetMatches(mutedUsers, username, isKick ? 'kick' : 'twitch', [])) {
+      stripMutedMessage(messageElement)
+      return
+    }
+
+    // Highlight mentions of current user (FFZ-style red background on entire line)
+    highlightUserMentions(messageElement, usernameElement, textElements)
+    // Highlight rules (the overlay's chat filter rules, highlight action)
+    nativeRules.highlight(messageElement, username, textElements)
+
+    // Apply per-user color override (right-click on username sets color)
+    if (_userColors.size && username) applyUserColorToMessage(messageElement, username)
+
+    // Ensure emote map is current (rebuilt eagerly by event handlers, fallback here)
+    rebuildEmoteMapIfDirty()
+
+    // Guard: emotes not yet loaded — reprocess will catch this message once inventory arrives
+    if (cachedAllEmotes === null) return
+
+    // 2-tier lookup: cached base + per-user broadcast emotes (avoids cloning entire Map)
+    // Fast path: skip broadcast scan when no broadcasts pending (common case)
+    // For our own messages, skip broadcasts — our inventory is authoritative
+    let allEmotes
+    const currentUser = getCurrentUsername()
+    const isOwnMessage = currentUser && lowerUser && lowerUser === currentUser.toLowerCase()
+    // Sender's persistent heatsync/personal set (null until fetched or
+    // fetched-empty). Skipped for own messages — our own inventory is authoritative.
+    let senderKey = ''
+    if (!isOwnMessage) {
+      if (isKick) {
+        const ku = messageElement.dataset.hsCosmeticKickUser
+        if (ku) senderKey = `kick:${ku}`
+      } else if (messageElement.dataset.hsCosmeticUserId) {
+        senderKey = `twitch:${messageElement.dataset.hsCosmeticUserId}`
+      }
+    }
+    const senderSet = senderKey ? senderHeatsyncEmotes.get(senderKey) : null
+    // Live 10s broadcast overlay (highest priority, freshest).
+    let userBroadcasts = null
+    if (pendingEmoteBroadcasts.size > 0 && username && !isOwnMessage) {
+      const userBroadcastMap = pendingBroadcastsByUser.get(lowerUser)
+      if (userBroadcastMap && userBroadcastMap.size > 0) {
+        // Defer Map alloc — most messages have no surviving entries after the
+        // pendingRemovals filter. At 1000 msgs/min with one broadcaster active,
+        // this skipped 1000 Map allocs/min.
+        for (const [emoteName, emoteData] of userBroadcastMap) {
+          if (pendingRemovals.has(emoteName)) continue
+          if (!userBroadcasts) userBroadcasts = new Map()
+          userBroadcasts.set(emoteName, {
+            name: emoteName,
+            url: emoteData.url?.startsWith('http') ? emoteData.url : `${API_URL}${emoteData.url}`,
+            hash: emoteData.hash,
+            width: emoteData.width,
+            height: emoteData.height,
+          })
+        }
+      }
+    }
+    // Own renders see viewer inventory; other senders see only channel/global +
+    // their own sender_emote_set + live broadcasts. Without this split, mellen
+    // adding "Catge" to inventory would have made every chatter's "Catge" render
+    // as the image even when they don't have the emote in any of their sets.
+    const baseMap = isOwnMessage ? cachedOwnEmotes : cachedNonInventoryEmotes
+    if (!userBroadcasts && (!senderSet || senderSet.size === 0)) {
+      // Fast path — no overlays, no Map alloc.
+      allEmotes = baseMap
+    } else {
+      // Precedence (rule 2, same as multichat's _lookup): live broadcast > the sender's
+      // persistent set > channel > globals. The sender's pick is the line's pick, so a
+      // chatter's same-name emote beats the room's; baseMap still backstops with channel +
+      // globals for every name the sender doesn't carry. Own messages never reach this
+      // branch (no broadcast/senderSet) → fast path, cachedOwnEmotes (inventory first).
+      allEmotes = layeredEmoteMap([userBroadcasts, senderSet, cachedChannelEmotes, baseMap])
+    }
+
+    // Process ALL text fragments with overlay stacking support
+    if (!messageElement.isConnected) return
+    for (const textElement of textElements) {
+      // Mixed leaf from a PRIOR pass (kick) — hs-textfrag spans mark it. Must
+      // route BEFORE the leaf-level wrapper guard: one resolved span would
+      // otherwise strand its still-text siblings, so kick rows rendered before
+      // the sender's set arrived never retro-upgraded. Per-span guard lives
+      // inside replaceEmotesPreservingImgs.
+      if (textElement.querySelector('.hs-textfrag')) {
+        replaceEmotesPreservingImgs(textElement, allEmotes)
+        continue
+      }
+      if (textElement.querySelector('.heatsync-emote-wrapper')) continue
+
+      // Mixed leaf (native platform emote <img> inline with text, e.g. Kick) —
+      // replace per text-node so native <img> survive. Pure-text leaves take the
+      // fast path. querySelector('img') is the cheap discriminator.
+      if (textElement.querySelector('img')) {
+        replaceEmotesPreservingImgs(textElement, allEmotes)
+      } else {
+        replaceEmotesWithStacking(textElement, allEmotes)
+      }
+    }
+
+    // Also wrap any existing heatsync emote images (from tab completion)
+    wrapExistingHeatsyncEmotes(messageElement, allEmotes)
+
+    // Post-process: Stack overlay emotes that are adjacent to base emotes
+    stackAdjacentOverlayEmotes(messageElement, allEmotes)
+
+    // FFZ modifiers across DOM boundaries — text-fragments split modifiers
+    // from preceding emotes, so do a post-pass walking the message timeline.
+    if (_uiPrefs.emoteModifiers) applyModifiersAcrossMessage(messageElement)
+
+    // Color all @username mentions (Chatterino-style) - AFTER emote replacement
+    // so replaceChildren() doesn't wipe out the colored spans
+    colorUsernameMentions(messageElement, textElements, allEmotes)
+
+    // Apply local name-blocks to native Twitch/Kick emotes in this message
+    if (localBlockedEmoteNames.size > 0) {
+      const imgs = messageElement.querySelectorAll(
+        'img[src*="static-cdn.jtvnw.net/emoticons"], img[src*="files.kick.com/emotes/"]',
+      )
+      for (const im of imgs) {
+        if (im.alt && localBlockedEmoteNames.has(im.alt)) {
+          im.setAttribute('data-hs-name-blocked', '1')
+        }
+      }
+    }
+  }
+
+  // Check if an emote is a zero-width/overlay emote
+  // Checks: 7TV zeroWidth property, flags bitmask, and "0" suffix convention
+  function isZeroWidthEmote(emoteName, emoteData, allEmotes) {
+    if (!emoteName) return false
+
+    // Method 1: Check zeroWidth property (direct from 7TV API)
+    if (emoteData?.zeroWidth === true) return true
+
+    // Method 2: Check flags bitmask
+    // 7TV: bit 0 (1) = private/zw override, bit 8 (256) = zero-width
+    if (typeof emoteData?.flags === 'number' && emoteData.flags & 257) return true
+
+    // Method 3: "0" suffix convention (channel overlay emotes)
+    // If emote name ends with "0" and the base name (without "0") exists as an
+    // emote. ONLY when the literal "name0" is NOT itself a real emote — a channel
+    // emote actually named "lerolero0" is standalone, not the "lerolero" overlay.
+    if (emoteName.endsWith('0') && emoteName.length > 1 && !allEmotes?.has(emoteName)) {
+      const baseName = emoteName.slice(0, -1)
+      if (allEmotes?.has(baseName)) {
+        return true
+      }
+    }
+
+    return false
+  }
+
+  // Post-process message to stack overlay emotes on adjacent base emotes
+  function stackAdjacentOverlayEmotes(messageElement, allEmotes) {
+    if (!messageElement.querySelector('.heatsync-emote-wrapper')) return
+    // Find ALL emotes: heatsync wrappers AND native Twitch/platform emotes.
+    // Single querySelectorAll preserves DOM order — no sort needed. Single-pass
+    // collect avoids spread-into-array + filter allocation per message.
+    const _emoteNl = messageElement.querySelectorAll(COMBINED_EMOTE_SELECTOR)
+    const allEmoteElements = []
+    for (let _i = 0; _i < _emoteNl.length; _i++) {
+      const _el = _emoteNl[_i]
+      // a badge is never the base an overlay stacks on (a 7tv-hosted one matched the emote selectors)
+      if (
+        !_el.closest('.heatsync-emote-stack') &&
+        !_el.classList.contains('chat-badge') &&
+        !_el.closest('.chat-badge')
+      ) {
+        allEmoteElements.push(_el)
+      }
+    }
+    if (allEmoteElements.length < 2) return
+
+    // Simple logic: start at index 1, check if current is overlay, stack on previous
+    for (let i = 1; i < allEmoteElements.length; i++) {
+      const currentElement = allEmoteElements[i]
+      const prevElement = allEmoteElements[i - 1]
+
+      // Skip if current already in a stack
+      if (currentElement.closest('.heatsync-emote-stack')) continue
+
+      // Get emote name - different for heatsync vs native
+      let currentEmoteName
+      if (currentElement.classList.contains('heatsync-emote-wrapper')) {
+        currentEmoteName = currentElement.dataset.emoteName
+      } else {
+        const img = currentElement.tagName === 'IMG' ? currentElement : currentElement.querySelector('img')
+        currentEmoteName = img?.alt || img?.getAttribute('data-a-target')?.replace('emote-name-', '')
+      }
+
+      const currentEmote = allEmotes.get(currentEmoteName)
+
+      // Check if current emote is an overlay/zero-width emote
+      const isOverlay = isZeroWidthEmote(currentEmoteName, currentEmote, allEmotes)
+
+      if (!isOverlay) {
+        log(' 🔍 NOT overlay:', currentEmoteName)
+        continue
+      }
+
+      log(' 🔍 Overlay found:', currentEmoteName)
+
+      // Find base: check if previous emote is in a stack, otherwise use it directly as base
+      const existingStack = prevElement.closest('.heatsync-emote-stack')
+      const baseElement = existingStack ? null : prevElement
+      const _targetStack = existingStack || null
+
+      // Check adjacency - only whitespace should separate them
+      const checkElement = existingStack || prevElement
+      if (!checkElement) continue
+
+      // Walk siblings between checkElement and currentElement — skip if any non-whitespace
+      let onlyWhitespace = true
+      let node = checkElement.nextSibling
+      while (node && node !== currentElement) {
+        if (node.nodeType === Node.TEXT_NODE) {
+          if (node.textContent.trim() !== '') {
+            onlyWhitespace = false
+            break
+          }
+        } else {
+          onlyWhitespace = false
+          break
+        }
+        node = node.nextSibling
+      }
+      const textBetween = onlyWhitespace ? '' : 'non-empty'
+
+      log(' 🔍 Text between:', JSON.stringify(textBetween))
+
+      // Only stack if there's just whitespace between them
+      if (!onlyWhitespace) continue
+
+      // Wrap current element if it's a native emote (not already a heatsync wrapper)
+      let currentWrapper = currentElement
+      if (!currentElement.classList.contains('heatsync-emote-wrapper')) {
+        currentWrapper = document.createElement('span')
+        // Native emotes get emote-overlay-global (gray) since they're platform emotes
+        currentWrapper.className = 'heatsync-emote-wrapper heatsync-overlay emote-overlay-global'
+        currentWrapper.dataset.emoteName = currentEmoteName
+        // Use outermost emote container to escape overflow:hidden from Twitch button structure
+        const outerContainer =
+          currentElement.closest('.chat-line__message--emote-button') ||
+          currentElement.closest('[class*="emote-button"]') ||
+          currentElement
+        if (!outerContainer.parentNode) continue
+        outerContainer.parentNode.insertBefore(currentWrapper, outerContainer)
+        currentWrapper.appendChild(outerContainer)
+      } else {
+        currentWrapper.classList.add('heatsync-overlay')
+      }
+
+      // The stack css centres an overlay in the stack's one grid cell; overflow: visible so wide overlays aren't clipped
+      currentWrapper.style.cssText = 'display: flex; align-items: center; justify-content: center; overflow: visible;'
+      // Ensure overlay image renders at native resolution, centered
+      const overlayImgEl = currentWrapper.querySelector('img')
+      if (overlayImgEl) {
+        overlayImgEl.style.cssText =
+          'display: block !important; width: auto !important; height: auto !important; max-width: none !important; max-height: none !important;'
+      }
+
+      if (existingStack) {
+        // Add to existing stack (insert before block-all button if present)
+        log(' ✅ Adding to existing stack:', currentEmoteName)
+        const blockAllBtn = existingStack.querySelector('.heatsync-stack-block-all')
+        if (blockAllBtn) {
+          existingStack.insertBefore(currentWrapper, blockAllBtn)
+        } else {
+          existingStack.appendChild(currentWrapper)
+        }
+        // Update stack count
+        const count = existingStack.querySelectorAll('.heatsync-emote-wrapper').length
+        existingStack.dataset.stackCount = String(count)
+      } else if (baseElement) {
+        // Wrap base element if it's a native emote
+        let baseWrapper = baseElement
+        if (!baseElement.classList.contains('heatsync-emote-wrapper')) {
+          baseWrapper = document.createElement('span')
+          // Native emotes get emote-overlay-global (gray) since they're platform emotes
+          baseWrapper.className = 'heatsync-emote-wrapper emote-overlay-global'
+          const img = baseElement.tagName === 'IMG' ? baseElement : baseElement.querySelector('img')
+          baseWrapper.dataset.emoteName = img?.alt || 'native'
+          baseWrapper.dataset.emoteHash = img?.dataset?.emoteHash || ''
+          // Use outermost emote container to escape overflow:hidden from Twitch button structure
+          const outerContainer =
+            baseElement.closest('.chat-line__message--emote-button') ||
+            baseElement.closest('[class*="emote-button"]') ||
+            baseElement
+          if (!outerContainer.parentNode) continue
+          outerContainer.parentNode.insertBefore(baseWrapper, outerContainer)
+          baseWrapper.appendChild(outerContainer)
+        }
+
+        log(' ✅ Creating stack:', baseWrapper.dataset.emoteName, '+', currentEmoteName)
+
+        const stackContainer = document.createElement('span')
+        stackContainer.className = 'heatsync-emote-stack'
+        stackContainer.dataset.stackCount = '2' // Will be updated when more overlays added
+        stackContainer.title = t('btn_click_expand')
+
+        // Add collapse button (×)
+        const collapseBtn = document.createElement('span')
+        collapseBtn.className = 'heatsync-stack-collapse'
+        hsXify(collapseBtn, t('btn_collapse'))
+        collapseBtn.title = t('btn_collapse')
+        stackContainer.appendChild(collapseBtn)
+
+        // Insert stack container before baseWrapper
+        if (!baseWrapper.parentNode) continue
+        baseWrapper.parentNode.insertBefore(stackContainer, baseWrapper)
+
+        // Move baseWrapper into stack (as base)
+        stackContainer.appendChild(baseWrapper)
+
+        // Move overlay into stack
+        stackContainer.appendChild(currentWrapper)
+
+        // Add block-all button (⊘)
+        const blockAllBtn = document.createElement('span')
+        blockAllBtn.className = 'heatsync-stack-block-all'
+        blockAllBtn.textContent = '⊘'
+        blockAllBtn.title = t('btn_block_all')
+        stackContainer.appendChild(blockAllBtn)
+
+        log('[hs-overlay] Stack HTML:', stackContainer.outerHTML.substring(0, 500))
+
+        // Force overlay re-center when images load (fixes centering on first render).
+        // {once:true} + signal lets the closure release once it fires or on lifecycle abort.
+        const imgs = stackContainer.querySelectorAll('img')
+        imgs.forEach((img) => {
+          if (!img.complete) {
+            img.addEventListener(
+              'load',
+              () => {
+                if (!stackContainer.isConnected) return
+                requestAnimationFrame(() => {
+                  if (!stackContainer.isConnected) return
+                  const overlays = stackContainer.querySelectorAll('.heatsync-overlay')
+                  overlays.forEach((overlay) => {
+                    overlay.style.transform = ''
+                  })
+                })
+              },
+              { once: true, signal },
+            )
+          }
+        })
+      }
+    }
+
+    // Clean up empty containers left by emote replacement (only heatsync-created ones)
+    const emptyContainers = messageElement.querySelectorAll('.text-fragment:empty, span.font-normal:empty')
+    emptyContainers.forEach((el) => {
+      if (!el.closest('.heatsync-emote-stack') && !el.classList.contains('heatsync-emote-stack')) {
+        el.remove()
+      }
+    })
+  }
+
+  // Wrap existing heatsync emote images (from tab completion) with our overlay wrapper
+  function wrapExistingHeatsyncEmotes(messageElement, allEmotes) {
+    if (!messageElement.querySelector('img')) return
+    // Find all images in the message that aren't already wrapped
+    // (a badge, ours or twitch's, can be hosted on the same 7tv/bttv/ffz cdns as emotes, but it is a badge: wrapped, it became a 36px block
+    // and the next emote stacked onto it)
+    const images = messageElement.querySelectorAll('img:not(.heatsync-emote):not(.hs-cosmetic-badge):not(.chat-badge)')
+
+    for (const img of images) {
+      if (img.closest('.heatsync-emote-wrapper')) continue
+
+      const src = img.src || ''
+      const alt = img.alt || ''
+
+      // Wrap emotes from known CDNs — but only wrap native Twitch emotes if they're
+      // in our emote map (otherwise we break Twitch's animated emote rendering)
+      const isHeatsyncCdn = src.includes('heatsync.org')
+      const isThirdPartyEmoteCdn =
+        src.includes('cdn.7tv.app') || src.includes('cdn.betterttv.net') || src.includes('cdn.frankerfacez.com')
+      const isNativeTwitch = src.includes('static-cdn.jtvnw.net/emoticons')
+
+      if (!isHeatsyncCdn && !isThirdPartyEmoteCdn && !isNativeTwitch) continue
+
+      const matchedEmote = allEmotes.get(alt)
+
+      // Never wrap native Twitch emotes — reparenting breaks animated emote rendering
+      if (isNativeTwitch) continue
+
+      // Use matched emote or create placeholder data
+      const emote = matchedEmote || { name: alt, hash: alt, url: src }
+
+      const blocked = blockedEmotes.has(emote.hash)
+      const inInventory = inventoryHashSet.has(emote.hash)
+
+      // Third-party CDN emotes (7tv, bttv, ffz, twitch) are all "global" - can only block, not add to inventory
+      // Only heatsync.org emotes can be added to inventory (blue)
+      const isCdnEmote = isThirdPartyEmoteCdn || isNativeTwitch
+
+      let overlayClass = ''
+      if (blocked) overlayClass = 'emote-overlay-blocked'
+      else if (inInventory) overlayClass = 'emote-overlay-owned'
+      else if (isCdnEmote)
+        overlayClass = 'emote-overlay-global' // gold - non-ownable
+      else overlayClass = 'emote-overlay-unadded' // blue - can be added (heatsync.org)
+
+      // Create wrapper and move image into it
+      const wrapper = document.createElement('span')
+      wrapper.className = `heatsync-emote-wrapper ${overlayClass}${isHeatsyncCdn ? ' heatsync-own-emote' : ''}`
+      wrapper.dataset.emoteName = emote.name
+      wrapper.dataset.emoteHash = emote.hash || ''
+      wrapper.dataset.inInventory = String(inInventory)
+      wrapper.style.cssText =
+        'display: inline-block; vertical-align: middle; cursor: pointer; position: relative; line-height: 0; font-size: 0;'
+
+      // Add heatsync-emote class to img and remove any width constraints
+      img.classList.add('heatsync-emote')
+      img.dataset.emoteName = emote.name
+      img.dataset.emoteHash = emote.hash || ''
+
+      // Remove title to prevent native browser tooltip (we have our own)
+      img.removeAttribute('title')
+
+      // Native size - remove any constraints from other extensions
+      img.style.height = 'auto'
+      img.style.width = 'auto'
+      img.style.maxWidth = 'none'
+      img.style.maxHeight = 'none'
+
+      // Insert wrapper before image, then move image into wrapper
+      if (!img.parentNode) {
+        log(' ❌ SKIP - img has no parentNode:', emote.name)
+        continue
+      }
+      img.parentNode.insertBefore(wrapper, img)
+      wrapper.appendChild(img)
+
+      // Verify it's actually in DOM
+      const inDOM = document.contains(wrapper)
+      log(' ✅ WRAPPED emote:', emote.name, 'inDOM:', inDOM, 'parent:', wrapper.parentNode?.tagName)
+    }
+  }
+
+  // Unicode emoji detection — matches emoji sequences (presentation + ZWJ combos)
+  const UNICODE_EMOJI_RE = /^[\p{Extended_Pictographic}\p{Emoji_Presentation}\uFE0F\u200D]+$/u
+
+  // BTTV/FFZ modifier definitions live in src/lib/modifiers.js (bundled).
+  // Aliases for backward-compat across this file:
+  const HS_MODIFIER_CLASSES = HS_MOD_TOKENS
+  // The kick input hook is a plain copied file with no lib: it asks this to tell a modifier word from an emote
+  if (window.HS) window.HS.isModifierWord = (word) => hsModClassify(word).kind === 'modifier'
+  const HS_C_HEX_RE = HS_MOD_C_HEX_RE
+  // Static, sorted longest-first — used inside per-word hot path of applyModifiersAcrossMessage.
+  // Hoisting saves ~167k allocations/min at 1000 msgs/min × 10 words/msg.
+  const HS_MOD_KEYS_SORTED = Object.keys(HS_MODIFIER_CLASSES).sort((a, b) => b.length - a.length)
+  // Walk a chat message left→right; build groups of {base, overlays, mods, hue},
+  // then apply transform/filter to each base. Modifiers in a group ALWAYS target
+  // the base (skipping overlays), and chain multiplicatively (w! w! = 4x wide).
+  function applyModifiersAcrossMessage(messageElement) {
+    if (!messageElement?.isConnected) return
+    // Modifiers can only ever attach to an emote; a message with no emote
+    // candidates (wrapper or emote-CDN img — mirrors the timeline filter
+    // below; badge imgs live on /badges paths and don't match) is a
+    // guaranteed no-op — skip the full element+text TreeWalk (~most
+    // plain-text messages on a busy channel) for one cheap selector probe.
+    if (
+      !messageElement.querySelector(
+        '.heatsync-emote-wrapper, img[src*="/emoticons/"], img[src*="cdn.7tv.app"], img[src*="cdn.betterttv.net"], img[src*="cdn.frankerfacez.com"]',
+      )
+    )
+      return
+    const walker = document.createTreeWalker(messageElement, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT)
+    const timeline = []
+    let n = walker.nextNode()
+    while (n) {
+      if (n.nodeType === 1) {
+        if (n.matches?.('.heatsync-emote-wrapper')) {
+          timeline.push({ kind: 'emote', el: n, isOverlay: n.classList.contains('heatsync-overlay') })
+        } else if (
+          n.tagName === 'IMG' &&
+          !n.closest('.heatsync-emote-wrapper') &&
+          !n.closest('.hs-cosmetic-badge') &&
+          !n.classList.contains('chat-badge') &&
+          (n.alt || '').length > 0
+        ) {
+          const src = n.src || ''
+          if (
+            src.includes('static-cdn.jtvnw.net/emoticons') ||
+            src.includes('cdn.7tv.app') ||
+            src.includes('cdn.betterttv.net') ||
+            src.includes('cdn.frankerfacez.com')
+          ) {
+            timeline.push({ kind: 'emote', el: n, isOverlay: false })
+          }
+        }
+      } else if (n.nodeType === 3) {
+        const tx = n.textContent || ''
+        if (tx.trim()) timeline.push({ kind: 'text', text: tx })
+      }
+      n = walker.nextNode()
+    }
+    // FFZ semantic: modifier attaches to IMMEDIATELY PRECEDING emote (base
+    // OR overlay). Track currentTarget = last emote seen.
+    let currentTarget = null
+    let currentMods = []
+    let currentHue = null
+    const flushTo = (targetInfo) => {
+      if (!targetInfo) return
+      if (!currentMods.length && currentHue == null) return
+      const { el } = targetInfo
+      const isHsWrapper = el.matches?.('.heatsync-emote-wrapper')
+      const targetImg = el.tagName === 'IMG' ? el : el.querySelector('img')
+      if (!targetImg) return
+      let sx = 1,
+        sy = 1,
+        filter = ''
+      for (const m of currentMods) {
+        if (m === 'wide') sx *= 2
+        else if (m === 'tall') sy *= 2
+        else if (m === 'hflip') sx *= -1
+        else if (m === 'vmirror') sy *= -1
+      }
+      sx = Math.min(Math.max(sx, -4), 4)
+      sy = Math.min(Math.max(sy, -4), 4)
+      if (currentMods.includes('cursed')) filter += ' hue-rotate(45deg) saturate(2)'
+      if (currentHue != null) filter += ` hue-rotate(${currentHue}deg) saturate(1.6)`
+      if (sx !== 1 || sy !== 1) {
+        const fx = Math.abs(sx),
+          fy = Math.abs(sy)
+        if (isHsWrapper) {
+          el.style.setProperty('transform', `scale(${sx}, ${sy})`, 'important')
+          el.style.setProperty('transform-origin', 'center', 'important')
+          if (fx > 1) {
+            const halfX = `calc(var(--hs-emote-width, 28px) * ${(fx - 1) / 2})`
+            el.style.setProperty('margin-left', halfX, 'important')
+            el.style.setProperty('margin-right', halfX, 'important')
+          }
+          if (fy > 1) {
+            const halfY = `calc(var(--hs-emote-height, 28px) * ${(fy - 1) / 2})`
+            el.style.setProperty('margin-top', halfY, 'important')
+            el.style.setProperty('margin-bottom', halfY, 'important')
+          }
+          el.style.setProperty('--hs-mod-scale', String(Math.max(fx, fy)))
+        } else {
+          targetImg.style.setProperty('transform', `scale(${sx}, ${sy})`, 'important')
+          targetImg.style.setProperty('transform-origin', 'center', 'important')
+          if (fx > 1) targetImg.style.setProperty('margin-right', 'var(--hs-emote-width, 28px)', 'important')
+          if (fy > 1)
+            targetImg.style.setProperty('margin-bottom', 'calc(var(--hs-emote-height, 28px) * 0.6)', 'important')
+        }
+      }
+      if (filter.trim()) targetImg.style.setProperty('filter', filter, 'important')
+      if (el.classList) for (const m of new Set(currentMods)) el.classList.add(`heatsync-mod-${m}`)
+    }
+    for (let i = 0; i < timeline.length; i++) {
+      const item = timeline[i]
+      if (item.kind === 'emote') {
+        // Any emote (base or overlay) becomes the new modifier target.
+        // Flush pending mods to whatever was previous, then retarget.
+        flushTo(currentTarget)
+        currentTarget = item
+        currentMods = []
+        currentHue = null
+      } else if (item.kind === 'text') {
+        const tokens = item.text.trim().split(/\s+/).filter(Boolean)
+        let allConsumed = true
+        for (const tok of tokens) {
+          if (HS_MODIFIER_CLASSES[tok]) {
+            currentMods.push(HS_MODIFIER_CLASSES[tok])
+            continue
+          }
+          const m = tok.match(HS_C_HEX_RE)
+          if (m) {
+            currentHue = hsHexToHueDeg(m[1])
+            continue
+          }
+          allConsumed = false
+          break
+        }
+        if (!allConsumed) {
+          flushTo(currentTarget)
+          currentTarget = null
+          currentMods = []
+          currentHue = null
+        }
+      }
+    }
+    flushTo(currentTarget)
+  }
+
+  // hex → hue degrees. Delegates to lib/modifiers.js
+  function hsHexToHueDeg(hex) {
+    return hsModHexToHue(hex)
+  }
+
+  // Replace emotes with overlay stacking support (emotes ending in 0 stack on previous)
+  // Using DOM nodes instead of innerHTML to avoid React conflicts
+  function replaceEmotesWithStacking(element, allEmotes) {
+    const text = element.textContent
+    const words = text.split(HS_WS_SPLIT)
+
+    // Process words to find emotes and group overlays
+    // Key insight: whitespace between emotes should be absorbed into stack
+    // "4Head TriHard0" should stack TriHard on 4Head despite the space
+    const resultNodes = []
+    let currentStack = []
+    let pendingWhitespace = ''
+    let pendingModifiers = [] // BTTV/FFZ modifier classes (chain) — applied to PREVIOUS emote
+    let pendingModColor = null // c!#hex parsed hue degrees
+
+    // FFZ semantic: modifier attaches to the IMMEDIATELY PRECEDING emote.
+    // For "Kappa RainTime w!" — w! applies to RainTime (last entry), not Kappa.
+    // Multiset semantics: chain `w! w!` on same emote = 4x wide.
+    const applyPendingToLast = () => {
+      if (!currentStack.length) return
+      const target = currentStack[currentStack.length - 1]
+      if (pendingModifiers.length) {
+        target.modifiers = (target.modifiers || []).concat(pendingModifiers)
+        pendingModifiers = []
+      }
+      if (pendingModColor != null) {
+        target.modColorHue = pendingModColor
+        pendingModColor = null
+      }
+    }
+
+    for (let i = 0; i < words.length; i++) {
+      const word = words[i]
+      const trimmed = word.trim()
+
+      // Whitespace - accumulate, don't flush yet
+      if (!trimmed) {
+        pendingWhitespace += word
+        continue
+      }
+
+      // Chained modifier word (e.g. "w!h!ffzX" or "w!c!#888") — peel into parts.
+      if (_uiPrefs.emoteModifiers && !HS_MODIFIER_CLASSES[trimmed] && !HS_C_HEX_RE.test(trimmed)) {
+        const _hsPeel = (() => {
+          if (!trimmed || trimmed.length < 2) return null
+          // All modifier tokens contain '!' — fast reject before the loop
+          if (!trimmed.includes('!')) return null
+          const mods = []
+          let hue = null
+          let rem = trimmed
+          while (rem.length > 0) {
+            let matched = false
+            for (const k of HS_MOD_KEYS_SORTED) {
+              if (rem.startsWith(k)) {
+                mods.push(HS_MODIFIER_CLASSES[k])
+                rem = rem.slice(k.length)
+                matched = true
+                break
+              }
+            }
+            if (matched) continue
+            const cm = rem.match(/^c!#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})/)
+            if (cm) {
+              hue = hsHexToHueDeg(cm[1])
+              rem = rem.slice(cm[0].length)
+              continue
+            }
+            return null
+          }
+          return mods.length || hue != null ? { mods, hue } : null
+        })()
+        if (_hsPeel) {
+          for (const m of _hsPeel.mods) pendingModifiers.push(m)
+          if (_hsPeel.hue != null) pendingModColor = _hsPeel.hue
+          pendingWhitespace = ''
+          applyPendingToLast()
+          continue
+        }
+      }
+      // FFZ-style modifier — applies to BASE of current group.
+      // Chain: "Kappa w! raintime0 h! w!" → all mods apply to Kappa, raintime overlays.
+      if (_uiPrefs.emoteModifiers && HS_MODIFIER_CLASSES[trimmed]) {
+        pendingModifiers.push(HS_MODIFIER_CLASSES[trimmed])
+        pendingWhitespace = ''
+        applyPendingToLast()
+        continue
+      }
+      // c!#RRGGBB color modifier
+      const cHexMatch = _uiPrefs.emoteModifiers ? trimmed.match(HS_C_HEX_RE) : null
+      if (cHexMatch) {
+        pendingModColor = hsHexToHueDeg(cHexMatch[1])
+        pendingWhitespace = ''
+        applyPendingToLast()
+        continue
+      }
+
+      // Resolve the emote. A literal full-name hit ALWAYS wins — an emote
+      // actually named "lerolero0" is standalone, NOT the "lerolero" overlay.
+      // Only when the literal name has no emote do we strip the trailing 0 and
+      // overlay the base ("TriHard0" → overlay TriHard). Mirrors processEmotes
+      // and lookupEmoteWithOverlay so the multichat and native renders agree.
+      const endsWithZero = trimmed.endsWith('0') && trimmed.length > 1
+      let emote = null
+      let isOverlay = false
+
+      emote = allEmotes.get(trimmed)
+      if (emote) {
+        // Real literal hit — overlay detection via zeroWidth flag / bitmask only.
+        // isZeroWidthEmote's "name0" branch self-skips here (trimmed is in
+        // allEmotes), so a real "lerolero0" stays standalone.
+        isOverlay = isZeroWidthEmote(trimmed, emote, allEmotes)
+      } else if (endsWithZero) {
+        // No literal "name0" emote — strip the 0 and overlay the base.
+        emote = allEmotes.get(trimmed.slice(0, -1))
+        if (emote) isOverlay = true
+      }
+
+      if (emote && isOverlay && currentStack.length > 0) {
+        // Overlay emote with existing base — add to stack as overlay (no mods)
+        const entry = { emote, isOverlay: true, originalWord: trimmed }
+        currentStack.push(entry)
+        pendingWhitespace = ''
+      } else if (emote && isOverlay && currentStack.length === 0) {
+        // Overlay with no base — promote to standalone (modifiers may still
+        // apply since this becomes the "base" of a new group)
+        if (pendingWhitespace) {
+          resultNodes.push(document.createTextNode(pendingWhitespace))
+          pendingWhitespace = ''
+        }
+        const overlayEntry = { emote, isOverlay: true, originalWord: trimmed }
+        // No base anchor — apply pending mods/hue to this standalone entry.
+        if (pendingModifiers.length) overlayEntry.modifiers = pendingModifiers
+        if (pendingModColor != null) overlayEntry.modColorHue = pendingModColor
+        pendingModifiers = []
+        pendingModColor = null
+        resultNodes.push(generateEmoteElement(emote, true, overlayEntry.modifiers, overlayEntry.modColorHue))
+      } else if (emote) {
+        // Non-overlay (base) emote — flush previous group, start new group
+        if (currentStack.length > 0) {
+          resultNodes.push(flushEmoteStack(currentStack))
+          currentStack = []
+        }
+        // Add accumulated whitespace before this emote
+        if (pendingWhitespace) {
+          resultNodes.push(document.createTextNode(pendingWhitespace))
+          pendingWhitespace = ''
+        }
+        const entry = { emote, isOverlay: false, originalWord: trimmed }
+        currentStack.push(entry)
+        // Apply any pending mods (floating before base, e.g. "w! Kappa") to this base
+        applyPendingToLast()
+      } else {
+        // Emoji :shortcode: (stackable base) OR ":shortcode:0" (overlay that sits
+        // on top of the previous token — mirrors the emote "name0" convention).
+        if (typeof EMOJI_BY_NAME !== 'undefined' && trimmed.startsWith(':') && trimmed.length > 2) {
+          const emojiOverlay = trimmed.endsWith(':0') && trimmed.length > 3
+          const core = emojiOverlay ? trimmed.slice(0, -1) : trimmed // ":smile:0" -> ":smile:"
+          if (core.endsWith(':') && core.length > 2) {
+            const emojiName = core.slice(1, -1)
+            const emojiEntry = EMOJI_BY_NAME.get(emojiName)
+            if (emojiEntry) {
+              if (emojiOverlay && currentStack.length > 0) {
+                currentStack.push({
+                  emoji: emojiEntry.emoji,
+                  emojiName,
+                  isOverlay: true,
+                  isEmoji: true,
+                  originalWord: trimmed,
+                })
+                pendingWhitespace = ''
+                continue
+              }
+              // Base emoji (overlays can sit on top)
+              if (currentStack.length > 0) {
+                resultNodes.push(flushEmoteStack(currentStack))
+                currentStack = []
+              }
+              if (pendingWhitespace) {
+                resultNodes.push(document.createTextNode(pendingWhitespace))
+                pendingWhitespace = ''
+              }
+              currentStack.push({
+                emoji: emojiEntry.emoji,
+                emojiName,
+                isOverlay: false,
+                isEmoji: true,
+                originalWord: trimmed,
+              })
+              continue
+            }
+          }
+        }
+        // Check for Unicode emoji (🏙️, 💵, etc.) — stackable base
+        if (UNICODE_EMOJI_RE.test(trimmed)) {
+          if (currentStack.length > 0) {
+            resultNodes.push(flushEmoteStack(currentStack))
+            currentStack = []
+          }
+          if (pendingWhitespace) {
+            resultNodes.push(document.createTextNode(pendingWhitespace))
+            pendingWhitespace = ''
+          }
+          currentStack.push({ emoji: trimmed, isOverlay: false, isEmoji: true, originalWord: trimmed })
+          continue
+        }
+        // Not an emote - flush stack and add word
+        if (currentStack.length > 0) {
+          resultNodes.push(flushEmoteStack(currentStack))
+          currentStack = []
+        }
+        // Add accumulated whitespace
+        if (pendingWhitespace) {
+          resultNodes.push(document.createTextNode(pendingWhitespace))
+          pendingWhitespace = ''
+        }
+        resultNodes.push(document.createTextNode(word))
+      }
+    }
+
+    // Flush any remaining stack
+    if (currentStack.length > 0) {
+      resultNodes.push(flushEmoteStack(currentStack))
+    }
+    // Add any trailing whitespace
+    if (pendingWhitespace) {
+      resultNodes.push(document.createTextNode(pendingWhitespace))
+    }
+
+    // Use replaceChildren() instead of innerHTML (React-safe)
+    // CRITICAL: Validate element is still in DOM before modification
+    if (!element || !document.contains(element)) {
+      log('⚠️ Element removed from DOM, skipping emote replacement')
+      return
+    }
+
+    try {
+      element.replaceChildren(...resultNodes)
+    } catch (e) {
+      log('⚠️ replaceChildren failed (likely React conflict), skipping:', e.message)
+    }
+
+    // Helper to flush emote stack to DOM node
+    function generateEmojiElement(emoji, title, isOverlay, modifiers, modColorHue) {
+      const span = document.createElement('span')
+      // heatsync-overlay triggers the stack's absolute-centered, z-index:2 layout
+      // so an overlay emoji lands ON TOP of the base instead of beside it.
+      span.className = isOverlay ? 'heatsync-emoji heatsync-overlay' : 'heatsync-emoji'
+      span.textContent = emoji
+      if (title) span.title = `:${title}:`
+      let css = 'display: inline-block; vertical-align: middle; position: relative; z-index: 1;'
+      // FFZ-style modifiers: w!/h!/l!/c! etc. — transform + hue filter on the span
+      // itself (emoji has no <img>, so both go on the element directly).
+      if (modifiers?.length || modColorHue != null) {
+        const { sx, sy } = hsModComposeTransform(modifiers)
+        if (sx !== 1 || sy !== 1) {
+          css += `transform: scale(${sx}, ${sy}) !important; transform-origin: center !important;`
+          const fx = Math.abs(sx)
+          if (fx > 1) css += `margin: 0 calc(0.5em * ${fx - 1}) !important;`
+        }
+        const filter = hsModComposeFilter(modifiers, modColorHue)
+        if (filter) css += `filter: ${filter} !important;`
+      }
+      span.style.cssText = css
+      return span
+    }
+
+    function flushEmoteStack(stack) {
+      if (stack.length === 0) return document.createTextNode('')
+      if (stack.length === 1) {
+        const entry = stack[0]
+        if (entry.isEmoji)
+          return generateEmojiElement(entry.emoji, entry.emojiName, entry.isOverlay, entry.modifiers, entry.modColorHue)
+        return generateEmoteElement(entry.emote, entry.isOverlay, entry.modifiers, entry.modColorHue)
+      }
+      // Multiple emotes - wrap in stack container with buttons
+      const stackContainer = document.createElement('span')
+      stackContainer.className = 'heatsync-emote-stack'
+      stackContainer.dataset.stackCount = String(stack.length)
+      stackContainer.title = t('btn_click_expand')
+
+      // Add collapse button (×)
+      const collapseBtn = document.createElement('span')
+      collapseBtn.className = 'heatsync-stack-collapse'
+      hsXify(collapseBtn, t('btn_collapse'))
+      collapseBtn.title = t('btn_collapse')
+      stackContainer.appendChild(collapseBtn)
+
+      // Add emotes and emojis
+      stack.forEach((entry) => {
+        if (entry.isEmoji) {
+          stackContainer.appendChild(
+            generateEmojiElement(entry.emoji, entry.emojiName, entry.isOverlay, entry.modifiers, entry.modColorHue),
+          )
+        } else {
+          stackContainer.appendChild(
+            generateEmoteElement(entry.emote, entry.isOverlay, entry.modifiers, entry.modColorHue),
+          )
+        }
+      })
+
+      // Add block-all button (⊘)
+      const blockAllBtn = document.createElement('span')
+      blockAllBtn.className = 'heatsync-stack-block-all'
+      blockAllBtn.textContent = '⊘'
+      blockAllBtn.title = t('btn_block_all')
+      stackContainer.appendChild(blockAllBtn)
+
+      // Force overlay re-center when images load (fixes centering on first render).
+      // {once:true} + signal lets the closure release once it fires or on lifecycle abort.
+      const imgs = stackContainer.querySelectorAll('img')
+      imgs.forEach((img) => {
+        if (!img.complete) {
+          img.addEventListener(
+            'load',
+            () => {
+              if (!stackContainer.isConnected) return
+              requestAnimationFrame(() => {
+                if (!stackContainer.isConnected) return
+                const overlays = stackContainer.querySelectorAll('.heatsync-overlay')
+                overlays.forEach((overlay) => {
+                  overlay.style.transform = ''
+                })
+              })
+            },
+            { once: true, signal },
+          )
+        }
+      })
+
+      return stackContainer
+    }
+  }
+
+  // Retry broken emote imgs — 7TV/BTTV/FFZ CDNs occasionally serve 503 and
+  // Chrome surfaces them as broken (complete=true, naturalWidth=0). Re-assigning
+  // the same src refetches and recovers. Backoff: 1s, 3s, 8s; max 3 tries.
+  function hsArmEmoteRetry(img) {
+    let tries = 0
+    img.addEventListener('error', () => {
+      if (hsOwnCopyFallback(img) || tries >= 3 || !img.src || !img.isConnected) return
+      tries++
+      const delay = tries === 1 ? 1000 : tries === 2 ? 3000 : 8000
+      const target = img.src
+      cleanup.setTimeout(() => {
+        if (!img.isConnected || img.src !== target) return
+        img.removeAttribute('src')
+        img.src = target
+      }, delay)
+    })
+  }
+
+  // Generate DOM element for a single emote (React-safe, no innerHTML)
+  // modifiers: array of class suffixes like ['wide','hflip']  (FFZ-style chained)
+  // modColorHue: optional 0-359 deg from c!#hex
+  function generateEmoteElement(emote, isOverlay, modifiers, modColorHue) {
+    const blocked = blockedEmotes.has(emote.hash)
+    const inInventory = inventoryHashSet.has(emote.hash)
+
+    // Third-party CDN emotes are all "global" (gray) — flag precomputed in
+    // rebuildEmoteMapIfDirty. Fall back to url scan only if missing (broadcast path).
+    let isThirdPartyCdn = emote.isThirdParty
+    if (isThirdPartyCdn === undefined) {
+      const url = emote.url || ''
+      isThirdPartyCdn =
+        url.includes('cdn.7tv.app') ||
+        url.includes('cdn.betterttv.net') ||
+        url.includes('cdn.frankerfacez.com') ||
+        url.includes('static-cdn.jtvnw.net')
+    }
+
+    // Determine overlay class based on state
+    let overlayClass = ''
+    if (blocked) {
+      overlayClass = 'emote-overlay-blocked'
+    } else if (inInventory) {
+      overlayClass = 'emote-overlay-owned'
+    } else if (isThirdPartyCdn) {
+      overlayClass = 'emote-overlay-global' // gold - non-ownable
+    } else {
+      overlayClass = 'emote-overlay-unadded' // blue - can be added
+    }
+
+    const cssClasses = ['heatsync-emote']
+    if (blocked) cssClasses.push('emote-blocked')
+    else if (inInventory) cssClasses.push('emote-in-set')
+    else if (isThirdPartyCdn) cssClasses.push('emote-global')
+
+    const overlayWrapperClass = isOverlay ? ' heatsync-overlay' : ''
+    // FFZ-style modifier multiset (chain: w! w! → 4x wide)
+    const modList = modifiers?.length ? modifiers.slice() : null
+    // CSS classes use deduped names (one each is enough for state CSS)
+    const modClass = modList
+      ? ' ' +
+        Array.from(new Set(modList))
+          .map((m) => `heatsync-mod-${m}`)
+          .join(' ')
+      : ''
+
+    // Create wrapper span
+    const wrapper = document.createElement('span')
+    const ownClass = !isThirdPartyCdn ? ' heatsync-own-emote' : ''
+    wrapper.className = `heatsync-emote-wrapper ${overlayClass}${overlayWrapperClass}${ownClass}${modClass}`
+    wrapper.dataset.emoteHash = emote.hash
+    wrapper.dataset.emoteName = emote.name
+    wrapper.dataset.inInventory = String(inInventory)
+    // Compose multiset modifier transform — repeats compound (w! w! → 4x wide).
+    // Cap each axis at ±4x: chat layout breaks past 4x (line-height etc.) and
+    // recipients can't reserve more vertical/horizontal space without overlap.
+    const _composeMods = (mods) => {
+      let sx = 1,
+        sy = 1
+      if (mods)
+        for (const m of mods) {
+          if (m === 'wide') sx *= 2
+          else if (m === 'tall') sy *= 2
+          else if (m === 'hflip') sx *= -1
+          else if (m === 'vmirror') sy *= -1
+        }
+      sx = Math.min(Math.max(sx, -4), 4)
+      sy = Math.min(Math.max(sy, -4), 4)
+      return { sx, sy }
+    }
+    if (isOverlay) {
+      // Overlay wrapper: the stack css centres it over the widest emote; only a modifier scale is set here.
+      const ov = _composeMods(modList)
+      const overlayScale = ov.sx !== 1 || ov.sy !== 1 ? `transform: scale(${ov.sx}, ${ov.sy}); ` : ''
+      wrapper.style.cssText = `${overlayScale}transform-origin: center; display: inline-block; overflow: visible; cursor: pointer;`
+    } else {
+      // Base wrapper. Modifier scale goes here (not on img) so the green
+      // ::before indicator and hit-box scale with the visual emote.
+      // Symmetric margins so the scaled visual fits exactly within layout
+      // (no off-screen bleed, no overlap with neighbors).
+      let baseTransform = ''
+      let layoutMargin = ''
+      let modScaleVar = ''
+      if (modList) {
+        const { sx, sy } = _composeMods(modList)
+        if (sx !== 1 || sy !== 1) {
+          const fx = Math.abs(sx),
+            fy = Math.abs(sy)
+          baseTransform = `transform: scale(${sx}, ${sy}) !important; transform-origin: center !important;`
+          if (fx > 1) {
+            const halfX = `calc(var(--hs-emote-width, 28px) * ${(fx - 1) / 2})`
+            layoutMargin += `margin-left: ${halfX} !important; margin-right: ${halfX} !important;`
+          }
+          if (fy > 1) {
+            const halfY = `calc(var(--hs-emote-height, 28px) * ${(fy - 1) / 2})`
+            layoutMargin += `margin-top: ${halfY} !important; margin-bottom: ${halfY} !important;`
+          }
+          // Inverse-scale CSS var so outline/box-shadow widths can compensate
+          // and look 2px regardless of modifier scale.
+          modScaleVar = `--hs-mod-scale: ${Math.max(fx, fy)};`
+        }
+      }
+      wrapper.style.cssText = `display: inline-block; vertical-align: middle; cursor: pointer; position: relative; line-height: 0; font-size: 0; ${baseTransform} ${layoutMargin} ${modScaleVar}`
+    }
+
+    // Overlay emotes render at 1x native size (their designed display size)
+    const imgSrc = isOverlay ? emote.url : hsNativeRowUrl(emote)
+
+    // Create image - native size, no constraints
+    const img = document.createElement('img')
+    img.src = imgSrc
+    img.alt = emote.name
+    img.decoding = 'async'
+    // Filters (cursed animation, hue tint) stay on img — wrapper-level transform
+    // handles scale/flip so the green ::before indicator scales with the emote.
+    let modFilter = ''
+    if (modList?.includes('cursed')) modFilter += ' hue-rotate(0deg)' // anchor; CSS animation overrides
+    if (modColorHue != null) modFilter += ` hue-rotate(${modColorHue}deg) saturate(1.6)`
+    const filterStyle = modFilter.trim() ? `filter:${modFilter} !important;` : ''
+    img.style.cssText = `display: block !important; width: auto !important; height: ${isOverlay ? 'auto' : 'var(--hs-emote-height, 28px)'} !important; max-width: none !important; max-height: none !important; ${blocked ? 'object-fit: none; object-position: 10000px 10000px;' : ''} cursor: pointer; ${filterStyle}`
+    // Overlay images need explicit natural dims so Twitch CSS can't constrain them.
+    // Fire even when blocked so a later unblock has correct dims (img is opacity:0
+    // while blocked, so this is layout-only — no visual flash).
+    // Non-overlay blocked emotes deliberately stay at the cssText height (28px) —
+    // locking to naturalWidth would push chat rows to 4x for high-DPI assets.
+    if (isOverlay) {
+      img.onload = function () {
+        const nw = this.naturalWidth,
+          nh = this.naturalHeight
+        this.style.setProperty('width', `${nw}px`, 'important')
+        this.style.setProperty('height', `${nh}px`, 'important')
+        this.style.setProperty('min-width', `${nw}px`, 'important')
+        this.style.setProperty('min-height', `${nh}px`, 'important')
+      }
+    }
+    img.className = cssClasses.join(' ')
+    img.dataset.emoteHash = emote.hash
+    img.dataset.emoteName = emote.name
+
+    hsArmEmoteRetry(img)
+    wrapper.appendChild(img)
+
+    // Multi-variant fallback: if the same name exists in other sources (e.g.,
+    // user inventory + 7TV global), append the other variants as hidden sibling
+    // imgs with lazy src. Right-clicking to block the active variant then swaps
+    // to the next non-blocked sibling in-place — no DOM rebuild, no fetch round-trip
+    // (subsequent swaps are instant once the variant img loads once).
+    // Your inventory copy is only a fallback on a line that is already drawing YOUR emote.
+    // On anyone else's line it would be the next pick when their emote is blocked — your W
+    // drawn on their line (rules 4, 10).
+    const variants = cachedAllEmoteVariants?.get(emote.name)?.filter((v) => emote.inInventory || !v.inInventory)
+    if (variants && variants.length > 1) {
+      wrapper.dataset.hasVariants = '1'
+      wrapper.dataset.primaryHash = emote.hash
+      // Tag the primary img with its priority index + classification so
+      // pickActiveVariant can sort + categorize it on later state changes.
+      const primaryIdx = variants.findIndex((v) => v.hash === emote.hash)
+      img.dataset.variantIndex = String(primaryIdx >= 0 ? primaryIdx : 0)
+      img.dataset.variantClass = emote.inInventory ? 'inventory' : emote.isGlobal ? 'global' : 'channel'
+      img.dataset.emoteUrl = emote.url
+
+      for (let i = 0; i < variants.length; i++) {
+        const v = variants[i]
+        if (v.hash === emote.hash) continue
+        const alt = document.createElement('img')
+        alt.alt = emote.name
+        alt.dataset.emoteHash = v.hash
+        alt.dataset.emoteName = emote.name
+        alt.dataset.emoteUrl = v.url
+        alt.dataset.variantIndex = String(i)
+        alt.dataset.variantClass = v.inInventory ? 'inventory' : v.isGlobal ? 'global' : 'channel'
+        alt.decoding = 'async'
+        alt.className = 'heatsync-emote'
+        // Match primary img dims so layout doesn't reflow when swapping in.
+        alt.style.cssText = `display:none !important; width:auto !important; height:${isOverlay ? 'auto' : 'var(--hs-emote-height, 28px)'} !important; max-width:none !important; max-height:none !important; cursor:pointer;`
+        if (isOverlay) {
+          alt.onload = function () {
+            const nw = this.naturalWidth,
+              nh = this.naturalHeight
+            this.style.setProperty('width', `${nw}px`, 'important')
+            this.style.setProperty('height', `${nh}px`, 'important')
+            this.style.setProperty('min-width', `${nw}px`, 'important')
+            this.style.setProperty('min-height', `${nh}px`, 'important')
+          }
+        }
+        hsArmEmoteRetry(alt)
+        wrapper.appendChild(alt)
+      }
+
+      // If the primary is already blocked at render time, swap to first available.
+      if (blockedEmotes.has(emote.hash)) pickActiveVariant(wrapper)
+    }
+
+    return wrapper
+  }
+
+  // Retroactive emote replacement — DOM-based (no innerHTML round-trip)
+  // Walks text nodes only, splits on emote name, inserts DOM elements directly.
+  function replaceEmoteInText(element, emote) {
+    const regex = createEmoteRegex(emote.name)
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT)
+    const matches = []
+
+    // Collect matching text nodes first (mutating during walk is unsafe)
+    let node
+    while ((node = walker.nextNode())) {
+      if (regex.test(node.textContent)) {
+        matches.push(node)
+        regex.lastIndex = 0
+      }
+    }
+
+    for (const textNode of matches) {
+      const parts = textNode.textContent.split(regex)
+      if (parts.length <= 1) continue
+
+      const frag = document.createDocumentFragment()
+      for (let i = 0; i < parts.length; i++) {
+        if (parts[i]) frag.appendChild(document.createTextNode(parts[i]))
+        if (i < parts.length - 1) {
+          // Use generateEmoteElement if available, otherwise build manually
+          const emoteEl = generateEmoteElement(emote)
+          frag.appendChild(emoteEl)
+        }
+      }
+      if (textNode.parentNode) {
+        textNode.parentNode.replaceChild(frag, textNode)
+      }
+    }
+  }
+
+  // Setup event delegation for all emote clicks (ONE listener for all emotes)
+  function setupEmoteClickHandlers() {
+    cleanup.addEventListener(
+      document,
+      'click',
+      async (e) => {
+        const wrapper = e.target.closest('.heatsync-emote-wrapper')
+        if (!wrapper) return
+
+        e.preventDefault()
+        e.stopPropagation()
+
+        const hash = wrapper.dataset.emoteHash || ''
+        const emoteName = wrapper.dataset.emoteName
+        const operationKey = `click:${hash || emoteName}`
+
+        // Prevent double-clicks while operation in progress
+        if (pendingOperations.has(operationKey)) {
+          log(' ⏳ Operation already in progress:', emoteName)
+          return
+        }
+
+        const isBlocked = hash ? blockedEmotes.has(hash) : blockedEmotes.has(emoteName)
+        log(' LEFT CLICK - emote:', emoteName, 'hash:', hash, 'blocked:', isBlocked)
+
+        if (isBlocked) {
+          // BLOCKED → left-click means "I want this" → unblock + restore in one go.
+          // restoredState lands on 'added' when the hash is still in inventory, so a
+          // single click brings it straight back to the set. Right-click → menu for
+          // block/other options.
+          pendingOperations.add(operationKey)
+          try {
+            const result = await safeSendMessage({ type: 'unblock_emote', hash })
+            if (result?.success) {
+              blockedEmotes.delete(hash)
+              markLocalBlockToggle(hash, 'unblocked')
+              const restoredState = inventoryHashSet.has(hash)
+                ? 'added'
+                : globalNameSet.has(emoteName)
+                  ? 'global'
+                  : 'neutral'
+              updateEmoteState(hash, emoteName, restoredState)
+              log(' ✅ Unblocked:', emoteName)
+              showToast(t('content_toast_unblocked', [emoteName]), 'success')
+            } else {
+              showToast(t('content_toast_failed_unblock', [String(result?.error || 'Unknown error')]), 'error')
+            }
+          } finally {
+            pendingOperations.delete(operationKey)
+          }
+        } else {
+          // NOT BLOCKED → INSERT into chat via Slate (postMessage to autocomplete-hook)
+          log(' INSERTING EMOTE via Slate:', emoteName)
+          // Get emote URL and hash for Slate insertion
+          const imgEl = wrapper.querySelector('img')
+          const emoteUrl = imgEl?.src || ''
+          window.postMessage(
+            {
+              type: 'heatsync-insert-emote',
+              name: emoteName,
+              hash: hash || emoteName,
+              url: emoteUrl,
+            },
+            location.origin,
+          )
+          log(' 💬 Sent insert request for:', emoteName)
+        }
+      },
+      { capture: true },
+      // Capture on purpose — stops propagation so the page's click handler
+      // never sees an emote click.
+      'emote-click',
+    )
+
+    // Right-click on native Twitch/Kick emotes (sub/follower/bits, Kick channel
+    // emotes) — these never get wrapped, so no hash exists for server-side block.
+    // Instant local-block-by-name toggle (persisted to chrome.storage.local).
+    cleanup.addEventListener(
+      document,
+      'contextmenu',
+      async (e) => {
+        const img = e.target.closest('img')
+        if (!img) return
+        if (img.closest('.heatsync-emote-wrapper')) return
+        if (img.closest('.heatsync-emote-stack')) return
+
+        const src = img.src || ''
+        const nativeCdnFrag = src.includes('static-cdn.jtvnw.net/emoticons')
+          ? 'static-cdn.jtvnw.net/emoticons'
+          : src.includes('files.kick.com/emotes/')
+            ? 'files.kick.com/emotes/'
+            : null
+        if (!nativeCdnFrag) return
+
+        const name = img.alt
+        if (!name) return
+
+        e.preventDefault()
+        e.stopPropagation()
+
+        const escName = window.CSS && CSS.escape ? CSS.escape(name) : name.replace(/"/g, '\\"')
+        const sel = `img[alt="${escName}"][src*="${nativeCdnFrag}"]`
+        if (localBlockedEmoteNames.has(name)) {
+          localBlockedEmoteNames.delete(name)
+          document.querySelectorAll(sel).forEach((el) => el.removeAttribute('data-hs-name-blocked'))
+        } else {
+          localBlockedEmoteNames.add(name)
+          document.querySelectorAll(sel).forEach((el) => el.setAttribute('data-hs-name-blocked', '1'))
+        }
+        try {
+          chrome.storage.local.set({ local_blocked_emote_names: Array.from(localBlockedEmoteNames) })
+        } catch {}
+      },
+      { capture: true },
+      // Capture on purpose — preempts the page's own context menu.
+      'native-twitch-block-contextmenu',
+    )
+
+    cleanup.addEventListener(
+      document,
+      'contextmenu',
+      async (e) => {
+        const wrapper = e.target.closest('.heatsync-emote-wrapper')
+        if (!wrapper) return
+        // Stacks are handled by the capture-phase contextmenu handler in
+        // setupUsernameColoringObserver — bail so we don't double-toggle.
+        if (wrapper.closest('.heatsync-emote-stack')) return
+
+        e.preventDefault()
+        e.stopPropagation()
+
+        const hash = wrapper.dataset.emoteHash
+        const emoteName = wrapper.dataset.emoteName
+        const operationKey = `rightclick:${hash}`
+
+        // Prevent double-clicks while operation in progress
+        if (pendingOperations.has(operationKey)) {
+          log(' ⏳ Operation already in progress:', emoteName)
+          return
+        }
+
+        const isBlocked = blockedEmotes.has(hash)
+        // Check if this is a global emote - globals can only be blocked, not added/removed from your set
+        const isGlobalEmote = wrapper.classList.contains('emote-overlay-global') || globalNameSet.has(emoteName)
+
+        if (isBlocked) {
+          // BLOCKED → restored state — optimistic so the UI doesn't lag the server roundtrip
+          pendingOperations.add(operationKey)
+          const restoredState = inventoryHashSet.has(hash) ? 'added' : isGlobalEmote ? 'global' : 'neutral'
+          blockedEmotes.delete(hash)
+          markLocalBlockToggle(hash, 'unblocked')
+          updateEmoteState(hash, emoteName, restoredState)
+          try {
+            const result = await safeSendMessage({ type: 'unblock_emote', hash })
+            if (result?.success) {
+              log(' ✅ Unblocked:', emoteName)
+            } else {
+              // Rollback
+              blockedEmotes.add(hash)
+              markLocalBlockToggle(hash, 'blocked')
+              updateEmoteState(hash, emoteName, 'blocked')
+              showToast(t('content_toast_failed_unblock', [String(result?.error || 'Unknown error')]), 'error')
+            }
+          } catch (err) {
+            if (!extensionContextValid) return
+            blockedEmotes.add(hash)
+            markLocalBlockToggle(hash, 'blocked')
+            updateEmoteState(hash, emoteName, 'blocked')
+            showToast(t('content_toast_failed_unblock', [String(err.message)]), 'error')
+          } finally {
+            pendingOperations.delete(operationKey)
+          }
+        } else {
+          // blocked → unblock · in your set → remove (the channel/global twin takes
+          // over) · else → block. Same rule as the web.
+          if (removeOwnedEmote(wrapper, hash, emoteName)) return
+
+          // NEUTRAL/LAST-TIER → BLOCKED
+          pendingOperations.add(operationKey)
+
+          // Optimistically block
+          blockedEmotes.add(hash)
+          markLocalBlockToggle(hash, 'blocked')
+          updateEmoteState(hash, emoteName, 'blocked')
+
+          try {
+            const result = await safeSendMessage({ type: 'block_emote', hash })
+            if (result?.success) {
+              log(' 🚫 Blocked:', emoteName)
+              showToast(t('content_toast_blocked', [emoteName]), 'info')
+            } else {
+              // Rollback on failure
+              blockedEmotes.delete(hash)
+              markLocalBlockToggle(hash, 'unblocked')
+              updateEmoteState(hash, emoteName, 'neutral')
+              showToast(t('content_toast_failed_block', [String(result?.error || 'Unknown error')]), 'error')
+            }
+          } catch (err) {
+            if (!extensionContextValid) return // Don't rollback/show error if context invalidated
+            // Rollback on error
+            blockedEmotes.delete(hash)
+            markLocalBlockToggle(hash, 'unblocked')
+            updateEmoteState(hash, emoteName, 'neutral')
+            showToast(t('content_toast_failed_block', [String(err.message)]), 'error')
+          } finally {
+            pendingOperations.delete(operationKey)
+          }
+        }
+      },
+      { capture: true },
+      // Capture on purpose — preempts the page's own context menu.
+      'emote-contextmenu',
+    )
+
+    log(' ✅ Event delegation setup for emote clicks')
+  }
+
+  // Right-click on an emote in your own set removes it (web parity); the
+  // channel/global twin takes over via emote_removing → updateEmoteState. Returns
+  // true when it handled the click, false to let the caller block instead.
+  function removeOwnedEmote(wrapper, hash, emoteName) {
+    if (!inventoryHashSet.has(hash)) return false
+    const operationKey = `rightclick:${hash}`
+    if (pendingOperations.has(operationKey)) return true
+    pendingOperations.add(operationKey)
+    safeSendMessage({ type: 'remove_from_inventory', emoteHash: hash, emoteName })
+      .then((result) => {
+        if (result?.success) {
+          const now = wrapper.dataset.hasVariants === '1' ? wrapper.firstElementChild : null
+          const twin = !!now && now.dataset.emoteHash !== hash
+          showToast(
+            twin ? t('cs_removed_now', [emoteName, now.dataset.variantClass]) : t('cs_removed', [emoteName]),
+            'info',
+          )
+        } else if (/not logged in/i.test(String(result?.error || ''))) {
+          showToast(t('cs_login_manage'), 'info')
+        } else {
+          showToast(t('cs_remove_failed', [emoteName, String(result?.error || t('cs_unknown_error'))]), 'error')
+        }
+      })
+      .catch((err) => {
+        if (extensionContextValid) showToast(t('cs_remove_failed', [emoteName, String(err.message)]), 'error')
+      })
+      .finally(() => pendingOperations.delete(operationKey))
+    return true
+  }
+
+  // Multi-variant fallback: when an emote name has variants from different sources
+  // (e.g., user inventory + 7TV global), each variant lives as a sibling img in the
+  // wrapper. This picks the first non-blocked variant by priority and makes it the
+  // active one — moving it to be first child so wrapper.querySelector('img') still
+  // returns the visible emote (tooltips, hover preview, etc. read it that way).
+  function pickActiveVariant(wrapper) {
+    if (wrapper?.dataset.hasVariants !== '1') return
+    const imgs = Array.from(wrapper.querySelectorAll(':scope > img.heatsync-emote'))
+    if (imgs.length <= 1) return
+
+    // Priority order is encoded in data-variant-index (0 = highest).
+    // The line's own pick (what it was drawn with) leads: re-picking after a block elsewhere
+    // must never swap a line to a different same-name emote it wasn't drawn with.
+    const primary = wrapper.dataset.primaryHash
+    imgs.sort(
+      (a, b) =>
+        (b.dataset.emoteHash === primary) - (a.dataset.emoteHash === primary) ||
+        (+a.dataset.variantIndex || 0) - (+b.dataset.variantIndex || 0),
+    )
+
+    // First non-blocked, non-stale variant wins. Stale = an `inventory` variant
+    // whose hash is no longer in inventoryHashSet (user removed it from their set).
+    // Without the stale skip, removing an inventory emote leaves the heatsync img
+    // active and re-classed as 'unadded' instead of dropping to the next tier
+    // (e.g. 7TV channel) sibling that's still valid.
+    // If everything fails both checks, fall back to primary so the standard blocked
+    // rendering still applies (greyed-out highest-priority emote).
+    // A blocked pick stays the pick and shows the blocked placeholder: falling through to another
+    // same-name picture would draw one the sender never chose (rules 2, 10).
+    let activeImg = imgs[0].dataset.emoteHash === primary && blockedEmotes.has(primary) ? imgs[0] : null
+    for (const img of activeImg ? [] : imgs) {
+      const h = img.dataset.emoteHash
+      if (blockedEmotes.has(h)) continue
+      if (img.dataset.variantClass === 'inventory' && !inventoryHashSet.has(h)) continue
+      activeImg = img
+      break
+    }
+    if (!activeImg) activeImg = imgs[0]
+
+    // Keep active as firstElementChild so legacy wrapper.querySelector('img') hits it.
+    if (wrapper.firstElementChild !== activeImg) {
+      wrapper.insertBefore(activeImg, wrapper.firstElementChild)
+    }
+
+    for (const img of imgs) {
+      if (img === activeImg) {
+        img.style.removeProperty('display')
+        // Primary img rendered while blocked has inline opacity:0 — clear it so
+        // unblock-via-variant-swap restores visibility. Blocked rendering re-applies
+        // via the emote-overlay-blocked class CSS rule, not inline opacity.
+        img.style.removeProperty('object-fit')
+        img.style.removeProperty('object-position')
+        // Lazy-load src on first activation. Subsequent swaps are instant (cached).
+        if (!img.src && img.dataset.emoteUrl) img.src = img.dataset.emoteUrl
+      } else {
+        img.style.setProperty('display', 'none', 'important')
+      }
+    }
+
+    const hash = activeImg.dataset.emoteHash
+    const name = activeImg.dataset.emoteName
+    wrapper.dataset.emoteHash = hash
+    wrapper.dataset.emoteName = name
+
+    const variantClass = activeImg.dataset.variantClass
+    const inInventory = variantClass === 'inventory' || inventoryHashSet.has(hash)
+    const isThirdPartyCdn = !inInventory && (variantClass === 'global' || variantClass === 'channel')
+    const isBlocked = blockedEmotes.has(hash)
+    wrapper.dataset.inInventory = String(inInventory)
+
+    // Reset overlay + own-emote class to reflect the active variant's category.
+    wrapper.classList.remove(
+      'emote-overlay-blocked',
+      'emote-overlay-owned',
+      'emote-overlay-global',
+      'emote-overlay-unadded',
+    )
+    if (isBlocked) wrapper.classList.add('emote-overlay-blocked')
+    else if (inInventory) wrapper.classList.add('emote-overlay-owned')
+    else if (isThirdPartyCdn) wrapper.classList.add('emote-overlay-global')
+    else wrapper.classList.add('emote-overlay-unadded')
+    if (inInventory) wrapper.classList.add('heatsync-own-emote')
+    else wrapper.classList.remove('heatsync-own-emote')
+
+    // Img state classes — set on the active img only, clear on hidden siblings.
+    for (const img of imgs) {
+      img.classList.remove('emote-blocked', 'emote-in-set', 'emote-global')
+      if (img !== activeImg) continue
+      if (isBlocked) img.classList.add('emote-blocked')
+      else if (inInventory) img.classList.add('emote-in-set')
+      else if (isThirdPartyCdn) img.classList.add('emote-global')
+    }
+  }
+
+  // Update visual state of all instances of an emote
+  function updateEmoteState(hash, emoteName, state) {
+    log(` Updating emote "${emoteName}" to state: ${state}, hash: ${hash}`)
+
+    // Query by hash OR name (handles old vs normalized hash mismatch)
+    // Exact emote only (rule 9/10): a block or remove of one W never touches another W of the
+    // same name. The name stands in only when no hash is known (or on elements that carry none).
+    const selector = hash
+      ? `[data-emote-hash="${hash}"], [data-emote-name="${emoteName}"]:not([data-emote-hash])`
+      : `[data-emote-name="${emoteName}"]`
+    const elements = (findChatContainer() || document).querySelectorAll(selector)
+    log(` updateEmoteState found ${elements.length} elements for selector:`, selector)
+
+    // Multi-variant wrappers: re-pick from blockedEmotes state, skip the
+    // single-variant class-stamping logic entirely. Dedupe via Set since the
+    // selector matches both wrapper and inner img for the same wrapper.
+    const variantWrappers = new Set()
+    elements.forEach((el) => {
+      const w = el.classList?.contains('heatsync-emote-wrapper') ? el : el.tagName === 'IMG' ? el.parentElement : null
+      if (w && w.dataset.hasVariants === '1') variantWrappers.add(w)
+    })
+    variantWrappers.forEach((w) => pickActiveVariant(w))
+
+    elements.forEach((el) => {
+      // Handle both wrapper divs and direct img elements
+      const img = el.tagName === 'IMG' ? el : el.querySelector('.heatsync-emote')
+      if (!img) {
+        warn(' No img found for hash:', hash)
+        return
+      }
+
+      const wrapper = el.tagName === 'IMG' ? el.parentElement : el
+      // Variant wrappers already handled above — pickActiveVariant owns their state.
+      if (wrapper && wrapper.dataset.hasVariants === '1') return
+      const emoteUrl = wrapper?.dataset?.emoteUrl || img?.src || ''
+
+      // Check if third-party CDN emote (7TV, BTTV, FFZ, Twitch native)
+      const isThirdPartyCdn =
+        emoteUrl.includes('cdn.7tv.app') ||
+        emoteUrl.includes('cdn.betterttv.net') ||
+        emoteUrl.includes('cdn.frankerfacez.com') ||
+        emoteUrl.includes('static-cdn.jtvnw.net')
+
+      // Third-party emotes have no inventory state — collapse neutral/unadded
+      // legacy state tags down to 'global' so the rest of this function reads
+      // the same path as a Twitch native global.
+      let effectiveState = state
+      if (isThirdPartyCdn && (state === 'neutral' || state === 'unadded')) {
+        effectiveState = 'global'
+      }
+
+      // Skip work if state already matches — eliminates redundant attr mutations
+      // for popular emotes (a 46-instance block was generating 161 attr mutations,
+      // half of them no-ops because the broadcast handler reapplies the same state).
+      const targetWrapperClass =
+        effectiveState === 'blocked'
+          ? 'emote-overlay-blocked'
+          : effectiveState === 'added'
+            ? 'emote-overlay-owned'
+            : effectiveState === 'global'
+              ? 'emote-overlay-global'
+              : 'emote-overlay-unadded'
+      if (wrapper?.classList.contains(targetWrapperClass)) return
+
+      // Remove all state classes
+      img.classList.remove('emote-blocked', 'emote-in-set')
+
+      if (wrapper) {
+        wrapper.classList.remove(
+          'emote-overlay-blocked',
+          'emote-overlay-owned',
+          'emote-overlay-unadded',
+          'emote-overlay-global',
+        )
+        wrapper.style.removeProperty('--hs-emote-width')
+        wrapper.style.removeProperty('--hs-emote-height')
+      }
+
+      // CSS handles opacity via .emote-overlay-blocked > img — no inline write needed.
+      // Earlier versions read offsetWidth/offsetHeight per element to "lock" dims,
+      // forcing N synchronous layouts for popular emotes (visible jank). The lock
+      // was for outline accuracy on blocked emotes, but opacity:0 hides the outline
+      // too, so it served no visual purpose. Removed.
+      switch (effectiveState) {
+        case 'blocked':
+          if (wrapper) {
+            wrapper.classList.add('emote-overlay-blocked')
+            // Stack wrappers: lock --hs-emote-width/height so expanded stack
+            // layout doesn't collapse around the now-invisible blocked emote.
+            // Only one layout read here, only for stacked wrappers.
+            if (wrapper.closest('.heatsync-emote-stack')) {
+              const w = wrapper.offsetWidth,
+                h = wrapper.offsetHeight
+              if (w && h) {
+                wrapper.style.setProperty('--hs-emote-width', `${w}px`)
+                wrapper.style.setProperty('--hs-emote-height', `${h}px`)
+              }
+            }
+          }
+          img.classList.add('emote-blocked')
+          break
+
+        case 'added':
+          if (wrapper) wrapper.classList.add('emote-overlay-owned')
+          img.style.removeProperty('object-fit')
+          img.style.removeProperty('object-position')
+          img.classList.add('emote-in-set')
+          break
+
+        case 'global':
+          if (wrapper) wrapper.classList.add('emote-overlay-global')
+          img.style.removeProperty('object-fit')
+          img.style.removeProperty('object-position')
+          break
+        default:
+          if (wrapper) wrapper.classList.add('emote-overlay-unadded')
+          img.style.removeProperty('object-fit')
+          img.style.removeProperty('object-position')
+          break
+      }
+    })
+  }
+  // BULLETPROOF emote hover preview - uses stored emote data, not URL parsing
+  ;(function setupEmoteHoverPreview() {
+    // Single global preview element
+    const previewEl = document.createElement('div')
+    previewEl.className = 'heatsync-emote-preview'
+    previewEl.id = 'heatsync-emote-preview-singleton'
+    document.body.appendChild(previewEl)
+
+    let currentWrapper = null
+    const hideTimeout = null
+
+    // Largest scale <= 4x whose footprint still fits the viewport, so a wide
+    // (up to 384x128) emote is shown WHOLE instead of clipping off-screen.
+    // Per-item here (native stack preview lays emotes out as separate labeled
+    // items, not a composite) — mirrors the multichat fitPreviewScale.
+    function fitPreviewScale(baseW, baseH) {
+      if (!baseW || !baseH) return 4
+      const availW = window.innerWidth - 24 - 16
+      const availH = window.innerHeight - 24 - 60 // label + padding below each item
+      return Math.min(4, availW / baseW, availH / baseH)
+    }
+
+    function showPreview(wrapper) {
+      if (currentWrapper === wrapper) return
+      currentWrapper = wrapper
+      clearTimeout(hideTimeout)
+
+      // Check if this emote is in a stack - if so, show all stacked emotes
+      const stack = wrapper.closest('.heatsync-emote-stack')
+      const emotesToShow = []
+
+      // upgradeUrl upgrades the img src directly to max resolution
+      // (no hash lookup — hash can match wrong emote)
+      function upgradeUrl(url) {
+        if (!url) return url
+        if (url.includes('cdn.7tv.app'))
+          return url.includes('.webp') ? url.replace(/\/[123]x\.webp/, '/4x.webp') : url.replace(/\/[123]x$/, '/4x')
+        if (url.includes('cdn.betterttv.net'))
+          return url.includes('.webp') ? url.replace(/\/[12]x\.webp/, '/3x.webp') : url.replace(/\/[12]x/, '/3x')
+        if (url.includes('cdn.frankerfacez.com')) return url.replace(/\/[123]$/, '/4').replace(/\/[123]\?/, '/4?')
+        if (url.includes('static-cdn.jtvnw.net')) return url.replace(/\/[12]\.0/, '/3.0')
+        return url
+      }
+
+      if (stack) {
+        const stackedWrappers = stack.querySelectorAll('.heatsync-emote-wrapper')
+        stackedWrappers.forEach((w) => {
+          // Blocked emotes are hidden in chat via CSS only — never repaint
+          // their asset in the hover preview.
+          if (w.classList.contains('emote-overlay-blocked')) return
+          const wImg = w.querySelector('img')
+          if (wImg?.hasAttribute('data-hs-name-blocked')) return
+          const wName = w.dataset.emoteName || wImg?.alt || ''
+          const wSrc = wImg ? wImg.src : ''
+          if (wSrc) {
+            const bw = wImg?.offsetWidth || 28,
+              bh = wImg?.offsetHeight || 28
+            const s = fitPreviewScale(bw, bh)
+            emotesToShow.push({ name: wName, src: wSrc, hiRes: upgradeUrl(wSrc), w: bw * s, h: bh * s })
+          }
+        })
+      } else {
+        const img = wrapper.querySelector('img')
+        const blocked = wrapper.classList.contains('emote-overlay-blocked') || img?.hasAttribute('data-hs-name-blocked')
+        const emoteName = wrapper.dataset.emoteName || img?.alt || ''
+        const src = blocked ? '' : img ? img.src : ''
+        if (src) {
+          const bw = img?.offsetWidth || 28,
+            bh = img?.offsetHeight || 28
+          const s = fitPreviewScale(bw, bh)
+          emotesToShow.push({ name: emoteName, src: src, hiRes: upgradeUrl(src), w: bw * s, h: bh * s })
+        }
+      }
+
+      if (emotesToShow.length === 0) return
+
+      log(' Preview:', emotesToShow.length, 'emotes')
+
+      // Aggressively strip ALL tooltip attributes from wrapper, img, AND parent elements
+      const img = wrapper.querySelector('img')
+      wrapper.removeAttribute('aria-describedby')
+      wrapper.removeAttribute('data-a-target')
+      wrapper.removeAttribute('title')
+      if (img) {
+        img.removeAttribute('title')
+        img.removeAttribute('aria-label')
+        img.removeAttribute('aria-describedby')
+        img.removeAttribute('data-a-target')
+      }
+      // Also strip from parent containers that Twitch might use
+      let parent = wrapper.parentElement
+      for (let i = 0; i < 5 && parent; i++) {
+        parent.removeAttribute('aria-describedby')
+        parent.removeAttribute('title')
+        if (parent.matches('[data-a-target*="emote"]')) {
+          parent.removeAttribute('data-a-target')
+        }
+        parent = parent.parentElement
+      }
+
+      // Build emote preview via DOM (no innerHTML — emote src/name from our own data)
+      previewEl.textContent = ''
+      function makeEmoteItem(e) {
+        const item = document.createElement('div')
+        item.className = 'heatsync-stacked-emote-item'
+        const img = document.createElement('img')
+        img.src = e.src
+        img.alt = e.name
+        img.style.width = `${e.w}px`
+        img.style.height = `${e.h}px`
+        const label = document.createElement('div')
+        label.className = 'heatsync-emote-preview-name'
+        label.textContent = e.name
+        item.appendChild(img)
+        item.appendChild(label)
+        return item
+      }
+      if (emotesToShow.length > 1) {
+        const stack = document.createElement('div')
+        stack.className = 'heatsync-stacked-preview'
+        for (const e of emotesToShow) stack.appendChild(makeEmoteItem(e))
+        previewEl.appendChild(stack)
+      } else {
+        previewEl.appendChild(makeEmoteItem(emotesToShow[0]))
+      }
+
+      // Show immediately but position later (after image loads)
+      previewEl.style.setProperty('display', 'block', 'important')
+
+      // Initial positioning (will adjust after image loads)
+      const rect = wrapper.getBoundingClientRect()
+      previewEl.style.left = `${rect.left + rect.width / 2}px`
+      previewEl.style.top = `${rect.top - 8}px`
+      previewEl.style.transform = 'translate(-50%, -100%)'
+
+      // Reposition after image loads (accurate dimensions for wide emotes)
+      const previewImg = previewEl.querySelector('img')
+      function repositionPreview() {
+        const tooltipRect = previewEl.getBoundingClientRect()
+        let left = rect.left + rect.width / 2 - tooltipRect.width / 2
+        let top = rect.top - tooltipRect.height - 8
+        const pad = 8
+        if (left < pad) left = pad
+        else if (left + tooltipRect.width > window.innerWidth - pad) left = window.innerWidth - tooltipRect.width - pad
+        if (top < pad) top = rect.bottom + 8
+        previewEl.style.left = `${left}px`
+        previewEl.style.top = `${top}px`
+        previewEl.style.transform = 'none'
+      }
+      if (previewImg) {
+        previewImg.addEventListener(
+          'load',
+          () => {
+            if (!previewEl.isConnected) return
+            repositionPreview()
+          },
+          { once: true, signal },
+        )
+        // Try hi-res upgrade — swap in silently if it loads
+        const e0 = emotesToShow[0]
+        if (e0.hiRes && e0.hiRes !== e0.src) {
+          const probe = new Image()
+          probe.addEventListener(
+            'load',
+            () => {
+              if (!previewEl.isConnected) return
+              previewEl.querySelectorAll('img').forEach((img, i) => {
+                const hi = emotesToShow[i]?.hiRes
+                if (hi) {
+                  img.src = hi
+                  repositionPreview()
+                }
+              })
+            },
+            { once: true, signal },
+          )
+          probe.src = e0.hiRes
+        }
+      }
+
+      // Add body class to suppress ALL native tooltips
+      document.body.classList.add('heatsync-preview-active')
+
+      // NUCLEAR: Hide any visible Twitch tooltips immediately
+      document.querySelectorAll('.tw-tooltip, [role="tooltip"], .ReactModal__Overlay').forEach((el) => {
+        if (!el.closest('.heatsync-emote-preview')) {
+          el.style.display = 'none'
+        }
+      })
+    }
+
+    function hidePreview() {
+      clearTimeout(hideTimeout)
+      currentWrapper = null
+      previewEl.style.setProperty('display', 'none', 'important')
+      document.body.classList.remove('heatsync-preview-active')
+    }
+
+    // Tooltip hiding disabled - was causing issues with chat identity badge
+
+    // Event delegation - capture phase to fire before Twitch handlers
+    cleanup.addEventListener(
+      document,
+      'mouseover',
+      (e) => {
+        const wrapper = e.target.closest('.heatsync-emote-wrapper')
+        if (wrapper) {
+          showPreview(wrapper)
+        } else if (currentWrapper && !e.target.closest('.heatsync-emote-preview')) {
+          hidePreview()
+        }
+      },
+      'emote-hover-mouseover',
+      // Capture on purpose — see the delegation note above; these have to
+      // fire before Twitch's own hover handlers.
+      { capture: true },
+    )
+
+    cleanup.addEventListener(
+      document,
+      'mouseout',
+      (e) => {
+        const wrapper = e.target.closest('.heatsync-emote-wrapper')
+        if (wrapper) {
+          const related = e.relatedTarget
+          if (!related || !wrapper.contains(related)) {
+            hidePreview()
+          }
+        }
+      },
+      'emote-hover-mouseout',
+      // Capture on purpose — see the delegation note above; these have to
+      // fire before Twitch's own hover handlers.
+      { capture: true },
+    )
+
+    // mousemove preview killswitch — dispatched by the combined listener above
+    // (single addEventListener for both overlay+preview, passive, 60fps).
+    window._hsPreviewKill = (e) => {
+      if (!currentWrapper) return
+      const target = e.target
+      if (!target?.closest) return
+      if (target.closest('.heatsync-emote-wrapper') || target.closest('.heatsync-emote-preview')) return
+      hidePreview()
+    }
+
+    log(' ✅ Emote hover preview setup')
+  })()
+
+  // Profile card on username click — this file no longer builds a card of
+  // its own. The ONE profile card (src/multichat/profile-card.js, the
+  // shared card-model/card-render pipeline every surface uses) handles it:
+  // embedded in the overlay's message pane when the overlay is mounted, or
+  // floating at the clicked name when it isn't (native twitch/kick chat with
+  // no overlay mounted — multichat failed to find a chat root, or a
+  // transient window during SPA nav). Its mod actions go through the SAME
+  // GQL dispatch the rest of that card uses (dispatchModAction/
+  // modTwitchUser/vipTwitchUser) — strictly better than the old card's
+  // `/ban`-typed-into-chat-input mechanism, which depended on a focusable
+  // native chat input existing at all. multichat-core.js's
+  // setupProfileCardHandlers listens for hs-pcard-open unconditionally at
+  // boot (gated once, on the same profile-cards switch) regardless of
+  // whether the overlay mounted, so this is a thin, stateless router: find
+  // the username, dispatch, done. Drag-to-reposition is gone with it — the
+  // floating card follows its anchor instead, same as the site's own pinned
+  // card (see profile-card.js's pcFollowAnchor).
+  ;(function setupProfileCard() {
+    // Profile-cards gate — mirrors pcard-early.js's gateOn(): same
+    // localStorage key, same "missing = on" default. Gate off means the
+    // user opted OUT of every heatsync profile card entirely — a native
+    // name click must not be intercepted at all (no stopPropagation/
+    // preventDefault below), so twitch/kick's own native viewer card opens
+    // exactly as if the extension weren't here.
+    function gateOn() {
+      try {
+        return localStorage.getItem('hs_gate_profile-cards') !== '0'
+      } catch (_) {
+        return true
+      }
+    }
+
+    // Username selectors for click interception (capture phase). Modern
+    // Twitch wraps display name span inside button.inline.font-bold —
+    // clicks land on the button, so closest() needs to match it directly.
+    const usernameSelectors = [
+      '.chat-author__display-name',
+      '[data-a-target="chat-message-username"]',
+      '.chat-line__username',
+      'button.inline.font-bold',
+      '.hs-username-colored',
+      '.hs-mention-colored',
+      '[data-hs-username]',
+    ].join(', ')
+
+    function getPlatform() {
+      if (window.location.hostname.includes('kick.com')) return 'kick'
+      return 'twitch'
+    }
+
+    // Click any native chat username → open the one profile card. Capture
+    // phase to intercept before Twitch/Kick's own click handlers react.
+    document.addEventListener(
+      'click',
+      (e) => {
+        const target = e.target.closest(usernameSelectors)
+        if (!target) return
+        const inner = target.querySelector?.('.chat-author__display-name, [data-a-target="chat-message-username"]')
+        const src = inner || target
+        const raw = src.dataset?.hsUsername || src.dataset?.username || src.textContent?.replace(/^@/, '').trim()
+        const username = raw?.replace(/[:\s]+$/, '').trim()
+        if (!username) return
+        // Gate off → hands off completely, no card of ours opens on this
+        // click. See gateOn() above.
+        if (!gateOn()) return
+        e.stopPropagation()
+        e.preventDefault()
+        // anchorEl carries the clicked element through for the floating-
+        // mount case (profile-card.js's pcResolveMount/pcFollowAnchor) —
+        // harmlessly ignored when the overlay is mounted.
+        document.dispatchEvent(
+          new CustomEvent('hs-pcard-open', {
+            detail: { username, platform: getPlatform(), anchorEl: src },
+            bubbles: false,
+          }),
+        )
+      },
+      { capture: true, signal },
+    )
+
+    // Right-click on username → user color picker (unrelated to the card;
+    // kept as-is).
+    document.addEventListener(
+      'contextmenu',
+      (e) => {
+        if (!_uiPrefs.userColors) return
+        // Multichat panel messages own their own right-click menu (mute/whisper/
+        // copy/profile). Don't hijack panel usernames for the color picker.
+        if (e.target.closest('.hs-mc-msg')) return
+        const target = e.target.closest(usernameSelectors)
+        if (!target) return
+        const inner = target.querySelector?.('.chat-author__display-name, [data-a-target="chat-message-username"]')
+        const src = inner || target
+        const raw = src.dataset?.hsUsername || src.dataset?.username || src.textContent?.replace(/^@/, '').trim()
+        const username = raw?.replace(/[:\s]+$/, '').trim()
+        if (!username) return
+        e.preventDefault()
+        e.stopPropagation()
+        openUserColorPicker(username, e.clientX, e.clientY)
+      },
+      { capture: true, signal },
+    )
+
+    log(' ✅ Profile card (click) setup')
+  })()
+
+  // Retroactively process messages when broadcast arrives
+  function retroactivelyProcessBroadcast(username, emoteName, emoteData) {
+    log(' 🔄 Retroactively processing messages for:', username, emoteName)
+
+    const chatContainer = findChatContainer()
+    if (!chatContainer) {
+      log(' ⚠️ Chat container not found for retroactive processing')
+      return
+    }
+
+    // Get only the LAST message - retroactive is just for race condition where message
+    // appears a split second before broadcast arrives. Old messages should not be replaced.
+    let messages = chatContainer.querySelectorAll('.chat-line__message')
+    if (messages.length === 0) {
+      messages = chatContainer.querySelectorAll('[data-index]')
+    }
+
+    // Process last 5 messages - handles fast chats where message appears after broadcast
+    const recentMessages = Array.from(messages).slice(-5)
+    let processedCount = 0
+
+    recentMessages.forEach((messageElement) => {
+      const messageUsername = getUsername(messageElement)
+      if (messageUsername.toLowerCase() !== username.toLowerCase()) return
+
+      const textElement =
+        messageElement.querySelector('.text-fragment') ||
+        messageElement.querySelector('span.font-normal') ||
+        messageElement.querySelector('[class*="message"]')
+
+      if (!textElement) return
+
+      // Skip if emote already replaced (check for existing img with this hash)
+      const alreadyReplaced = textElement.querySelector(`img[data-emote-hash="${emoteData.hash}"]`)
+      if (alreadyReplaced) return
+
+      // Get text-only content (avoid matching alt text in existing imgs)
+      const textContent = Array.from(textElement.childNodes)
+        .filter((node) => node.nodeType === Node.TEXT_NODE)
+        .map((node) => node.textContent)
+        .join('')
+
+      const regex = createEmoteRegex(emoteName)
+
+      if (textContent.match(regex)) {
+        log(' ✅ RETROACTIVE REPLACE:', {
+          username,
+          emoteName,
+          messageText: textElement.textContent.substring(0, 50),
+        })
+
+        replaceEmoteInText(textElement, {
+          name: emoteName,
+          url: emoteData.url.startsWith('http') ? emoteData.url : `${API_URL}${emoteData.url}`,
+          hash: emoteData.hash,
+          width: emoteData.width,
+          height: emoteData.height,
+        })
+        processedCount++
+      }
+    })
+
+    log(' Retroactively processed', processedCount, 'message(s)')
+  }
+
+  // Get username from message element
+  function getUsername(messageElement) {
+    const usernameEl = messageElement.querySelector(
+      '.chat-author__display-name, .chat-line__username, button.inline.font-bold',
+    )
+
+    return usernameEl ? usernameEl.textContent.trim() : ''
+  }
+
+  // Get Twitch user ID from message element via React fiber
+  function getTwitchUserId(messageElement) {
+    if (isKick) return null
+    // Read data-user-id stamped by early-inject-main.js (MAIN world)
+    // Content scripts can't access __reactFiber$ (isolated world)
+    return messageElement.getAttribute('data-user-id') || null
+  }
+
+  // Apply 7TV paint gradient to a username element
+  function applyPaintToElement(el, paint) {
+    if (!paint) return
+    // Coexistence with 7TV, not an arms race: their paint renders free in our
+    // overlay, but it stands down for a saved heatsync paint — the user's own
+    // explicit choice. Not optional politeness: this sets INLINE style, which
+    // outranks the class-based hsp-<hash> rule, so without the check a 7TV
+    // batch resolving second silently erases a paint someone paid for.
+    // Mirrors client/chat/seventv-cosmetics.js on the website.
+    if (el?.classList) {
+      for (const c of el.classList) if (c.startsWith('hsp-')) return
+    }
+    const fn = (paint.function || '').toLowerCase()
+    if (fn === 'url' && paint.image_url) {
+      const safe = safeUrl(paint.image_url)
+      if (!safe) return
+      const safeCssUrl = safe.replace(/[()'"\\]/g, encodeURIComponent)
+      el.style.backgroundImage = `url(${safeCssUrl})`
+      el.style.backgroundSize = 'cover'
+    } else if ((fn === 'linear-gradient' || fn === 'radial-gradient') && paint.stops?.length) {
+      const stops = paint.stops
+        .map((s) => {
+          const r = (s.color >>> 24) & 0xff
+          const g = (s.color >>> 16) & 0xff
+          const b = (s.color >>> 8) & 0xff
+          const a = (s.color & 0xff) / 255
+          return `rgba(${r},${g},${b},${a.toFixed(2)}) ${Math.round(s.at * 100)}%`
+        })
+        .join(', ')
+      const safeAngle = Number.isFinite(Number(paint.angle)) ? Number(paint.angle) : 0
+      const safeShape = /^(circle|ellipse)$/.test(paint.shape) ? paint.shape : 'circle'
+      if (fn === 'linear-gradient') {
+        el.style.backgroundImage = `linear-gradient(${safeAngle}deg, ${stops})` // doctrine: paint art
+      } else {
+        el.style.backgroundImage = `radial-gradient(${safeShape}, ${stops})` // doctrine: paint art
+      }
+    } else if (paint.color) {
+      const r = (paint.color >>> 24) & 0xff
+      const g = (paint.color >>> 16) & 0xff
+      const b = (paint.color >>> 8) & 0xff
+      const a = (paint.color & 0xff) / 255
+      el.style.color = `rgba(${r},${g},${b},${a.toFixed(2)})`
+      return
+    } else {
+      return
+    }
+    el.style.webkitBackgroundClip = 'text'
+    el.style.webkitTextFillColor = 'transparent'
+    el.style.backgroundClip = 'text'
+    if (paint.shadows?.length) {
+      el.style.filter = paint.shadows
+        .map((s) => {
+          const r = (s.color >>> 24) & 0xff
+          const g = (s.color >>> 16) & 0xff
+          const b = (s.color >>> 8) & 0xff
+          const a = (s.color & 0xff) / 255
+          return `drop-shadow(${Number(s.x_offset) || 0}px ${Number(s.y_offset) || 0}px ${Number(s.radius) || 0}px rgba(${r},${g},${b},${a.toFixed(2)}))`
+        })
+        .join(' ')
+    }
+    el.dataset.hsPaintApplied = '1'
+  }
+
+  // Get the best URL from a 7TV badge host object
+  function get7TVBadgeUrl(badge) {
+    if (!badge?.host) return ''
+    const files = badge.host.files || []
+    const file =
+      files.find((f) => f.name?.endsWith('.webp')) || files.find((f) => f.name?.endsWith('.avif')) || files[0]
+    if (!file) return ''
+    const base = badge.host.url || ''
+    const fullBase = base.startsWith('//') ? `https:${base}` : base
+    return (fullBase.endsWith('/') ? fullBase : `${fullBase}/`) + file.name
+  }
+
+  // Apply BTTV/FFZ badges and 7TV paints/badges to a message element
+  function applyCosmeticsToMessage(el, userId, preQueriedNameEl) {
+    if (!userId) return
+    // Fast path: same user + already fully applied → no work, no queries
+    if (el.dataset.hsCosmeticAppliedFor === userId && el.dataset.hsCosmeticDone === '1') return
+
+    // Detect recycled DOM node — clear stale cosmetics if userId changed
+    const prevUserId = el.dataset.hsCosmeticAppliedFor
+    if (prevUserId && prevUserId !== userId) {
+      el.querySelectorAll('.hs-cosmetic-badge').forEach((b) => b.remove())
+      delete el.dataset.hsCosmeticDone
+      delete el.dataset.hsBttvDone
+      delete el.dataset.hsFfzDone
+      delete el.dataset.hsChatterinoDone
+      delete el.dataset.hs7tvBadgeDone
+      const oldNameEl =
+        preQueriedNameEl || el.querySelector('.chat-author__display-name, [data-a-target="chat-message-username"]')
+      if (oldNameEl) {
+        delete oldNameEl.dataset.hsPaintApplied
+        oldNameEl.style.removeProperty('background-image')
+        oldNameEl.style.removeProperty('background-size')
+        oldNameEl.style.removeProperty('-webkit-background-clip')
+        oldNameEl.style.removeProperty('-webkit-text-fill-color')
+        oldNameEl.style.removeProperty('background-clip')
+        oldNameEl.style.removeProperty('filter')
+      }
+    }
+    el.dataset.hsCosmeticAppliedFor = userId
+    const nameEl =
+      preQueriedNameEl || el.querySelector('.chat-author__display-name, [data-a-target="chat-message-username"]')
+    if (!nameEl) return
+    stampHsNativePaint(nameEl, userId)
+
+    // BTTV badge — dataset flag avoids querySelector
+    if (!el.dataset.hsBttvDone && !_peerExts.includes('bttv') && bttvBadgeMap.has(userId)) {
+      const b = bttvBadgeMap.get(userId)
+      const img = document.createElement('img')
+      img.className = 'hs-bttv-badge hs-cosmetic-badge'
+      img.src = b.url
+      img.title = b.description
+      img.alt = b.description
+      nameEl.parentNode.insertBefore(img, nameEl)
+      el.dataset.hsBttvDone = '1'
+    }
+
+    // FFZ badges
+    if (!el.dataset.hsFfzDone && !_peerExts.includes('ffz') && ffzBadgeMap.has(userId)) {
+      for (const b of ffzBadgeMap.get(userId)) {
+        const img = document.createElement('img')
+        img.className = 'hs-ffz-badge hs-cosmetic-badge'
+        img.src = b.url
+        img.title = b.title
+        img.alt = b.title
+        if (b.color && COLOR_RE.test(b.color)) img.style.backgroundColor = b.color
+        nameEl.parentNode.insertBefore(img, nameEl)
+      }
+      el.dataset.hsFfzDone = '1'
+    }
+
+    // Chatterino badge
+    if (!el.dataset.hsChatterinoDone && chatterinoBadgeMap.has(userId)) {
+      const b = chatterinoBadgeMap.get(userId)?.at(-1)
+      const img = document.createElement('img')
+      img.className = 'hs-chatterino-badge hs-cosmetic-badge'
+      img.src = b.url
+      img.title = b.tooltip
+      img.alt = b.tooltip
+      nameEl.parentNode.insertBefore(img, nameEl)
+      el.dataset.hsChatterinoDone = '1'
+    }
+
+    // 7TV cosmetics — diff-update so cosmetics_invalidated swaps cleanly.
+    // Skipped when the real 7TV extension is co-installed: it paints/badges
+    // native rows itself and doubling up renders duplicates.
+    const cosmetic = _peerExts.includes('7tv') ? null : cosmeticsCache.get(userId)
+    if (cosmetic) {
+      if (cosmetic.badge) {
+        const url = get7TVBadgeUrl(cosmetic.badge)
+        if (url) {
+          const existing = el.querySelector('.hs-7tv-badge')
+          if (!existing) {
+            const img = document.createElement('img')
+            img.className = 'hs-7tv-badge hs-cosmetic-badge'
+            img.src = url
+            img.title = cosmetic.badge.tooltip || cosmetic.badge.name || '7TV'
+            img.alt = '7TV'
+            nameEl.parentNode.insertBefore(img, nameEl)
+          } else if (existing.src !== url) {
+            existing.src = url
+            existing.title = cosmetic.badge.tooltip || cosmetic.badge.name || '7TV'
+          }
+          el.dataset.hs7tvBadgeDone = '1'
+        }
+      } else if (el.dataset.hs7tvBadgeDone) {
+        // Cosmetic was revoked — remove existing badge
+        el.querySelector('.hs-7tv-badge')?.remove()
+        delete el.dataset.hs7tvBadgeDone
+      }
+      if (cosmetic.paint && !nameEl.dataset.hsPaintApplied) {
+        applyPaintToElement(nameEl, cosmetic.paint)
+      } else if (!cosmetic.paint && nameEl.dataset.hsPaintApplied) {
+        // Paint revoked — clear paint styles
+        nameEl.style.removeProperty('background-image')
+        nameEl.style.removeProperty('background-size')
+        nameEl.style.removeProperty('-webkit-background-clip')
+        nameEl.style.removeProperty('-webkit-text-fill-color')
+        nameEl.style.removeProperty('background-clip')
+        nameEl.style.removeProperty('filter')
+        delete nameEl.dataset.hsPaintApplied
+      }
+      el.dataset.hsCosmeticDone = '1'
+    }
+  }
+
+  // Queue a Twitch user ID for 7TV cosmetics batch fetch
+  function queueCosmeticsLookup(userId) {
+    if (isKick || !userId) return
+    const cached = cosmeticsCache.get(userId)
+    const isNegative = cached && !cached.paint && !cached.badge
+    const ttl = isNegative ? COSMETICS_NEGATIVE_TTL : COSMETICS_TTL
+    if (cached && Date.now() - cached.fetchedAt < ttl) return
+    cosmeticsPending.add(userId)
+    if (cosmeticsPending.size >= COSMETICS_PENDING_MAX) {
+      if (cosmeticsBatchTimer) {
+        cleanup.clearTimeout(cosmeticsBatchTimer)
+        cosmeticsBatchTimer = null
+      }
+      flushCosmeticsBatch()
+      return
+    }
+    if (!cosmeticsBatchTimer) {
+      // Jitter so 30k tabs joining the same channel don't fan out to 7TV in lockstep.
+      const delay = 500 + Math.random() * 1500
+      cosmeticsBatchTimer = cleanup.setTimeout(() => {
+        cosmeticsBatchTimer = null
+        flushCosmeticsBatch()
+      }, delay)
+    }
+  }
+
+  async function flushCosmeticsBatch() {
+    if (cosmeticsPending.size === 0) return
+    const batch = [...cosmeticsPending].slice(0, 10)
+    batch.forEach((id) => cosmeticsPending.delete(id))
+    try {
+      const resp = await safeSendMessage({ type: 'get_user_cosmetics', twitchIds: batch })
+      if (!resp?.cosmetics) return
+      const now = Date.now()
+      for (const [userId, cosmetic] of Object.entries(resp.cosmetics)) {
+        if (cosmeticsCache.size >= COSMETICS_MAX) {
+          cosmeticsCache.delete(cosmeticsCache.keys().next().value)
+        }
+        cosmeticsCache.set(userId, { ...(cosmetic || { paint: null, badge: null }), fetchedAt: now })
+      }
+      applyPendingCosmetics(Object.keys(resp.cosmetics))
+    } catch (e) {
+      log(' flushCosmeticsBatch failed:', e?.message)
+    }
+    if (cosmeticsPending.size > 0 && !cosmeticsBatchTimer) {
+      cosmeticsBatchTimer = cleanup.setTimeout(
+        () => {
+          cosmeticsBatchTimer = null
+          flushCosmeticsBatch()
+        },
+        2000 + Math.random() * 2000,
+      )
+    }
+  }
+
+  function applyPendingCosmetics(userIds) {
+    const container = findChatContainer()
+    if (!container) return
+    const idSet = new Set(userIds)
+    container.querySelectorAll('[data-hs-cosmetic-user-id]').forEach((el) => {
+      if (el.dataset.hsCosmeticDone === '1') return
+      const uid = el.dataset.hsCosmeticUserId
+      if (idSet.has(uid)) applyCosmeticsToMessage(el, uid)
+    })
+    // Late-arriving paints for @mention / colored-username spans
+    container.querySelectorAll('[data-hs-cosmetic-mention]').forEach((el) => {
+      if (el.dataset.hsPaintApplied) return
+      const uid = el.dataset.hsCosmeticMention
+      if (!idSet.has(uid)) return
+      const paint = cosmeticsCache.get(uid)?.paint
+      if (paint) applyPaintToElement(el, paint)
+    })
+  }
+
+  // Queue a one-time fetch of a sender's heatsync + personal emote set. Deduped via
+  // the cache (presence = fetched), batched + jittered like cosmetics so 30k tabs
+  // don't fan out in lockstep. Keys are platform-prefixed: twitch:<numeric id>
+  // (from React internals) or kick:<username> (kick DOM carries no numeric id).
+  function queueSenderEmotes(key) {
+    if (!key || !/^twitch:\d+$|^kick:[\w-]+$/.test(key)) return
+    if (senderEmotePending.has(key)) return
+    // Misses re-validate on a short ttl — an empty set is the window where a
+    // sender's brand-new emote renders as text if the live broadcast was missed.
+    const fetchedAt = senderEmoteFetchedAt.get(key)
+    const knownSet = senderHeatsyncEmotes.get(key)
+    const refetchMs = knownSet && Object.keys(knownSet).length > 0 ? SENDER_EMOTE_REFETCH_MS : 90 * 1000
+    if (fetchedAt && Date.now() - fetchedAt < refetchMs) return
+    senderEmotePending.add(key)
+    if (senderEmotePending.size >= SENDER_EMOTE_PENDING_MAX) {
+      if (senderEmoteBatchTimer) {
+        cleanup.clearTimeout(senderEmoteBatchTimer)
+        senderEmoteBatchTimer = null
+      }
+      flushSenderEmoteBatch()
+      return
+    }
+    if (!senderEmoteBatchTimer) {
+      const delay = 500 + Math.random() * 1500
+      senderEmoteBatchTimer = cleanup.setTimeout(() => {
+        senderEmoteBatchTimer = null
+        flushSenderEmoteBatch()
+      }, delay)
+    }
+  }
+
+  async function flushSenderEmoteBatch() {
+    if (senderEmotePending.size === 0) return
+    const batch = [...senderEmotePending].slice(0, SENDER_EMOTE_PENDING_MAX)
+    batch.forEach((k) => senderEmotePending.delete(k))
+    try {
+      const resp = await safeSendMessage({ type: 'get_sender_emotes', senderKeys: batch })
+      const emotes = resp?.emotes || {}
+      // BG-flagged errored keys: partial result — replacing would clobber a
+      // good cached set (raw-text regression). Keep current data + stamp.
+      const errored = new Set(resp?.errored || [])
+      for (const key of batch) {
+        if (errored.has(key)) {
+          senderEmoteFetchedAt.set(key, Date.now())
+          continue
+        }
+        const nameToData = emotes[key] || {}
+        let inner = null
+        for (const [name, data] of Object.entries(nameToData)) {
+          if (!data?.url) continue
+          if (!inner) inner = new Map()
+          inner.set(name, {
+            name,
+            url: data.url,
+            hash: data.hash || '',
+            zeroWidth: !!data.zeroWidth,
+            source: data.source,
+          })
+        }
+        // Store the Map (or null for fetched-empty); freshness stamp gates re-fetch
+        // until the TTL so newly-added emotes propagate without re-fetching forever.
+        if (senderHeatsyncEmotes.size >= SENDER_EMOTE_MAX) {
+          senderHeatsyncEmotes.delete(senderHeatsyncEmotes.keys().next().value)
+        }
+        senderHeatsyncEmotes.set(key, inner)
+        senderEmoteFetchedAt.set(key, Date.now())
+      }
+      // Retro-render: messages from these senders already drawn (as text) need a re-pass.
+      applySenderEmotesToMessages(batch.filter((k) => senderHeatsyncEmotes.get(k)))
+    } catch (e) {
+      // Drop the pending mark on failure so a later message can retry.
+      for (const k of batch) senderEmotePending.delete(k)
+      log(' flushSenderEmoteBatch failed:', e?.message)
+    }
+  }
+
+  // Re-run emote replacement on already-rendered messages from senders whose set
+  // just arrived. Bounded to the live container; resets the generation guard so
+  // processMessage runs again (its per-fragment .heatsync-emote-wrapper check keeps
+  // it from double-wrapping text that already resolved).
+  function applySenderEmotesToMessages(senderKeys) {
+    if (!senderKeys || senderKeys.length === 0) return
+    const container = findChatContainer()
+    if (!container) return
+    const twitchIds = new Set()
+    const kickUsers = new Set()
+    for (const k of senderKeys) {
+      const id = k.slice(k.indexOf(':') + 1)
+      if (k.startsWith('kick:')) kickUsers.add(id)
+      else twitchIds.add(id)
+    }
+    // Rule 2: the sender's pick is the line's pick. A row drawn BEFORE their set arrived holds the
+    // channel/global twin of a name they carry; give those words back so the re-pass redraws them.
+    const reopenSenderWords = (el, key) => {
+      const set = senderHeatsyncEmotes.get(key)
+      if (!set || set.size === 0) return
+      for (const w of el.querySelectorAll('.heatsync-emote-wrapper')) {
+        if (w.closest('.heatsync-emote-stack')) continue
+        const mine = set.get(w.dataset.emoteName)
+        if (!mine || (mine.hash && w.dataset.emoteHash === mine.hash)) continue
+        w.replaceWith(document.createTextNode(w.dataset.emoteName))
+      }
+    }
+    if (twitchIds.size) {
+      container.querySelectorAll('[data-hs-cosmetic-user-id]').forEach((el) => {
+        if (!twitchIds.has(el.dataset.hsCosmeticUserId)) return
+        reopenSenderWords(el, `twitch:${el.dataset.hsCosmeticUserId}`)
+        el.dataset.heatsyncGeneration = ''
+        processMessage(el)
+      })
+    }
+    if (kickUsers.size) {
+      container.querySelectorAll('[data-hs-cosmetic-kick-user]').forEach((el) => {
+        if (!kickUsers.has(el.dataset.hsCosmeticKickUser)) return
+        reopenSenderWords(el, `kick:${el.dataset.hsCosmeticKickUser}`)
+        el.dataset.heatsyncGeneration = ''
+        processMessage(el)
+      })
+    }
+  }
+
+  // Apply HeatSync API colors to existing messages in the chat container
+  function applyHeatsyncColorsToExisting() {
+    const container = findChatContainer()
+    if (!container) return
+    container.querySelectorAll('.chat-line__message, [data-index]').forEach((el) => {
+      const nameEl = el.querySelector('.chat-author__display-name, [data-a-target="chat-message-username"]')
+      if (!nameEl) return
+      const username = nameEl.textContent?.trim().toLowerCase()
+      if (!username) return
+      const hsColor = heatsyncColorMap.get(username)
+      if (hsColor && !nameEl.dataset.hsPaintApplied) {
+        nameEl.style.color = hsColor
+        knownChatters.set(username, hsColor)
+      }
+    })
+  }
+
+  // Re-apply BTTV/FFZ badges to messages that were processed before badge maps loaded
+  function reapplyBadgesToExistingMessages() {
+    if (bttvBadgeMap.size === 0 && ffzBadgeMap.size === 0 && chatterinoBadgeMap.size === 0) {
+      return
+    }
+    const container = findChatContainer()
+    // Defensive: findChatContainer can return a stale reference whose node was
+    // detached between sync check and call (Twitch SPA-nav reparents the chat
+    // tree). Verify it still has querySelectorAll before calling. Without this,
+    // the runtime onMessage handler crashed with "Cannot read properties of
+    // null (reading 'querySelectorAll')" on rare reparent races.
+    if (!container || typeof container.querySelectorAll !== 'function') return
+    let matched = 0
+    container.querySelectorAll('[data-hs-cosmetic-user-id]').forEach((el) => {
+      const uid = el.dataset.hsCosmeticUserId
+      if (!uid) return
+      const needsBttv = bttvBadgeMap.has(uid) && !el.querySelector('.hs-bttv-badge')
+      const needsFfz = ffzBadgeMap.has(uid) && !el.querySelector('.hs-ffz-badge')
+      const needsChatterino = chatterinoBadgeMap.has(uid) && !el.querySelector('.hs-chatterino-badge')
+      if (needsBttv || needsFfz || needsChatterino) {
+        applyCosmeticsToMessage(el, uid)
+        matched++
+      }
+    })
+    if (matched > 0) log(` ✅ Reapplied cosmetic badges to ${matched} messages`)
+  }
+
+  // Fetch BTTV/FFZ/Chatterino badge maps from background.
+  // A cold service worker can respond before its storage restore lands, returning
+  // empty maps. Retry with backoff until non-empty so badges aren't suppressed
+  // until the next ~24h refresh (background also pushes a warm-cache cosmetics_update).
+  function fetchCosmeticBadges(attempt = 0) {
+    safeSendMessage({ type: 'get_bulk_badges' })
+      .then((resp) => {
+        const bttv = resp?.bttvBadges ? Object.entries(resp.bttvBadges) : []
+        const ffz = new BadgeIndex(resp?.ffzBadges)
+        const chat = new BadgeIndex(resp?.chatterinoBadges)
+        if (bttv.length + ffz.size + chat.size === 0) {
+          if (attempt < 8)
+            cleanup.setTimeout(() => fetchCosmeticBadges(attempt + 1), Math.min(500 * (attempt + 1), 3000))
+          return
+        }
+        bttvBadgeMap = new Map(bttv)
+        ffzBadgeMap = ffz
+        chatterinoBadgeMap = chat
+        log(
+          ' Initial cosmetics: BTTV',
+          bttvBadgeMap.size,
+          'FFZ',
+          ffzBadgeMap.size,
+          'Chatterino',
+          chatterinoBadgeMap.size,
+        )
+        reapplyBadgesToExistingMessages()
+      })
+      .catch(() => {
+        if (attempt < 8) cleanup.setTimeout(() => fetchCosmeticBadges(attempt + 1), Math.min(500 * (attempt + 1), 3000))
+      })
+  }
+
+  // =============================================================================
+  // TIMEOUT / BAN DIMMING
+  // =============================================================================
+  // Restores cached message body when Twitch replaces it with "message deleted"
+  // entry.html is Twitch's serialized chat DOM captured at render time (no user-typed raw text).
+  // template parsing is inert — no scripts execute — and we strip dangerous tags before attach.
+
+  function restoreDeletedMessage(bodyEl, msgId) {
+    const entry = originalMessageBodies.get(msgId)
+    if (!entry?.nodes) return
+    // Clone the snapshot so the restore is repeatable (e.g. re-render). Strip
+    // executable/resource nodes defensively even though Twitch's chat DOM never
+    // contains them.
+    const clones = entry.nodes.map((n) => n.cloneNode(true))
+    for (const c of clones) {
+      if (c.nodeType === 1) {
+        c.querySelectorAll?.('script,link,style,iframe,object,embed').forEach((n) => n.remove())
+      }
+    }
+    bodyEl.replaceChildren(...clones)
+  }
+
+  // Mark a message as timed out in the localStorage cache so it persists across reloads
+  function markCachedMessageTimedOut(msgId) {
+    const idx = msgCacheBuffer.findIndex((m) => m.id === msgId)
+    if (idx !== -1) {
+      msgCacheBuffer[idx].timedOut = true
+      scheduleMsgCacheSave()
+    }
+  }
+
+  // Load dimTimeouts setting from storage
+  chrome.storage.local
+    .get('hs_dim_timeouts')
+    .then((data) => {
+      if (data.hs_dim_timeouts !== undefined) dimTimeoutsEnabled = data.hs_dim_timeouts
+    })
+    .catch(() => {})
+
+  // =============================================================================
+  // KICK COSMETICS (7TV paints + badges by username)
+  // =============================================================================
+  // BTTV/FFZ badges use Twitch user IDs — not available on Kick.
+  // 7TV supports Kick natively via /v3/users/kick/{username}.
+
+  // ─── HeatSync name paints on native rows ─────────────────────────────────────
+  // The user's own saved paint, on the native twitch/kick row. Same pipeline as
+  // the overlay (src/multichat/paints.js) and native youtube: batch
+  // fetch_paints via the BG worker (content scripts never fetch heatsync.org —
+  // CF 503s them), compile each distinct spec once with the embedded
+  // lib/paint-spec.js (build.js appends it to this bundle), one <style> sheet,
+  // apply as an hsp-<hash> class. A heatsync paint outranks 7TV: applying
+  // clears the inline style 7TV set, and applyPaintToElement stands down for an
+  // hsp- class. ID SPACE: a twitch row passes its twitch id (users.id); a kick
+  // row passes `kick_<kickId>` — never a bare kick id, which collides with an
+  // unrelated twitch user's (see paints.js ID-SPACE SAFETY).
+  const HS_PAINT_BATCH = 50
+  const HS_PAINT_CACHE_MAX = 500
+  const HS_PAINT_HASH_MAX = 300
+  const HS_PAINT_SHEET_BASE =
+    'html[data-hs-paint-anim="never"] [class*="hsp-"],html[data-hs-paint-anim="never"] [class*="hsp-"] *{animation-play-state:paused !important;}' +
+    // a painted name loses its inline style; a mention still needs to take the click/hover for the profile card
+    '.hs-username-colored[class*="hsp-"],.hs-mention-colored[class*="hsp-"]{cursor:pointer;pointer-events:auto;}' +
+    '[class*="hsp-"]:hover,[class*="hsp-"]:hover span{animation-play-state:paused !important;background:#fff !important;-webkit-background-clip:border-box !important;background-clip:border-box !important;color:#000 !important;transform:none !important;}'
+  const HS_NAME_COLOUR_RE = /^(?:#[0-9a-f]{3,8}|rgba?\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*(?:,\s*[\d.]+\s*)?\))$/i
+
+  // The compiler is NOT embedded here: multichat-core (same isolated world,
+  // same page) already carries it and publishes window.__hsPaintKit, so this
+  // script stays ~90KB lighter on every twitch/kick page. Missing kit (core
+  // not loaded yet, or a build without it) = no heatsync paints, never a throw.
+  function hsPaintKit() {
+    const k = window.__hsPaintKit
+    return k && typeof k.compilePaintCss === 'function' && typeof k.paintNameHtmlFor === 'function' ? k : null
+  }
+  function hsNativePaintReady() {
+    return !!hsPaintKit()
+  }
+
+  function ensureHsNativePaintSheet() {
+    if (hsPaintSheet?.isConnected) return hsPaintSheet
+    hsPaintSheet = document.getElementById('hs-native-paints')
+    if (!hsPaintSheet) {
+      hsPaintSheet = document.createElement('style')
+      hsPaintSheet.id = 'hs-native-paints'
+      hsPaintSheet.textContent = HS_PAINT_SHEET_BASE
+      document.head.appendChild(cleanup.trackNode ? cleanup.trackNode(hsPaintSheet) : hsPaintSheet)
+    }
+    return hsPaintSheet
+  }
+
+  // A hash outlives the uids that referenced it; rebuild the sheet from only
+  // the hashes a surviving cache entry still points at once the cap is passed.
+  function trimHsNativePaintSheet() {
+    if (hsPaintHashes.size <= HS_PAINT_HASH_MAX) return
+    const live = new Set()
+    for (const e of hsPaintCache.values()) if (e.hash) live.add(e.hash)
+    let css = HS_PAINT_SHEET_BASE
+    for (const h of [...hsPaintHashes.keys()]) {
+      if (live.has(h)) css += hsPaintHashes.get(h)
+      else hsPaintHashes.delete(h)
+    }
+    if (hsPaintSheet) hsPaintSheet.textContent = css
+  }
+
+  function queueHsNativePaint(uid) {
+    if (!uid || !hsPaintsEnabled || !hsNativePaintReady()) return
+    if (hsPaintCache.has(uid) || hsPaintPending.has(uid)) return
+    hsPaintPending.add(uid)
+    if (hsPaintPending.size >= HS_PAINT_BATCH) {
+      if (hsPaintTimer) {
+        cleanup.clearTimeout(hsPaintTimer)
+        hsPaintTimer = null
+      }
+      flushHsNativePaintBatch()
+    } else if (!hsPaintTimer) {
+      hsPaintTimer = cleanup.setTimeout(() => {
+        hsPaintTimer = null
+        flushHsNativePaintBatch()
+      }, 400)
+    }
+  }
+
+  async function flushHsNativePaintBatch() {
+    if (!hsPaintPending.size) return
+    const batch = [...hsPaintPending].slice(0, HS_PAINT_BATCH)
+    for (const id of batch) hsPaintPending.delete(id)
+    let paints = null
+    try {
+      const resp = await safeSendMessage({ type: 'fetch_paints', userIds: batch })
+      if (resp?.paints && typeof resp.paints === 'object') paints = resp.paints
+    } catch (_) {}
+    const changed = new Set()
+    if (paints) {
+      for (const id of batch) {
+        // BG only answers ids it CONFIRMED (a spec or a confirmed none); an
+        // absent key is a transient miss — requeue, never cache a false negative.
+        if (!Object.hasOwn(paints, id)) {
+          hsPaintPending.add(id)
+          continue
+        }
+        const spec = paints[id]
+        let hash = null
+        if (spec) {
+          try {
+            hash = hsPaintKit().hashPaintSpec(spec)
+            if (hash && !hsPaintHashes.has(hash)) {
+              const css = hsPaintKit().compilePaintCss(spec, `.hsp-${hash}`, { hash })
+              if (css) {
+                ensureHsNativePaintSheet().textContent += css
+                hsPaintHashes.set(hash, css)
+              } else hash = null
+            }
+          } catch (_) {
+            hash = null
+          }
+        }
+        if (!hsPaintCache.has(id) && hsPaintCache.size >= HS_PAINT_CACHE_MAX) {
+          hsPaintCache.delete(hsPaintCache.keys().next().value)
+        }
+        hsPaintCache.set(id, { spec: hash ? spec : null, hash })
+        if (hash) changed.add(id)
+      }
+    } else {
+      for (const id of batch) hsPaintPending.add(id)
+    }
+    trimHsNativePaintSheet()
+    if (changed.size) {
+      for (const el of document.querySelectorAll('[data-hs-paint-uid]')) {
+        if (changed.has(el.dataset.hsPaintUid)) applyHsNativePaint(el, el.dataset.hsPaintUid)
+      }
+    }
+    if (hsPaintPending.size && !hsPaintTimer) {
+      hsPaintTimer = cleanup.setTimeout(() => {
+        hsPaintTimer = null
+        flushHsNativePaintBatch()
+      }, 2000)
+    }
+  }
+
+  /** Put a cached paint on the name element. True when a paint class is on it. */
+  function applyHsNativePaint(nameEl, uid) {
+    if (!nameEl || !uid || !hsPaintsEnabled || !hsNativePaintReady()) return false
+    const entry = hsPaintCache.get(uid)
+    if (!entry?.hash) return false
+    const cls = `hsp-${entry.hash}`
+    if (!nameEl.classList.contains(cls)) {
+      for (const c of [...nameEl.classList]) if (c.startsWith('hsp-')) nameEl.classList.remove(c)
+      nameEl.classList.add(cls)
+    }
+    // The row's own colour rides --hs-name-c so a paint with an underlay still
+    // shows it; the inline style itself must go (it outranks the class rule).
+    const kept = nameEl.style.color
+    if (nameEl.hasAttribute('style')) nameEl.removeAttribute('style')
+    // The compiled rules address `.hsp-<hash>>.hs-name`: the box is not optional.
+    const boxed = nameEl.firstElementChild?.classList.contains(hsPaintKit().NAME_BOX_CLASS)
+    if (!boxed && nameEl.textContent) {
+      try {
+        nameEl.innerHTML = hsPaintKit().paintNameHtmlFor(nameEl.textContent, hsPaintKit().paintMarkupMode(entry.spec))
+      } catch (_) {}
+    }
+    nameEl.style.setProperty('--hsp-t', hsPaintKit().paintPhaseNow())
+    if (kept && HS_NAME_COLOUR_RE.test(kept)) nameEl.style.setProperty('--hs-name-c', kept)
+    nameEl.dataset.hsPaintApplied = '1'
+    return true
+  }
+
+  function clearHsNativePaint(nameEl) {
+    if (!nameEl) return
+    const ours = [...nameEl.classList].filter((c) => c.startsWith('hsp-'))
+    if (!ours.length) return
+    for (const c of ours) nameEl.classList.remove(c)
+    // plain text back in place of the name box; the row's own colour is gone
+    // with the stripped style, so the native styling takes over again
+    const plain = nameEl.textContent
+    nameEl.textContent = plain
+    nameEl.removeAttribute('style')
+    delete nameEl.dataset.hsPaintApplied
+  }
+
+  /** Register a row's name for a paint id: paint now if cached, else queue. */
+  function stampHsNativePaint(nameEl, uid) {
+    if (!nameEl || !uid) return
+    if (nameEl.dataset.hsPaintUid && nameEl.dataset.hsPaintUid !== uid) clearHsNativePaint(nameEl)
+    nameEl.dataset.hsPaintUid = uid
+    if (hsPaintCache.has(uid)) applyHsNativePaint(nameEl, uid)
+    else queueHsNativePaint(uid)
+  }
+
+  function applyKickCosmeticsToMessage(el, kickSlug) {
+    if (!kickSlug) return
+    const prevSlug = el.dataset.hsCosmeticAppliedFor
+    if (prevSlug && prevSlug !== kickSlug) {
+      el.querySelectorAll('.hs-cosmetic-badge').forEach((b) => b.remove())
+      delete el.dataset.hsCosmeticDone
+      delete el.dataset.hsBttvDone
+      delete el.dataset.hsFfzDone
+      const nameEl = el.querySelector('button.inline.font-bold')
+      if (nameEl) {
+        delete nameEl.dataset.hsPaintApplied
+        nameEl.style.removeProperty('background-image')
+        nameEl.style.removeProperty('background-size')
+        nameEl.style.removeProperty('-webkit-background-clip')
+        nameEl.style.removeProperty('-webkit-text-fill-color')
+        nameEl.style.removeProperty('background-clip')
+        nameEl.style.removeProperty('filter')
+      }
+    }
+    el.dataset.hsCosmeticAppliedFor = kickSlug
+    const nameEl = el.querySelector('button.inline.font-bold')
+    if (!nameEl) return
+
+    const cosmetic = kickCosmeticsCache.get(kickSlug)
+    if (!cosmetic) return
+
+    // heatsync paint, keyed kick_<id> — the numeric id only ever appears inside
+    // that namespaced string (ID-SPACE SAFETY, paints.js)
+    if (/^\d{1,12}$/.test(String(cosmetic.kickId ?? ''))) stampHsNativePaint(nameEl, `kick_${cosmetic.kickId}`)
+
+    // 7TV badge (skip when the real 7TV ext is co-installed — duplicate render)
+    if (cosmetic.badge && !_peerExts.includes('7tv') && !el.querySelector('.hs-7tv-badge')) {
+      const url = get7TVBadgeUrl(cosmetic.badge)
+      if (url) {
+        const img = document.createElement('img')
+        img.className = 'hs-7tv-badge hs-cosmetic-badge'
+        img.src = url
+        img.title = cosmetic.badge.tooltip || cosmetic.badge.name || '7TV'
+        img.alt = '7TV'
+        nameEl.parentNode.insertBefore(img, nameEl)
+      }
+    }
+
+    // BTTV + FFZ badges (Kick users with a linked Twitch account)
+    const twitchId = cosmetic.twitchId
+    if (twitchId) {
+      if (!el.dataset.hsBttvDone && !_peerExts.includes('bttv') && bttvBadgeMap.has(twitchId)) {
+        const b = bttvBadgeMap.get(twitchId)
+        const img = document.createElement('img')
+        img.className = 'hs-bttv-badge hs-cosmetic-badge'
+        img.src = b.url
+        img.title = b.description
+        img.alt = b.description
+        nameEl.parentNode.insertBefore(img, nameEl)
+        el.dataset.hsBttvDone = '1'
+      }
+      if (!el.dataset.hsFfzDone && !_peerExts.includes('ffz') && ffzBadgeMap.has(twitchId)) {
+        for (const b of ffzBadgeMap.get(twitchId)) {
+          const img = document.createElement('img')
+          img.className = 'hs-ffz-badge hs-cosmetic-badge'
+          img.src = b.url
+          img.title = b.title
+          img.alt = b.title
+          if (b.color && COLOR_RE.test(b.color)) img.style.backgroundColor = b.color
+          nameEl.parentNode.insertBefore(img, nameEl)
+        }
+        el.dataset.hsFfzDone = '1'
+      }
+    }
+
+    // 7TV paint (same co-install skip as the badge above)
+    if (cosmetic.paint && !_peerExts.includes('7tv') && !nameEl.dataset.hsPaintApplied) {
+      applyPaintToElement(nameEl, cosmetic.paint)
+    }
+    el.dataset.hsCosmeticDone = '1'
+  }
+
+  function queueKickCosmeticsLookup(kickSlug) {
+    if (!isKick || !kickSlug) return
+    const cached = kickCosmeticsCache.get(kickSlug)
+    const isNegative = cached && !cached.paint && !cached.badge
+    const ttl = isNegative ? COSMETICS_NEGATIVE_TTL : COSMETICS_TTL
+    if (cached && Date.now() - cached.fetchedAt < ttl) return
+    kickCosmeticsPending.add(kickSlug)
+    if (kickCosmeticsPending.size >= COSMETICS_PENDING_MAX) {
+      if (kickCosmeticsBatchTimer) {
+        cleanup.clearTimeout(kickCosmeticsBatchTimer)
+        kickCosmeticsBatchTimer = null
+      }
+      flushKickCosmeticsBatch()
+      return
+    }
+    if (!kickCosmeticsBatchTimer) {
+      kickCosmeticsBatchTimer = cleanup.setTimeout(() => {
+        kickCosmeticsBatchTimer = null
+        flushKickCosmeticsBatch()
+      }, 500)
+    }
+  }
+
+  async function flushKickCosmeticsBatch() {
+    if (kickCosmeticsPending.size === 0) return
+    const batch = [...kickCosmeticsPending].slice(0, 10)
+    batch.forEach((slug) => kickCosmeticsPending.delete(slug))
+    try {
+      const resp = await safeSendMessage({ type: 'get_kick_user_cosmetics', kickUsernames: batch })
+      if (!resp?.cosmetics) return
+      const now = Date.now()
+      for (const [slug, cosmetic] of Object.entries(resp.cosmetics)) {
+        if (kickCosmeticsCache.size >= COSMETICS_MAX) {
+          kickCosmeticsCache.delete(kickCosmeticsCache.keys().next().value)
+        }
+        kickCosmeticsCache.set(slug, { ...(cosmetic || { paint: null, badge: null }), fetchedAt: now })
+      }
+      applyPendingKickCosmetics(Object.keys(resp.cosmetics))
+    } catch (e) {
+      log(' flushKickCosmeticsBatch failed:', e?.message)
+    }
+    if (kickCosmeticsPending.size > 0 && !kickCosmeticsBatchTimer) {
+      kickCosmeticsBatchTimer = cleanup.setTimeout(() => {
+        kickCosmeticsBatchTimer = null
+        flushKickCosmeticsBatch()
+      }, 2000)
+    }
+  }
+
+  function applyPendingKickCosmetics(slugs) {
+    const container = findChatContainer()
+    if (!container) return
+    const slugSet = new Set(slugs)
+    container.querySelectorAll('[data-hs-cosmetic-kick-user]').forEach((el) => {
+      if (el.dataset.hsCosmeticDone === '1') return
+      const slug = el.dataset.hsCosmeticKickUser
+      if (slugSet.has(slug)) applyKickCosmeticsToMessage(el, slug)
+    })
+  }
+
+  // Right-click on chat message or username → instant 24h mute
+  function setupMessageContextMenu() {
+    cleanup.addEventListener(
+      document,
+      'contextmenu',
+      (e) => {
+        // Don't intercept emote right-clicks (heatsync wrappers or native Twitch
+        // emotes) — those instant block/unblock via their own handlers.
+        if (e.target.closest('.heatsync-emote-wrapper')) return
+        const imgEl = e.target.closest('img')
+        if (imgEl && (imgEl.src || '').includes('static-cdn.jtvnw.net/emoticons')) return
+
+        const msgEl = e.target.closest('.chat-line__message, #chatroom-messages [data-index]')
+        if (!msgEl) return
+
+        const username = getUsername(msgEl)
+        if (!username) return
+
+        e.preventDefault()
+        openMessageActionMenu(msgEl, username, e.clientX, e.clientY)
+      },
+      { signal },
+    )
+  }
+
+  function _toggleUserMute(username) {
+    const pagePlatform = isKick ? 'kick' : 'twitch'
+    const key = userKey(username, pagePlatform)
+    const bareLower = username.toLowerCase()
+    if (userSetMatches(mutedUsers, username, pagePlatform, [])) {
+      mutedUsers.delete(key)
+      if (bareLower !== key) mutedUsers.delete(bareLower) // clear legacy bare entry
+      safeSendMessage({ type: 'unmute_user', username: key }).catch(() => {})
+      unmuteUser(username) // bare for DOM matching
+      showToast(t('content_toast_unmuted', [username]))
+    } else {
+      mutedUsers.add(key)
+      safeSendMessage({ type: 'mute_user', username: key, expiresAt: Date.now() + 86400000 }).catch(() => {})
+      muteUser(username) // bare for DOM matching
+      showToast(t('content_toast_muted_24h', [username]))
+    }
+  }
+
+  // Readable message body: walk fragments + emote alts, skip badges/timestamps.
+  function _extractMessageText(msgEl) {
+    const frags = msgEl.querySelectorAll(
+      '[data-a-target="chat-message-text"], .text-fragment, .message [class*="text-fragment"]',
+    )
+    if (frags.length) {
+      // Drop fragments nested inside another matched fragment so a container +
+      // its children don't double-emit the same text.
+      const top = Array.from(frags).filter((f) => !Array.from(frags).some((o) => o !== f && o.contains(f)))
+      const parts = []
+      // Recursive walk: a fragment can interleave an inline-imagified emote and
+      // text (e.g. "<emote> Kripp, when..."). The old img-or-textContent map kept
+      // only the emote alt and dropped the trailing text. Walk every node so both
+      // land in reading order.
+      const walk = (node) => {
+        if (node.nodeType === 3) {
+          parts.push(node.textContent)
+          return
+        }
+        if (node.nodeType !== 1) return
+        // Skip emote-stack control glyphs (× collapse, ⊘ block-all) — they're UI
+        // affordances, not message content, and would leak into the clipboard.
+        const cls = node.classList
+        if (cls && (cls.contains('heatsync-stack-collapse') || cls.contains('heatsync-stack-block-all'))) return
+        if (node.tagName === 'IMG') {
+          if (node.alt) parts.push(node.alt)
+          return
+        }
+        for (const child of node.childNodes) walk(child)
+      }
+      for (const f of top) walk(f)
+      return parts.join(' ').replace(/\s+/g, ' ').trim()
+    }
+    const body = msgEl.querySelector(
+      '.chat-line__message-body, [data-test-selector="chat-line-message-body"], .chat-entry',
+    )
+    return ((body || msgEl).textContent || '').replace(/\s+/g, ' ').trim()
+  }
+
+  // Right-click action menu for a chat message (mirrors the multichat panel menu).
+  // Replaces the old insta-mute so an accidental right-click can't silently 24h-mute.
+  function openMessageActionMenu(msgEl, username, x, y) {
+    closeEmoteMenu()
+    // Namespace-aware (+ legacy-bare) so the mute/unmute label is correct for
+    // platform-scoped mutes, matching the render-filter check above.
+    const isMuted = userSetMatches(mutedUsers, username, isKick ? 'kick' : 'twitch', [])
+
+    const el = document.createElement('div')
+    el.id = 'hs-msg-menu'
+    el.className = 'hs-ctx-menu'
+    el.tabIndex = -1
+    el.addEventListener('contextmenu', (ev) => ev.preventDefault())
+
+    let kbdIndex = 1
+    const kbdHandlers = {}
+    const addHeader = (text) => {
+      const h = document.createElement('div')
+      h.className = 'hs-em-header'
+      h.textContent = text
+      el.appendChild(h)
+    }
+    const addItem = (label, fn, { danger = false, good = false } = {}) => {
+      const it = document.createElement('div')
+      it.className = `hs-em-item${danger ? ' hs-em-danger' : ''}${good ? ' hs-em-good' : ''}`
+      it.setAttribute('role', 'menuitem')
+      const lab = document.createElement('span')
+      lab.className = 'hs-em-label'
+      lab.textContent = label
+      it.appendChild(lab)
+      if (kbdIndex <= 9) {
+        const k = document.createElement('span')
+        k.className = 'hs-em-kbd'
+        k.textContent = String(kbdIndex)
+        it.appendChild(k)
+        kbdHandlers[String(kbdIndex)] = fn
+        kbdIndex++
+      }
+      it.addEventListener('click', () => {
+        try {
+          fn()
+        } catch {}
+        closeEmoteMenu()
+      })
+      el.appendChild(it)
+    }
+    const addSep = () => {
+      const s = document.createElement('div')
+      s.className = 'hs-em-sep'
+      el.appendChild(s)
+    }
+
+    addHeader(username)
+    addItem(t('cs_copy_username'), () => navigator.clipboard?.writeText(username))
+    addItem(t('cs_copy_message'), () => navigator.clipboard?.writeText(_extractMessageText(msgEl)))
+
+    addSep()
+    if (isMuted) addItem(t('mc_settings_unmute'), () => _toggleUserMute(username), { good: true })
+    else addItem(t('cs_mute_24h'), () => _toggleUserMute(username), { danger: true })
+
+    addSep()
+    addItem(t('cs_profile'), () =>
+      window.open(`https://heatsync.org/user/${encodeURIComponent(username)}`, '_blank', 'noopener,noreferrer'),
+    )
+
+    placeAndWireMenu(el, x, y, kbdHandlers)
+  }
+
+  // Hide all messages from a blocked user
+  function hideBlockedUser(username) {
+    ;(findChatContainer() || document).querySelectorAll('.chat-line__message, [data-index]').forEach((msg) => {
+      if (getUsername(msg) === username) msg.style.display = 'none'
+    })
+  }
+
+  // Unhide all messages from an unblocked user
+  function unhideBlockedUser(username) {
+    ;(findChatContainer() || document).querySelectorAll('.chat-line__message, [data-index]').forEach((msg) => {
+      if (getUsername(msg) === username) msg.style.display = ''
+    })
+  }
+
+  // Undo mute — can't restore stripped DOM, just remove class for future messages
+  function unmuteUser(username) {
+    ;(findChatContainer() || document).querySelectorAll('.hs-user-muted').forEach((msg) => {
+      if (getUsername(msg) === username) {
+        msg.classList.remove('hs-user-muted')
+      }
+    })
+  }
+
+  // Hide blocked emote everywhere — idempotent (skips wrappers already blocked).
+  // Opacity is handled by CSS via .emote-overlay-blocked > img — no inline writes.
+  function hideBlockedEmote(hash) {
+    const elements = document.querySelectorAll(`[data-emote-hash="${hash}"]`)
+    elements.forEach((wrapper) => {
+      if (wrapper.classList.contains('emote-overlay-blocked')) return
+      wrapper.classList.remove('emote-overlay-owned', 'emote-overlay-unadded', 'emote-overlay-global')
+      wrapper.classList.add('emote-overlay-blocked')
+      const img = wrapper.querySelector('.heatsync-emote')
+      if (img) {
+        img.classList.add('emote-blocked')
+        img.classList.remove('emote-in-set')
+      }
+    })
+  }
+
+  // Show unblocked emote everywhere — idempotent (skips wrappers already in target state)
+  function showUnblockedEmote(hash) {
+    const elements = document.querySelectorAll(`[data-emote-hash="${hash}"]`)
+    elements.forEach((wrapper) => {
+      const img = wrapper.querySelector('.heatsync-emote')
+      const emoteName = wrapper.dataset.emoteName
+      const emoteUrl = wrapper.dataset.emoteUrl || img?.src || ''
+
+      const isThirdPartyCdn =
+        emoteUrl.includes('cdn.7tv.app') ||
+        emoteUrl.includes('cdn.betterttv.net') ||
+        emoteUrl.includes('cdn.frankerfacez.com') ||
+        emoteUrl.includes('static-cdn.jtvnw.net')
+
+      const inInventory = inventoryHashSet.has(hash)
+      const isGlobalEmote = globalNameSet.has(emoteName)
+
+      const targetClass = inInventory
+        ? 'emote-overlay-owned'
+        : isThirdPartyCdn || isGlobalEmote
+          ? 'emote-overlay-global'
+          : 'emote-overlay-unadded'
+      if (wrapper.classList.contains(targetClass)) return
+
+      wrapper.classList.remove(
+        'emote-overlay-blocked',
+        'emote-overlay-owned',
+        'emote-overlay-unadded',
+        'emote-overlay-global',
+      )
+      wrapper.classList.add(targetClass)
+
+      if (img) {
+        img.style.removeProperty('object-fit')
+        img.style.removeProperty('object-position')
+        img.classList.remove('emote-blocked')
+        if (inInventory) img.classList.add('emote-in-set')
+        else img.classList.remove('emote-in-set')
+      }
+    })
+  }
+
+  // Hide muted user content, gray username
+  function muteUser(username) {
+    ;(findChatContainer() || document).querySelectorAll('.chat-line__message, [data-index]').forEach((msg) => {
+      if (getUsername(msg) === username) {
+        stripMutedMessage(msg)
+      }
+    })
+  }
+
+  // Mark a message as muted — CSS hides the content (React-safe, survives re-renders)
+  function stripMutedMessage(messageElement) {
+    messageElement.classList.add('hs-user-muted')
+  }
+
+  // Escape regex special characters
+  function escapeRegex(str) {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  }
+
+  // Create emote matching regex that handles both word and non-word character emotes.
+  // \b doesn't work for emotes like ")))" since ) is not a word character.
+  // Cache per-emote-name so we don't recompile on retroactive replacement passes.
+  const _emoteRegexCache = new Map()
+  function createEmoteRegex(emoteName) {
+    const cached = _emoteRegexCache.get(emoteName)
+    if (cached) {
+      cached.lastIndex = 0
+      return cached
+    }
+    const escaped = escapeRegex(emoteName)
+    const hasWordChars = /\w/.test(emoteName)
+    const re = hasWordChars ? new RegExp(`\\b${escaped}\\b`, 'g') : new RegExp(`(?<=^|\\s)${escaped}(?=\\s|$)`, 'g')
+    if (_emoteRegexCache.size > 5000) {
+      const toDelete = Math.floor(_emoteRegexCache.size * 0.1)
+      const it = _emoteRegexCache.keys()
+      for (let i = 0; i < toDelete; i++) _emoteRegexCache.delete(it.next().value)
+    }
+    _emoteRegexCache.set(emoteName, re)
+    return re
+  }
+
+  // Watch for new messages (MutationObserver)
+  let messageObserver = null
+  let observedContainer = null
+  let watchRetryCount = 0
+  function watchForNewMessages() {
+    // Overlay is up → native chat is hidden → skip wiring the dead message pipeline
+    // (isOverlayActive defined at the top of the IIFE). self-twitch-id still registers
+    // at boot from localStorage['twilight.user'] (~5307), not this observer.
+    if (isOverlayActive()) return
+    const chatContainer = findChatContainer()
+    if (!chatContainer) {
+      if (++watchRetryCount > 60) return
+      const delay = watchRetryCount <= 30 ? 1000 : 2000
+      log(' ⏳ watchForNewMessages: no container found, retrying in', delay, 'ms (attempt', watchRetryCount, ')')
+      cleanup.setTimeout(watchForNewMessages, delay)
+      return
+    }
+    watchRetryCount = 0
+
+    log(' ✅ watchForNewMessages: found container:', chatContainer.className?.substring(0, 100))
+
+    // Disconnect and untrack existing observer if any
+    if (messageObserver) {
+      messageObserver.disconnect()
+      cleanup.untrackObserver(messageObserver)
+      messageObserver = null
+      log(' 🔌 Disconnected previous message observer')
+    }
+
+    // Batch processing queue to avoid React conflicts.
+    // Cap at MAX_QUEUE — sustained 1k+ msg/min raids can outpace processMessage's
+    // ~16ms per call, leaving the queue unbounded between rAF flushes. Drop oldest
+    // when full so live messages always win over backlog.
+    const MAX_QUEUE = 500
+    const processingQueue = []
+    let processingScheduled = false
+    let processingDropped = 0
+    function pushToQueue(node) {
+      if (processingQueue.length >= MAX_QUEUE) {
+        processingQueue.shift()
+        processingDropped++
+        if (processingDropped % 100 === 0) {
+          log(' ⚠️ message queue dropped', processingDropped, 'old messages (raid backlog)')
+        }
+      }
+      processingQueue.push(node)
+    }
+
+    // Unified chat observer: replaces 3 separate observers (messages, username
+    // coloring, userId attribute) on the same chatContainer subtree. Browser
+    // fires every observer's callback per mutation, so 3 observers = 3x dispatch
+    // cost on every Twitch React reconciliation. One observer = one dispatch.
+    const newColoringMessages = []
+    const cosmeticRefresh = []
+    messageObserver = cleanup.trackObserver(
+      new MutationObserver((mutations) => {
+        // Overlay mounted after we wired this observer → native chat is now hidden;
+        // stop doing per-message work on it (see isOverlayActive above).
+        if (isOverlayActive()) return
+        ensureEmoteStyles()
+        newColoringMessages.length = 0
+        cosmeticRefresh.length = 0
+        mutations.forEach((mutation) => {
+          // === ATTRIBUTE MUTATION (was userIdObserver) ===
+          if (mutation.type === 'attributes') {
+            if (isKick) return
+            if (mutation.attributeName !== 'data-user-id') return
+            const el = mutation.target
+            if (!el?.classList?.contains('chat-line__message')) return
+            const userId = el.getAttribute('data-user-id')
+            if (!userId) return
+            if (el.dataset.hsCosmeticUserId === userId) return
+            el.dataset.hsCosmeticUserId = userId
+            const usernameEl = el.querySelector('.chat-author__display-name, [data-a-target="chat-message-username"]')
+            applyCosmeticsToMessage(el, userId, usernameEl)
+            queueCosmeticsLookup(userId)
+            if (!_selfTwitchIdRegistered) {
+              const me = getCurrentUsername()
+              const username = usernameEl?.textContent?.trim().toLowerCase()
+              if (me && username && me === username) {
+                _selfTwitchIdRegistered = true
+                safeSendMessage({ type: 'register_self_twitch_id', twitchId: userId })
+              }
+            }
+            return
+          }
+
+          // === CHILD-LIST MUTATION ===
+          mutation.addedNodes.forEach((node) => {
+            if (node.nodeType === 1) {
+              // Twitch chat message
+              if (node.classList.contains('chat-line__message')) {
+                pushToQueue(node)
+                if (!node.dataset.heatsyncUsernamesColored) newColoringMessages.push(node)
+              }
+              // Kick chat message (div with data-index inside #chatroom-messages)
+              else if (node.hasAttribute?.('data-index') && node.closest?.('#chatroom-messages')) {
+                pushToQueue(node)
+                if (!node.dataset.heatsyncUsernamesColored) newColoringMessages.push(node)
+              }
+              // Check if it has chat-line__message inside
+              else if (node.querySelector?.('.chat-line__message')) {
+                node.querySelectorAll('.chat-line__message').forEach((msg) => pushToQueue(msg))
+                // Username-coloring fallback: collect uncolored inner messages
+                for (const msg of node.querySelectorAll(
+                  '.chat-line__message:not([data-heatsync-usernames-colored]), [data-index]:not([data-heatsync-usernames-colored])',
+                )) {
+                  newColoringMessages.push(msg)
+                }
+                // Detect React replacing username elements inside already-processed messages
+                const msgParent = node.closest?.('.chat-line__message, [data-index]')
+                if (msgParent?.dataset.hsCosmeticDone === '1') {
+                  const nameEl = msgParent.querySelector(
+                    '.chat-author__display-name, [data-a-target="chat-message-username"]',
+                  )
+                  if (nameEl && !nameEl.dataset.hsPaintApplied) cosmeticRefresh.push(msgParent)
+                }
+              }
+            }
+          })
+
+          // Detect timeout/ban: two cases to handle.
+          // Short-circuit: if we have no recent message bodies cached, neither
+          // case can match — skip the closest()/querySelector() walks entirely.
+          if (dimTimeoutsEnabled && originalMessageBodies.size > 0) {
+            // Case 1: Twitch replaces body with "message deleted" (mod view / show deleted msgs)
+            if (mutation.target) {
+              const msgEl = mutation.target.closest?.('.chat-line__message')
+              if (msgEl && !msgEl.classList.contains('hs-timed-out')) {
+                const msgId = msgEl.dataset.msgId || msgEl.getAttribute('data-msg-id')
+                if (msgId && originalMessageBodies.has(msgId)) {
+                  const body = msgEl.querySelector('[data-a-target="chat-line-message-body"]')
+                  // Structural detection (locale-independent) — Twitch stamps a
+                  // deleted/moderated class on the line and/or swaps the body
+                  // for a placeholder. Never match on localized text.
+                  const isDeleted =
+                    msgEl.matches(
+                      '.chat-line__message--deleted, .chat-line__message--moderated, [class*="chat-line__message"][class*="deleted"]',
+                    ) || !!msgEl.querySelector('[data-a-target="chat-deleted-message-placeholder"]')
+                  if (body && isDeleted) {
+                    restoreDeletedMessage(body, msgId)
+                    msgEl.classList.add('hs-timed-out')
+                    markCachedMessageTimedOut(msgId)
+                  }
+                }
+              }
+            }
+
+            // Case 2: Twitch removes the message entirely (non-mod viewer timeout/purge)
+            // Only re-insert recent messages (<60s) — old removals are scroll-off, not timeouts
+            mutation.removedNodes.forEach((node) => {
+              if (node.nodeType !== 1) return
+              const msgs = node.classList?.contains('chat-line__message')
+                ? [node]
+                : Array.from(node.querySelectorAll?.('.chat-line__message') || [])
+              for (const msgEl of msgs) {
+                if (msgEl.classList.contains('hs-timed-out')) continue
+                const msgId = msgEl.dataset.msgId || msgEl.getAttribute('data-msg-id')
+                if (!msgId) continue
+                const entry = originalMessageBodies.get(msgId)
+                if (!entry || Date.now() - entry.ts > 60000) continue
+                // Re-insert at original position with dimmed styling
+                msgEl.classList.add('hs-timed-out')
+                markCachedMessageTimedOut(msgId)
+                const container = mutation.target
+                if (container && container.nodeType === 1) {
+                  if (mutation.nextSibling) {
+                    container.insertBefore(msgEl, mutation.nextSibling)
+                  } else {
+                    container.appendChild(msgEl)
+                  }
+                }
+              }
+            })
+          }
+        })
+
+        // Defer processing to let React settle (prevents DOM conflicts).
+        // Small batches (≤8 msgs — live chat trickle) get the tight rAF+16ms
+        // path. Large batches (boot backfill, raid burst, scroll-back hydration)
+        // route through hsSched.chunk so no single frame blocks > ~4ms.
+        if (!processingScheduled && processingQueue.length > 0) {
+          processingScheduled = true
+          log(' 📬 Queued', processingQueue.length, 'messages for processing')
+          requestAnimationFrame(() => {
+            cleanup.setTimeout(async () => {
+              const batch = processingQueue.splice(0) // Copy and clear queue
+              log(' 🔄 Processing batch of', batch.length, 'messages')
+
+              const processOne = (msg) => {
+                try {
+                  // Cache BEFORE processMessage: it replaces emote words with
+                  // <img> (no textContent) and inserts stack '×'/'⊘' glyphs, so
+                  // capturing after serialized a corrupted body that dropped
+                  // every emote and leaked the button chars. Snapshot raw text
+                  // first (mirrors the timeout-restore cache ordering).
+                  if (!msg.dataset.heatsyncCached && !msg.dataset.heatsyncBackfill) {
+                    captureMessageToCache(msg)
+                  }
+                  processMessage(msg)
+                } catch (e) {
+                  log(' ❌ processMessage error:', e.message)
+                }
+              }
+
+              if (batch.length <= 8) {
+                for (const msg of batch) processOne(msg)
+              } else {
+                await hsSched.chunk(batch, processOne, { budgetMs: 4 })
+              }
+              processingScheduled = false
+            }, 16) // Wait one frame for React to settle (animated emotes need this)
+          })
+        }
+
+        // Re-apply cosmetics where React replaced username elements inside
+        // already-processed messages (was usernameColoringObserver's branch).
+        if (cosmeticRefresh.length > 0) {
+          const refreshBatch = cosmeticRefresh.slice()
+          requestAnimationFrame(() => {
+            for (const msg of refreshBatch) {
+              delete msg.dataset.hsCosmeticDone
+              const uid = msg.dataset.hsCosmeticUserId
+              const kickUser = msg.dataset.hsCosmeticKickUser
+              if (uid) applyCosmeticsToMessage(msg, uid)
+              else if (kickUser) applyKickCosmeticsToMessage(msg, kickUser)
+            }
+          })
+        }
+
+        // Username-coloring rAF batch (was usernameColoringObserver's main path).
+        if (newColoringMessages.length > 0) {
+          const thisObserver = messageObserver
+          if (!thisObserver) return
+          if (thisObserver._coloringPending) {
+            const q = thisObserver._coloringQueued || []
+            q.push(...newColoringMessages)
+            thisObserver._coloringQueued = q
+          } else {
+            thisObserver._coloringPending = true
+            thisObserver._coloringQueued = newColoringMessages.slice()
+            requestAnimationFrame(() => {
+              thisObserver._coloringPending = false
+              const batch = thisObserver._coloringQueued || []
+              thisObserver._coloringQueued = null
+              const allEmotes = cachedAllEmotes || new Map()
+              const vh = window.innerHeight
+              const visible = []
+              for (const msg of batch) {
+                if (msg.dataset.heatsyncUsernamesColored) continue
+                const rect = msg.getBoundingClientRect()
+                if (rect.top < vh && rect.bottom > 0) visible.push(msg)
+              }
+              for (const msg of visible) {
+                msg.dataset.heatsyncUsernamesColored = '1'
+                highlightUserMentions(msg)
+                colorUsernameMentions(msg)
+                if (msg.dataset.heatsyncGeneration !== emoteGeneration) {
+                  stackAdjacentOverlayEmotes(msg, allEmotes)
+                }
+              }
+            })
+          }
+        }
+      }),
+      'message-observer',
+    )
+
+    observedContainer = chatContainer
+    // childList+subtree for messages, attributes for cosmetic data-user-id stamping.
+    messageObserver.observe(chatContainer, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['data-user-id'],
+    })
+    log(' 👁️ Watching for new messages in chat container')
+    // Sweep existing messages where data-user-id was already stamped before our
+    // observer attached (page load with backfill / live messages already there).
+    // Also build a username→uid map from live (uid-bearing) messages, then
+    // back-fill data-user-id onto cached/backfilled messages by username so
+    // their cosmetics work too (cached entries from older builds didn't store
+    // the twitch id, and robotty backfill may not have it for every user).
+    //
+    // The querySelectorAll calls themselves are cheap, but the per-msg
+    // applyCosmeticsToMessage (creates badge imgs, walks fiber for paints) is
+    // not. On 150-msg backfill it was the second-biggest boot stall after
+    // processExistingMessages. Both sweeps now go through hsSched.chunk.
+    const usernameToUid = new Map()
+    const stampedEls = Array.from(chatContainer.querySelectorAll('.chat-line__message[data-user-id]'))
+    for (const el of stampedEls) {
+      const uid = el.getAttribute('data-user-id')
+      const username =
+        el.dataset.aUser || el.querySelector('.chat-author__display-name')?.textContent?.trim().toLowerCase()
+      if (uid && username) usernameToUid.set(username, uid)
+    }
+    const applyStamped = (el) => {
+      const uid = el.getAttribute('data-user-id')
+      if (!uid) return
+      if (el.dataset.hsCosmeticUserId === uid) return
+      el.dataset.hsCosmeticUserId = uid
+      const usernameEl = el.querySelector('.chat-author__display-name, [data-a-target="chat-message-username"]')
+      applyCosmeticsToMessage(el, uid, usernameEl)
+      queueCosmeticsLookup(uid)
+      if (!_selfTwitchIdRegistered) {
+        const me = getCurrentUsername()
+        const username = el.dataset.aUser || usernameEl?.textContent?.trim().toLowerCase()
+        if (me && username && me === username) {
+          _selfTwitchIdRegistered = true
+          safeSendMessage({ type: 'register_self_twitch_id', twitchId: uid })
+        }
+      }
+    }
+    const unstampedEls = Array.from(chatContainer.querySelectorAll('.chat-line__message:not([data-user-id])'))
+    const applyUnstamped = (el) => {
+      const username =
+        el.dataset.aUser || el.querySelector('.chat-author__display-name')?.textContent?.trim().toLowerCase()
+      if (!username) return
+      const uid = usernameToUid.get(username)
+      if (!uid) return
+      el.setAttribute('data-user-id', uid)
+      el.dataset.hsCosmeticUserId = uid
+      const usernameEl = el.querySelector('.chat-author__display-name, [data-a-target="chat-message-username"]')
+      applyCosmeticsToMessage(el, uid, usernameEl)
+      queueCosmeticsLookup(uid)
+    }
+    ;(async () => {
+      await hsSched.chunk(stampedEls, applyStamped, { budgetMs: 4 })
+      await hsSched.chunk(unstampedEls, applyUnstamped, { budgetMs: 4 })
+    })()
+  }
+
+  // Extract Twitch channel ID from page (needed for 7TV API)
+  function getTwitchChannelId() {
+    try {
+      // Method 0 (fast): dataset attribute set by early-inject MAIN-world script
+      // when it captures channel ID from Twitch's own GQL traffic / Apollo cache.
+      // This is the modern path — the others only work on legacy SPA hydration.
+      const slug = location.pathname.match(/^\/([^/?#]+)/)?.[1]?.toLowerCase()
+      const dsId = document.documentElement.dataset.hsTwitchChannelId
+      const dsLogin = document.documentElement.dataset.hsTwitchChannelLogin
+      if (dsId && dsLogin && dsLogin === slug) return dsId
+
+      // Method 1: Check __NEXT_DATA__ for channel ID
+      const nextData = document.getElementById('__NEXT_DATA__')
+      if (nextData) {
+        const data = JSON.parse(nextData.textContent)
+        const channelId =
+          data?.props?.pageProps?.channelId || data?.props?.relayEnvironment?.store?.['client:root']?.channel?.id
+        if (channelId) return channelId
+      }
+
+      // Method 2: Look for it in window object (Twitch sometimes exposes it)
+      if (window.__twilight_client__?.store) {
+        const state = window.__twilight_client__.store.getState()
+        const channelId = state?.channel?.currentChannelID
+        if (channelId) return channelId
+      }
+
+      // Method 3: Parse from any script containing channel data
+      const scripts = document.querySelectorAll('script:not([src])')
+      for (const script of scripts) {
+        const text = script.textContent
+        if (text.includes('"channelId"') || text.includes('"channel_id"')) {
+          const match = text.match(/"channel_?[iI]d"\s*:\s*"?(\d+)"?/)
+          if (match) return match[1]
+        }
+      }
+    } catch (e) {
+      log(' Error getting Twitch channel ID:', e)
+    }
+    return null
+  }
+
+  // Detect channel and join room
+  // Wait briefly for early-inject (MAIN world) to deliver channel ID via the
+  // dataset attribute it stamps on documentElement. Resolves to ID or null on timeout.
+  function waitForTwitchChannelId(slug, timeoutMs) {
+    return new Promise((resolve) => {
+      const sync = getTwitchChannelId()
+      if (sync) return resolve(sync)
+      // AbortController guarantees handler is removed even if a slow response arrives post-timeout
+      const ac = new AbortController()
+      const handler = (e) => {
+        if (e.source !== window || e.origin !== location.origin) return
+        if (e.data?.type === 'heatsync-page-channel-id' && e.data.login === slug && e.data.channelId) {
+          // Require nonce (set by content.js initMainWorldNonce) — blocks rogue
+          // MAIN-world page scripts that satisfy source+origin checks
+          const nonce = window.HS?.getMainWorldNonce?.()
+          if (!nonce || e.data.nonce !== nonce) return
+          // Strictly numeric channel IDs only
+          const cid = String(e.data.channelId)
+          if (!/^\d+$/.test(cid)) return
+          ac.abort()
+          clearTimeout(timer)
+          resolve(cid)
+        }
+      }
+      const timer = setTimeout(() => {
+        ac.abort()
+        resolve(null)
+      }, timeoutMs)
+      window.addEventListener('message', handler, { signal: ac.signal })
+    })
+  }
+
+  async function detectAndJoinChannel() {
+    const url = window.location.href
+    let platform, channelName, channelId
+
+    if (url.includes('twitch.tv')) {
+      platform = 'twitch'
+      // Extract channel from URL: /popout/CHANNEL/chat or just /CHANNEL
+      const match = url.match(/\/popout\/([^/]+)\/chat/) || url.match(/twitch\.tv\/([^/?]+)/)
+      channelName = match ? match[1] : null
+      // Exclude system paths that aren't actual channels
+      const excludedPaths = TWITCH_EXCLUDED_PATHS
+      if (channelName && excludedPaths.has(channelName.toLowerCase())) {
+        log(' Skipping system path:', channelName)
+        channelName = null
+      }
+      // Try to get channel ID for 7TV API — wait briefly for early-inject if not yet available
+      if (channelName) {
+        const slug = channelName.toLowerCase()
+        channelId = await waitForTwitchChannelId(slug, 600)
+        if (channelId) log(' Got Twitch channel ID:', channelId)
+        else log(' No channel ID after 600ms wait — background will GQL-resolve')
+      }
+    } else if (url.includes('kick.com')) {
+      platform = 'kick'
+      // Handle popout/embed URLs: /popout/channel/chat or /embed/channel/chat
+      const popoutMatch = url.match(/kick\.com\/(?:popout|embed)\/([^/?]+)/)
+      if (popoutMatch) {
+        channelName = popoutMatch[1]?.toLowerCase() || null
+      } else {
+        const match = url.match(/kick\.com\/([^/?]+)/)
+        const slug = match ? match[1]?.toLowerCase() : null
+        channelName = slug && !RESERVED_PATHS.has(slug) ? slug : null
+      }
+    }
+
+    if (platform && channelName) {
+      log(' Detected channel:', platform, channelName)
+      safeSendMessage({
+        type: 'join_channel',
+        platform,
+        channel: channelName,
+        channelId: channelId || null,
+      })
+        .then((response) => {
+          log(' ✅ join_channel sent, response:', response)
+        })
+        .catch((err) => {
+          if (!extensionContextValid) return
+          log(' ⚠️ detectAndJoinChannel error:', err?.message || err)
+        })
+
+      // If we still don't have an ID but early-inject discovers it later,
+      // forward to background so it's available for subsequent operations / next reload.
+      if (platform === 'twitch' && !channelId) {
+        const slug = channelName.toLowerCase()
+        const lateHandler = (e) => {
+          if (e.source !== window || e.origin !== location.origin) return
+          if (e.data?.type === 'heatsync-page-channel-id' && e.data.login === slug && e.data.channelId) {
+            // Mirror the primary handler's nonce + numeric guards — blocks rogue
+            // MAIN-world page scripts that satisfy source+origin checks
+            const nonce = window.HS?.getMainWorldNonce?.()
+            if (!nonce || e.data.nonce !== nonce) return
+            const cid = String(e.data.channelId)
+            if (!/^\d+$/.test(cid)) return
+            window.removeEventListener('message', lateHandler)
+            safeSendMessage({
+              type: 'update_channel_id',
+              platform,
+              channel: channelName,
+              channelId: cid,
+            }).catch(() => {})
+          }
+        }
+        cleanup.addEventListener(window, 'message', lateHandler)
+        // Auto-cleanup after 30s to avoid lingering listeners
+        cleanup.setTimeout(() => window.removeEventListener('message', lateHandler), 30000)
+      }
+    }
+  }
+
+  // =============================================================================
+  // TAB COMPLETION FOR EMOTES
+  // =============================================================================
+  // Works like heatsync.org: type partial emote name, Tab to complete/cycle
+  // Shows preview popup with emote image and counter (1/5)
+  // Arrow keys navigate, Escape cancels
+
+  const tabCompleteState = {
+    active: false,
+    matches: [],
+    index: 0,
+    startPos: 0,
+    originalWord: '',
+    lastInserted: '', // Track what we last inserted for cycling
+    inputElement: null,
+    completing: false, // Prevent re-entry during completion
+  }
+
+  // Build combined emote map for searching (inventory + globals)
+  // Tier order matches input.js: channel (0) > inventory/own (1) > global (2)
+  // Channel emotes are inserted first so they win dedup on name collision.
+  let _tabEmoteMap = null
+  let _tabEmoteMapDirty = true
+  function buildEmoteMap() {
+    if (_tabEmoteMap && !_tabEmoteMapDirty && !allEmotesDirty) return _tabEmoteMap
+    _tabEmoteMapDirty = false
+    const map = new Map()
+
+    // Tier 0 — channel emotes win dedup (inserted first, highest priority)
+    channelEmotes.forEach((emote) => {
+      if (!emote.source) return
+      const key = emote.name.toLowerCase()
+      map.set(key, {
+        name: emote.name,
+        url: emote.url?.startsWith('http') ? emote.url : `${API_URL}${emote.url}`,
+        hash: emote.hash,
+        provider: 'channel',
+      })
+    })
+
+    // Tier 1 — viewer's own inventory (doesn't override channel)
+    emoteInventory.forEach((emote) => {
+      const key = emote.name.toLowerCase()
+      if (!map.has(key)) {
+        map.set(key, {
+          name: emote.name,
+          url: emote.url?.startsWith('http') ? emote.url : `${API_URL}${emote.url}`,
+          hash: emote.hash,
+          provider: 'inventory',
+        })
+      }
+    })
+
+    // Tier 2 — global emotes (BTTV, FFZ, 7TV) — lowest priority
+    globalEmotes.forEach((emote) => {
+      const key = emote.name.toLowerCase()
+      if (!map.has(key)) {
+        map.set(key, {
+          name: emote.name,
+          url: emote.url,
+          hash: emote.hash || btoa(emote.url),
+          provider: emote.source || 'global',
+        })
+      }
+    })
+
+    _tabEmoteMap = map
+    return map
+  }
+
+  // Get text and cursor position from contenteditable or textarea
+  function getInputState(element) {
+    const isContentEditable = element.getAttribute('contenteditable') === 'true'
+
+    if (isContentEditable) {
+      const selection = window.getSelection()
+      if (!selection.rangeCount) return { text: '', cursorPos: 0 }
+
+      const range = selection.getRangeAt(0)
+      // Use textContent - innerText adds newlines in contenteditable
+      const text = (element.textContent || '').replace(/\n/g, '')
+
+      // Calculate cursor position by walking through text nodes
+      let cursorPos = 0
+      const treeWalker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT)
+      let node
+      while ((node = treeWalker.nextNode())) {
+        if (node === range.startContainer) {
+          cursorPos += range.startOffset
+          break
+        }
+        cursorPos += node.textContent.length
+      }
+
+      return { text, cursorPos, isContentEditable: true }
+    } else {
+      return {
+        text: element.value || '',
+        cursorPos: element.selectionStart || 0,
+        isContentEditable: false,
+      }
+    }
+  }
+
+  // Find matches for partial emote name
+  function findEmoteMatches(partialWord) {
+    const emoteMap = buildEmoteMap()
+    const matches = []
+    const partial = partialWord.toLowerCase()
+
+    log(
+      ` 🔍 Searching for "${partial}" in ${emoteMap.size} emotes (inv: ${emoteInventory.length}, global: ${globalEmotes.length}, channel: ${channelEmotes.length})`,
+    )
+
+    for (const [name, emote] of emoteMap.entries()) {
+      if (name.includes(partial)) {
+        matches.push(emote)
+      }
+    }
+
+    // Add emoji matches for :prefix style (Discord/Slack)
+    if (partialWord.startsWith(':') && partial.length >= 3) {
+      const emojiSearch = partial.slice(1)
+      if (typeof EMOJI_DATA !== 'undefined') {
+        let emojiCount = 0
+        for (const entry of EMOJI_DATA) {
+          if (entry.name.includes(emojiSearch)) {
+            matches.push({
+              name: entry.emoji,
+              url: '',
+              provider: 'emoji',
+              emojiName: entry.name,
+            })
+            if (++emojiCount >= 10) break
+          }
+        }
+      }
+    }
+
+    // Sort: channel (tier 0) > inventory (tier 1) > global/other (tier 2) > emoji
+    // Matches input.js tier ordering (channel-first — reversed 2026-06-13)
+    const _tier = (p) => (p === 'channel' ? 0 : p === 'inventory' ? 1 : p === 'emoji' ? 3 : 2)
+    matches.sort((a, b) => {
+      const at = _tier(a.provider),
+        bt = _tier(b.provider)
+      if (at !== bt) return at - bt
+      return (a.emojiName || a.name).localeCompare(b.emojiName || b.name)
+    })
+
+    return matches
+  }
+
+  // Show TAB COMPLETION preview popup (different from hover preview!)
+  function showEmotePreview(emote, currentIndex, totalCount) {
+    const isTwitch = window.location.hostname.includes('twitch.tv')
+    let preview = document.getElementById('heatsync-tab-preview')
+
+    if (!preview) {
+      preview = document.createElement('div')
+      preview.id = 'heatsync-tab-preview'
+      preview.style.cssText = `
+      position: fixed;
+      bottom: 120px;
+      left: 20px;
+      background: #000000;
+      border: 1px solid #ff0000;
+      padding: 4px 8px;
+      z-index: 10001;
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      gap: 8px;
+      pointer-events: none;
+      font-family: monospace;
+    `
+
+      const counter = document.createElement('div')
+      counter.id = 'heatsync-tab-counter'
+      counter.style.cssText = 'color: #fff; font-size: 13px; font-weight: bold;'
+
+      const img = document.createElement('img')
+      img.id = 'heatsync-tab-img'
+      img.style.cssText = 'max-width: 64px; max-height: 28px;'
+
+      const name = document.createElement('div')
+      name.id = 'heatsync-tab-name'
+      name.style.cssText = 'color: #ffffff; font-size: 13px;'
+
+      const hint = document.createElement('div')
+      hint.id = 'heatsync-tab-hint'
+      hint.style.cssText = `color: ${HS_PLAT_COLORS.twitch}; font-size: 13px; margin-left: 4px;`
+
+      preview.appendChild(counter)
+      preview.appendChild(img)
+      preview.appendChild(name)
+      preview.appendChild(hint)
+      document.body.appendChild(preview)
+    }
+
+    const counter = preview.querySelector('#heatsync-tab-counter')
+    const img = preview.querySelector('#heatsync-tab-img')
+    const nameEl = preview.querySelector('#heatsync-tab-name')
+    const hint = preview.querySelector('#heatsync-tab-hint')
+
+    if (counter) counter.textContent = `${currentIndex}/${totalCount}`
+    if (emote.provider === 'emoji') {
+      if (img) {
+        img.style.display = 'none'
+      }
+      if (nameEl) nameEl.textContent = `${emote.name} :${emote.emojiName}:`
+    } else {
+      if (img) {
+        img.src = emote.url
+        img.style.display = ''
+      }
+      if (nameEl) nameEl.textContent = emote.name
+    }
+    if (hint) hint.textContent = isTwitch ? 'Ctrl+V' : ''
+
+    preview.style.display = 'flex'
+  }
+
+  // Hide TAB COMPLETION preview popup
+  function hideEmotePreview() {
+    const preview = document.getElementById('heatsync-tab-preview')
+    if (preview) preview.style.display = 'none'
+  }
+
+  // FFZ Inline Tab Completion style - intercepts Tab, uses setValue()
+  // Based on https://github.com/FrankerFaceZ/Add-Ons/blob/master/src/inline-tab-completion/index.jsx
+  function injectTwitchAutocompleteHook() {
+    // MV3: autocomplete-hook.js is loaded via manifest in MAIN world
+    // We just need to create the data bridge div
+    if (document.getElementById('heatsync-emote-bridge')) return
+
+    const bridge = document.createElement('div')
+    bridge.id = 'heatsync-emote-bridge'
+    bridge.style.display = 'none'
+    bridge.dataset.emotes = '[]'
+    document.documentElement.appendChild(bridge)
+
+    log(' Emote bridge created for autocomplete-hook.js')
+  }
+
+  // Update emotes in the bridge for the injected script
+  let _emoteBridgeDebounce = null
+  let _bridgeVersion = 0
+  function updateEmoteBridgeImmediate() {
+    // The bridge feeds the native Slate-input autocomplete (hidden under the overlay).
+    // Skip rebuilding it when the overlay is up — this is separate from the LIVE
+    // sub-emote export (autocomplete-hook.js exportNativeEmotes), which we keep.
+    if (isOverlayActive()) return
+    const bridge = document.getElementById('heatsync-emote-bridge')
+    if (!bridge) return
+    // Combine all emote sources: personal inventory + global + channel
+    const allEmotes = []
+    const seen = new Set()
+    // Don't leak blocked emotes into the native tab-complete bridge. The kick/YT
+    // hooks already filter blocked; twitch was the gap — a blocked emote could be
+    // tab-completed and sent. Block by name (all tiers) or by specific hash.
+    const isBridgeBlocked = (e) => localBlockedEmoteNames.has(e.name) || (e.hash && blockedEmotes.has(e.hash))
+
+    // tier rides on each emote (0=channel, 1=own inventory, 2=global) so the MAIN-world
+    // Twitch autocomplete hook can rank channel > own > global. Channel emotes are
+    // emitted FIRST so first-seen dedup keeps the CHANNEL image for a name you also
+    // own (e.g. nl_kripp's BTTV "SoupTime" over an owned same-named 7TV emote) — the
+    // channel emote is what actually renders in this channel.
+    // Channel emotes (highest priority). source rides along so the autocomplete
+    // hook can show WHO sees each emote (7tv/bttv users vs heatsync-only).
+    for (const e of channelEmotes) {
+      if (isBridgeBlocked(e)) continue
+      if (!seen.has(e.name)) {
+        seen.add(e.name)
+        allEmotes.push({ name: e.name, hash: e.hash, url: e.url, zeroWidth: e.zeroWidth, tier: 0, source: e.source })
+      }
+    }
+
+    // Personal inventory
+    for (const e of emoteInventory) {
+      if (isBridgeBlocked(e)) continue
+      if (!seen.has(e.name)) {
+        seen.add(e.name)
+        allEmotes.push({ name: e.name, hash: e.hash, url: e.url, zeroWidth: e.zeroWidth, tier: 1, source: e.source })
+      }
+    }
+
+    // Global emotes
+    for (const e of globalEmotes) {
+      if (isBridgeBlocked(e)) continue
+      if (!seen.has(e.name)) {
+        seen.add(e.name)
+        allEmotes.push({ name: e.name, hash: e.hash, url: e.url, zeroWidth: e.zeroWidth, tier: 2, source: e.source })
+      }
+    }
+
+    log(' Updating emote bridge:', allEmotes.length, 'total emotes')
+    bridge.dataset.emotes = JSON.stringify(allEmotes)
+    bridge.dataset.version = String(++_bridgeVersion)
+    // Dispatched on `document`, NOT on the bridge element. autocomplete-hook.js
+    // listens for this from the MAIN world, and it is registered in an EARLIER
+    // content_scripts group than content.js — so at the moment it attaches its
+    // listener the bridge div does not exist yet, and a listener on the element
+    // could never fire. `document` is shared across worlds and present from
+    // document_start, so the ordering stops mattering. Locked by
+    // tests/emote-bridge-event-target.test.js.
+    document.dispatchEvent(new Event('heatsync-emotes-updated'))
+
+    // Populate window.__heatsyncEmoteUrls for early-inject interceptor via postMessage
+    const urlMap = {}
+    for (const e of allEmotes) {
+      if (e.hash && e.url) urlMap[e.hash] = e.url
+    }
+    // Use postMessage to communicate with MAIN world (early-inject.js)
+    window.postMessage({ type: 'heatsync-url-map', urlMap }, location.origin)
+  }
+
+  function updateEmoteBridge() {
+    if (_emoteBridgeDebounce) {
+      cleanup.clearTimeout(_emoteBridgeDebounce)
+      _emoteBridgeDebounce = null
+    }
+    _emoteBridgeDebounce = cleanup.setTimeout(() => updateEmoteBridgeImmediate(), 100)
+  }
+
+  // NOTE: injectTwitchAutocompleteHook() is called earlier, before loadInventory()
+
+  // Complete emote in input (Kick only - textarea)
+  // NOTE: Twitch uses FFZ-style native autocomplete, not this function
+  function completeEmoteInInput(element, emote, startPos) {
+    const emoteName = emote.name
+    const wordToReplace = tabCompleteState.lastInserted || tabCompleteState.originalWord || ''
+
+    const replaceLen = wordToReplace.length
+    const textToInsert = `${emoteName} `
+
+    if (element.isContentEditable) {
+      // Kick: contenteditable div.editor-input
+      const sel = window.getSelection()
+      const text = element.textContent || ''
+      const beforeText = text.substring(0, startPos)
+      const afterText = text.substring(startPos + replaceLen)
+      element.textContent = beforeText + textToInsert + afterText
+      const newPos = startPos + textToInsert.length
+      const newNode = element.firstChild
+      if (newNode) {
+        const range = document.createRange()
+        range.setStart(newNode, Math.min(newPos, newNode.length))
+        range.collapse(true)
+        sel.removeAllRanges()
+        sel.addRange(range)
+      }
+      element.dispatchEvent(new Event('input', { bubbles: true }))
+    } else {
+      // Fallback for textarea
+      const beforeText = element.value.substring(0, startPos)
+      const afterText = element.value.substring(startPos + replaceLen)
+      element.value = beforeText + textToInsert + afterText
+      element.dispatchEvent(new Event('input', { bubbles: true }))
+      const newCursorPos = startPos + textToInsert.length
+      element.setSelectionRange(newCursorPos, newCursorPos)
+    }
+    tabCompleteState.lastInserted = textToInsert
+  }
+
+  // Reset tab completion state
+  function resetTabComplete() {
+    tabCompleteState.active = false
+    tabCompleteState.matches = []
+    tabCompleteState.index = 0
+    tabCompleteState.lastInserted = ''
+    tabCompleteState.startAnchor = null
+    hideEmotePreview()
+  }
+
+  // Setup tab completion on chat input
+  // NOTE: For Twitch, we use FFZ-style hooking into native autocomplete (see injectTwitchAutocompleteHook)
+  // This custom handler is only for Kick (which uses regular textarea)
+  function setupTabCompletion() {
+    // Only run on Kick - Twitch uses native autocomplete with our hooked emotes
+    if (!window.location.hostname.includes('kick.com')) {
+      log(' Skipping custom tab handler - using Twitch native autocomplete')
+      return
+    }
+
+    // Remove old handler if extension reloaded (DOM persists, JS context is fresh)
+    if (window._heatsyncTabHandler) {
+      document.removeEventListener('keydown', window._heatsyncTabHandler, true)
+    }
+
+    log(' ✅ Tab completion handler installed for Kick')
+
+    const findChatInput = () => {
+      return (
+        document.querySelector('div.editor-input') || // Kick
+        document.querySelector('.chat-input textarea')
+      )
+    }
+
+    // Document-level capture to intercept Tab before Twitch
+    const tabHandler = (e) => {
+      const chatInput = findChatInput()
+      if (!chatInput) return
+
+      // Only handle if focus is in/near chat input
+      const activeEl = document.activeElement
+      const isInChat =
+        activeEl === chatInput ||
+        chatInput.contains(activeEl) ||
+        activeEl?.closest('[data-a-target="chat-input"]') ||
+        activeEl?.closest('.chat-input')
+
+      if (!isInChat) return
+
+      // Don't capture when Twitch modals are open (predictions, polls, rewards, dialogs)
+      if (
+        document.querySelector(
+          '[class*="prediction"], [class*="reward-queue"], [role="dialog"], [class*="poll-overlay"]',
+        )
+      )
+        return
+
+      // Handle active autocomplete navigation
+      if (tabCompleteState.active && tabCompleteState.matches.length > 0) {
+        if (e.key === 'ArrowDown') {
+          e.preventDefault()
+          e.stopPropagation()
+          tabCompleteState.index = (tabCompleteState.index + 1) % tabCompleteState.matches.length
+          const emote = tabCompleteState.matches[tabCompleteState.index]
+          showEmotePreview(emote, tabCompleteState.index + 1, tabCompleteState.matches.length)
+          completeEmoteInInput(chatInput, emote, tabCompleteState.startPos)
+          return
+        } else if (e.key === 'ArrowUp') {
+          e.preventDefault()
+          e.stopPropagation()
+          tabCompleteState.index =
+            tabCompleteState.index <= 0 ? tabCompleteState.matches.length - 1 : tabCompleteState.index - 1
+          const emote = tabCompleteState.matches[tabCompleteState.index]
+          showEmotePreview(emote, tabCompleteState.index + 1, tabCompleteState.matches.length)
+          completeEmoteInInput(chatInput, emote, tabCompleteState.startPos)
+          return
+        } else if (e.key === 'Escape') {
+          e.preventDefault()
+          e.stopPropagation()
+          resetTabComplete()
+          return
+        } else if (e.key === 'Enter') {
+          // Confirm selection and reset
+          resetTabComplete()
+          // Don't prevent default - let Enter submit the message
+          return
+        }
+      }
+
+      // Tab key - start or cycle autocomplete
+      if (e.key === 'Tab') {
+        // Prevent re-entry during completion
+        if (tabCompleteState.completing) {
+          e.preventDefault()
+          e.stopPropagation()
+          return
+        }
+
+        e.preventDefault()
+        e.stopPropagation()
+
+        log(' 🎯 Tab pressed, active:', tabCompleteState.active, 'matches:', tabCompleteState.matches.length)
+
+        // If cycling through existing matches - just cycle, don't re-read input
+        if (tabCompleteState.active && tabCompleteState.matches.length > 0) {
+          tabCompleteState.completing = true
+          const len = tabCompleteState.matches.length
+          tabCompleteState.index = (tabCompleteState.index + (e.shiftKey ? len - 1 : 1)) % len
+          const emote = tabCompleteState.matches[tabCompleteState.index]
+          log(' Cycling to:', emote.name, '(', tabCompleteState.index + 1, '/', len, ')')
+          showEmotePreview(emote, tabCompleteState.index + 1, len)
+          completeEmoteInInput(chatInput, emote, tabCompleteState.startPos)
+          tabCompleteState.completing = false
+          return
+        }
+
+        // New autocomplete session - read input state
+        const { text, cursorPos } = getInputState(chatInput)
+        log(' Input state:', { text: text.substring(0, 50), cursorPos, len: text.length })
+        const textBeforeCursor = text.substring(0, cursorPos)
+        const lastSpaceIndex = textBeforeCursor.lastIndexOf(' ')
+        const wordStart = lastSpaceIndex + 1
+        const currentWord = textBeforeCursor.substring(wordStart)
+        const partialWord = currentWord.trim()
+        log(' Partial word:', JSON.stringify(partialWord), 'from', JSON.stringify(currentWord))
+
+        if (!partialWord) {
+          log(' No partial word, aborting')
+          return
+        }
+
+        // Find matches
+        const matches = findEmoteMatches(partialWord)
+        log(` New session: "${partialWord}" → ${matches.length} matches`)
+
+        if (matches.length > 0) {
+          tabCompleteState.completing = true
+          tabCompleteState.active = true
+          tabCompleteState.matches = matches
+          tabCompleteState.index = 0
+          tabCompleteState.startPos = wordStart
+          tabCompleteState.originalWord = partialWord
+
+          const emote = matches[0]
+          showEmotePreview(emote, 1, matches.length)
+          completeEmoteInInput(chatInput, emote, wordStart)
+          tabCompleteState.completing = false
+        }
+      } else if (!['ArrowUp', 'ArrowDown', 'Shift', 'Control', 'Alt', 'Meta', 'Tab'].includes(e.key)) {
+        // Any other key (except modifiers) resets autocomplete
+        if (tabCompleteState.active) {
+          resetTabComplete()
+        }
+      }
+    }
+
+    // Store reference for cleanup on extension reload
+    window._heatsyncTabHandler = tabHandler
+    document.addEventListener('keydown', tabHandler, { capture: true, signal }) // CAPTURE phase - runs before Twitch handlers
+
+    log(' Tab completion ready')
+  }
+
+  // Intercept message input to detect emote usage
+  let interceptRetryCount = 0
+  // Message history — up/down arrow recalls previously sent messages (like terminal/IRC)
+  const messageHistory = []
+  const MESSAGE_HISTORY_MAX = 50
+  let historyIndex = -1
+  let historyDraft = '' // saves current draft when entering history
+
+  function interceptMessageSending() {
+    // Only run on Twitch/Kick
+    if (!window.location.hostname.includes('twitch.tv') && !window.location.hostname.includes('kick.com')) {
+      return
+    }
+
+    const chatInput =
+      document.querySelector('[data-a-target="chat-input"]') || // Twitch
+      document.querySelector('div.editor-input') || // Kick
+      document.querySelector('textarea')
+
+    if (!chatInput) {
+      if (++interceptRetryCount > 30) return
+      log(' ⏳ Chat input not found, retrying in 1s...')
+      cleanup.setTimeout(interceptMessageSending, 1000)
+      return
+    }
+    interceptRetryCount = 0
+
+    // Prevent stacking listeners on SPA re-navigation
+    if (chatInput._hsInterceptBound) return
+    chatInput._hsInterceptBound = true
+
+    log(' 📝 Found chat input:', chatInput.tagName, chatInput.className)
+
+    function getInputText() {
+      return (chatInput.isContentEditable ? chatInput.innerText : chatInput.value || chatInput.innerText || '').trim()
+    }
+
+    function setInputText(text) {
+      chatInput.focus()
+      if (chatInput.isContentEditable) {
+        document.execCommand('selectAll', false, null)
+        document.execCommand('insertText', false, text)
+      } else {
+        chatInput.value = text
+        chatInput.dispatchEvent(new Event('input', { bubbles: true }))
+      }
+    }
+
+    chatInput.addEventListener(
+      'keydown',
+      (e) => {
+        // Message history navigation (ArrowUp/ArrowDown or vi j/k via synthetic events)
+        if (
+          (e.key === 'ArrowUp' || e.key === 'ArrowDown') &&
+          !e.shiftKey &&
+          !e.ctrlKey &&
+          !e.altKey &&
+          messageHistory.length > 0
+        ) {
+          const currentText = getInputText()
+          // Only activate history when input is empty or already browsing history
+          if (
+            historyIndex >= 0 ||
+            (e.key === 'ArrowUp' && currentText.length === 0) ||
+            (e.key === 'ArrowUp' && messageHistory.includes(currentText))
+          ) {
+            e.preventDefault()
+            e.stopPropagation()
+            if (e.key === 'ArrowUp') {
+              if (historyIndex < 0) historyDraft = currentText
+              historyIndex = Math.min(historyIndex + 1, messageHistory.length - 1)
+            } else {
+              historyIndex--
+            }
+            if (historyIndex < 0) {
+              historyIndex = -1
+              setInputText(historyDraft)
+            } else {
+              setInputText(messageHistory[historyIndex])
+            }
+            return
+          }
+        }
+
+        if (e.key === 'Enter' && !e.shiftKey) {
+          // textarea uses .value, contenteditable uses .innerText
+          const message = (
+            chatInput.isContentEditable ? chatInput.innerText : chatInput.value || chatInput.innerText || ''
+          ).trim()
+          log(' 📤 Enter pressed, message:', message)
+          if (!message) return
+
+          // Push to message history (dedup consecutive, cap at max)
+          if (messageHistory[0] !== message) {
+            messageHistory.unshift(message)
+            if (messageHistory.length > MESSAGE_HISTORY_MAX) messageHistory.length = MESSAGE_HISTORY_MAX
+          }
+          historyIndex = -1
+
+          // Check if message contains any of MY emotes (use cached regex from createEmoteRegex)
+          emoteInventory.forEach((emote) => {
+            if (!emote._outgoingRegex) {
+              emote._outgoingRegex = new RegExp(`\\b${escapeRegex(emote.name)}\\b`)
+            }
+            if (emote._outgoingRegex.test(message)) {
+              // Notify background script to broadcast
+              safeSendMessage({
+                type: 'emote_sent',
+                emoteName: emote.name,
+                emoteHash: emote.hash,
+              })
+                .then((response) => {
+                  if (response?.success) {
+                    log(' ✅ Emote broadcast sent successfully')
+                  } else {
+                    warn(' ⚠️ Emote broadcast FAILED:', response)
+                  }
+                })
+                .catch((err) => {
+                  if (!extensionContextValid) return
+                  // A real (non-teardown) failure must not vanish silently —
+                  // sibling handlers on this path log/toast (see ~10807).
+                  warn(' ⚠️ Emote broadcast error:', err)
+                })
+            }
+          })
+        }
+      },
+      { signal },
+    )
+
+    log(' Message interceptor attached')
+  }
+
+  // SPA navigation handler — event-driven via early-inject-main.js history hooks
+  let lastChatUrl = location.href
+  function handleNavigation() {
+    if (location.href === lastChatUrl) return
+    log(' 🔄 URL changed from', lastChatUrl, 'to', location.href)
+    lastChatUrl = location.href
+    channelEmotes = []
+    currentChannelOwner = null
+    msgCacheBuffer = []
+    msgCacheIds.clear()
+    subTenureMap.clear()
+    originalMessageBodies.clear()
+    invalidateChatContainerCache()
+    allEmotesDirty = true
+    rebuildEmoteMapIfDirty()
+    detectAndJoinChannel()
+    setupAutoClaimPoints()
+    watchRetryCount = 0
+    interceptRetryCount = 0
+    cleanup.setTimeout(
+      () => {
+        watchForNewMessages()
+        setupUsernameColoringObserver()
+        interceptMessageSending()
+        if (emoteInventory.length > 0 || globalEmotes.length > 0) {
+          processExistingMessages()
+        }
+        // Backfill new channel after native messages load
+        cleanup.setTimeout(() => backfillChatHistory(), 500)
+      },
+      500,
+      'url-change-rescan',
+    )
+  }
+
+  // Primary: instant notification from MAIN world history hooks
+  window.addEventListener(
+    'message',
+    (event) => {
+      if (event.origin !== location.origin) return
+      // Same-frame only: legit senders are our MAIN-world hooks in THIS window.
+      // The origin check alone lets same-origin child frames (popout/clip embeds)
+      // trigger destructive handlers (clear_history, extension_reload) — require
+      // the message to come from our own window, not a sub-frame.
+      if (event.source !== window) return
+      if (event.data?.type === 'heatsync-nav') handleNavigation()
+      // heatsync-clear-history window hook removed: no internal MAIN-world caller;
+      // clear_history is now triggered only from extension popup via chrome.runtime.
+      // Dev/automation hook: extension reload, gated on per-session nonce so rogue
+      // page scripts can't trigger it without first observing the init-nonce exchange.
+      // Usage (dev console, after capturing nonce from heatsync-init-nonce message):
+      //   window.postMessage({ type: 'heatsync-reload-extension', nonce: <captured> }, location.origin)
+      if (event.data?.type === 'heatsync-reload-extension') {
+        // Two accept paths:
+        //  • nonce — any build; gated on the per-session nonce a rogue page can't
+        //    observe (the original hook).
+        //  • dev build — locally-built (unminified) bundles ALSO accept a
+        //    nonce-less reload so remote automation (ssh-from-phone dev) can reload
+        //    without a manual chrome://extensions click. __HS_DEV_BUILD__ is
+        //    replaced with `false` by esbuild define in every packaged/store build
+        //    (see build.js minifyDist), so this relaxation is compiled out for real
+        //    users — no host page can ever reload a published extension.
+        const nonce = window.HS?.getMainWorldNonce?.()
+        const nonceOk = !!nonce && event.data.nonce === nonce
+        const devBuild = typeof __HS_DEV_BUILD__ !== 'undefined' ? __HS_DEV_BUILD__ : true
+        if (!nonceOk && !devBuild) return
+        const now = Date.now()
+        // Tighter spacing on dev so back-to-back iteration reloads aren't silently
+        // swallowed; the 30s guard still throttles the nonce/prod path.
+        if (now - _lastExtReloadMs < (devBuild ? 3000 : 30000)) return
+        _lastExtReloadMs = now
+        safeSendMessage({ type: 'extension_reload' }).catch(() => {})
+      }
+      // Self twitch ID resolved by early-inject MAIN world via currentUser GQL —
+      // critical for popout chat where twilight.user localStorage is null and
+      // every other detection path fails.
+      if (
+        event.data?.type === 'heatsync-self-twitch-id' &&
+        event.data.twitchId &&
+        /^\d+$/.test(String(event.data.twitchId))
+      ) {
+        const expected = window.HS?.getMainWorldNonce?.()
+        if (!expected || event.data.nonce !== expected) return
+        if (!_selfTwitchIdRegistered) {
+          _selfTwitchIdRegistered = true
+          if (event.data.login && !cachedUsername) cachedUsername = String(event.data.login).toLowerCase()
+          safeSendMessage({ type: 'register_self_twitch_id', twitchId: String(event.data.twitchId) })
+        }
+      }
+    },
+    { signal },
+  )
+
+  // Read self twitch ID from documentElement dataset if MAIN world already
+  // stamped it before this listener attached (race on fast loads).
+  try {
+    const stampedSelfId = document.documentElement.dataset.hsSelfTwitchId
+    const stampedSelfLogin = document.documentElement.dataset.hsSelfTwitchLogin
+    if (stampedSelfId && /^\d+$/.test(stampedSelfId) && !_selfTwitchIdRegistered) {
+      _selfTwitchIdRegistered = true
+      if (stampedSelfLogin && !cachedUsername) cachedUsername = stampedSelfLogin.toLowerCase()
+      safeSendMessage({ type: 'register_self_twitch_id', twitchId: stampedSelfId })
+    }
+  } catch {}
+
+  // Fallback: polling in case MAIN world script didn't load (e.g. Firefox edge cases)
+  cleanup.setIntervalIfVisible(() => handleNavigation(), 5000)
+
+  // Check if observed container was replaced by React (e.g. after sending a message)
+  // Always compare against live DOM — old container may still be isConnected but orphaned from React tree
+  cleanup.setIntervalIfVisible(() => {
+    const freshContainer = findChatContainer()
+    if (freshContainer && freshContainer !== observedContainer) {
+      log(' 🔄 Chat container changed, re-hooking observer')
+      watchForNewMessages()
+    } else if (!freshContainer && observedContainer && !observedContainer.isConnected) {
+      log(' ⚠️ Chat container removed from DOM, clearing observer')
+      if (messageObserver) {
+        messageObserver.disconnect()
+        cleanup.untrackObserver(messageObserver)
+        messageObserver = null
+      }
+      observedContainer = null
+    }
+  }, 2000)
+
+  // Periodic re-scan to catch messages that might have been missed (10s — observer handles most)
+  cleanup.setIntervalIfVisible(() => {
+    if (emoteInventory.length > 0 || globalEmotes.length > 0) {
+      processExistingMessages()
+    }
+  }, 10000)
+
+  // Flush message cache on page hide/unload so we don't lose the last 5s.
+  // pagehide+visibilitychange are more reliable than beforeunload on mobile/bfcache.
+  function flushMsgCacheNow() {
+    if (msgCacheSaveTimer) {
+      clearTimeout(msgCacheSaveTimer)
+      msgCacheSaveTimer = null
+    }
+    saveMsgCache()
+  }
+  window.addEventListener('pagehide', flushMsgCacheNow, { signal })
+  window.addEventListener('beforeunload', flushMsgCacheNow, { signal })
+  document.addEventListener(
+    'visibilitychange',
+    () => {
+      if (document.visibilityState === 'hidden') flushMsgCacheNow()
+      // Toggle the body class our injected stylesheet uses to pause
+      // CSS animations (hs-heat-breathe and similar) while hidden.
+      document.body?.classList.toggle('hs-ext-hidden', document.hidden)
+    },
+    { signal },
+  )
+  // Apply initial state.
+  if (document.hidden) document.body?.classList.add('hs-ext-hidden')
+
+  // Auto-claim Twitch channel points bonus
+  let autoClaimObserver = null
+  let autoClaimEnabled = true
+  let autoClaimGen = 0
+
+  function setupAutoClaimPoints() {
+    const gen = ++autoClaimGen
+    if (autoClaimObserver) {
+      autoClaimObserver.disconnect()
+      cleanup.untrackObserver(autoClaimObserver)
+      autoClaimObserver = null
+    }
+    if (!autoClaimEnabled || !location.hostname.includes('twitch.tv')) return
+
+    function tryClaimBonus(container) {
+      if (!container) return
+      // Positively match the claim button — locale-independent class marker first,
+      // English aria-label as fallback. Never click unrecognized buttons.
+      const marker = container.querySelector('[class*="claimable"], [class*="click-claim"]')
+      const btn =
+        (marker && (marker.closest('button') || marker.querySelector('button') || marker)) ||
+        container.querySelector('button[aria-label*="claim" i]')
+      if (!btn) return
+      if (btn.closest('[role="dialog"]') || btn.closest('[role="menu"]')) return
+      log(' 🎁 Auto-claiming channel points bonus')
+      btn.click()
+    }
+
+    let attachAttempts = 0
+    function attachObserver() {
+      // Stale-cycle guard: a nav re-runs setupAutoClaimPoints; pending retry
+      // timers from the old cycle must not attach a second observer.
+      if (gen !== autoClaimGen || !autoClaimEnabled) return
+      const container = document.querySelector('[data-test-selector="community-points-summary"]')
+      if (!container) {
+        // No permanent give-up — handleNavigation re-arms on SPA nav, so this
+        // cap only bounds retries within one page view (e.g. directory pages).
+        if (++attachAttempts >= 20) return
+        cleanup.setTimeout(attachObserver, 3000)
+        return
+      }
+
+      // Check immediately in case bonus is already showing
+      tryClaimBonus(container)
+
+      autoClaimObserver = cleanup.trackObserver(
+        new MutationObserver(() => {
+          tryClaimBonus(container)
+        }),
+      )
+      autoClaimObserver.observe(container, { childList: true, subtree: true })
+      log(' 💰 Auto-claim channel points observer active')
+    }
+
+    attachObserver()
+  }
+  // Load auto-claim setting and start. Default ON — multichat (main.js) seeds
+  // hs_auto_claim_points:true on first run, so we follow that. Off only if the
+  // user explicitly toggled it off (storage === false).
+  ;(async function loadAutoClaimSetting() {
+    try {
+      const stored = await browser.storage.local.get('hs_auto_claim_points')
+      autoClaimEnabled = stored.hs_auto_claim_points !== false
+    } catch {
+      /* default on */
+    }
+    setupAutoClaimPoints()
+  })()
+
+  // React to setting changes
+  function _onAutoClaimStorageChanged(changes) {
+    if (changes.hs_auto_claim_points) {
+      autoClaimEnabled = changes.hs_auto_claim_points.newValue !== false
+      setupAutoClaimPoints()
+    }
+  }
+  chrome.storage.onChanged.addListener(_onAutoClaimStorageChanged)
+
+  // Initialize
+  if (window.HS?.initMainWorldNonce) window.HS.initMainWorldNonce() // secure MAIN world GQL/Helix handlers
+
+  // Emote-layer subsystem gates — ui_settings.subsystems (set in multichat
+  // settings → system → subsystems; default ON). A gated-off subsystem never
+  // registers its observers/handlers. emote-render and tab-complete apply on
+  // reload and are hydrated once below, before bootEmoteLayer.
+  //
+  // right-click-block has NO registry entry, so nothing can ever set it false
+  // and its gate is permanently on. The user-facing control for that behaviour
+  // is the picker's right-click menu in heatsync-button.js. Kept as the
+  // live-update shape in case it is ever
+  // promoted; tests/subsystem-switches-enforced.js records it as the one
+  // known gate id with no switch behind it.
+  const HS_GATES = { 'emote-render': true, 'tab-complete': true, 'right-click-block': true }
+  function hsGateOn(id) {
+    return HS_GATES[id] !== false
+  }
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== 'sync' || !changes.ui_settings) return
+    const subs = changes.ui_settings.newValue?.subsystems
+    if (subs) HS_GATES['right-click-block'] = subs['right-click-block'] !== false
+  })
+
+  function bootEmoteLayer() {
+    setupEmoteClickHandlers()
+    detectAndJoinChannel()
+    setupMessageContextMenu()
+    if (hsGateOn('emote-render')) watchForNewMessages()
+    interceptMessageSending()
+    if (hsGateOn('tab-complete')) {
+      setupTabCompletion()
+    } else {
+      // Kick hook shares this ISOLATED window; Twitch hook is MAIN-world and
+      // listens for the gate message. Both tear down via their lifecycles.
+      try {
+        window.__heatsyncKickAcLifecycle?.abort()
+      } catch (_) {}
+      try {
+        window.postMessage({ type: 'heatsync-gate-tab-complete-off' }, location.origin)
+      } catch (_) {}
+    }
+    log(' Extension loaded')
+
+    if (!hsGateOn('emote-render')) return
+    // Process any chat history that's already loaded in the DOM
+    // (Twitch loads recent messages on page load, but we need to process them with emotes)
+    cleanup.setTimeout(() => {
+      log(' Processing chat history from page load...')
+      const channel = getPageChannel()
+
+      // Restore cached messages FIRST for instant render (before robotty backfill)
+      if (channel) {
+        initMsgCache(channel)
+        const chatContainer = findChatContainer()
+        if (chatContainer) {
+          const restored = restoreMsgCache(channel, chatContainer)
+          if (restored > 0) processExistingMessages()
+        }
+      }
+
+      processExistingMessages()
+      setupUsernameColoringObserver() // Start persistent username coloring
+      // Backfill after a short delay so native Twitch messages are loaded for dedup
+      cleanup.setTimeout(() => backfillChatHistory(), 500)
+    }, 1000)
+  }
+
+  chrome.storage.sync.get('ui_settings', (d) => {
+    try {
+      const subs = d?.ui_settings?.subsystems || {}
+      for (const k in HS_GATES) if (subs[k] === false) HS_GATES[k] = false
+    } catch (_) {}
+    bootEmoteLayer()
+  })
+
+  // Expose the recency list for the Kick autocomplete hook (ISOLATED, shares this
+  // window). Twitch's hook is MAIN-world and reads the DOM bridge instead.
+  window.heatsyncGetRecentChatters = buildRecentChatterList
+})()

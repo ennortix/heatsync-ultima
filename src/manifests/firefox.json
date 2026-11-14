@@ -3,7 +3,7 @@
   "default_locale": "en",
   "name": "__MSG_manifest_name__",
   "short_name": "heatsync",
-  "version": "1.7.47",
+  "version": "1.7.134",
   "description": "__MSG_manifest_description__",
   "author": "heatsync.org",
   "homepage_url": "https://heatsync.org",
@@ -22,10 +22,9 @@
     "https://7tv.io/*",
     "https://api.7tv.app/*",
     "https://api.twitch.tv/*",
-    "https://www.youtube.com/*",
-    "https://pronoundb.org/*"
+    "https://www.youtube.com/*"
   ],
-  "content_security_policy": "default-src 'self'; script-src 'self'; object-src 'none'; connect-src 'self' data: https://heatsync.org wss://heatsync.org https://*.twitch.tv https://api.twitch.tv https://static-cdn.jtvnw.net wss://irc-ws.chat.twitch.tv wss://eventsub.wss.twitch.tv https://api.betterttv.net https://api.frankerfacez.com https://7tv.io https://events.7tv.io wss://events.7tv.io https://api.7tv.app https://kick.com https://*.kick.com wss://ws-us2.pusher.com https://www.youtube.com https://pronoundb.org; img-src 'self' data: blob: https://static-cdn.jtvnw.net https://cdn.7tv.app https://cdn.betterttv.net https://cdn.frankerfacez.com https://files.kick.com https://heatsync.org https://cdn.heatsync.org https://i.imgur.com https://d3aqoihi2n8ty8.cloudfront.net; style-src 'self' 'unsafe-inline'; font-src 'self' data:",
+  "content_security_policy": "default-src 'self'; script-src 'self'; object-src 'none'; connect-src 'self' data: https://heatsync.org wss://heatsync.org https://*.twitch.tv https://api.twitch.tv https://static-cdn.jtvnw.net wss://irc-ws.chat.twitch.tv wss://eventsub.wss.twitch.tv https://api.betterttv.net wss://sockets.betterttv.net https://api.frankerfacez.com https://7tv.io https://events.7tv.io wss://events.7tv.io https://api.7tv.app https://kick.com https://*.kick.com wss://*.platform.kick.com https://www.youtube.com; img-src 'self' data: blob: https://static-cdn.jtvnw.net https://cdn.7tv.app https://cdn.betterttv.net https://cdn.frankerfacez.com https://files.kick.com https://heatsync.org https://cdn.heatsync.org https://i.imgur.com https://d3aqoihi2n8ty8.cloudfront.net; style-src 'self' 'unsafe-inline'; font-src 'self' data:",
   "background": {
     "scripts": [
       "background.js"
@@ -35,6 +34,9 @@
     {
       "matches": [
         "https://*.twitch.tv/*"
+      ],
+      "exclude_matches": [
+        "https://m.twitch.tv/*"
       ],
       "js": [
         "early-inject-main.js"
@@ -46,6 +48,11 @@
       "matches": [
         "https://kick.com/*",
         "https://*.kick.com/*"
+      ],
+      "exclude_matches": [
+        "https://id.kick.com/*",
+        "https://kick.com/oauth/*",
+        "https://kick.com/oauth2/*"
       ],
       "js": [
         "kick-nav-watcher.js",
@@ -66,10 +73,31 @@
     },
     {
       "matches": [
+        "https://kick.com/*",
+        "https://*.kick.com/*"
+      ],
+      "exclude_matches": [
+        "https://id.kick.com/*",
+        "https://kick.com/oauth/*",
+        "https://kick.com/oauth2/*"
+      ],
+      "js": [
+        "kick-css-fix.js"
+      ],
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
         "https://*.twitch.tv/*",
         "https://kick.com/*",
         "https://*.kick.com/*",
         "https://www.youtube.com/*"
+      ],
+      "exclude_matches": [
+        "https://m.twitch.tv/*",
+        "https://id.kick.com/*",
+        "https://kick.com/oauth/*",
+        "https://kick.com/oauth2/*"
       ],
       "js": [
         "early-layout.js",
@@ -83,6 +111,32 @@
         "https://kick.com/*",
         "https://*.kick.com/*",
         "https://www.youtube.com/*"
+      ],
+      "exclude_matches": [
+        "https://m.twitch.tv/*",
+        "https://www.youtube.com/live_chat*",
+        "https://id.kick.com/*",
+        "https://kick.com/oauth/*",
+        "https://kick.com/oauth2/*"
+      ],
+      "js": [
+        "player-volume.js"
+      ],
+      "all_frames": true,
+      "run_at": "document_end"
+    },
+    {
+      "matches": [
+        "https://*.twitch.tv/*",
+        "https://kick.com/*",
+        "https://*.kick.com/*",
+        "https://www.youtube.com/*"
+      ],
+      "exclude_matches": [
+        "https://m.twitch.tv/*",
+        "https://id.kick.com/*",
+        "https://kick.com/oauth/*",
+        "https://kick.com/oauth2/*"
       ],
       "js": [
         "vi-mode.js"
@@ -103,24 +157,17 @@
       "matches": [
         "https://*.twitch.tv/*"
       ],
+      "exclude_matches": [
+        "https://m.twitch.tv/*"
+      ],
       "js": [
-        "emoji-data.js",
+        "emoji-data.main.js",
         "autocomplete-hook.js",
-        "twitch-chat-intercept.js"
+        "twitch-chat-intercept.js",
+        "twitch-callout-token.js"
       ],
       "run_at": "document_end",
       "world": "MAIN"
-    },
-    {
-      "matches": [
-        "https://kick.com/*",
-        "https://*.kick.com/*"
-      ],
-      "js": [
-        "emoji-data.iso.js",
-        "kick-autocomplete-hook.js"
-      ],
-      "run_at": "document_end"
     },
     {
       "matches": [
@@ -128,6 +175,12 @@
         "https://kick.com/*",
         "https://*.kick.com/*",
         "https://heatsync.org/*"
+      ],
+      "exclude_matches": [
+        "https://m.twitch.tv/*",
+        "https://id.kick.com/*",
+        "https://kick.com/oauth/*",
+        "https://kick.com/oauth2/*"
       ],
       "js": [
         "emoji-data.iso.js",
@@ -143,9 +196,31 @@
     },
     {
       "matches": [
+        "https://kick.com/*",
+        "https://*.kick.com/*"
+      ],
+      "exclude_matches": [
+        "https://id.kick.com/*",
+        "https://kick.com/oauth/*",
+        "https://kick.com/oauth2/*"
+      ],
+      "js": [
+        "emoji-data.iso.js",
+        "kick-autocomplete-hook.js"
+      ],
+      "run_at": "document_end"
+    },
+    {
+      "matches": [
         "https://*.twitch.tv/*",
         "https://kick.com/*",
         "https://*.kick.com/*"
+      ],
+      "exclude_matches": [
+        "https://m.twitch.tv/*",
+        "https://id.kick.com/*",
+        "https://kick.com/oauth/*",
+        "https://kick.com/oauth2/*"
       ],
       "js": [
         "heatsync-button.js"
@@ -154,35 +229,21 @@
     },
     {
       "matches": [
-        "https://*.twitch.tv/*"
-      ],
-      "js": [
-        "emoji-data.iso.js",
-        "shared-utils.js",
-        "multichat-twitch.js"
-      ],
-      "run_at": "document_end"
-    },
-    {
-      "matches": [
+        "https://*.twitch.tv/*",
         "https://kick.com/*",
-        "https://*.kick.com/*"
-      ],
-      "js": [
-        "emoji-data.iso.js",
-        "shared-utils.js",
-        "multichat-kick.js"
-      ],
-      "run_at": "document_end"
-    },
-    {
-      "matches": [
+        "https://*.kick.com/*",
         "https://www.youtube.com/*"
       ],
+      "exclude_matches": [
+        "https://m.twitch.tv/*",
+        "https://id.kick.com/*",
+        "https://kick.com/oauth/*",
+        "https://kick.com/oauth2/*"
+      ],
       "js": [
         "emoji-data.iso.js",
         "shared-utils.js",
-        "multichat-youtube.js"
+        "multichat-core.js"
       ],
       "run_at": "document_end"
     },
@@ -248,8 +309,7 @@
     "icon-16.png",
     "icon-48.png",
     "icon-48-black.png",
-    "_locales/*/messages.json",
-    "fonts/CozetteVector.woff2"
+    "_locales/*/messages.json"
   ],
   "browser_specific_settings": {
     "gecko": {
@@ -258,6 +318,9 @@
       "data_collection_permissions": {
         "required": [
           "authenticationInfo"
+        ],
+        "optional": [
+          "technicalAndInteraction"
         ]
       }
     }

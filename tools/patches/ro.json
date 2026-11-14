@@ -1,6 +1,6 @@
 {
   "manifest_name": "heatsync",
-  "manifest_description": "Un panou pentru chatul live de pe Twitch, Kick + YouTube. Plus un inventar gratuit de 5000 de emote care te însoțește pe orice canal",
+  "manifest_description": "Un panou pentru chatul live de pe Twitch, Kick + YouTube. Plus un inventar gratuit de 5.000 de emote care te urmează pe orice canal",
   "common_loading": "se încarcă...",
   "common_extension_updated": "Extensia a fost actualizată — reîncarcă pagina",
   "common_no_matches": "fără rezultate",
@@ -42,7 +42,6 @@
   "welcome_step2_desc": "adaugă orice imagine — 5000 sloturi, toate formatele acceptate",
   "welcome_step3_title": "folosește-le în chat",
   "welcome_step3_desc": "apasă butonul heatsync din chat-ul Twitch/Kick pentru a-ți accesa emote-urile",
-  "welcome_cta": "începe",
   "welcome_privacy": "confidențialitate",
   "welcome_source": "cod sursă",
   "btn_auth_login": "autentifică-te",

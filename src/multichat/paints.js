@@ -3,7 +3,7 @@
 // Mirrors the site's client/chat/paint-cosmetics.js pipeline, adapted for the
 // multichat overlay's IIFE/global-scope bundling (no ES module imports at
 // runtime — see build.js's readMultichatModules, which embeds lib/paint-spec.js
-// right before this file so compilePaintCss/hashPaintSpec/paintNeedsLetterSplit
+// right before this file so compilePaintCss/hashPaintSpec/paintNeedsSpans
 // are already free variables in this scope by the time these functions run).
 //
 // ID-SPACE SAFETY (read before touching call sites): paints are keyed by
@@ -52,9 +52,36 @@
 //      when one is — callers add `cls` to the element's class list and skip
 //      any competing inline color/7TV-paint style (heatsync paint wins).
 
+// content.js (native twitch/kick rows) shares this isolated world and paints
+// with the same compiler instead of embedding its own ~90KB copy.
+try {
+  window.__hsPaintKit = {
+    compilePaintCss,
+    hashPaintSpec,
+    paintNameHtmlFor,
+    paintMarkupMode,
+    paintPhaseNow,
+    NAME_BOX_CLASS,
+  }
+} catch (_) {}
+
 const HS_PAINT_CACHE_MAX = 500
 const HS_PAINT_BATCH_SIZE = 50
-const HS_PAINT_BATCH_DELAY = 100
+// 2s window — was 100ms, which on a busy channel's chatter churn meant a
+// fresh /api/paints request roughly every 100-120ms (HS_PAINT_BACKLOG_DELAY
+// below) until the backlog drained: a real burst rate far above the ~1/s
+// steady-state average, and most of it wasted on requests too small to
+// justify their own round trip. 50 ids/2s is still well within TTL freshness
+// budgets (paints don't change mid-stream) and cuts request volume sharply
+// with no visible latency cost — a name paints in within 2s of first render,
+// not 100ms.
+const HS_PAINT_BATCH_DELAY = 2000
+// The 2s is a spacing between requests, not a wait before the first: after a quiet spell
+// (a refresh, a tab switch) the first batch goes out once this much of the burst has queued,
+// so names paint at once instead of 2s late. Steady state keeps the 2s spacing.
+const HS_PAINT_FIRST_DELAY = 60
+let hsPaintLastFlushAt = 0
+const hsPaintFlushDelay = () => Math.max(HS_PAINT_FIRST_DELAY, HS_PAINT_BATCH_DELAY - (Date.now() - hsPaintLastFlushAt))
 // Mirrors MC_COSMETICS_PENDING_MAX (main.js) — a very busy/firehose channel
 // can queue unique uids faster than the batch drain rate; cap so the pending
 // Set can't grow unbounded between flushes.
@@ -67,7 +94,63 @@ const HS_PAINT_PENDING_MAX = 3000
 const HS_PAINT_BACKLOG_DELAY = 120
 
 const hsPaintCache = new Map() // uid -> { spec: object|null, hash: string|null }
+// ── WHY THESE CACHES EXPIRE ──────────────────────────────────────────────
+// They used to be permanent: once a uid resolved, this pane never asked again.
+// background.js's own paint cache has a 60s TTL, but that never helped —
+// the pane short-circuits before it ever reaches the service worker.
+//
+// `cosmetic:changed` covers a user EDITING a paint. Two cases have no write to
+// announce:
+//
+//   1. ENTITLEMENT LAPSE. A paint (and the Plus tenure token) renders only
+//      while its owner is Plus — GET /api/paints re-checks that on every read.
+//      Nobody writes anything when a subscription simply expires, so the
+//      server stopped serving it while the overlay kept painting it, on that
+//      user's NEW messages too. A permanent cache turns a paid, time-limited
+//      perk into a permanent one for anyone who leaves a tab open.
+//   2. A MISSED PUSH. A pane whose service worker socket dropped never sees
+//      the broadcasts it was away for.
+const HS_COSMETIC_TTL = 5 * 60 * 1000
+const hsResolvedAt = new Map() // uid -> ms at last successful resolve
+
+/** Has this uid been resolved recently enough to trust without asking again? */
+function isHsCosmeticFresh(uid) {
+  const at = hsResolvedAt.get(uid)
+  return at !== undefined && Date.now() - at < HS_COSMETIC_TTL
+}
+
+/**
+ * Mark uids for re-resolution on their next render, WITHOUT dropping what we
+ * have — the name keeps its current paint until the new answer lands instead
+ * of flashing unpainted, and the flush can still see the previous hash to
+ * decide whether anything actually changed.
+ */
+function markHsCosmeticsStale(uids) {
+  for (const id of uids) hsResolvedAt.delete(id)
+}
+
+/** Test seam: the freshness predicate is internal, but its behaviour is the
+ *  whole point of the TTL and deserves to be asserted directly. */
+function isHsCosmeticFreshForTests(uid) {
+  return isHsCosmeticFresh(uid)
+}
+
+/** Everything cached is suspect — used when the socket reconnects. */
+function markAllHsCosmeticsStale() {
+  hsResolvedAt.clear()
+}
 const hsPaintInjectedHashes = new Set()
+/** hash -> its <style> node, so a rule can be dropped without touching others. */
+const hsPaintRuleNodes = new Map()
+/** `hsp-<hash>` class -> how its composited `fill` mounts (see the runtime
+ * section below), so the mask sweep knows which painted names are worth
+ * building letterforms for. Cleared per-hash alongside hsPaintRuleNodes —
+ * mirrors the site's compositedPaintClasses (client/chat/paint-cosmetics.js). */
+const hsCompositedPaintClasses = new Map()
+/** The legacy paint-slot fill's composited form (pre-`fill`-block sweeps —
+ * pan/conic/hue/pulse/glint/stripes/stardust): one box per glyph, masked per
+ * glyph. A `fill` spec (compositedFillPlan) says its own shape instead. */
+const HS_LEGACY_FILL_PLAN = { mode: 'glyph', layers: 1, wrapper: false, legacy: true }
 const hsPaintPending = new Set()
 // Priority lane — the viewer's OWN identities (primeSelfHsCosmetics). Drained
 // before hsPaintPending and exempt from HS_PAINT_PENDING_MAX: plain FIFO left
@@ -96,7 +179,7 @@ const hsColorCache = new Map() // uid (yt_<UCid> / kick_<id>) -> "#RRGGBB" | nul
 // djb2 → palette. MUST stay byte-identical to the website
 // (client/utils/color-utils.js usernameColor + server chat-log-permalinks.ts)
 // so a chatter is the same colour in the extension, on heatsync.org, and on
-// SSR /logs pages.
+// SSR /search/logs pages.
 const HS_USERNAME_PALETTE = [
   '#ff7a7a',
   '#ff9d4d',
@@ -174,22 +257,26 @@ function partitionPaintBatch(queue, batchSize) {
   return { batch: all.slice(-batchSize), rest: all.slice(0, Math.max(0, all.length - batchSize)) }
 }
 
-/** Per-letter span data for a username: `{ mid, letters: [{ch, i}] }`. Matches
- * the site's splitter exactly — mid = (length-1)/2, i = index. */
-function computeHsLetterSpans(text) {
-  const chars = [...String(text ?? '')]
-  return {
-    mid: (chars.length - 1) / 2,
-    letters: chars.map((ch, i) => ({ ch, i })),
-  }
-}
-
-/** Build the innerHTML for a letter-split username: one <span> per glyph with
- * --i/--mid custom properties. Takes raw (unescaped) text — each glyph is
- * escaped individually, so this is safe to call on el.textContent directly. */
-function splitHsLettersHtml(rawText) {
-  const { mid, letters } = computeHsLetterSpans(rawText)
-  return letters.map(({ ch, i }) => `<span style="--i:${i};--mid:${mid}">${escapeHtml(ch)}</span>`).join('')
+/**
+ * THE MARKUP COMES FROM THE MIRRORED COMPILER, NOT FROM A COPY OF IT.
+ *
+ * This was a local re-implementation of paintNameHtmlFor, kept because the ext
+ * bundle escapes through its own escapeHtml. It had already been caught missing
+ * the `+N` plane-box suffix; then the site gave the name its own box
+ * (`.hs-name`) and moved EVERY compiled rule onto `.hsp-<hash>>.hs-name`, and
+ * this copy — which never emitted that box — stopped matching a single one of
+ * its own rules. Every heatsync name paint in the extension rendered as plain
+ * text from 2026-09-13 until now, shipped that way in 1.7.73.
+ *
+ * lib/paint-spec.js is mirrored from the site BYTE FOR BYTE and is already in
+ * scope here (build.js embeds it ahead of this file), so the function that
+ * emits the markup and the function that compiles the CSS against it are now
+ * the same pair the site runs. A copy of a contract is a copy that drifts; the
+ * comment this replaces even said the parity test fences lib/ and would not
+ * cover this file.
+ */
+function hsPaintNameHtml(rawText, spec) {
+  return paintNameHtmlFor(rawText, paintMarkupMode(spec))
 }
 
 // ── settings gate (guarded — this module is imported standalone in tests) ───
@@ -201,138 +288,186 @@ function hsPaintsEnabled() {
 
 // ── stylesheet management ────────────────────────────────────────────────────
 
+// ── hover chip ──────────────────────────────────────────────────────────────
+// The chip's overrides for names matched by `sel` (`:hover`, or the echo below).
+// background-clip goes back to border-box (was `text`, see compilePaintCss) so
+// `color` fills solid; `transform:none !important` beats animation-applied
+// transforms, so a letter wave or coin spin sits flat. Scene layers (pseudo
+// plates, the `> i` planes of lib/scene-spec.js planeRules) and composited fill
+// boxes (lib/fill-layers.js) are hidden, not removed, so their animations keep
+// their place on the clock.
+function hsChipRules(sel) {
+  const at = `[class*="hsp-"]${sel}`
+  return (
+    `${at},${at} span{background:#fff !important;-webkit-background-clip:border-box !important;background-clip:border-box !important;color:#000 !important;-webkit-text-fill-color:#000 !important;transform:none !important;opacity:1 !important;text-shadow:none !important;filter:none !important;}` +
+    `${at}::before,${at}::after,${at}>i,${at} .hs-name i{visibility:hidden !important;}` +
+    `${at} .hs-name,${at} .hs-name span{-webkit-mask-image:none !important;mask-image:none !important;}`
+  )
+}
+
+// Hovering one painted name chips every copy of it, by writing ONE rule that
+// matches its paint class (and its username where the copy carries one; a
+// mention chip has none). One style write, no per-copy work: the old echo
+// classed every visible copy and re-seeked their animations on release.
+let hsPaintEchoEl = null
+let hsPaintEchoKey = ''
+
+function hsPaintEchoFor(el) {
+  const cls = [...el.classList].find((c) => c.startsWith('hsp-'))
+  if (!cls || typeof CSS === 'undefined') return ''
+  const name = (el.dataset?.username || '').toLowerCase()
+  const same = `.${CSS.escape(cls)}`
+  return name ? `${same}:is([data-username="${CSS.escape(name)}" i],:not([data-username]))` : same
+}
+
+function setHsPaintEcho(key) {
+  if (key === hsPaintEchoKey) return
+  hsPaintEchoKey = key
+  if (!hsPaintEchoEl) {
+    if (!key) return
+    hsPaintEchoEl = document.createElement('style')
+    const tracked =
+      typeof cleanup !== 'undefined' && cleanup.trackNode ? cleanup.trackNode(hsPaintEchoEl) : hsPaintEchoEl
+    document.head.appendChild(tracked)
+  }
+  hsPaintEchoEl.textContent = key ? `@media (hover: hover){${hsChipRules(key)}}` : ''
+}
+
+function installHsPaintEcho() {
+  if (typeof document.addEventListener !== 'function') return
+  const on = (type, fn) => {
+    if (typeof cleanup !== 'undefined' && typeof cleanup.addEventListener === 'function') {
+      cleanup.addEventListener(document, type, fn, { passive: true })
+    } else document.addEventListener(type, fn, { passive: true })
+  }
+  on('mouseover', (e) => {
+    const t = e.target instanceof Element ? e.target.closest('[class*="hsp-"]') : null
+    setHsPaintEcho(t ? hsPaintEchoFor(t) : '')
+  })
+  on('mouseout', (e) => {
+    if (!(e.relatedTarget instanceof Element) || !e.relatedTarget.closest('[class*="hsp-"]')) setHsPaintEcho('')
+  })
+}
+
 function ensureHsPaintSheet() {
   if (hsPaintSheetEl?.isConnected) return hsPaintSheetEl
   hsPaintSheetEl = document.getElementById('hs-mc-paints')
   if (!hsPaintSheetEl) {
     hsPaintSheetEl = document.createElement('style')
     hsPaintSheetEl.id = 'hs-mc-paints'
-    // Single kill-switch: every hsp_* animation pauses under reduced motion,
-    // regardless of how many per-hash rules get appended after this.
-    // animation-delay:0s too: paints are paused-not-removed under reduced
-    // motion, and the phase-lock delay (--hsp-t fold, see lib/paint-spec.js
-    // syncDelayCalc) would otherwise freeze each copy at a different
-    // mid-cycle pose — zeroing it pins every paused paint at frame 0.
+    // Single kill-switch: every hsp_* animation pauses when the user turns
+    // paint motion off, regardless of how many per-hash rules get appended.
+    //
+    // Gated on the animatePaints SETTING, not prefers-reduced-motion — the same
+    // call already made for emote modifiers (see 10-emotes.css). A paint is
+    // content its owner chose and paid for, and the media query is a browser
+    // flag, not a per-site preference: a chromium run with
+    // --force-prefers-reduced-motion made this rule permanently true, so EVERY
+    // paint on the page froze at frame 0 forever with no setting that could
+    // turn it back on. Measured on a live channel: 50 animated layers, all 50
+    // paused. That also parked each paint's top scene layer (::after,
+    // z-index:1) as a static sprite sitting ON the glyphs, which is what read
+    // as "the username is blurry / not bitmap" — the layer is meant to sweep
+    // past, not sit there.
+    //
+    // animation-delay:0s too: paints are paused-not-removed, and the phase-lock
+    // delay (--hsp-t fold, see lib/paint-spec.js syncDelayCalc) would otherwise
+    // freeze each copy at a different mid-cycle pose — zeroing it pins every
+    // paused paint at frame 0.
     hsPaintSheetEl.textContent =
-      '@media (prefers-reduced-motion: reduce){[class*="hsp-"],[class*="hsp-"] *,[class*="hsp-"]::before,[class*="hsp-"]::after{animation-play-state:paused !important;animation-delay:0s !important;}}' +
-      // Hover freeze: pause the paint animation and swap to a plain white/black
-      // chip so the name stays fully readable while the pointer is over it.
-      // background-clip goes back to border-box (was `text`, see compilePaintCss)
-      // so `color` renders as normal solid fill instead of clipping to nothing.
-      // Transform-driven effects (letter wave/tumble on spans, coin/heli/swing
-      // on the element itself — see lib/paint-spec.js) would freeze mid-rotation
-      // (edge-on at rotateX/Y 90deg = invisible), so `transform:none !important`
-      // — which beats animation-applied values in the cascade — snaps both the
-      // element and its spans flat.
-      // .hsp-hover is the JS-synced twin of :hover — installHsPaintHoverSync
-      // puts it on EVERY visible copy of the hovered user's name so they all
-      // freeze together, not just the pointer target.
-      // .hs-mc-row-selected (bulk-select, mod-toolbar.js) reuses the same
-      // flatten: a gradient/clip-text paint left un-flattened would render
-      // invisible against the selected row's white bg (background:#fff would
-      // clip straight through transparent gradient text).
-      '[class*="hsp-"]:hover,[class*="hsp-"]:hover span,[class*="hsp-"].hsp-hover,[class*="hsp-"].hsp-hover span,.hs-mc-row-selected [class*="hsp-"],.hs-mc-row-selected [class*="hsp-"] span{animation-play-state:paused !important;background:#fff !important;-webkit-background-clip:border-box !important;background-clip:border-box !important;color:#000 !important;transform:none !important;text-shadow:none !important;}' +
-      // Scene plates (v2 ::before/::after dioramas) must vanish entirely on
-      // hover/selection — the element's white background paints UNDER a
-      // negative-z pseudo, so pausing alone would leave the plate covering
-      // the white. text-shadow:none above also drops the scene rim (black
-      // smears on white). Same trigger set as the flatten rule.
-      '[class*="hsp-"]:hover::before,[class*="hsp-"]:hover::after,[class*="hsp-"].hsp-hover::before,[class*="hsp-"].hsp-hover::after,.hs-mc-row-selected [class*="hsp-"]::before,.hs-mc-row-selected [class*="hsp-"]::after{content:none !important;}'
+      'html[data-hs-paint-anim="never"] [class*="hsp-"],html[data-hs-paint-anim="never"] [class*="hsp-"] *,html[data-hs-paint-anim="never"] [class*="hsp-"]::before,html[data-hs-paint-anim="never"] [class*="hsp-"]::after{animation-play-state:paused !important;animation-delay:0s !important;}' +
+      // Hover: the plain white/black chip (hsChipRules), drawn by overrides
+      // alone — the paint's animations keep running underneath, nothing is
+      // paused, removed or recreated, so there is no phase to resync. Freezing
+      // used to pause, rebuild and re-seek every copy in the mouseout task:
+      // ~1s main-thread stall with a dozen scene paints on screen (2026-10-31).
+      // (hover: hover): a real pointer only — a tap sticks :hover until the next
+      // tap, which left a phone's tapped name as a plain chip (the site's rule).
+      `@media (hover: hover){${hsChipRules(':hover')}}` +
+      // Off-screen paints stop animating. Measured on the site with the same
+      // compiler (scripts/paint-perf.mjs there): the cost of a scene is purely
+      // how MANY names animate at once — a full pane of STATIC scene holds
+      // 60fps, 250 animating ones is ~20. Multichat is the densest surface
+      // there is, two or three panes of 100 rows side by side, so it needs the
+      // gate more than the site does.
+      //
+      // `hs-mc-idle`, deliberately outside the `hsp-` namespace: getHsPaintClass
+      // identifies a paint by that prefix, so a marker inside it would make an
+      // unpainted name read as painted.
+      '.hs-mc-idle,.hs-mc-idle *,.hs-mc-idle::before,.hs-mc-idle::after{animation-play-state:paused !important;}'
     const tracked =
       typeof cleanup !== 'undefined' && cleanup.trackNode ? cleanup.trackNode(hsPaintSheetEl) : hsPaintSheetEl
     document.head.appendChild(tracked)
-    installHsPaintHoverSync()
+    installHsPaintEcho()
   }
   return hsPaintSheetEl
 }
 
-// ── hover-freeze sync ────────────────────────────────────────────────────────
-// Hovering a painted name freezes EVERY visible copy of that user's name (the
-// CSS :hover rule above only reaches the pointer target). Matches by
-// data-username when present (.hs-mc-user rows), falling back to text content
-// so mention chips without the attribute sync too. Installed once, alongside
-// the sheet.
-let _hsPaintHoverInstalled = false
-let _hsPaintHoverEls = null
-let _hsPaintHoverTarget = null
-
-function _hsPaintHoverKey(el) {
-  const raw = el.dataset?.username || el.textContent || ''
-  return raw.trim().toLowerCase().replace(/^@/, '')
-}
-
-// cleanup-tracked listener when the helper is available (live multichat),
-// plain listener otherwise (test harness stubs cleanup with trackNode only).
-function _hsPaintHoverOn(target, type, fn, opts) {
-  if (typeof cleanup !== 'undefined' && typeof cleanup.addEventListener === 'function') {
-    cleanup.addEventListener(target, type, fn, opts)
-  } else {
-    target.addEventListener(type, fn, opts)
-  }
-}
-
-function installHsPaintHoverSync() {
-  if (_hsPaintHoverInstalled) return
-  // test harness stubs `document` as a bare object — nothing to install on
-  if (typeof document.addEventListener !== 'function' || typeof document.querySelectorAll !== 'function') return
-  _hsPaintHoverInstalled = true
-  const clear = () => {
-    if (!_hsPaintHoverEls) return
-    for (const el of _hsPaintHoverEls) el.classList.remove('hsp-hover')
-    _hsPaintHoverEls = null
-  }
-  const clearAll = () => {
-    _hsPaintHoverTarget = null
-    clear()
-  }
-  _hsPaintHoverOn(
-    document,
-    'mouseover',
-    (e) => {
-      const t = e.target instanceof Element ? e.target.closest('[class*="hsp-"]') : null
-      if (!t) return
-      // letter-split names refire mouseover per span — same outer element,
-      // no work to do (the full-document scan below is the expensive part)
-      if (t === _hsPaintHoverTarget) return
-      _hsPaintHoverTarget = t
-      clear()
-      const key = _hsPaintHoverKey(t)
-      if (!key) return
-      const hit = []
-      for (const el of document.querySelectorAll('[class*="hsp-"]')) {
-        if (el !== t && _hsPaintHoverKey(el) === key) {
-          el.classList.add('hsp-hover')
-          hit.push(el)
-        }
-      }
-      if (hit.length) _hsPaintHoverEls = hit
-    },
-    { passive: true },
-  )
-  _hsPaintHoverOn(
-    document,
-    'mouseout',
-    (e) => {
-      if (!_hsPaintHoverEls) return
-      const t = e.target instanceof Element ? e.target.closest('[class*="hsp-"]') : null
-      if (!t) return
-      // still inside the same painted element (moving across its letter
-      // spans) — keep the sync alive
-      if (e.relatedTarget instanceof Element && e.relatedTarget.closest('[class*="hsp-"]') === t) return
-      clearAll()
-    },
-    { passive: true },
-  )
-}
-
-/** Compile + append the CSS for `hash` if not already present. Idempotent. */
+/**
+ * Compile + append the CSS for `hash` if not already present. Idempotent.
+ *
+ * One <style> node per paint, not one shared sheet appended to with
+ * `textContent +=`. That append read the whole sheet into a JS string,
+ * concatenated, and wrote it back — a full re-serialize and CSS reparse of
+ * every paint seen so far, on each new one, so the cost grew with the square of
+ * the number of distinct paints in a channel. It also had no way back out: the
+ * sheet only ever grew, while hsPaintCache LRU-evicts at HS_PAINT_CACHE_MAX, so
+ * the CSS outlived the cache that described it.
+ *
+ * Per-hash nodes make an insert cost only its own rule and make eviction a node
+ * removal. They are appended after the base sheet, so a per-paint rule still
+ * wins an !important tie against the hover/pause rules exactly as before.
+ */
 function ensureHsPaintRule(spec, hash) {
   if (hsPaintInjectedHashes.has(hash)) return
-  const sheet = ensureHsPaintSheet()
+  ensureHsPaintSheet()
   const css = compilePaintCss(spec, `.hsp-${hash}`, { hash })
   if (!css) return
-  sheet.textContent += css
+  const node = document.createElement('style')
+  node.dataset.hsPaint = hash
+  node.textContent = css
+  document.head.appendChild(typeof cleanup !== 'undefined' && cleanup.trackNode ? cleanup.trackNode(node) : node)
+  hsPaintRuleNodes.set(hash, node)
   hsPaintInjectedHashes.add(hash)
+  // Whether this paint got a composited fill is a property of what the
+  // compiler actually emitted — asking the spec again would be a second
+  // opinion that could drift from the CSS just injected. Read once, per hash.
+  // Guarded like MAX_ANIMATED_LAYERS below: these are bundle-scope free
+  // variables (readMultichatModules embeds lib/fill-layers.js + glyph-mask.js
+  // ahead of this file), absent from a standalone-module test that hasn't
+  // stubbed them — the honest degradation there is no composited plan, same
+  // as today's behaviour, not a ReferenceError.
+  const plan =
+    (typeof compositedFillPlan === 'function' && compositedFillPlan(spec)) ||
+    (typeof compiledCssHasCompositedFill === 'function' && compiledCssHasCompositedFill(css)
+      ? HS_LEGACY_FILL_PLAN
+      : null)
+  if (plan) hsCompositedPaintClasses.set(`hsp-${hash}`, plan)
+}
+
+/** Drop the rule for `hash` — but only once no cached uid still wants it.
+ * Several uids share a hash whenever they wear the same paint, so evicting one
+ * of them must not un-style the others. The scan is bounded by the cache cap
+ * and only runs on eviction. */
+function dropHsPaintRule(hash) {
+  if (!hash || !hsPaintInjectedHashes.has(hash)) return
+  for (const e of hsPaintCache.values()) if (e?.hash === hash) return
+  const node = hsPaintRuleNodes.get(hash)
+  if (node?.parentNode) node.parentNode.removeChild(node)
+  hsPaintRuleNodes.delete(hash)
+  hsPaintInjectedHashes.delete(hash)
+  hsCompositedPaintClasses.delete(`hsp-${hash}`)
+}
+
+/** Evict the oldest paint cache entry AND the CSS it was the last user of.
+ * Wraps the generic evictOldestPaintEntry because only this cache owns rules. */
+function evictOldestHsPaintEntry() {
+  if (hsPaintCache.size < HS_PAINT_CACHE_MAX) return
+  const oldest = hsPaintCache.keys().next().value
+  if (oldest === undefined) return
+  const hash = hsPaintCache.get(oldest)?.hash
+  hsPaintCache.delete(oldest)
+  dropHsPaintRule(hash)
 }
 
 /** Toggle-off hygiene: drop the injected sheet + hash tracking so a later
@@ -341,7 +476,12 @@ function ensureHsPaintRule(spec, hash) {
 function clearHsPaintSheet() {
   if (hsPaintSheetEl?.parentNode) hsPaintSheetEl.parentNode.removeChild(hsPaintSheetEl)
   hsPaintSheetEl = null
+  for (const node of hsPaintRuleNodes.values()) {
+    if (node?.parentNode) node.parentNode.removeChild(node)
+  }
+  hsPaintRuleNodes.clear()
   hsPaintInjectedHashes.clear()
+  hsCompositedPaintClasses.clear()
 }
 
 // Toggle-on recovery: rebuild the sheet from every cached spec. clearHsPaintSheet
@@ -356,17 +496,57 @@ function reinjectHsPaintSheet() {
 
 // ── public cache API ─────────────────────────────────────────────────────────
 
-/** @returns {string} the `hsp-<hash>` class to add to the element, or '' if none. */
-function getHsPaintClass(userId) {
-  if (!hsPaintsEnabled()) return ''
-  const entry = hsPaintCache.get(userId)
-  if (!entry?.hash) return ''
-  return `hsp-${entry.hash}`
+// ── per-user paint hide (viewer-side) ───────────────────────────────────────
+// Same key + shape as heatsync.org's hiddenPaintUsers (synced array of paint
+// uids — twitch/heatsync ids as-is, kick_/yt_ namespaced), so the list
+// follows the account through the ui-state channel. Gated inside
+// getHsPaintClass/getHsPaintSpec — the only two reads any renderer makes — so
+// a hidden user's name falls back to its platform colour everywhere at once.
+
+function isHsPaintHiddenForUser(userId) {
+  if (!userId || typeof getSetting !== 'function') return false
+  const hidden = getSetting('hiddenPaintUsers')
+  return Array.isArray(hidden) && hidden.includes(userId)
 }
 
-/** @returns {object|null} the raw validated spec (for paintNeedsLetterSplit checks). */
+/** Flip the hide for `userId`; returns the new hidden state. */
+function toggleHsPaintHidden(userId) {
+  if (!userId || typeof getSetting !== 'function') return false
+  const stored = getSetting('hiddenPaintUsers')
+  const list = Array.isArray(stored) ? [...stored] : []
+  const at = list.indexOf(userId)
+  if (at === -1) list.push(userId)
+  else list.splice(at, 1)
+  setSetting('hiddenPaintUsers', list)
+  // Strip or re-apply on the rows already on screen (a uid with no readable
+  // paint is stripped by the in-place pass), instead of waiting for new rows.
+  if (typeof updateHsPaintsInPlace === 'function') updateHsPaintsInPlace([userId])
+  return at === -1
+}
+
+/** The paint uid a chat row's name is (or would be) painted with: the
+ * twitch-space uid first, the kick_/yt_ namespaced one as fallback — the same
+ * precedence buildMessageDiv renders with. Only uids that have a paint. */
+function hsPaintUidOfMsg(m) {
+  if (!m) return null
+  const own = (m.platform === 'kick' ? m._uidTwitch : m.userId) || ''
+  for (const uid of [own, m.hsPaintUid]) {
+    if (uid && hsPaintCache.get(uid)?.spec) return uid
+  }
+  return null
+}
+
+/** @returns {string} the `hsp-<hash>` class to add to the element, or '' if none. */
+function getHsPaintClass(userId) {
+  if (!hsPaintsEnabled() || isHsPaintHiddenForUser(userId)) return ''
+  const entry = hsPaintCache.get(userId)
+  if (!entry?.hash) return ''
+  return `hsp-${String(entry.hash).replace(/[^a-z0-9]/gi, '')}`
+}
+
+/** @returns {object|null} the raw validated spec (for paintNeedsSpans checks). */
 function getHsPaintSpec(userId) {
-  if (!hsPaintsEnabled()) return null
+  if (!hsPaintsEnabled() || isHsPaintHiddenForUser(userId)) return null
   return hsPaintCache.get(userId)?.spec ?? null
 }
 
@@ -378,15 +558,71 @@ function hasResolvedHsPaint(userId) {
 }
 
 function setHsPaintEntry(userId, spec) {
+  // hsResolvedAt shadows hsPaintCache, so it is pruned on the same beat —
+  // otherwise it outgrows the LRU it describes over a long session.
+  if (hsResolvedAt.size > HS_PAINT_CACHE_MAX) evictOldestPaintEntry(hsResolvedAt, HS_PAINT_CACHE_MAX)
   if (!spec) {
-    if (!hsPaintCache.has(userId)) evictOldestPaintEntry(hsPaintCache, HS_PAINT_CACHE_MAX)
+    if (!hsPaintCache.has(userId)) evictOldestHsPaintEntry()
     hsPaintCache.set(userId, { spec: null, hash: null })
     return
   }
-  const hash = hashPaintSpec(spec)
-  ensureHsPaintRule(spec, hash)
-  if (!hsPaintCache.has(userId)) evictOldestPaintEntry(hsPaintCache, HS_PAINT_CACHE_MAX)
-  hsPaintCache.set(userId, { spec, hash })
+  // A saved paint renders as its fill upgrade (renderSpecOf) wherever the
+  // composited runtime can actually mount it — moving on the compositor
+  // instead of in steps() — but only there: without the runtime an upgraded
+  // fill is its own still rest frame, and the legacy clip-text at least moves.
+  // Mirrors the site's setPaintEntry (client/chat/paint-cosmetics.js).
+  const shown = canCompositeHsFills() && typeof renderSpecOf === 'function' ? renderSpecOf(spec) : spec
+  const hash = hashPaintSpec(shown)
+  ensureHsPaintRule(shown, hash)
+  if (!hsPaintCache.has(userId)) evictOldestHsPaintEntry()
+  hsPaintCache.set(userId, { spec: shown, hash })
+}
+
+// ── survive a refresh ────────────────────────────────────────────────────────
+// Everything above is in-memory, so a refresh redrew every name plain and then
+// painted them as the first batch answered. The answers are saved (newest 300 of
+// each kind, 7 days) and put back before the first row renders. They are NOT marked
+// fresh (hsResolvedAt stays empty), so each uid still re-resolves on first sight: the
+// saved paint is what shows until the server's answer lands, and a paint that went
+// away (cleared, Plus lapsed) comes off through the usual changed-hash path.
+const HS_PERSIST_KEY = 'hs_cosmetics_v1'
+const HS_PERSIST_MAX = 300
+const HS_PERSIST_TTL = 7 * 24 * 60 * 60 * 1000
+const hsRawSpecs = new Map() // uid -> the spec exactly as the server sent it (positives only)
+let hsPersistTimer = null
+
+function scheduleHsCosmeticSave() {
+  if (hsPersistTimer) return
+  hsPersistTimer = cleanup.setPageTimeout(() => {
+    hsPersistTimer = null
+    const newest = (m, keep) => [...m].filter(keep).slice(-HS_PERSIST_MAX)
+    const blob = {
+      at: Date.now(),
+      paints: newest(hsRawSpecs, ([, v]) => !!v),
+      colors: newest(hsColorCache, ([, v]) => !!v),
+      plus: newest(hsPlusCache, ([, v]) => !!v),
+      badges: newest(hsBadgeCache, ([, v]) => !!v),
+    }
+    try {
+      browser.storage.local.set({ [HS_PERSIST_KEY]: blob }).catch(() => {})
+    } catch (_) {}
+  }, 3000)
+}
+
+async function hydrateHsCosmetics() {
+  try {
+    const blob = (await browser.storage.local.get(HS_PERSIST_KEY))?.[HS_PERSIST_KEY]
+    if (!blob || Date.now() - (blob.at || 0) > HS_PERSIST_TTL) return
+    for (const [uid, color] of blob.colors || []) if (!hsColorCache.has(uid)) setHsColorEntry(uid, color)
+    for (const [uid, since] of blob.plus || []) if (!hsPlusCache.has(uid)) setHsPlusEntry(uid, since)
+    for (const [uid, id] of blob.badges || []) if (!hsBadgeCache.has(uid)) setHsBadgeEntry(uid, id)
+    if (!hsPaintsEnabled()) return
+    for (const [uid, spec] of blob.paints || []) {
+      if (hsPaintCache.has(uid) || !spec || typeof spec !== 'object') continue
+      hsRawSpecs.set(uid, spec)
+      setHsPaintEntry(uid, spec)
+    }
+  } catch (_) {}
 }
 
 /**
@@ -396,11 +632,11 @@ function setHsPaintEntry(userId, spec) {
  */
 function queuePaintLookup(userId) {
   if (!userId) return
-  if (hsPaintCache.has(userId)) return
+  if (hsPaintCache.has(userId) && isHsCosmeticFresh(userId)) return
   if (!hsPaintsEnabled()) return
   if (hsPaintPending.size >= HS_PAINT_PENDING_MAX) return
   hsPaintPending.add(userId)
-  if (!hsPaintBatchTimer) hsPaintBatchTimer = cleanup.setTimeout(flushHsPaintBatch, HS_PAINT_BATCH_DELAY)
+  if (!hsPaintBatchTimer) hsPaintBatchTimer = cleanup.setPageTimeout(flushHsPaintBatch, hsPaintFlushDelay())
 }
 
 /**
@@ -411,10 +647,10 @@ function queuePaintLookup(userId) {
  */
 function queueNameColorLookup(uid) {
   if (!uid) return
-  if (hsColorCache.has(uid)) return
+  if (hsColorCache.has(uid) && isHsCosmeticFresh(uid)) return
   if (hsPaintPending.size >= HS_PAINT_PENDING_MAX) return
   hsPaintPending.add(uid)
-  if (!hsPaintBatchTimer) hsPaintBatchTimer = cleanup.setTimeout(flushHsPaintBatch, HS_PAINT_BATCH_DELAY)
+  if (!hsPaintBatchTimer) hsPaintBatchTimer = cleanup.setPageTimeout(flushHsPaintBatch, hsPaintFlushDelay())
 }
 
 /**
@@ -425,10 +661,10 @@ function queueNameColorLookup(uid) {
  */
 function queuePlusTenureLookup(uid) {
   if (!uid) return
-  if (hsPlusCache.has(uid)) return
+  if (hsPlusCache.has(uid) && isHsCosmeticFresh(uid)) return
   if (hsPaintPending.size >= HS_PAINT_PENDING_MAX) return
   hsPaintPending.add(uid)
-  if (!hsPaintBatchTimer) hsPaintBatchTimer = cleanup.setTimeout(flushHsPaintBatch, HS_PAINT_BATCH_DELAY)
+  if (!hsPaintBatchTimer) hsPaintBatchTimer = cleanup.setPageTimeout(flushHsPaintBatch, hsPaintFlushDelay())
 }
 
 /**
@@ -453,12 +689,13 @@ function primeSelfHsCosmetics(ui) {
     hsPaintPriority.add(id)
   }
   if (hsPaintPriority.size && !hsPaintBatchTimer) {
-    hsPaintBatchTimer = cleanup.setTimeout(flushHsPaintBatch, HS_PAINT_BATCH_DELAY)
+    hsPaintBatchTimer = cleanup.setPageTimeout(flushHsPaintBatch, hsPaintFlushDelay())
   }
 }
 
 async function flushHsPaintBatch() {
   hsPaintBatchTimer = null
+  hsPaintLastFlushAt = Date.now()
   if (!hsPaintPending.size && !hsPaintPriority.size) return
   // Own identities drain first — see hsPaintPriority.
   const { batch, rest } = partitionPaintBatch([...hsPaintPriority, ...hsPaintPending], HS_PAINT_BATCH_SIZE)
@@ -469,11 +706,13 @@ async function flushHsPaintBatch() {
   let paints = null
   let colors = null
   let plus = null
+  let badges = null
   try {
     const resp = await safeSendMessage({ type: 'fetch_paints', userIds: batch })
     if (resp?.paints && typeof resp.paints === 'object') paints = resp.paints
     if (resp?.colors && typeof resp.colors === 'object') colors = resp.colors
     if (resp?.plus && typeof resp.plus === 'object') plus = resp.plus
+    if (resp?.badges && typeof resp.badges === 'object') badges = resp.badges
   } catch (_) {
     paints = null
   }
@@ -484,10 +723,11 @@ async function flushHsPaintBatch() {
   if (colors) {
     const colorChanged = []
     for (const id of batch) {
-      if (!hsColorCache.has(id)) {
-        setHsColorEntry(id, colors[id] || null)
-        if (colors[id]) colorChanged.push(id)
-      }
+      // Was `if (!hsColorCache.has(id))` — a refresh could never update a
+      // colour that had already resolved once.
+      const prev = hsColorCache.get(id) ?? null
+      setHsColorEntry(id, colors[id] || null)
+      if ((hsColorCache.get(id) ?? null) !== prev) colorChanged.push(id)
     }
     if (colorChanged.length && typeof updateHsColorsInPlace === 'function') updateHsColorsInPlace(colorChanged)
   }
@@ -498,12 +738,29 @@ async function flushHsPaintBatch() {
   if (plus) {
     const plusChanged = []
     for (const id of batch) {
-      if (!hsPlusCache.has(id)) {
-        setHsPlusEntry(id, plus[id] || null)
-        if (plus[id]) plusChanged.push(id)
-      }
+      const prev = hsPlusCache.get(id) ?? null
+      setHsPlusEntry(id, plus[id] || null)
+      // Reports a tenure that went AWAY as well as one that arrived — a lapsed
+      // membership has to take its token back off.
+      if ((hsPlusCache.get(id) ?? null) !== prev) plusChanged.push(id)
     }
     if (plusChanged.length && typeof applyHsPlusTenureToVisible === 'function') applyHsPlusTenureToVisible(plusChanged)
+  }
+
+  // The heatsync badge rides the same response (badges.js). An older server
+  // sends no `badges` map at all, in which case nobody has one. Placed by the
+  // same pass as the plus mark, which also covers a badge that went away.
+  if (badges || plus) {
+    const badgeChanged = []
+    for (const id of batch) {
+      const prev = hsBadgeCache.get(id) ?? null
+      setHsBadgeEntry(id, badges?.[id])
+      if ((hsBadgeCache.get(id) ?? null) !== prev) badgeChanged.push(id)
+    }
+    if (badgeChanged.length && typeof applyHsPlusTenureToVisible === 'function')
+      applyHsPlusTenureToVisible(badgeChanged)
+    // the flame steps aside for a badge (name-marks-data.js), and comes back when it goes
+    if (badgeChanged.length && typeof hsMarksRepaint === 'function') hsMarksRepaint(new Set(badgeChanged))
   }
 
   if (paints) {
@@ -515,8 +772,19 @@ async function flushHsPaintBatch() {
     const changed = []
     for (const id of batch) {
       if (Object.hasOwn(paints, id)) {
+        // Compare against what we had: truthiness alone cannot see a paint
+        // that went AWAY (cleared, or its Plus lapsed), which is exactly the
+        // case that left a dead paint on screen. A first-time "no paint" still
+        // reports no change — every plain chatter resolves that way.
+        const prevHash = hsPaintCache.get(id)?.hash ?? null
         setHsPaintEntry(id, paints[id])
-        if (paints[id]) changed.push(id)
+        if (paints[id]) {
+          hsRawSpecs.delete(id) // re-insert last: the newest-300 cut keeps what was seen most recently
+          hsRawSpecs.set(id, paints[id])
+          if (hsRawSpecs.size > HS_PERSIST_MAX * 2) hsRawSpecs.delete(hsRawSpecs.keys().next().value)
+        } else hsRawSpecs.delete(id)
+        hsResolvedAt.set(id, Date.now())
+        if ((hsPaintCache.get(id)?.hash ?? null) !== prevHash) changed.push(id)
       } else {
         hsPaintPending.add(id)
       }
@@ -528,8 +796,9 @@ async function flushHsPaintBatch() {
     for (const id of batch) hsPaintPending.add(id)
   }
 
+  if (paints || colors || plus || badges) scheduleHsCosmeticSave()
   if ((hsPaintPending.size > 0 || hsPaintPriority.size > 0) && !hsPaintBatchTimer) {
-    hsPaintBatchTimer = cleanup.setTimeout(flushHsPaintBatch, HS_PAINT_BACKLOG_DELAY)
+    hsPaintBatchTimer = cleanup.setPageTimeout(flushHsPaintBatch, HS_PAINT_BACKLOG_DELAY)
   }
 }
 
@@ -539,7 +808,7 @@ async function flushHsPaintBatch() {
  * cached for `userId` — the caller falls back to its existing 7TV/plain-color
  * rendering unchanged. Returns `{ cls, html, splitAttr }` when one is active:
  * `cls` goes on the element's class list, `html` replaces the escaped-name
- * text (already letter-split + escaped when the spec needs it), `splitAttr`
+ * text (already in whatever span shape the spec needs, escaped), `splitAttr`
  * is a ready-to-splice ` data-hs-paint-split="1"` marker so a later in-place
  * repaint (updateHsPaintsInPlace) doesn't re-split already-split text.
  */
@@ -547,13 +816,68 @@ function hsPaintRender(userId, rawText) {
   if (!userId) return null
   const cls = getHsPaintClass(userId)
   if (!cls) return null
+  hsAnyPaintedNameSeen = true
   const spec = getHsPaintSpec(userId)
-  const needsSplit = paintNeedsLetterSplit(spec)
   return {
     cls,
-    html: needsSplit ? splitHsLettersHtml(rawText) : escapeHtml(rawText),
-    splitAttr: needsSplit ? ' data-hs-paint-split="1"' : '',
+    html: hsPaintNameHtml(rawText, spec),
+    splitAttr: paintMarkupMode(spec) === 'none' ? '' : ' data-hs-paint-split="1"',
   }
+}
+
+/**
+ * The chatter's own name colour as a custom property declaration, for a
+ * painted name. A paint owns the fill, so a painted name carries no inline
+ * `color` (it would beat the class's `color:transparent`); a paint with an
+ * underlay still shows the chatter's colour through its transparent stops,
+ * reading `var(--hs-name-c,#ffffff)`. Accepts a hex colour or the
+ * `rgb()` form a browser serialises an inline colour back as; anything else
+ * yields '' so nothing can ride into the style attribute.
+ * Mirrors names/name-el.js NAME_COLOUR_VAR on the site, including its floor: a
+ * colour under 3:1 against the chat background is lifted to it, because the
+ * site's paint validator scores an underlay against exactly that. The bound is
+ * UNDERLAY_NAME_MIN_LUM from lib/paint-core.js (PAINT_MIN_CONTRAST over
+ * PAINT_BG), the one the validator derives its scoring grey from. This file's
+ * own readableNames boost is not enough: it measures gamma-space luminance,
+ * which lets #404040 through.
+ */
+const HS_NAME_COLOUR_RE =
+  /^(?:#[0-9a-f]{3,4}|#[0-9a-f]{6}|#[0-9a-f]{8}|rgba?\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*(?:,\s*(?:0|1|0?\.\d+)\s*)?\))$/i
+const hsLinear = (v) => ((v /= 255) <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)
+const hsLum = ([r, g, b]) => 0.2126 * hsLinear(r) + 0.7152 * hsLinear(g) + 0.0722 * hsLinear(b)
+/** `c` (already shape-checked) as [r,g,b], alpha dropped. */
+function hsRgbOf(c) {
+  if (c[0] !== '#')
+    return c
+      .match(/\d+/g)
+      .slice(0, 3)
+      .map((n) => Math.min(255, Number(n)))
+  const h = c.length <= 5 ? c.slice(1, 4).replace(/./g, '$&$&') : c.slice(1, 7)
+  return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16))
+}
+/** Mix toward white until the colour clears the floor; the colour itself, in
+ *  the spelling it came in, when it already does. */
+function hsLiftToFloor(c) {
+  const rgb = hsRgbOf(c)
+  if (hsLum(rgb) >= UNDERLAY_NAME_MIN_LUM - CONTRAST_EPS) return c
+  let lo = 0
+  let hi = 1
+  for (let i = 0; i < 16; i++) {
+    const mid = (lo + hi) / 2
+    if (hsLum(rgb.map((v) => v + (255 - v) * mid)) >= UNDERLAY_NAME_MIN_LUM - CONTRAST_EPS) hi = mid
+    else lo = mid
+  }
+  return `#${rgb
+    .map((v) =>
+      Math.ceil(v + (255 - v) * hi)
+        .toString(16)
+        .padStart(2, '0'),
+    )
+    .join('')}`
+}
+function hsNameColourDecl(colour) {
+  const c = typeof colour === 'string' ? colour.trim() : ''
+  return HS_NAME_COLOUR_RE.test(c) ? `--hs-name-c:${hsLiftToFloor(c)};` : ''
 }
 
 /** In-place DOM application shared by updateHsPaintsInPlace (main.js) — adds
@@ -568,11 +892,16 @@ function applyHsPaintToElement(el, userId) {
   const cls = getHsPaintClass(userId)
   const spec = getHsPaintSpec(userId)
   if (!cls || !spec) return
+  hsAnyPaintedNameSeen = true
   if (!el.classList.contains(cls)) {
     for (const c of [...el.classList]) {
       if (c.startsWith('hsp-')) el.classList.remove(c)
     }
     el.classList.add(cls)
+    // A different spec can want a different markup SHAPE. The split marker
+    // records "already shaped", so keeping it across a spec change froze the
+    // name in the previous spec's markup.
+    delete el.dataset.hsPaintSplit
   }
   // Preserve any already-stamped mount time across the style-attribute clear
   // below — a second resolution of the same uid on an already-painted element
@@ -580,16 +909,37 @@ function applyHsPaintToElement(el, userId) {
   // already-mounted copy out of sync with its siblings (lib/paint-spec.js
   // syncDelayCalc folds --hsp-t onto every compiled animation's cycle).
   const existingPhase = el.style ? el.style.getPropertyValue('--hsp-t') : ''
+  // Same for the name colour: the style clear below would take it, and an
+  // underlay needs it. Read from the inline colour a prior render or a 7TV
+  // paint wrote, or the property an earlier paint pass already kept.
+  const keptColour = el.style
+    ? el.style.color || el.style.getPropertyValue('color') || el.style.getPropertyValue('--hs-name-c')
+    : ''
   if (el.hasAttribute('style')) el.removeAttribute('style')
   // Belt-and-suspenders against any future race that hands us an element
   // whose text was already cleared/moved by something else (e.g. a nested-
   // anchor DOM-correction, a mid-flight rebuild): splitting '' is a silent
   // no-op that would still mark the node as "split" and leave it permanently
   // blank. Never touch innerHTML when there's no text to split.
-  if (paintNeedsLetterSplit(spec) && !el.dataset.hsPaintSplit && el.textContent) {
-    el.innerHTML = splitHsLettersHtml(el.textContent)
-    el.dataset.hsPaintSplit = '1'
+  // ── THE NAME BOX IS NOT OPTIONAL ──────────────────────────────────────────
+  // Every compiled rule addresses `.hsp-<hash>>.hs-name`, so an element
+  // carrying the class with no box under it paints nothing. This asked
+  // paintNeedsSpans — a DIFFERENT question, "does it need one span per LETTER"
+  // — which is false for a solid or gradient paint, i.e. most of them. Asking
+  // whether the box is THERE is also idempotent in a way the marker was not:
+  // after the first write the child exists and every later pass skips it.
+  const mode = paintMarkupMode(spec)
+  const boxed = el.firstElementChild && el.firstElementChild.classList.contains(NAME_BOX_CLASS)
+  const shaped = mode === 'none' || el.dataset.hsPaintSplit
+  if ((!boxed || !shaped) && el.textContent) {
+    el.innerHTML = hsPaintNameHtml(el.textContent, spec)
+    if (mode === 'none') delete el.dataset.hsPaintSplit
+    else el.dataset.hsPaintSplit = '1'
   }
+  // The fill moves off the repaint path only if every glyph has a letterform
+  // to be masked by. Asked after shaping, because it reads the spans (or box)
+  // that just got (re)built.
+  if (hsCompositedPaintClasses.has(cls)) applyHsGlyphMasks(el, hsCompositedPaintClasses.get(cls))
   // Mount stamp for phase-locking — restore the preserved value, or stamp a
   // fresh one for an element that never had one (in-place resolve, hover-
   // freeze repaint, restored history; a synchronous render-path element
@@ -597,29 +947,643 @@ function applyHsPaintToElement(el, userId) {
   // idempotent for it too).
   if (el.style) {
     el.style.setProperty('--hsp-t', existingPhase || paintPhaseNow())
+    const kept = hsNameColourDecl(keptColour)
+    if (kept) el.style.setProperty('--hs-name-c', kept.slice('--hs-name-c:'.length, -1))
+  }
+  // The class swap and the letter-split above both change how many animations
+  // this name runs, which is the dial's unit.
+  invalidateHsPaintMeasurement(el)
+  anchorSoon(el)
+  // Freshly painted, so gate it now instead of waiting for the next scroll.
+  scheduleHsPaintSweep(true)
+}
+
+// ── the composited fill's runtime half ──────────────────────────────────────
+//
+// Mirrors client/chat/paint-cosmetics.js's own composited-fill section. The
+// compiler (lib/paint-spec.js) emits the masked rules behind MASKED_CLASS;
+// this is what decides a name has earned it — mounting the letterform masks
+// (lib/glyph-mask.js) and the moving fill boxes (lib/fill-layers.js) onto the
+// name it was compiled for. Everything here is best-effort by design: a
+// browser without mask-image, a webfont still loading, a glyph the masker
+// refuses — any of them just leaves the gate class off, and the name renders
+// exactly as it did before this existed (its clip-text rest frame).
+
+setLoggerOnGlyphMask()
+function setLoggerOnGlyphMask() {
+  // Injected, not imported — glyph-mask.js is a leaf synced verbatim from the
+  // site (scripts/sync-paint-compiler.sh) and takes its logger only through
+  // setLogger. `log` is the multichat-wide logger (bootstrap.js), a bare
+  // function rather than an object, hence the tiny adapter. Guarded: a
+  // standalone import of this module in a test has neither binding.
+  if (typeof setLogger === 'function' && typeof log === 'function') {
+    setLogger({ debug: (...args) => log(...args) })
   }
 }
 
+/** hypot() sizes a spinning layer's square; an engine without it would drop
+ * the width, and a zero-size box under the mask is a name with no fill at
+ * all. Asked once. */
+let hsFillLayersSupported = null
+function canMountHsFillLayers() {
+  if (hsFillLayersSupported === null) {
+    hsFillLayersSupported =
+      typeof CSS !== 'undefined' &&
+      typeof CSS.supports === 'function' &&
+      CSS.supports('width', 'calc(hypot(1px, 1px) * 2)')
+  }
+  return hsFillLayersSupported
+}
+
+/** Whether a `fill`'s motion can render here at all — mask-image support and
+ * the geometry the boxes are sized with. Exported so setHsPaintEntry can
+ * decide whether a saved paint's fill-upgrade (renderSpecOf) is worth taking:
+ * without the runtime, an upgraded fill is its own still rest frame, and the
+ * legacy clip-text at least moves. */
+function canCompositeHsFills() {
+  return typeof supported === 'function' && supported() && canMountHsFillLayers()
+}
+
+/** The span box every painted name shares, measured once. A per-row
+ * getComputedStyle on the firehose is the cost this whole change exists to
+ * avoid paying, so it is read on the first masked name and reused. Dropped
+ * whenever the masks are (webfont landing, mode change). */
+let hsGlyphBox = null
+
+function readHsGlyphBox(el) {
+  if (typeof getComputedStyle !== 'function') return null
+  const cs = getComputedStyle(el)
+  // `font` is the shorthand the canvas wants, but it comes back empty in some
+  // engines — rebuild it from the longhands rather than rasterise with a
+  // default face, which would mask every glyph with the wrong letterform.
+  const font = cs.font || `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize}/${cs.lineHeight} ${cs.fontFamily}`.trim()
+  const h = parseFloat(cs.height) || parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.5
+  if (!font || !(h > 0)) return null
+  // The EXACT ratio, capped — a resampled letterform is a soft one, and a 4x
+  // phone rasterising four times the pixels buys nothing visible at 13px.
+  return { font, h, dpr: hsGlyphDpr() }
+}
+
+/** The ratio masks are rastered at, capped: a 4x phone buys nothing visible at 13px. */
+function hsGlyphDpr() {
+  return Math.min(3, Math.max(1, (typeof window !== 'undefined' && window.devicePixelRatio) || 1))
+}
+
+/** The composited plan for whatever `hsp-` class `el` wears, or undefined. */
+function hsPlanFor(el) {
+  if (!el?.classList) return undefined
+  for (const c of el.classList) {
+    if (c.startsWith('hsp-')) return hsCompositedPaintClasses.get(c)
+  }
+  return undefined
+}
+
+/** Mount the composited fill on one painted name, if its paint has one and
+ * everything it needs is here. Best-effort: any refusal leaves the clip-text
+ * rest frame, never a half-masked name. */
+function applyHsGlyphMasks(el, plan) {
+  if (!plan || typeof supported !== 'function' || !supported()) return
+  // The legacy per-glyph sweep and the `fill` block are two different
+  // populations (see HS_LEGACY_FILL_PLAN) — only the latter needs the full
+  // canCompositeHsFills gate (mask-image AND the layer-sizing geometry).
+  if (plan.legacy ? false : !canCompositeHsFills()) return
+  const box = el?.querySelector?.(`.${NAME_BOX_CLASS}`)
+  if (!box || box.classList.contains(MASKED_CLASS)) return
+  const probe = box.querySelector?.(':scope > span') || box
+  // The cached box carries the dpr its masks are rastered at: page zoom changes
+  // it, and a mask drawn at 1x on a 3x screen is a soft letterform.
+  if (hsGlyphBox && hsGlyphBox.dpr !== hsGlyphDpr()) hsGlyphBox = null
+  if (!hsGlyphBox) hsGlyphBox = readHsGlyphBox(probe)
+  if (!hsGlyphBox) return
+  const geom = hsGlyphBox
+  // A CLASS, not an inline url() — the bytes live once in the mask sheet
+  // (lib/glyph-mask.js); a copy per span would move the cost into style
+  // recalc instead of removing the repaint this exists to remove.
+  if (!mountFillLayers(box, plan, { maskedClass: MASKED_CLASS, ...geom, maskFor, maskForText })) return
+  // The fill layers' animations start HERE, not with the row — anchor the host
+  // so the name, its glyphs and these fills run on one clock (as the site does).
+  anchorSoon(el)
+}
+
+/** Test seam — the real call sites (discoverHsPaintedNames, applyHsPaintToElement)
+ * only ever reach this through an already-cached hsp- class, which a test has
+ * no easy way to fabricate; this lets a test drive the mount directly against
+ * a plan it built with compositedFillPlan. */
+function _applyHsGlyphMasksForTests(el, plan) {
+  applyHsGlyphMasks(el, plan)
+}
+
+/** Drop every mounted fill's boxes + mask gate, without rebuilding them.
+ * A composited fill only costs anything while it is actually compositing, so
+ * keeping the mask/layers mounted while data-hs-paint-anim="never" freezes
+ * every animation is pure overhead for zero visual gain — the paint still
+ * reads correctly off its clip-text rest frame underneath. Cheap to reverse:
+ * hsCompositedPaintClasses (what each hsp- class is entitled to) never
+ * changes with the mode, so remountAllHsFillLayers rebuilds from it exactly. */
+function unmountAllHsFillLayers() {
+  for (const box of [...document.querySelectorAll(`.${NAME_BOX_CLASS}.${MASKED_CLASS}`)]) {
+    unmountFillLayers(box, MASKED_CLASS)
+  }
+}
+
+/** Unmount + remount every currently-masked fill, against whatever plan its
+ * host still carries. Used when webfonts land — every mask was drawn against
+ * the wrong face — and when paint-anim flips back to 'always' after
+ * unmountAllHsFillLayers dropped them. */
+function remountAllHsFillLayers() {
+  hsGlyphBox = null
+  const boxes = new Set()
+  for (const el of document.querySelectorAll(`.${NAME_BOX_CLASS}.${MASKED_CLASS}`)) boxes.add(el)
+  for (const box of boxes) {
+    unmountFillLayers(box, MASKED_CLASS)
+    const host = box.parentElement
+    const plan = host && hsPlanFor(host)
+    if (plan) applyHsGlyphMasks(host, plan)
+  }
+}
+
+// Webfonts landed: every mask was drawn with the wrong face. Guarded exactly
+// like setLoggerOnGlyphMask above — a standalone import has neither binding.
+if (typeof setOnReady === 'function') setOnReady(remountAllHsFillLayers)
+
+// Page zoom changes devicePixelRatio and fires `resize`. Masks already mounted
+// were drawn for the old ratio; redraw them when it differs.
+let hsGlyphDprSeen = hsGlyphDpr()
+function hsGlyphDprChanged() {
+  const d = hsGlyphDpr()
+  if (d === hsGlyphDprSeen) return
+  hsGlyphDprSeen = d
+  remountAllHsFillLayers()
+}
+if (typeof cleanup !== 'undefined' && typeof cleanup.addEventListener === 'function') {
+  cleanup.addEventListener(window, 'resize', hsGlyphDprChanged, { passive: true })
+}
+
+// ── the crowd dial ──────────────────────────────────────────────────────────
+//
+// The compiler already emits `body.hs-paint-chunky` / `body.hs-paint-chunkier`
+// timing overrides beside every animation it writes (lib/paint-core.js
+// CROWD_TIERS, lib/scene-spec.js crowdTierRules) — and until this existed
+// NOTHING in the overlay ever put either class on <body>. Every one of those
+// rules was unreachable, so ext paints ran at FULL rate at any crowd size while
+// the site they mirror has coarsened since 8839cd015. The compiler half was
+// mirrored (scripts/sync-paint-compiler.sh, four byte-identical files); the
+// runtime half lives in the site's client/chat/paint-cosmetics.js, which is a
+// port rather than a mirror, and the port never carried the dial across.
+//
+// What it does: when a lot is moving at once, EVERYTHING moves in coarser steps
+// instead of anything stopping. One class flip retimes every painted name and
+// every scene plane on the page together. Not a divisor on the period — same
+// speed, fewer redraws.
+//
+// The site's mobile animation shed (PAINT_ANIMATION_BUDGET, newest-N floor) is
+// deliberately NOT ported: it early-returns on desktop there, and a multichat
+// overlay is a desktop surface. The dial is the half that runs on both.
+
+/** el → its last-measured weight. `getAnimations({subtree:true})` walks the
+ * whole descendant tree, and this pass runs over every visible name on each
+ * dial frame — on the site that exact call once sat on the critical path a
+ * keystroke's paint was queued behind. A name's live-animation count is fixed
+ * by its spec's layer/letter-span shape, not by scroll position, so it only
+ * needs remeasuring when that markup is rebuilt. */
+const hsWeightCache = new WeakMap()
+
+/** The visible painted names, maintained by the viewport gate below — the same
+ * entries it already partitions, so the dial costs no extra observation. */
+const hsVisiblePainted = new Set()
+let hsDialScheduled = false
+
+/**
+ * The thresholds, read LAZILY and written as a product of the compiler's own
+ * per-name cap.
+ *
+ * A product, never literals: both times the site's dial drifted it was because
+ * a literal stood in for the product and the unit moved underneath it. 3 full
+ * names to chunky, 6 to chunkier — the site's numbers, because the CSS they
+ * switch is the same compiled CSS.
+ *
+ * Lazy + guarded because MAX_ANIMATED_LAYERS is a bundle-scope free variable
+ * (build.js concatenates lib/paint-spec.js ahead of this file). A standalone
+ * `import` of this module in a test has no such binding, and the honest
+ * degradation is NO dial — today's behaviour — rather than NaN thresholds that
+ * would silently never engage while looking like they had.
+ */
+function hsCrowdThresholds() {
+  const full = typeof MAX_ANIMATED_LAYERS === 'number' ? MAX_ANIMATED_LAYERS : 0
+  if (!(full > 0)) return null
+  return { chunky: 3 * full, chunkier: 6 * full }
+}
+
+/**
+ * How many live CSS animations this one name is responsible for — itself plus
+ * every descendant (letter spans, scene ::before/::after planes).
+ *
+ * Count EFFECTS, not animation instances. A letter-split paint puts the same
+ * fill animation on one span per glyph, so counting instances charges a name by
+ * how many LETTERS it has — the glyphs partition the name, they do not multiply
+ * it. That bug tripped the site's dial at three names instead of six.
+ *
+ * `hsq_` animations are skipped: a composited transform on a promoted layer is
+ * a GPU quad blit, not a main-thread repaint, and charging one a unit each would
+ * put a scene name at nine instead of three.
+ *
+ * Zero is a real answer and is NOT cached — it is also what an element reports
+ * before its animations have started, and this first runs inside a rAF.
+ */
+function hsAnimatingWeight(el) {
+  const cached = hsWeightCache.get(el)
+  if (cached !== undefined) return cached
+  const composited = typeof COMPOSITED_ANIM_PREFIX === 'string' ? COMPOSITED_ANIM_PREFIX : ''
+  let weight = 0
+  if (typeof el.getAnimations === 'function') {
+    try {
+      const effects = new Set()
+      for (const a of el.getAnimations({ subtree: true })) {
+        const n = a?.animationName
+        if (typeof n !== 'string') {
+          weight++
+          continue
+        } // no identity to fold on
+        if (composited && n.startsWith(composited)) continue
+        effects.add(n)
+      }
+      weight += effects.size
+    } catch {
+      weight = 0
+    }
+  }
+  if (weight > 0) hsWeightCache.set(el, weight)
+  return weight
+}
+
+/** Forget what this element measured. Called wherever the paint markup is
+ * rewritten or removed — the two events that change the animation count. */
+function invalidateHsPaintMeasurement(el) {
+  if (el) hsWeightCache.delete(el)
+}
+
+/** Sum the visible weight and set the tier. Detached names are dropped here
+ * rather than by a separate reaper: this walk already visits every one. */
+function applyHsCrowdDial() {
+  const t = hsCrowdThresholds()
+  const cls = typeof document !== 'undefined' ? document.body?.classList : null
+  if (!t || !cls) return
+  let weight = 0
+  for (const el of hsVisiblePainted) {
+    if (!el.isConnected) {
+      hsVisiblePainted.delete(el)
+      continue
+    }
+    weight += hsAnimatingWeight(el)
+  }
+  cls.toggle('hs-paint-chunky', weight > t.chunky && weight <= t.chunkier)
+  cls.toggle('hs-paint-chunkier', weight > t.chunkier)
+}
+
+/** One dial pass per frame. Visibility changes arrive in bursts while a pane
+ * scrolls, and the tier is one decision about the whole page. */
+function scheduleHsCrowdDial() {
+  if (hsDialScheduled || typeof requestAnimationFrame !== 'function') return
+  hsDialScheduled = true
+  requestAnimationFrame(() => {
+    hsDialScheduled = false
+    applyHsCrowdDial()
+  })
+}
+
+/** Test seams. The thresholds are a product and the weight is its unit, so both
+ * are worth asserting directly rather than only through which tier lands. */
+function _hsCrowdThresholdsForTests() {
+  return hsCrowdThresholds()
+}
+/** The real visible set, so a test can drive the SHIPPING observer source into
+ *  it and then read the tier off the SHIPPING dial — rather than proving the
+ *  governor against a set nothing in production writes. */
+function _hsVisiblePaintedForTests() {
+  return hsVisiblePainted
+}
+function _hsAnimatingWeightForTests(el) {
+  return hsAnimatingWeight(el)
+}
+function _resetHsCrowdDialForTests() {
+  hsVisiblePainted.clear()
+  hsDialScheduled = false
+  document.body?.classList?.remove('hs-paint-chunky', 'hs-paint-chunkier')
+}
+
+// ── viewport gate ───────────────────────────────────────────────────────────
+
+/** Targets handed to the observer, so a sweep can skip them and drop the
+ * detached ones — an IntersectionObserver holds its targets strongly and a
+ * multichat pane trims to 100 rows continuously. */
+const hsObservedNames = new Set()
+let hsVisibilityObserver = null
+let hsSweepScheduled = false
+
+function ensureHsVisibilityObserver() {
+  if (hsVisibilityObserver || typeof IntersectionObserver !== 'function') return hsVisibilityObserver
+  // No root: the gate should hold for whichever pane is scrolling without this
+  // module knowing which container a name lives in. The margin keeps a screen
+  // of rows warm either side so a scroll never uncovers a frozen name.
+  hsVisibilityObserver = new IntersectionObserver(
+    (entries) => {
+      // The class alone is not enough. `animation-play-state:paused` freezes
+      // currentTime and resuming ticks on from the frozen value — the negative
+      // `animation-delay` that phase-locks the paint is consumed once, at
+      // start, and never re-read. So a name came back offset by exactly how
+      // long it had been scrolled away, and after a few scrolls every copy of
+      // one paint ran on its own timing. regateInPhase (lib/animation-phase.js,
+      // the site's, byte for byte) records startTime before the pause and
+      // writes the phase back before the release, so the restore is exact and
+      // an `alternate` plane's direction comes back with it.
+      const pause = []
+      const resume = []
+      for (const entry of entries) (entry.isIntersecting ? resume : pause).push(entry.target)
+      // The crowd dial reads exactly this partition — the tier is about what is
+      // ON SCREEN, and a paused offscreen name costs nothing to coarsen.
+      for (const el of resume) hsVisiblePainted.add(el)
+      for (const el of pause) hsVisiblePainted.delete(el)
+      scheduleHsCrowdDial()
+      regateInPhase(
+        { pause, resume },
+        {
+          onPause: (el) => el.classList.add('hs-mc-idle'),
+          onResume: (el) => el.classList.remove('hs-mc-idle'),
+        },
+      )
+    },
+    { rootMargin: '150% 0px' },
+  )
+  return hsVisibilityObserver
+}
+
+/**
+ * Put every painted name currently in the overlay under the viewport gate.
+ *
+ * A sweep rather than a hook on each render path: rows are built as HTML
+ * strings with the paint class already in them (hsPaintRender), so a hook
+ * would have to be added at every construction site and would still miss the
+ * next one. An element the sweep has not reached simply animates — the
+ * behaviour that shipped before this — so missing one degrades to the status
+ * quo and can never break a paint.
+ */
+/**
+ * Strip OUR paint off an element, restoring the plain name.
+ *
+ * Deliberately NOT folded into applyHsPaintToElement: that one is also called
+ * from the render path and from the kick/yt fallback lane, where "no spec for
+ * this uid" is the normal case and must stay a no-op — clearing there would
+ * let a namespaced uid wipe a paint the row's primary uid had already applied.
+ * Only updateHsPaintsInPlace, which knows a uid was actually cleared, calls it.
+ *
+ * The hsp- class is the marker of ownership, so a name we never painted (or a
+ * 7TV paint, which owns its own inline style) is left untouched.
+ */
+function clearHsPaintFromElement(el) {
+  if (!el?.classList) return
+  const ours = [...el.classList].filter((c) => c.startsWith('hsp-'))
+  if (!ours.length) return
+  for (const c of ours) el.classList.remove(c)
+  // The paint is what was animating; whatever this name weighs now, it is not
+  // what the dial last measured.
+  invalidateHsPaintMeasurement(el)
+  if (el.dataset.hsPaintSplit) {
+    // Assigning the plain text back collapses the per-letter spans in one
+    // step, leaving the name exactly as it started. Via a local so it reads as
+    // "replace the children with this text" rather than a self-assignment.
+    const plain = el.textContent
+    el.textContent = plain
+    delete el.dataset.hsPaintSplit
+  }
+  if (el.style) {
+    el.style.removeProperty('--hsp-t')
+    el.style.removeProperty('--hs-name-c')
+  }
+}
+
+/**
+ * A live cosmetic change arrived for these uids (background.js forwards the
+ * server's `cosmetic:changed` push as `cosmetic_changed`). Drop what we cached
+ * and re-resolve, so an open chat updates without a reload.
+ *
+ * Only uids THIS PANE HAS ALREADY RESOLVED are re-queued. The push is a
+ * broadcast to every connected client, so re-fetching blindly would have every
+ * open chat pull cosmetics for someone it has never displayed. A cached
+ * NEGATIVE counts as resolved — that is what makes a user's FIRST paint appear
+ * live.
+ *
+ * @param {string[]} ids paint-space uids that changed
+ * @returns {string[]} the uids actually re-queued
+ */
+function invalidateHsCosmetics(ids) {
+  const list = Array.isArray(ids) ? ids : [ids]
+  const known = []
+  for (const raw of list) {
+    if (!raw) continue
+    const id = String(raw)
+    if (!hsPaintCache.has(id) && !hsColorCache.has(id) && !hsPlusCache.has(id)) continue
+    known.push(id)
+  }
+  if (!known.length) return []
+
+  markHsCosmeticsStale(known)
+  for (const id of known) {
+    queuePaintLookup(id)
+    queueNameColorLookup(id)
+    queuePlusTenureLookup(id)
+  }
+  return known
+}
+
+// Minimum gap between DISCOVERY passes driven by scrolling. Discovery is a
+// `[class*=]` query, the one selector form no browser index can serve — it is a
+// full document tree walk. Running it per animation frame for the whole
+// duration of every scroll (on someone else's React page, with our own listener
+// in the capture phase so it hears every pane) made it the most expensive
+// recurring work in the extension.
+//
+// A 250ms bound is invisible: the observer's rootMargin already keeps a screen
+// of rows warm either side, so a name cannot scroll into view inside the gap
+// and find itself ungated. Freshly painted elements bypass the bound entirely.
+const HSP_DISCOVER_MIN_MS = 250
+let hsLastDiscoverAt = 0
+let hsSweepForced = false
+
+// Sticky — never reset. A paint's own render path (hsPaintRender for
+// HTML-string rows, applyHsPaintToElement for the direct-DOM path) flips
+// this the moment a paint actually exists anywhere, overlay or not (7TV
+// chat-logs pages render painted names without an overlay ever mounting).
+// Discovery below skips its full-document walk until this is true, so a
+// pane with zero painted names doesn't pay it every scroll frame — and
+// because the flag is set at paint-render time rather than by discovery
+// itself, an unforced sweep can never be the only path that would have
+// set it, which is what would starve discovery permanently.
+let hsAnyPaintedNameSeen = false
+
+/** Drop targets that left the DOM. An IntersectionObserver holds its targets
+ * strongly and a pane trims rows continuously, so this is what stops the set
+ * from pinning detached nodes. Bounded by the observed count — no DOM query. */
+function reapHsObservedNames(io) {
+  for (const el of hsObservedNames) {
+    if (!el.isConnected) {
+      io.unobserve(el)
+      hsObservedNames.delete(el)
+      hsVisiblePainted.delete(el)
+      invalidateHsPaintMeasurement(el)
+    }
+  }
+}
+
+// A name's `--hsp-t` stamp lands it within a frame of the shared clock; the frame
+// that actually starts its animations (a history hydrate is one long one, a
+// live message a short one) is its leftover error — and it is paid again every
+// time a name is rebuilt in place. That put an author and a mention of the same
+// person on different phases. Every new or rebuilt painted name goes through
+// here: one microtask batch, one style flush, then a seek to the wall clock.
+const hsPendingAnchor = new Set()
+function anchorSoon(el) {
+  if (!el?.style?.getPropertyValue('--hsp-t') || typeof anchorWhenStarted !== 'function') return
+  hsPendingAnchor.add(el)
+  if (hsPendingAnchor.size > 1) return
+  queueMicrotask(() => {
+    const els = [...hsPendingAnchor]
+    hsPendingAnchor.clear()
+    anchorWhenStarted(els.filter((e) => e.isConnected))
+  })
+}
+
+/** Find painted names we aren't watching yet. Rows built as HTML strings carry
+ * their hsp- class inline (hsPaintRender) and never pass through
+ * applyHsPaintToElement, so there is no element handle to observe at creation
+ * time — they can only be discovered by query. */
+function discoverHsPaintedNames(io) {
+  hsLastDiscoverAt = Date.now()
+  for (const el of document.querySelectorAll('[class*="hsp-"]')) adoptHsPaintedName(el, io)
+}
+
+/** First sight of a painted name: put it on the clock, give it its composited
+ * fill and its viewport gate. A no-op for one already adopted. */
+function adoptHsPaintedName(el, io) {
+  if (hsObservedNames.has(el)) return
+  hsObservedNames.add(el)
+  anchorSoon(el)
+  // A renderer that had the paint cached baked the class straight into its
+  // HTML (hsPaintRender) and never went through applyHsPaintToElement, so
+  // first sight here is the only place such a row can be given its
+  // composited fill.
+  const plan = hsPlanFor(el)
+  if (plan) applyHsGlyphMasks(el, plan)
+  io.observe(el)
+}
+
+// ── a started animation is the moment a phase is decided ────────────────────
+//
+// Discovery above runs on scroll, and an HTML-built row is invisible to
+// everything else. A pane that is not scrolling — held still under the cursor,
+// or scrolled up reading — still takes new rows, and none of them were ever
+// anchored or gated: each kept the error of the frame that mounted it (117 to
+// 508ms measured live, every copy on its own phase) until the reader happened
+// to scroll. Any animation restart had the same hole — a re-inserted node, a
+// rebuilt mention — because a stamp only lands right on an animation that
+// starts the instant it was written.
+//
+// `animationstart` is that instant, for every one of these, whatever put the
+// name on the page. A painted name is adopted the first time one of its
+// animations starts, and re-anchored every time one restarts.
+//
+// Collected per frame: each event is its own callback with a microtask
+// checkpoint after it, and a name starts a dozen animations at once — handing
+// each to anchorSoon would flush style once per animation. Animation events are
+// sent before the frame's rAF callbacks, so the batch still lands this frame.
+const hsStartedHosts = new Set()
+function onHsAnimationStart(e) {
+  if (typeof e.animationName !== 'string' || !e.animationName.startsWith('hs')) return
+  const host = e.target instanceof Element ? e.target.closest('[class*="hsp-"]') : null
+  if (!host) return
+  hsStartedHosts.add(host)
+  if (hsStartedHosts.size > 1) return
+  requestAnimationFrame(() => {
+    const io = ensureHsVisibilityObserver()
+    for (const el of hsStartedHosts) {
+      if (!el.isConnected) continue
+      if (io && !hsObservedNames.has(el)) adoptHsPaintedName(el, io)
+      else anchorSoon(el)
+    }
+    hsStartedHosts.clear()
+  })
+}
+
+function sweepHsPaintedNames(force) {
+  const io = ensureHsVisibilityObserver()
+  if (!io) return
+  reapHsObservedNames(io)
+  // Nothing has ever painted — skip the full-document walk. `force` (a paint
+  // just landed) always bypasses this, so the gate can't outlive its reason.
+  if (!force && !hsAnyPaintedNameSeen) return
+  if (force || Date.now() - hsLastDiscoverAt >= HSP_DISCOVER_MIN_MS) discoverHsPaintedNames(io)
+}
+
+/** One sweep per frame — scrolling fires continuously and the observer does
+ * the real visibility work asynchronously anyway. `force` skips the discovery
+ * bound for a caller that knows a new painted element exists right now. */
+function scheduleHsPaintSweep(force) {
+  if (force) hsSweepForced = true
+  if (hsSweepScheduled || typeof requestAnimationFrame !== 'function') return
+  hsSweepScheduled = true
+  requestAnimationFrame(() => {
+    hsSweepScheduled = false
+    const f = hsSweepForced
+    hsSweepForced = false
+    sweepHsPaintedNames(f)
+  })
+}
+
+// Scroll is when visibility changes, and also when a pane autoscrolls a new
+// message in. Capture so it hears every pane, passive so it never delays one.
+// Reaps every frame (cheap, no query); discovery is bounded above.
+if (typeof document !== 'undefined' && document.addEventListener) {
+  document.addEventListener('scroll', () => scheduleHsPaintSweep(false), { capture: true, passive: true })
+  document.addEventListener('animationstart', onHsAnimationStart, { capture: true, passive: true })
+}
+
 export {
+  _applyHsGlyphMasksForTests,
+  _hsAnimatingWeightForTests,
+  _hsCrowdThresholdsForTests,
+  _hsVisiblePaintedForTests,
+  _resetHsCrowdDialForTests,
+  applyHsCrowdDial,
   applyHsPaintToElement,
+  canCompositeHsFills,
+  clearHsPaintFromElement,
   clearHsPaintSheet,
-  computeHsLetterSpans,
   evictOldestPaintEntry,
   getHsPaintClass,
   getHsPaintSpec,
   getHsPickedColor,
   getHsPlusTenureSince,
   hasResolvedHsPaint,
+  hsNameColourDecl,
   hsPaintRender,
+  hsPaintUidOfMsg,
   hsUsernameColor,
+  hydrateHsCosmetics,
+  invalidateHsCosmetics,
+  isHsCosmeticFreshForTests,
+  isHsPaintHiddenForUser,
+  markAllHsCosmeticsStale,
   partitionPaintBatch,
   primeSelfHsCosmetics,
   queueNameColorLookup,
   queuePaintLookup,
   queuePlusTenureLookup,
   reinjectHsPaintSheet,
+  remountAllHsFillLayers,
+  scheduleHsPaintSweep,
   setHsColorEntry,
   setHsPaintEntry,
   setHsPlusEntry,
-  splitHsLettersHtml,
+  sweepHsPaintedNames,
+  toggleHsPaintHidden,
+  unmountAllHsFillLayers,
 }

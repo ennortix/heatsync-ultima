@@ -26,17 +26,22 @@
  */
 
 import { describe, expect, test } from 'bun:test'
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
 import { escapeHtml } from '../src/lib/utils.js'
+import { mainSource } from './main-src.js'
 
 globalThis.escapeHtml = escapeHtml
 globalThis.sanitizeColor = (c) => (typeof c === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(c) ? c : '#fff')
 // Deterministic stub — real paintPhaseNow (lib/paint-spec.js) is Date.now()-based,
 // which this file doesn't test (see tests/paint-spec.test.js for that).
 globalThis.paintPhaseNow = () => '1720000000.000s'
+// The real one: it is a pure validator, and the painted-name styles below embed its output.
+// the bundle hands paints.js these as free variables (lib/paint-core.js)
+const paintCore = await import('../src/lib/paint-core.js')
+globalThis.UNDERLAY_NAME_MIN_LUM = paintCore.UNDERLAY_NAME_MIN_LUM
+globalThis.CONTRAST_EPS = paintCore.CONTRAST_EPS
+globalThis.hsNameColourDecl = (await import('../src/multichat/paints.js')).hsNameColourDecl
 
-const MAIN_SRC = readFileSync(join(import.meta.dir, '..', 'src', 'multichat', 'main.js'), 'utf8')
+const MAIN_SRC = mainSource()
 
 function sliceBetween(startMarker, endMarker) {
   const s = MAIN_SRC.indexOf(startMarker)
@@ -48,7 +53,7 @@ function sliceBetween(startMarker, endMarker) {
 
 const fnSrc = sliceBetween(
   'function buildFeedQuoteUserLink(feedUser, uid, hsPaint, paintStyle, color) {',
-  '\n  function buildMessageDiv(m, tabId) {',
+  '\nfunction buildMessageDiv(m, tabId) {',
 )
 
 const { buildFeedQuoteUserLink } = new Function(
@@ -64,7 +69,7 @@ const SOME_HS_PAINT = { cls: 'hsp-abc123', html: '<span>@</span><span>m</span>',
 describe('buildFeedQuoteUserLink — inline feed-post quote row username anchor', () => {
   test('no uid, no paint: falls back to plain per-post color, name escaped', () => {
     const html = buildFeedQuoteUserLink('mellen', '', null, '', '#ff8700')
-    expect(html).toContain('class="hs-mc-user hs-mc-mention"')
+    expect(html).toContain('class="hs-mc-user hs-mc-mention hs-mention"')
     expect(html).not.toContain('data-uid')
     expect(html).toContain('style="color:#ff8700"')
     expect(html).toContain('>mellen<')
@@ -79,10 +84,10 @@ describe('buildFeedQuoteUserLink — inline feed-post quote row username anchor'
 
   test('HeatSync paint resolved: wins over color, adds the hsp-* class, clears inline style, uses paint html', () => {
     const html = buildFeedQuoteUserLink('mellen', '73266147', SOME_HS_PAINT, '', '#ff8700')
-    expect(html).toContain('class="hs-mc-user hs-mc-mention hsp-abc123"')
+    expect(html).toContain('class="hs-mc-user hs-mc-mention hs-mention hsp-abc123"')
     expect(html).toContain('data-uid="73266147"')
     expect(html).toContain(' data-hs-paint-split="1"')
-    expect(html).toContain('style="--hsp-t:1720000000.000s;"')
+    expect(html).toContain('style="--hsp-t:1720000000.000s;--hs-name-c:#ff8700;"')
     expect(html).toContain('<span>@</span><span>m</span>')
   })
 
@@ -94,7 +99,7 @@ describe('buildFeedQuoteUserLink — inline feed-post quote row username anchor'
 
   test('HeatSync paint still wins even when a 7TV paintStyle is also present (precedence)', () => {
     const html = buildFeedQuoteUserLink('mellen', '73266147', SOME_HS_PAINT, 'color:#ff0000', '#ff8700')
-    expect(html).toContain('style="--hsp-t:1720000000.000s;"')
+    expect(html).toContain('style="--hsp-t:1720000000.000s;--hs-name-c:#ff8700;"')
     expect(html).not.toContain('#ff0000')
   })
 

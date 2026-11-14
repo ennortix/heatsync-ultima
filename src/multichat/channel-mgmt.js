@@ -4,12 +4,462 @@
 // and getLivePlatformNames/save+loadLivePlatformMap (read by the render engine
 // and init, not just this UI) stay in main.js.
 
+// Shared dialog button (add/edit/live-platform forms). White border = primary
+// action, gray = secondary; hover snaps to white bg + black text, no motion.
+function makeMcBtn(text, primary) {
+  const btn = document.createElement('button')
+  btn.textContent = text
+  const base = primary
+    ? 'background:transparent;color:#ffffff;border:1px solid #ffffff;'
+    : 'background:transparent;color:#ffffff;border:1px solid #ffffff;'
+  btn.style.cssText =
+    base +
+    'padding:6px 22px;border-radius:0;cursor:pointer;font-weight:700;font-size:14px;font-family:inherit;min-width:80px;'
+  btn.addEventListener('mouseenter', () => {
+    btn.style.background = '#ffffff'
+    btn.style.color = '#000000'
+  })
+  btn.addEventListener('mouseleave', () => {
+    btn.style.background = 'transparent'
+    btn.style.color = '#ffffff'
+  })
+  return btn
+}
+
+/**
+ * Why this channel can't be added, as a locale key — or null if it can.
+ * Reserved ids come from tab-registry.js: a channel called "live" would shadow the live tab.
+ *
+ * One copy on purpose. The add form, the follow-import picker and the paste
+ * list all have to agree about what a duplicate is; a guard enforced at only
+ * one of three entry points is not a guard.
+ */
+function channelAddError(twitchVal, kickVal, ytVal) {
+  const id = twitchVal || kickVal || ''
+  if (id && mcIsReservedTab(id)) return 'mc_reserved_name'
+  if (id && config.channels.some((c) => c.id === id)) return 'mc_channel_exists'
+  if (twitchVal && config.channels.some((c) => c.twitch === twitchVal)) return 'mc_twitch_exists'
+  if (kickVal && config.channels.some((c) => c.kick === kickVal)) return 'mc_kick_exists'
+  // youtube's generated yt-<ts> id is unique every time, so the id check above
+  // can never catch a repeat — it needs its own.
+  if (ytVal && config.channels.some((c) => c.youtube === ytVal)) return 'mc_channel_exists'
+  return null
+}
+
+/**
+ * Add many channels under ONE commit.
+ *
+ * saveConfig() is called once after the whole loop, not once per channel:
+ * _saveConfigNow does a cross-tab storage union plus a multichat:sync
+ * websocket send every time it runs, so a per-channel save turns a 20-channel
+ * import into 20 redundant syncs queued behind each other on the serialized
+ * save chain. Skips anything channelAddError rejects — including duplicates
+ * created earlier in this same batch, since config.channels grows as we go.
+ *
+ * @param {Array<{twitch?:string,kick?:string,youtube?:string}>} entries
+ * @returns {number} how many were actually added
+ */
+function addChannelsBulk(entries) {
+  let added = 0
+  for (const e of entries) {
+    const twitchVal = e.twitch || ''
+    const kickVal = e.kick || ''
+    const ytVal = e.youtube || ''
+    if (!twitchVal && !kickVal && !ytVal) continue
+    if (channelAddError(twitchVal, kickVal, ytVal)) continue
+
+    const id = twitchVal || kickVal || `yt-${Date.now()}-${added}`
+    config.channels.push({ id, twitch: twitchVal, kick: kickVal, youtube: ytVal })
+
+    if (twitchVal) {
+      irc?.join(twitchVal)
+      safeSendMessage({ type: 'join_channel', platform: 'twitch', channel: twitchVal })
+    }
+    if (kickVal) kickChat?.join(kickVal)
+    if (ytVal) {
+      youtubeLinks.set(id, { url: ytVal, videoId: '', channelName: '' })
+      ytSubscribedUrls.set(id, ytVal)
+      ytChanLastSeen.set(id, Date.now())
+      ytSubscribe(id, ytVal, id)
+    }
+    added++
+  }
+  if (added) {
+    saveConfig()
+    updateTabBar()
+  }
+  return added
+}
+
+/** Small gray text link, used for the cross-links between the three add views. */
+function makeMcLink(text) {
+  const a = document.createElement('button')
+  a.textContent = text
+  a.style.cssText =
+    'background:none;border:none;padding:0;color:#ffffff;font-size:13px;font-family:inherit;cursor:pointer;text-decoration:underline;'
+  a.addEventListener('mouseenter', () => (a.style.color = '#ffffff'))
+  a.addEventListener('mouseleave', () => (a.style.color = '#ffffff'))
+  return a
+}
+
+/** Shared shell for the add/import/paste views so all three look like one thing. */
+function makeAddViewShell(msgsEl, titleText, descText) {
+  _clearMessageIndices()
+  msgsEl.textContent = ''
+  const wrapper = document.createElement('div')
+  wrapper.style.cssText =
+    'display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:12px;color:#ffffff;font-size:13px;padding:20px;box-sizing:border-box;'
+  const title = document.createElement('div')
+  title.textContent = titleText
+  title.style.cssText = 'font-size:17px;font-weight:700;color:#ffffff;letter-spacing:.5px;'
+  wrapper.appendChild(title)
+  const desc = document.createElement('div')
+  desc.textContent = descText
+  desc.style.cssText = 'font-size:13px;color:#ffffff;margin-bottom:2px;'
+  wrapper.appendChild(desc)
+  msgsEl.appendChild(wrapper)
+  return wrapper
+}
+
+/**
+ * "import twitch follows" — pick from the channels you already follow on twitch,
+ * instead of typing them in one at a time.
+ *
+ * Twitch and kick. Twitch follows come from the server's linked grant; kick has
+ * no public follow-list api, so the service worker reads them with the browser's
+ * own kick session (needs kick.com signed in here). There is no youtube oauth,
+ * so youtube stays out. An imported channel is one platform; the per-channel
+ * autofill is how it picks up a counterpart afterwards.
+ */
+async function renderFollowImportPicker(msgsEl) {
+  const wrapper = makeAddViewShell(msgsEl, t('mc_fill_cockpit'), t('mc_fill_cockpit_desc'))
+
+  const status = document.createElement('div')
+  status.style.cssText = 'font-size:13px;color:#ffffff;font-family:monospace;'
+  status.textContent = t('mc_fill_cockpit_loading')
+  wrapper.appendChild(status)
+
+  const backRow = document.createElement('div')
+  backRow.style.cssText = 'display:flex;gap:12px;margin-top:4px;'
+  const manualLink = makeMcLink(t('mc_add_manually'))
+  manualLink.addEventListener('click', () => renderAddChannelForm(msgsEl))
+  backRow.appendChild(manualLink)
+  wrapper.appendChild(backRow)
+
+  let resp
+  try {
+    resp = await browser.runtime.sendMessage({ type: 'get_twitch_followed_channels' })
+  } catch {
+    resp = { error: 'twitch_unavailable' }
+  }
+  // Kick follows ride along; none (signed out of kick, or kick down) is just an empty list.
+  let kickFollows = []
+  try {
+    const kr = await browser.runtime.sendMessage({ type: 'get_kick_followed_channels' })
+    if (Array.isArray(kr?.channels)) kickFollows = kr.channels
+  } catch {}
+
+  // Three failures, three sentences. "you follow nobody", "you're signed out"
+  // and "your twitch link is dead" are different problems with different fixes,
+  // and showing one message for all three is how someone ends up re-authorising
+  // an account that was working fine.
+  if ((!resp || resp.error) && !kickFollows.length) {
+    const err = resp?.error || 'twitch_unavailable'
+    status.style.color = '#ffffff'
+    if (err === 'login_required') {
+      status.textContent = t('mc_fill_cockpit_login')
+      const link = document.createElement('a')
+      link.href = HS_LOGIN_URL
+      link.target = '_blank'
+      link.rel = 'noopener noreferrer'
+      link.textContent = t('mc_sign_in')
+      link.style.cssText = 'color:#ffffff;font-size:13px;'
+      wrapper.insertBefore(link, backRow)
+    } else if (err === 'relink_required') {
+      // A grant that never included follows is not an expired one — telling
+      // someone their working link "expired" sends them hunting for a break
+      // that isn't there. The server says which; 'scope' gets its own sentence.
+      status.textContent = t(resp?.reason === 'scope' ? 'mc_fill_cockpit_relink_scope' : 'mc_fill_cockpit_relink')
+      const link = document.createElement('a')
+      link.href = 'https://heatsync.org/settings'
+      link.target = '_blank'
+      link.rel = 'noopener noreferrer'
+      link.textContent = t('mc_reconnect_twitch')
+      link.style.cssText = 'color:#ffffff;font-size:13px;'
+      wrapper.insertBefore(link, backRow)
+    } else {
+      status.textContent = t('mc_fill_cockpit_unavailable')
+    }
+    return
+  }
+
+  // one row per (platform, login): the same name on twitch and kick is two channels
+  const follows = [
+    ...(Array.isArray(resp?.channels) ? resp.channels : []).map((f) => ({ ...f, plat: 'twitch' })),
+    ...kickFollows.map((f) => ({ ...f, plat: 'kick' })),
+  ]
+  if (!follows.length) {
+    status.textContent = t('mc_no_twitch_follows')
+    return
+  }
+
+  // Live-sorting costs nothing extra: /api/platform/live-status is already
+  // public and already proxied for the tab dots, so this reuses that exact
+  // path rather than asking the server for a second opinion.
+  let liveSet = new Set()
+  try {
+    const live = await browser.runtime.sendMessage({
+      type: 'fetch_live_status',
+      channels: follows.filter((f) => f.plat === 'twitch').map((f) => f.login),
+      kickChannels: follows.filter((f) => f.plat === 'kick').map((f) => f.login),
+    })
+    if (Array.isArray(live?.live)) for (const c of live.live) liveSet.add(`twitch:${c.toLowerCase()}`)
+    if (Array.isArray(live?.kickLive)) for (const c of live.kickLive) liveSet.add(`kick:${c.toLowerCase()}`)
+  } catch {
+    // A failed live check downgrades the sort, it does not fail the import.
+  }
+
+  const already = new Set(
+    config.channels.flatMap((c) => [
+      c.twitch ? `twitch:${String(c.twitch).toLowerCase()}` : '',
+      c.kick ? `kick:${String(c.kick).toLowerCase()}` : '',
+    ]),
+  )
+  const keyOf = (f) => `${f.plat}:${String(f.login).toLowerCase()}`
+  const rows = follows
+    .filter((f) => !already.has(keyOf(f)))
+    .sort((a, b) => {
+      const la = liveSet.has(keyOf(a)) ? 0 : 1
+      const lb = liveSet.has(keyOf(b)) ? 0 : 1
+      if (la !== lb) return la - lb
+      return a.login.localeCompare(b.login) || a.plat.localeCompare(b.plat)
+    })
+
+  if (!rows.length) {
+    status.textContent = t('mc_all_follows_added')
+    return
+  }
+
+  status.textContent = resp.truncated
+    ? t('mc_channels_truncated', [String(follows.length)])
+    : t('mc_follows_found', [String(rows.length), String(liveSet.size)])
+
+  const list = document.createElement('div')
+  list.style.cssText =
+    'display:flex;flex-direction:column;gap:2px;width:100%;max-width:320px;max-height:240px;overflow-y:auto;border:1px solid #ffffff;padding:6px;box-sizing:border-box;'
+
+  const boxes = []
+  for (const f of rows) {
+    const isLive = liveSet.has(keyOf(f))
+    const row = document.createElement('label')
+    row.style.cssText =
+      'display:flex;align-items:center;gap:8px;padding:3px 4px;cursor:pointer;font-size:13px;color:#ffffff;'
+    row.addEventListener('mouseenter', () => {
+      row.style.background = '#ffffff'
+      row.style.color = '#000000'
+    })
+    row.addEventListener('mouseleave', () => {
+      row.style.background = 'transparent'
+      row.style.color = '#ffffff'
+    })
+    const box = document.createElement('input')
+    box.type = 'checkbox'
+    box.checked = isLive
+    box.dataset.login = f.login
+    box.dataset.plat = f.plat
+    box.style.cssText = 'margin:0;accent-color:#ffffff;'
+    box.setAttribute('aria-label', f.login)
+    const dot = document.createElement('span')
+    // The one round thing in here, deliberately — a status dot reads as a dot.
+    // Offline rows keep the slot (so names line up) but paint nothing: the old
+    // black fill was invisible on the black list and showed up only on hover.
+    dot.style.cssText = `width:7px;height:7px;border-radius:50%;flex:0 0 auto;background:${isLive ? 'var(--hs-live, #00ff00)' : 'transparent'};`
+    const name = document.createElement('span')
+    const shown = f.displayName && f.displayName.toLowerCase() !== f.login ? `${f.login} (${f.displayName})` : f.login
+    name.textContent = f.plat === 'kick' ? `${shown} · kick` : shown
+    name.style.cssText = 'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:monospace;'
+    row.appendChild(box)
+    row.appendChild(dot)
+    row.appendChild(name)
+    list.appendChild(row)
+    boxes.push(box)
+  }
+  wrapper.insertBefore(list, backRow)
+
+  const btnRow = document.createElement('div')
+  btnRow.style.cssText = 'display:flex;gap:8px;margin-top:4px;'
+  const addBtn = makeMcBtn(t('mc_add_selected'), true)
+  const allLiveBtn = makeMcBtn(t('mc_select_all_live'), false)
+  const cancelBtn = makeMcBtn('cancel', false)
+  btnRow.appendChild(addBtn)
+  btnRow.appendChild(allLiveBtn)
+  btnRow.appendChild(cancelBtn)
+  wrapper.insertBefore(btnRow, backRow)
+
+  allLiveBtn.addEventListener('click', () => {
+    for (const b of boxes) b.checked = liveSet.has(`${b.dataset.plat}:${String(b.dataset.login).toLowerCase()}`)
+  })
+  cancelBtn.addEventListener('click', () => switchTab(liveTarget()))
+  addBtn.addEventListener('click', () => {
+    const picked = boxes.filter((b) => b.checked).map((b) => ({ [b.dataset.plat]: b.dataset.login }))
+    if (!picked.length) {
+      status.textContent = t('mc_select_at_least_one')
+      return
+    }
+    const added = addChannelsBulk(picked)
+    if (added) switchTab(config.channels[config.channels.length - 1].id)
+    else status.textContent = t('mc_nothing_added')
+  })
+}
+
+/**
+ * Paste-a-list bulk add — the logged-out path to a populated cockpit.
+ *
+ * Three boxes rather than one with a `kick:name` prefix syntax: the add form
+ * already trained one twitch/kick/youtube shape, and inventing a second one
+ * here would be a thing to learn for no gain. Bad lines are reported and
+ * skipped, never an all-or-nothing failure — one typo in twenty must not throw
+ * the other nineteen away.
+ */
+function renderPasteListForm(msgsEl) {
+  const wrapper = makeAddViewShell(msgsEl, t('mc_paste_list'), t('mc_paste_list_desc'))
+
+  const makeBox = (label, ph) => {
+    const row = document.createElement('div')
+    row.style.cssText = 'display:flex;flex-direction:column;gap:3px;width:100%;max-width:300px;'
+    const lbl = document.createElement('span')
+    lbl.textContent = label
+    lbl.style.cssText = 'font-size:13px;font-weight:700;color:#ffffff;text-transform:lowercase;'
+    const ta = document.createElement('textarea')
+    ta.rows = 3
+    ta.placeholder = ph
+    ta.setAttribute('aria-label', label)
+    ta.style.cssText =
+      'background:#000;color:#fff;border:1px solid #ffffff;padding:6px 10px;border-radius:0;font-size:13px;outline:none;font-family:monospace;resize:vertical;'
+    ta.addEventListener('keydown', (e) => e.stopPropagation())
+    row.appendChild(lbl)
+    row.appendChild(ta)
+    wrapper.appendChild(row)
+    return ta
+  }
+  const twitchTa = makeBox('twitch', t('mc_paste_list_ph'))
+  const kickTa = makeBox('kick', t('mc_paste_list_ph'))
+  const ytTa = makeBox('youtube', t('mc_username_url_placeholder'))
+
+  const errEl = document.createElement('div')
+  errEl.style.cssText = 'font-size:13px;color:var(--hs-danger);display:none;text-align:center;max-width:300px;'
+  errEl.setAttribute('role', 'alert')
+  wrapper.appendChild(errEl)
+
+  const btnRow = document.createElement('div')
+  btnRow.style.cssText = 'display:flex;gap:8px;margin-top:4px;'
+  const addBtn = makeMcBtn('add', true)
+  const cancelBtn = makeMcBtn('cancel', false)
+  btnRow.appendChild(addBtn)
+  btnRow.appendChild(cancelBtn)
+  wrapper.appendChild(btnRow)
+
+  const manualLink = makeMcLink(t('mc_add_manually'))
+  manualLink.addEventListener('click', () => renderAddChannelForm(msgsEl))
+  wrapper.appendChild(manualLink)
+
+  cancelBtn.addEventListener('click', () => switchTab(liveTarget()))
+
+  // Newlines and commas only — NOT spaces. Splitting on every whitespace run
+  // turns a pasted sentence into channels: "not a name!" would become three
+  // entries, two of which ("not", "a") pass the charset check and become real
+  // dead tabs. One line is one channel, and a line with a space in it is a
+  // mistake we can report instead of silently half-accepting.
+  const splitLines = (v) =>
+    (v || '')
+      .split(/[\n,]+/)
+      .map((x) => x.trim())
+      .filter(Boolean)
+
+  addBtn.addEventListener('click', () => {
+    errEl.style.display = 'none'
+    const bad = []
+    const entries = []
+    for (const raw of splitLines(twitchTa.value)) {
+      const v = parseTwitchLoginValue(raw)
+      if (!/^[a-z0-9_]{1,25}$/.test(v)) bad.push(raw)
+      else entries.push({ twitch: v })
+    }
+    for (const raw of splitLines(kickTa.value)) {
+      const v = parseKickSlugValue(raw)
+      if (!/^[a-z0-9_-]{1,25}$/.test(v)) bad.push(raw)
+      else entries.push({ kick: v })
+    }
+    for (const raw of splitLines(ytTa.value)) {
+      const v = normalizeYtUrl(raw)
+      if (!v) bad.push(raw)
+      else entries.push({ youtube: v })
+    }
+
+    if (!entries.length && !bad.length) {
+      errEl.textContent = t('mc_enter_platform')
+      errEl.style.display = 'block'
+      return
+    }
+
+    const added = addChannelsBulk(entries)
+    const skipped = entries.length - added
+    if (bad.length || skipped) {
+      errEl.textContent = t('mc_paste_list_result', [String(added), String(skipped + bad.length)])
+      errEl.style.display = 'block'
+    }
+    if (added) {
+      updateTabBar()
+      switchTab(config.channels[config.channels.length - 1].id)
+    }
+  })
+}
+
+// Module-scope copies of the two parsers the add form defines inline, so the
+// paste list and the picker can reuse them without reaching into a closure.
+function parseTwitchLoginValue(raw) {
+  let v = (raw || '').trim().replace(/^@/, '')
+  const m = v.match(/twitch\.tv\/(?:popout\/|moderator\/)?([^/?#\s]+)/i)
+  if (m) v = m[1]
+  return v.toLowerCase()
+}
+function parseKickSlugValue(raw) {
+  let v = (raw || '').trim().replace(/^@/, '')
+  const m = v.match(/kick\.com\/([^/?#\s]+)/i)
+  if (m) v = m[1]
+  return v.toLowerCase()
+}
+
+// One "<platform> [username]" row of the add / edit channel forms.
+function cmgPlatformRow(label, placeholder, value) {
+  const row = document.createElement('div')
+  row.style.cssText = 'display:flex;align-items:center;gap:8px;width:100%;max-width:300px;'
+  const lbl = document.createElement('span')
+  lbl.textContent = label
+  lbl.style.cssText = 'font-size:13px;font-weight:700;min-width:56px;color:#ffffff;text-transform:lowercase;'
+  const input = document.createElement('input')
+  input.type = 'text'
+  input.className = 'hs-mc-ch-input'
+  input.placeholder = placeholder
+  input.value = value || ''
+  // The visible label is a separate <span>, so the input itself is unlabeled
+  // to assistive tech — name it explicitly (label is 'twitch'/'kick'/'youtube').
+  input.setAttribute('aria-label', label)
+  input.style.cssText =
+    'flex:1;background:#000;color:#fff;border:1px solid #ffffff;padding:6px 10px;border-radius:0;font-size:14px;outline:none;font-family:inherit;'
+  // Stop YouTube/Kick keyboard shortcuts from stealing keystrokes
+  input.addEventListener('keydown', (e) => e.stopPropagation())
+  row.appendChild(lbl)
+  row.appendChild(input)
+  return { row, input }
+}
+
 function renderAddChannelForm(msgsEl) {
   _clearMessageIndices()
   msgsEl.textContent = ''
   const wrapper = document.createElement('div')
   wrapper.style.cssText =
-    'display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:12px;color:#a8a8a8;font-size:13px;padding:20px;box-sizing:border-box;'
+    'display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:12px;color:#ffffff;font-size:13px;padding:20px;box-sizing:border-box;'
 
   const title = document.createElement('div')
   title.textContent = t('mc_add_channel')
@@ -18,34 +468,12 @@ function renderAddChannelForm(msgsEl) {
 
   const desc = document.createElement('div')
   desc.textContent = t('mc_enter_platform')
-  desc.style.cssText = 'font-size:13px;color:#808080;margin-bottom:2px;'
+  desc.style.cssText = 'font-size:13px;color:#ffffff;margin-bottom:2px;'
   wrapper.appendChild(desc)
 
-  const makeRow = (label, placeholder) => {
-    const row = document.createElement('div')
-    row.style.cssText = 'display:flex;align-items:center;gap:8px;width:100%;max-width:300px;'
-    const lbl = document.createElement('span')
-    lbl.textContent = label
-    lbl.style.cssText = 'font-size:13px;font-weight:600;min-width:56px;color:#949494;text-transform:lowercase;'
-    const input = document.createElement('input')
-    input.type = 'text'
-    input.className = 'hs-mc-ch-input'
-    input.placeholder = placeholder
-    // The visible label is a separate <span>, so the input itself is unlabeled
-    // to assistive tech — name it explicitly (label is 'twitch'/'kick'/'youtube').
-    input.setAttribute('aria-label', label)
-    input.style.cssText =
-      'flex:1;background:#000;color:#fff;border:1px solid #808080;padding:6px 10px;border-radius:0;font-size:14px;outline:none;font-family:inherit;'
-    // Stop YouTube/Kick keyboard shortcuts from stealing keystrokes
-    input.addEventListener('keydown', (e) => e.stopPropagation())
-    row.appendChild(lbl)
-    row.appendChild(input)
-    return { row, input }
-  }
-
-  const twitch = makeRow('twitch', t('mc_username_placeholder'))
-  const kick = makeRow('kick', t('mc_username_placeholder'))
-  const yt = makeRow('youtube', t('mc_username_url_placeholder'))
+  const twitch = cmgPlatformRow('twitch', t('mc_username_placeholder'))
+  const kick = cmgPlatformRow('kick', t('mc_username_placeholder'))
+  const yt = cmgPlatformRow('youtube', t('mc_username_url_placeholder'))
 
   wrapper.appendChild(twitch.row)
   wrapper.appendChild(kick.row)
@@ -60,26 +488,6 @@ function renderAddChannelForm(msgsEl) {
   const btnRow = document.createElement('div')
   btnRow.style.cssText = 'display:flex;gap:8px;margin-top:4px;'
 
-  const makeMcBtn = (text, primary) => {
-    const btn = document.createElement('button')
-    btn.textContent = text
-    const base = primary
-      ? 'background:transparent;color:#ffffff;border:1px solid #ffffff;'
-      : 'background:transparent;color:#808080;border:1px solid #808080;'
-    btn.style.cssText =
-      base +
-      'padding:6px 22px;border-radius:0;cursor:pointer;font-weight:600;font-size:14px;font-family:inherit;min-width:80px;transition:all .15s;'
-    btn.addEventListener('mouseenter', () => {
-      btn.style.background = '#ffffff'
-      btn.style.color = '#000000'
-    })
-    btn.addEventListener('mouseleave', () => {
-      btn.style.background = 'transparent'
-      btn.style.color = primary ? '#ffffff' : '#808080'
-    })
-    return btn
-  }
-
   const addBtn = makeMcBtn('add', true)
   const cancelBtn = makeMcBtn('cancel', false)
 
@@ -87,9 +495,22 @@ function renderAddChannelForm(msgsEl) {
   btnRow.appendChild(cancelBtn)
   wrapper.appendChild(btnRow)
 
+  // Two ways out of typing channels in one at a time. Both are links rather
+  // than buttons because adding one specific channel is still the common case
+  // and should keep the primary action.
+  const bulkRow = document.createElement('div')
+  bulkRow.style.cssText = 'display:flex;gap:12px;margin-top:2px;'
+  const importLink = makeMcLink(t('mc_import_from_twitch'))
+  importLink.addEventListener('click', () => renderFollowImportPicker(msgsEl))
+  const pasteLink = makeMcLink(t('mc_paste_list'))
+  pasteLink.addEventListener('click', () => renderPasteListForm(msgsEl))
+  bulkRow.appendChild(importLink)
+  bulkRow.appendChild(pasteLink)
+  wrapper.appendChild(bulkRow)
+
   msgsEl.appendChild(wrapper)
 
-  cancelBtn.addEventListener('click', () => switchTab('live'))
+  cancelBtn.addEventListener('click', () => switchTab(liveTarget()))
 
   const showErr = (msg) => {
     errEl.textContent = msg
@@ -140,30 +561,11 @@ function renderAddChannelForm(msgsEl) {
     }
 
     const id = twitchVal || kickVal || `yt-${Date.now()}`
-    const reserved = ['live', 'feed', 'mentions', 'whispers', 'discover', 'pinned', 'modlog', 'add', 'settings']
-    if (reserved.includes(id)) {
-      showErr(t('mc_reserved_name'))
-      return
-    }
-    if (config.channels.some((c) => c.id === id)) {
-      showErr(t('mc_channel_exists'))
-      return
-    }
-    // Check duplicate Twitch/Kick username across channels
-    if (twitchVal && config.channels.some((c) => c.twitch === twitchVal)) {
-      showErr(t('mc_twitch_exists'))
-      return
-    }
-    if (kickVal && config.channels.some((c) => c.kick === kickVal)) {
-      showErr(t('mc_kick_exists'))
-      return
-    }
-    // youtube had no duplicate guard while twitch and kick both did — and its
-    // generated `yt-<ts>` id is unique every time, so the id check above can
-    // never catch it. Adding the same channel twice gave two tabs fed by one
-    // subscription.
-    if (ytVal && config.channels.some((c) => c.youtube === ytVal)) {
-      showErr(t('mc_channel_exists'))
+    // Reserved-id / duplicate rules live in channelAddError so this form, the
+    // follow-import picker and the paste list can never disagree about them.
+    const addErr = channelAddError(twitchVal, kickVal, ytVal)
+    if (addErr) {
+      showErr(t(addErr))
       return
     }
 
@@ -182,10 +584,9 @@ function renderAddChannelForm(msgsEl) {
       youtubeLinks.set(id, { url: ytVal, videoId: '', channelName: '' })
       ytSubscribedUrls.set(id, ytVal)
       ytChanLastSeen.set(id, Date.now())
-      chrome.runtime.sendMessage({ type: 'youtube_ws_subscribe', url: ytVal, channelId: id }).catch(() => {})
-      // 7TV/BTTV YouTube channel emotes — channelId is a hint (the typed
-      // url/handle), background.js resolves the real UC... id itself.
-      safeSendMessage({ type: 'join_channel', platform: 'youtube', channel: id, channelId: ytVal })
+      // 7TV/BTTV YouTube channel emotes ride along — the emote channelId is a
+      // hint (the typed url/handle); background.js resolves the real UC... id.
+      ytSubscribe(id, ytVal, id)
     }
 
     updateTabBar()
@@ -202,7 +603,7 @@ function renderAddChannelForm(msgsEl) {
         inputs[(i + (e.shiftKey ? inputs.length - 1 : 1)) % inputs.length].focus()
       }
       if (e.key === 'Enter') doAdd()
-      if (e.key === 'Escape') switchTab('live')
+      if (e.key === 'Escape') switchTab(liveTarget())
     })
     // Track user edits per-field so autofill never overwrites typed input
     inp.addEventListener('input', () => {
@@ -212,7 +613,7 @@ function renderAddChannelForm(msgsEl) {
 
   // Heatsync linkage status indicator (between rows and error)
   const linkStatus = document.createElement('div')
-  linkStatus.style.cssText = 'font-size:13px;color:#808080;min-height:14px;font-family:ui-monospace,monospace;'
+  linkStatus.style.cssText = 'font-size:13px;color:#ffffff;min-height:14px;font-family:monospace;'
   wrapper.insertBefore(linkStatus, errEl)
 
   // Debounced autofill — when user types in any field, look up that name on
@@ -230,14 +631,14 @@ function renderAddChannelForm(msgsEl) {
       return
     }
     const gen = ++_autofillGen
-    linkStatus.textContent = 'checking heatsync…'
-    linkStatus.style.color = '#808080'
+    linkStatus.textContent = t('mc_cmg_checking')
+    linkStatus.style.color = '#ffffff'
     const res =
       typeof resolveIdentity === 'function' ? await resolveIdentity(name, { platform: sourcePlatform }) : { ok: false }
     if (gen !== _autofillGen) return
     if (!res?.ok) {
-      linkStatus.textContent = res?.notFound ? 'no heatsync profile — fill manually' : "couldn't reach heatsync"
-      linkStatus.style.color = '#666'
+      linkStatus.textContent = res?.notFound ? t('mc_cmg_no_profile') : t('mc_cmg_unreachable')
+      linkStatus.style.color = '#ffffff'
       return
     }
     const id = res.identity
@@ -258,10 +659,10 @@ function renderAddChannelForm(msgsEl) {
     if (id.kick) linkedLabels.push('k')
     if (id.youtube) linkedLabels.push('yt')
     const liveLabels = res.liveOn?.length
-      ? ` · live on ${res.liveOn.map((p) => (p === 'twitch' ? 't' : p === 'kick' ? 'k' : p)).join(',')}`
+      ? ` · ${t('mc_cmg_live_on', [res.liveOn.map((p) => (p === 'twitch' ? 't' : p === 'kick' ? 'k' : p)).join(',')])}`
       : ''
     linkStatus.style.color = 'var(--hs-plat-kick)'
-    linkStatus.textContent = `✓ matched ${id.heatsync || name} on heatsync — linked: ${linkedLabels.join(',') || 'none'}${liveLabels}${platforms.length ? ` · autofilled: ${platforms.join(',')}` : ''}`
+    linkStatus.textContent = `✓ ${t('mc_cmg_matched', [id.heatsync || name, linkedLabels.join(',') || t('mc_set_fmt_none')])}${liveLabels}${platforms.length ? ` · ${t('mc_cmg_autofilled', [platforms.join(',')])}` : ''}`
   }
 
   twitch.input.addEventListener('input', () => {
@@ -277,11 +678,63 @@ function renderAddChannelForm(msgsEl) {
   cleanup.raf(() => twitch.input.focus())
 }
 
+/**
+ * Move a channel one slot up or down in the strip. THE one reorder: tab mode's
+ * J/K and the tab's right-click "move" items both call it. There was no reorder
+ * path at all before tab mode, drag or otherwise, so the order you added
+ * channels in was the order you were stuck with.
+ *
+ * Refuses at the ends rather than wrapping: the strip also holds the fixed
+ * surfaces (feed/mentions/live), so wrapping would look like a channel jumping
+ * across them.
+ *
+ * @param {string} tabId
+ * @param {number} delta -1 up, 1 down
+ * @returns {boolean} whether it actually moved
+ */
+function moveChannelOrder(tabId, delta) {
+  const list = config?.channels
+  if (!Array.isArray(list)) return false
+  const from = list.findIndex((c) => c.id === tabId)
+  const to = from + delta
+  if (from < 0 || to < 0 || to >= list.length) return false
+  const [moved] = list.splice(from, 1)
+  list.splice(to, 0, moved)
+  saveConfig()
+  updateTabBar()
+  return true
+}
+
+/**
+ * The "move" items for a channel tab's right-click menu: one per direction that
+ * is open (a channel at an end of the list has nowhere to go that way), named
+ * for where the strip really runs. Earlier in the list is left in a horizontal
+ * strip, right in a right-to-left one and up in a column (tabs docked left or
+ * right). Each item's `delta` is what moveChannelOrder takes.
+ * @param {string} tabId
+ * @param {{vertical?: boolean, rtl?: boolean}} [layout]
+ * @returns {{label: string, delta: number}[]}
+ */
+function channelMoveOptions(tabId, { vertical = false, rtl = false } = {}) {
+  const list = config?.channels
+  const at = Array.isArray(list) ? list.findIndex((c) => c.id === tabId) : -1
+  if (at < 0) return []
+  const earlier = vertical ? 'mc_ctx_move_up' : rtl ? 'mc_ctx_move_right' : 'mc_ctx_move_left'
+  const later = vertical ? 'mc_ctx_move_down' : rtl ? 'mc_ctx_move_left' : 'mc_ctx_move_right'
+  const out = []
+  if (at > 0) out.push({ label: t(earlier), delta: -1 })
+  if (at < list.length - 1) out.push({ label: t(later), delta: 1 })
+  return out
+}
+
 function removeChannel(tabId) {
   const ch = getChannelById(tabId)
   config.channels = config.channels.filter((c) => c.id !== tabId)
   saveConfig()
   _dropTabCache(tabId)
+  // Drop the tab's unread/heat state too — otherwise re-adding the same
+  // channel later inherits a stale count from before it was removed.
+  dropTabActivity(tabId)
 
   const twitchName = ch?.twitch
   if (twitchName) irc?.part(twitchName)
@@ -315,14 +768,8 @@ function removeChannel(tabId) {
     ytSubscribedUrls.delete(tabId)
   }
 
-  // Drop per-tab platform filter state so it can't leak across channel adds/removes
-  if (platformFilters?.[tabId]) {
-    delete platformFilters[tabId]
-    saveUiSetting('platformFilters', platformFilters)
-  }
-
   updateTabBar()
-  if (currentTab === tabId) switchTab('live')
+  if (currentTab === tabId) switchTab(liveTarget())
 }
 
 // Apply live platform overrides — join the correct channels on each platform
@@ -333,85 +780,44 @@ function applyLivePlatformOverrides() {
   if (names.youtube) {
     ytSubscribedUrls.set('__live_yt_auto__', names.youtube)
     ytChanLastSeen.set('__live_yt_auto__', Date.now())
-    chrome.runtime
-      .sendMessage({
-        type: 'youtube_ws_subscribe',
-        url: names.youtube,
-        channelId: '__live_yt_auto__',
-      })
-      .catch(() => {})
+    ytSubscribe('__live_yt_auto__', names.youtube)
   }
+  autoResolveLiveIdentity() // verified twitch↔kick handle + zero-config [Y] (social.js)
   renderMessages(currentTab)
 }
 
+// Shortcut to the live tab's platforms cell (also reachable from the live
+// picker dropdown and the live tab's right-click).
 function showEditLivePlatforms() {
+  if (!getCurrentChannel()) return
+  switchTab('live', 'platforms')
+}
+
+// The platforms cell's pane: which twitch/kick/youtube this live channel means.
+function renderLivePlatformsPane(pane) {
   const urlCh = getCurrentChannel()?.toLowerCase()
   if (!urlCh) return
-  editingChannel = true
   const names = getLivePlatformNames()
-
-  const msgsEl = document.getElementById('hs-mc-messages')
-  if (!msgsEl) return
-  _clearMessageIndices()
-  msgsEl.textContent = ''
+  const home = () => switchTab('live', 'chat')
 
   const wrapper = document.createElement('div')
   wrapper.style.cssText =
-    'display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:12px;color:#a8a8a8;font-size:13px;padding:20px;box-sizing:border-box;'
+    'display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:12px;color:#ffffff;font-size:13px;padding:20px;box-sizing:border-box;'
 
   const title = document.createElement('div')
-  title.textContent = `edit live — ${urlCh}`
+  title.textContent = t('mc_cmg_edit_live', [urlCh])
   title.style.cssText = 'font-size:17px;font-weight:700;color:#ffffff;letter-spacing:.5px;'
   wrapper.appendChild(title)
 
-  const makeRow = (label, placeholder, value) => {
-    const row = document.createElement('div')
-    row.style.cssText = 'display:flex;align-items:center;gap:8px;width:100%;max-width:300px;'
-    const lbl = document.createElement('span')
-    lbl.textContent = label
-    lbl.style.cssText = 'font-size:13px;font-weight:600;min-width:56px;color:#949494;text-transform:lowercase;'
-    const input = document.createElement('input')
-    input.type = 'text'
-    input.className = 'hs-mc-ch-input'
-    input.placeholder = placeholder
-    input.value = value || ''
-    input.style.cssText =
-      'flex:1;background:#000;color:#fff;border:1px solid #808080;padding:6px 10px;border-radius:0;font-size:14px;outline:none;font-family:inherit;'
-    input.addEventListener('keydown', (e) => e.stopPropagation())
-    row.appendChild(lbl)
-    row.appendChild(input)
-    return { row, input }
-  }
-
-  const twitch = makeRow('twitch', 'username', names.twitch)
-  const kick = makeRow('kick', 'username', names.kick)
-  const yt = makeRow('youtube', 'url or @handle', names.youtube)
+  const twitch = cmgPlatformRow('twitch', t('mc_username_placeholder'), names.twitch)
+  const kick = cmgPlatformRow('kick', t('mc_username_placeholder'), names.kick)
+  const yt = cmgPlatformRow('youtube', t('mc_username_url_placeholder'), names.youtube)
   wrapper.appendChild(twitch.row)
   wrapper.appendChild(kick.row)
   wrapper.appendChild(yt.row)
 
   const btnRow = document.createElement('div')
   btnRow.style.cssText = 'display:flex;gap:8px;margin-top:4px;'
-
-  const makeMcBtn = (text, primary) => {
-    const btn = document.createElement('button')
-    btn.textContent = text
-    const base = primary
-      ? 'background:transparent;color:#ffffff;border:1px solid #ffffff;'
-      : 'background:transparent;color:#808080;border:1px solid #808080;'
-    btn.style.cssText =
-      base +
-      'padding:6px 22px;border-radius:0;cursor:pointer;font-weight:600;font-size:14px;font-family:inherit;min-width:80px;transition:all .15s;'
-    btn.addEventListener('mouseenter', () => {
-      btn.style.background = '#ffffff'
-      btn.style.color = '#000000'
-    })
-    btn.addEventListener('mouseleave', () => {
-      btn.style.background = 'transparent'
-      btn.style.color = primary ? '#ffffff' : '#808080'
-    })
-    return btn
-  }
 
   const saveBtn = makeMcBtn('save', true)
   const cancelBtn = makeMcBtn('cancel', false)
@@ -420,19 +826,15 @@ function showEditLivePlatforms() {
   btnRow.appendChild(cancelBtn)
   btnRow.appendChild(resetBtn)
   wrapper.appendChild(btnRow)
-  msgsEl.appendChild(wrapper)
+  pane.appendChild(wrapper)
 
-  cancelBtn.addEventListener('click', () => {
-    editingChannel = false
-    switchTab('live')
-  })
+  cancelBtn.addEventListener('click', home)
 
   resetBtn.addEventListener('click', () => {
     delete livePlatformMap[urlCh]
     saveLivePlatformMap()
-    editingChannel = false
+    home()
     applyLivePlatformOverrides()
-    switchTab('live')
   })
 
   const doSave = () => {
@@ -442,13 +844,12 @@ function showEditLivePlatforms() {
 
     livePlatformMap[urlCh] = { twitch: tw, kick: ki, youtube: ytVal }
     saveLivePlatformMap()
-    editingChannel = false
+    home()
     applyLivePlatformOverrides()
-    switchTab('live')
   }
 
   saveBtn.addEventListener('click', doSave)
-  // Enter in any input saves
+  // Enter in any input saves; Esc is the shared cell Esc (main.js)
   ;[twitch.input, kick.input, yt.input].forEach((inp) => {
     inp.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
@@ -457,14 +858,116 @@ function showEditLivePlatforms() {
       }
     })
   })
-  // Esc cancels
-  wrapper.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') {
-      editingChannel = false
-      switchTab('live')
-    }
-  })
   twitch.input.focus()
+}
+
+// One T/K/Y toggle per linked platform: where a message typed in this
+// channel's tab gets sent. Only shown with 2+ linked platforms (nothing to
+// choose otherwise). Persists on click, like every other chat toggle.
+function makeSendTargetsRow(ch) {
+  const linked = { twitch: !!ch.twitch, kick: !!ch.kick, youtube: !!ch.youtube }
+  if (Object.values(linked).filter(Boolean).length < 2) return null
+  const row = document.createElement('div')
+  row.style.cssText = 'display:flex;align-items:center;gap:8px;width:100%;max-width:300px;'
+  const lbl = document.createElement('span')
+  lbl.textContent = t('mc_cfg_send_to')
+  lbl.style.cssText = 'font-size:13px;font-weight:700;min-width:56px;color:#ffffff;text-transform:lowercase;'
+  row.appendChild(lbl)
+  const group = document.createElement('span')
+  group.style.cssText = 'display:flex;gap:2px;'
+  row.appendChild(group)
+  const render = () => {
+    group.textContent = ''
+    const resolved = resolveSendTargets(ch.sendTargets, linked)
+    for (const [key, label] of [
+      ['twitch', 'T'],
+      ['kick', 'K'],
+      ['youtube', 'Y'],
+    ]) {
+      if (!linked[key]) continue
+      const on = resolved[key]
+      const btn = document.createElement('button')
+      btn.type = 'button'
+      btn.className = `hs-mc-st-btn hs-mc-st-${key}`
+      btn.classList.toggle('off', !on)
+      btn.textContent = label
+      btn.title = t('mc_cfg_send_to_title', [key, t(on ? 'mc_cm_on' : 'mc_cm_off')])
+      btn.addEventListener('click', () => {
+        const next = nextSendTargets(ch.sendTargets, linked, key, !on)
+        if (!next) return // refuse to disable the last active target
+        ch.sendTargets = next
+        saveConfig()
+        render()
+      })
+      group.appendChild(btn)
+    }
+  }
+  render()
+  return row
+}
+
+// "show" row: which linked platforms' messages this tab displays. A view
+// filter, so nothing is deleted. Same T/K/Y squares as send to; refuses to
+// hide the last visible platform (an empty tab reads as broken).
+function makePlatformFilterRow(ch) {
+  const tabId = ch.id
+  const linked = { twitch: !!ch.twitch, kick: !!ch.kick, youtube: !!ch.youtube }
+  if (Object.values(linked).filter(Boolean).length < 2) return null
+  const row = document.createElement('div')
+  row.style.cssText = 'display:flex;align-items:center;gap:8px;width:100%;max-width:300px;'
+  const lbl = document.createElement('span')
+  lbl.textContent = t('mc_cfg_show')
+  lbl.style.cssText = 'font-size:13px;font-weight:700;min-width:56px;color:#ffffff;text-transform:lowercase;'
+  row.appendChild(lbl)
+  const group = document.createElement('span')
+  group.style.cssText = 'display:flex;gap:2px;'
+  row.appendChild(group)
+  const render = () => {
+    group.textContent = ''
+    const f = getPlatformFilter(tabId)
+    for (const [key, label] of [
+      ['twitch', 'T'],
+      ['kick', 'K'],
+      ['youtube', 'Y'],
+    ]) {
+      if (!linked[key]) continue
+      const btn = document.createElement('button')
+      btn.type = 'button'
+      btn.className = `hs-mc-st-btn hs-mc-st-${key}`
+      btn.classList.toggle('off', !f[key])
+      btn.textContent = label
+      btn.title = t('mc_cfg_show_title', [key, t(f[key] ? 'mc_cm_on' : 'mc_cm_off')])
+      btn.addEventListener('click', () => {
+        const cur = getPlatformFilter(tabId)
+        const stillOn = ['twitch', 'kick', 'youtube'].filter((p) => linked[p] && cur[p] && p !== key)
+        if (cur[key] && !stillOn.length) return // never hide every platform
+        togglePlatformFilter(tabId, key)
+        render()
+        renderMessages(tabId)
+      })
+      group.appendChild(btn)
+    }
+  }
+  render()
+  return row
+}
+
+// One button per sub link (twitch / kick / youtube sub pages) — they lived in
+// the tab menu; the menu is edit + remove now.
+function makeSubLinksRow(ch) {
+  const links = channelSubLinks(ch)
+  if (!links.length) return null
+  const row = document.createElement('div')
+  row.style.cssText = 'display:flex;flex-wrap:wrap;justify-content:center;gap:6px;'
+  for (const l of links) {
+    const b = makeMcBtn(l.label, false)
+    b.style.padding = '4px 10px'
+    b.style.minWidth = '0'
+    b.style.fontSize = '13px'
+    b.addEventListener('click', () => window.open(l.url, '_blank', 'noopener'))
+    row.appendChild(b)
+  }
+  return row
 }
 
 function showEditChannelForm(tabId) {
@@ -479,39 +982,25 @@ function showEditChannelForm(tabId) {
 
   const wrapper = document.createElement('div')
   wrapper.style.cssText =
-    'display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:12px;color:#a8a8a8;font-size:13px;padding:20px;box-sizing:border-box;'
+    'display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:12px;color:#ffffff;font-size:13px;padding:20px;box-sizing:border-box;'
 
   const title = document.createElement('div')
   title.textContent = t('mc_edit_channel', [tabId])
   title.style.cssText = 'font-size:17px;font-weight:700;color:#ffffff;letter-spacing:.5px;'
   wrapper.appendChild(title)
 
-  const makeRow = (label, placeholder, value) => {
-    const row = document.createElement('div')
-    row.style.cssText = 'display:flex;align-items:center;gap:8px;width:100%;max-width:300px;'
-    const lbl = document.createElement('span')
-    lbl.textContent = label
-    lbl.style.cssText = 'font-size:13px;font-weight:600;min-width:56px;color:#949494;text-transform:lowercase;'
-    const input = document.createElement('input')
-    input.type = 'text'
-    input.className = 'hs-mc-ch-input'
-    input.placeholder = placeholder
-    input.value = value || ''
-    input.style.cssText =
-      'flex:1;background:#000;color:#fff;border:1px solid #808080;padding:6px 10px;border-radius:0;font-size:14px;outline:none;font-family:inherit;'
-    // Stop YouTube/Kick keyboard shortcuts from stealing keystrokes
-    input.addEventListener('keydown', (e) => e.stopPropagation())
-    row.appendChild(lbl)
-    row.appendChild(input)
-    return { row, input }
-  }
-
-  const twitch = makeRow('twitch', t('mc_username_placeholder'), ch.twitch)
-  const kick = makeRow('kick', t('mc_username_placeholder'), ch.kick)
-  const yt = makeRow('youtube', t('mc_username_url_placeholder'), ch.youtube)
+  const twitch = cmgPlatformRow('twitch', t('mc_username_placeholder'), ch.twitch)
+  const kick = cmgPlatformRow('kick', t('mc_username_placeholder'), ch.kick)
+  const yt = cmgPlatformRow('youtube', t('mc_username_url_placeholder'), ch.youtube)
   wrapper.appendChild(twitch.row)
   wrapper.appendChild(kick.row)
   wrapper.appendChild(yt.row)
+  const showRow = makePlatformFilterRow(ch)
+  if (showRow) wrapper.appendChild(showRow)
+  const sendRow = makeSendTargetsRow(ch)
+  if (sendRow) wrapper.appendChild(sendRow)
+  const subRow = makeSubLinksRow(ch)
+  if (subRow) wrapper.appendChild(subRow)
 
   const errEl = document.createElement('div')
   errEl.style.cssText = 'font-size:13px;color:var(--hs-danger);display:none;'
@@ -520,26 +1009,6 @@ function showEditChannelForm(tabId) {
 
   const btnRow = document.createElement('div')
   btnRow.style.cssText = 'display:flex;gap:8px;margin-top:4px;'
-
-  const makeMcBtn = (text, primary) => {
-    const btn = document.createElement('button')
-    btn.textContent = text
-    const base = primary
-      ? 'background:transparent;color:#ffffff;border:1px solid #ffffff;'
-      : 'background:transparent;color:#808080;border:1px solid #808080;'
-    btn.style.cssText =
-      base +
-      'padding:6px 22px;border-radius:0;cursor:pointer;font-weight:600;font-size:14px;font-family:inherit;min-width:80px;transition:all .15s;'
-    btn.addEventListener('mouseenter', () => {
-      btn.style.background = '#ffffff'
-      btn.style.color = '#000000'
-    })
-    btn.addEventListener('mouseleave', () => {
-      btn.style.background = 'transparent'
-      btn.style.color = primary ? '#ffffff' : '#808080'
-    })
-    return btn
-  }
 
   const saveBtn = makeMcBtn('save', true)
   const cancelBtn = makeMcBtn('cancel', false)
@@ -639,12 +1108,7 @@ function showEditChannelForm(tabId) {
         // Pacer state is keyed by channelId — the old key is orphaned by the
         // id migration, so its queued drip would never flush.
         clearYtPace(tabId)
-        chrome.runtime.sendMessage({ type: 'youtube_ws_subscribe', url: ytVal, channelId: newId }).catch(() => {})
-      }
-      if (platformFilters?.[tabId]) {
-        platformFilters[newId] = platformFilters[tabId]
-        delete platformFilters[tabId]
-        saveUiSetting('platformFilters', platformFilters)
+        ytSubscribe(newId, ytVal)
       }
       _dropTabCache(tabId)
       ch.id = newId
@@ -661,8 +1125,7 @@ function showEditChannelForm(tabId) {
       youtubeLinks.set(newId, { url: ytVal, videoId: '', channelName: '' })
       ytSubscribedUrls.set(newId, ytVal)
       ytChanLastSeen.set(newId, Date.now())
-      chrome.runtime.sendMessage({ type: 'youtube_ws_subscribe', url: ytVal, channelId: newId }).catch(() => {})
-      safeSendMessage({ type: 'join_channel', platform: 'youtube', channel: newId, channelId: ytVal })
+      ytSubscribe(newId, ytVal, newId)
     }
 
     updateTabBar()

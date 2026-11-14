@@ -3,8 +3,16 @@
 const kickChannelIdCache = new Map()
 const KICK_CHANNEL_ID_CACHE_MAX = 200
 
-// Failures we never retry — they're user-actionable, not transient.
-const KICK_FATAL_SEND_ERRORS = new Set(['no_channel', 'no_kick_tab', 'kick_not_logged_in', 'missing params'])
+// Failures we never retry — they're user-actionable, not transient. A bridge tab
+// that never answered already waited its full window; the toast's retry is the
+// user's call, not three more silent waits.
+const KICK_FATAL_SEND_ERRORS = new Set([
+  'no_channel',
+  'no_kick_tab',
+  'kick_bridge_timeout',
+  'kick_not_logged_in',
+  'missing params',
+])
 
 // Exceeds the relay POST's own AbortSignal.timeout (10s in content.js
 // kick_send_relay) so a timeout here means the POST is done waiting too.
@@ -16,8 +24,16 @@ const KICK_FATAL_SEND_ERRORS = new Set(['no_channel', 'no_kick_tab', 'kick_not_l
 // post. This used to auto-retry on the claim that outwaiting the abort made
 // the first attempt "dead"; it doesn't, and the guarantee was fiction. A
 // timeout now returns unconfirmed and stops, and the user decides.
-const KICK_SEND_TIMEOUT_MS = 11000
+//
+// Sized for the cold path too: with no kick tab open background opens a hidden
+// one and waits for its page (up to 9s, twice if the user closes it mid-wait)
+// BEFORE the 10s POST starts. A sentinel under that sum would call a send that
+// is still on its way "unconfirmed". Background answers long before this on every
+// normal path — it only fires if the service worker itself went away.
+const KICK_SEND_TIMEOUT_MS = 30000
 const KICK_SEND_RETRY_BACKOFF_MS = [750, 1500]
+// what a fetch that never reached kick says (chrome, firefox, safari); see sendKickMessage
+const KICK_NEVER_LANDED = /failed to fetch|networkerror|load failed/i
 
 async function resolveKickChannelId(slug) {
   if (kickChannelIdCache.has(slug)) return kickChannelIdCache.get(slug)
@@ -71,7 +87,9 @@ async function sendKickMessage(kickSlug, text, reply = null) {
       lastErr = err
       // Reply-shaped send rejected by kick (4xx) → the message itself is fine,
       // only the threading ref was refused. Deliver flat rather than fail.
-      if (replyRef && /^4\d\d:/.test(err)) {
+      // Checked on the relay's own status field, not the (now human-readable,
+      // not status-prefixed) error text.
+      if (replyRef && resp?.status >= 400 && resp?.status < 500) {
         replyRef = null
         attempt-- // the flat resend shouldn't consume a retry slot
         continue
@@ -82,8 +100,9 @@ async function sendKickMessage(kickSlug, text, reply = null) {
       // gated behind a sub, or belongs to another channel — and then a message
       // that used to send as plain words wouldn't send at all, which is
       // strictly worse than not rendering an emote. Strip the tokens back to
-      // bare names and deliver.
-      if (/INVALID_EMOTE/i.test(err) && /\[emote:\d+:/.test(body)) {
+      // bare names and deliver. Checked via the relay's own `code` field, not
+      // the error text (which is human copy now, not kick's raw body).
+      if (resp?.code === 'invalid_emote' && /\[emote:\d+:/.test(body)) {
         body = typeof _unkickEmotes === 'function' ? _unkickEmotes(body) : body.replace(/\[emote:\d+:([^\]]+)\]/g, '$1')
         attempt-- // the de-tokenized resend shouldn't consume a retry slot
         continue
@@ -91,6 +110,12 @@ async function sendKickMessage(kickSlug, text, reply = null) {
       // Unresolved, not failed — see KICK_SEND_TIMEOUT_MS. Never auto-retried.
       if (err === 'timeout') return 'kick_unconfirmed'
       if (KICK_FATAL_SEND_ERRORS.has(err)) return err
+      // Tried again only when the POST provably never landed: kick answered 4xx (refused it) or the
+      // connection never opened. Anything else — a 5xx from a gateway that already did the work, a
+      // worker that died between the POST and its answer — may well be in chat, and with no
+      // idempotency key a retry would post it twice.
+      const neverLanded = (resp?.status >= 400 && resp?.status < 500) || (!resp?.status && KICK_NEVER_LANDED.test(err))
+      if (!neverLanded) return 'kick_unconfirmed'
       if (attempt < KICK_SEND_RETRY_BACKOFF_MS.length) {
         await new Promise((r) => setTimeout(r, KICK_SEND_RETRY_BACKOFF_MS[attempt]))
         continue
@@ -178,7 +203,11 @@ async function setKickChatMode(slug, mode, value) {
   }
   if (!chatroomId) return { ok: false, error: 'kick chatroom not found' }
   const resp = await safeSendMessage({ type: 'kick_set_chat_mode', chatroomId, body })
-  if (!resp?.ok) return { ok: false, error: resp?.error || 'kick_set_failed' }
+  if (!resp?.ok) {
+    // the toast shows this text as is — a relay code gets its words here
+    const words = { kick_bridge_timeout: 'mc_notif_r_kick_bridge_timeout', no_kick_tab: 'mc_notif_r_no_kick_tab' }
+    return { ok: false, error: (words[resp?.error] && t(words[resp.error])) || resp?.error || 'kick_set_failed' }
+  }
   // Confirm against the row kick echoed back. A 200 alone proves nothing — the
   // 422 that caught the nested-body guess returned no change at all.
   if (!kickChatModeMatches(mode, value, resp.row)) {

@@ -39,6 +39,11 @@ function playerEl() {
     document.querySelector('.persistent-player') ||
     document.querySelector('[data-a-target="video-player"]') ||
     document.querySelector('#video-player') ||
+    // YouTube: the <video>'s nearest div is .html5-video-container, which is
+    // 0px tall by design (the video is absolutely positioned inside it), so
+    // falling through to the generic <video> lookup flagged every healthy
+    // watch page as collapsed and handed it back to native layout.
+    document.querySelector('#movie_player') ||
     document.querySelector('video')?.closest('div')
   )
 }
@@ -56,6 +61,9 @@ function shouldIgnore(el) {
   if (document.fullscreenElement) return true
   if (document.pictureInPictureElement) return true
   if (!el || !el.isConnected) return true
+  // A player that is not rendered at all (an ancestor is display:none) is absent, not collapsed: kick keeps
+  // a hidden <video> on an offline channel. A collapsed player still has a box, just a tiny one.
+  if (typeof el.getClientRects === 'function' && el.getClientRects().length === 0) return true
   // Mini-player while browsing away — the platform owns its geometry and our
   // rules are already gated off it.
   //

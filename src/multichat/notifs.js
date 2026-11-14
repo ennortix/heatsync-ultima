@@ -35,7 +35,7 @@
 //         el.textContent = `${data.raidFrom} raided with ${data.viewers}!`
 //         return el
 //       },
-//       actions: { dismiss: { label: '✕' } },
+//       actions: { dismiss: {} },  // dismiss draws the shared × glyph (no label)
 //     })
 //     // Then anywhere:
 //     HsNotifs.emit('twitch-raid', { raidFrom: 'someone', viewers: 50 })
@@ -92,7 +92,7 @@ const HsNotifs = (() => {
           if (existing.el) _renderInto(existing)
           if (t.timeout) {
             if (existing._timer) cleanup.clearTimeout(existing._timer)
-            existing._timer = cleanup.setTimeout(() => dismiss(existing.id), t.timeout)
+            existing._timer = cleanup.setPageTimeout(() => dismiss(existing.id), t.timeout)
           }
           return existing.id
         }
@@ -218,7 +218,7 @@ const HsNotifs = (() => {
       // Pause-on-hover. Errors are easy to miss if they vanish mid-read.
       let remaining = notif.type.timeout
       let startedAt = Date.now()
-      notif._timer = cleanup.setTimeout(() => dismiss(notif.id), remaining)
+      notif._timer = cleanup.setPageTimeout(() => dismiss(notif.id), remaining)
       wrapper.addEventListener('mouseenter', () => {
         if (notif._timer) {
           cleanup.clearTimeout(notif._timer)
@@ -229,7 +229,7 @@ const HsNotifs = (() => {
       wrapper.addEventListener('mouseleave', () => {
         if (!notif._timer && remaining > 0) {
           startedAt = Date.now()
-          notif._timer = cleanup.setTimeout(() => dismiss(notif.id), remaining)
+          notif._timer = cleanup.setPageTimeout(() => dismiss(notif.id), remaining)
         }
       })
     }
@@ -267,8 +267,10 @@ const HsNotifs = (() => {
         if (!def) continue
         const btn = document.createElement('button')
         btn.type = 'button'
-        btn.className = `hs-notif-action hs-notif-action-${kind}`
-        btn.textContent = def.label || kind
+        btn.className = `hs-notif-action hs-notif-action-${kind}${kind === 'dismiss' ? ' hs-x hs-x-inline' : ''}`
+        if (kind === 'dismiss') btn.innerHTML = HS_X_SVG
+        else btn.textContent = def.label || kind
+        if (kind === 'dismiss') btn.setAttribute('aria-label', def.title || t('mc_notif_dismiss'))
         if (def.title) btn.title = def.title
         btn.addEventListener('click', (e) => {
           e.stopPropagation()
@@ -344,7 +346,9 @@ const HsNotifs = (() => {
   //        tabPosition, activeChannels }
   function updateLayout(ctx) {
     if (ctx && 'activeChannels' in ctx) setActiveChannels(ctx.activeChannels)
-    const root = document.documentElement
+    // Measure every layer, then write. Interleaved, each layer's rect read paid
+    // for the previous layer's root write with a whole-page restyle.
+    const writes = []
     for (const [name, l] of layers) {
       _ensureContainer(name, l)
       let geom = null
@@ -352,13 +356,11 @@ const HsNotifs = (() => {
         geom = l.def.geometry?.(ctx || {})
       } catch (_) {}
       if (geom) {
-        for (const [k, v] of Object.entries(geom)) {
-          const cssName = `--hs-layer-${name}-${k}`
-          if (v == null) root.style.removeProperty(cssName)
-          else root.style.setProperty(cssName, typeof v === 'number' ? `${v}px` : v)
-        }
+        for (const [k, v] of Object.entries(geom))
+          writes.push([`--hs-layer-${name}-${k}`, v == null ? null : typeof v === 'number' ? `${v}px` : v])
       }
     }
+    for (const [cssName, v] of writes) setRootVar(cssName, v)
   }
 
   // === STANDARD LAYERS ===
@@ -392,6 +394,30 @@ const HsNotifs = (() => {
   // Used by twitch-resub-share, twitch-watchstreak-share, sub-anniversary,
   // viewer-milestone callouts. Stacks vertically (newer on top) so multiple
   // celebration opportunities can coexist — user picks which to share first.
+  /**
+   * Clamp a docked layer's horizontal box into the viewport.
+   *
+   * A docked layer mirrors whatever it docks to (the chat overlay). That rect is
+   * not guaranteed to be on screen: at narrow widths the chat column can sit
+   * fully past the right edge, and the layer faithfully followed it — measured
+   * live at `left: 1053px; right: -11px` in a 1048px viewport, i.e. a **6px
+   * sliver**. The notification was present, correct and completely unreadable,
+   * which reads to a user as the feature simply not working.
+   *
+   * A notification is the one thing that must never be silently invisible, so the
+   * dock is a preference, not a contract: follow the target when it is usable,
+   * clamp on screen when it is not.
+   */
+  function clampDockedBox(left, width, minWidth = 180) {
+    const vw = window.innerWidth
+    let w = Math.min(width, vw)
+    if (w < minWidth) w = Math.min(minWidth, vw)
+    let l = left
+    if (l + w > vw) l = vw - w
+    if (l < 0) l = 0
+    return { left: l, right: Math.max(0, vw - (l + w)) }
+  }
+
   registerLayer('chat-docked-bottom', {
     stack: 'queue',
     maxVisible: 3,
@@ -408,11 +434,16 @@ const HsNotifs = (() => {
         bottomY = bottomY !== null ? Math.min(bottomY, tbRect.top) : tbRect.top
       }
       const horRect = ovRect && ovRect.width > 0 ? ovRect : ibRect
+      // Input bar hidden (and no bottom tab strip): dock to the overlay's own
+      // bottom edge. Returning null left the layer unplaced, which draws it
+      // across the whole window instead of the chat column.
+      if (bottomY === null && ovRect && ovRect.height > 0) bottomY = ovRect.bottom
       if (!horRect || bottomY === null) return null
+      const box = clampDockedBox(horRect.left, horRect.width)
       return {
         bottom: window.innerHeight - bottomY,
-        left: horRect.left,
-        right: window.innerWidth - (horRect.left + horRect.width),
+        left: box.left,
+        right: box.right,
       }
     },
   })
@@ -428,10 +459,11 @@ const HsNotifs = (() => {
       const tbVisible = tabBarElement && !tabBarElement.classList.contains('hs-hidden')
       const tbRect = tbVisible ? tabBarElement.getBoundingClientRect() : null
       const topY = tabPosition === 'top' && tbRect && tbRect.height > 0 ? tbRect.bottom : ovRect.top
+      const box = clampDockedBox(ovRect.left, ovRect.width)
       return {
         top: topY,
-        left: ovRect.left,
-        right: window.innerWidth - (ovRect.left + ovRect.width),
+        left: box.left,
+        right: box.right,
       }
     },
   })
@@ -489,6 +521,21 @@ const HsNotifs = (() => {
     },
   })
 
+  // A moderator warned this account. Outlasts a 2s toast — the reason is
+  // something to read, not glance at. Click dismisses.
+  registerType('mod-warning', {
+    layer: 'toast-stack',
+    timeout: 20000,
+    clickToDismiss: true,
+    dedupeKey: ({ text }) => `mod-warning:${String(text || '').slice(0, 200)}`,
+    render: ({ data }) => {
+      const el = document.createElement('span')
+      el.className = 'hs-notif-toast-text hs-notif-toast-warn'
+      el.textContent = String(data?.text || '')
+      return el
+    },
+  })
+
   // Whisper/DM receipt — popup toast while the user is NOT on the whispers
   // tab. The has-whispers tab badge alone was easy to miss (wollip missed
   // whispers entirely). Click jumps to the whispers tab; wrapper
@@ -511,7 +558,7 @@ const HsNotifs = (() => {
       if (data.color) who.style.color = data.color
       const count = data._count | 0
       const snippet = String(data.text || '').slice(0, 80)
-      el.append(who, ` whispered: ${snippet}${count > 1 ? ` ×${count}` : ''}`)
+      el.append(who, ` ${t('mc_notif_whispered', [snippet])}${count > 1 ? ` ×${count}` : ''}`)
       el.addEventListener('click', () => {
         try {
           if (typeof switchTab === 'function') switchTab('whispers')
@@ -532,7 +579,53 @@ const HsNotifs = (() => {
     render: ({ data }) => {
       const el = document.createElement('span')
       el.className = 'hs-notif-toast-text hs-notif-toast-info'
-      el.textContent = (typeof data?.text === 'string' && data.text.trim()) || 'loading emotes…'
+      el.textContent = (typeof data?.text === 'string' && data.text.trim()) || t('mc_notif_emotes_loading')
+      return el
+    },
+  })
+
+  // Tab mode — the rover cursor's status line, mirroring the site's vim
+  // mode-line. Persistent (no timeout): tab mode is a MODE, so the line has to
+  // stay up for exactly as long as the mode is on, and exitTabMode dismisses it
+  // by key. A floating corner element like the site's would sit on top of the
+  // host page's own UI, which is why this rides the overlay's own statusbar.
+  registerType('tab-mode', {
+    layer: 'statusbar',
+    dedupeKey: () => 'tab-mode',
+    dedupePolicy: 'replace',
+    render: ({ data }) => {
+      const el = document.createElement('span')
+      el.className = 'hs-notif-toast-text hs-mc-tabmode-line'
+      const tag = document.createElement('span')
+      tag.className = 'hs-mc-tabmode-tag'
+      tag.textContent = t('mc_notif_tabs_tag')
+      el.appendChild(tag)
+      const rest = document.createElement('span')
+      rest.className = 'hs-mc-tabmode-hint'
+      rest.textContent = typeof data?.text === 'string' ? data.text : ''
+      el.appendChild(rest)
+      return el
+    },
+  })
+
+  // Row mode — same mode-line as tab mode (row-mode.js), same persistence:
+  // up for exactly as long as the mode is, dismissed by key on exit. Wears
+  // tab mode's classes, so the line looks the same in both.
+  registerType('row-mode', {
+    layer: 'statusbar',
+    dedupeKey: () => 'row-mode',
+    dedupePolicy: 'replace',
+    render: ({ data }) => {
+      const el = document.createElement('span')
+      el.className = 'hs-notif-toast-text hs-mc-tabmode-line'
+      const tag = document.createElement('span')
+      tag.className = 'hs-mc-tabmode-tag'
+      tag.textContent = t('mc_notif_rows_tag')
+      el.appendChild(tag)
+      const rest = document.createElement('span')
+      rest.className = 'hs-mc-tabmode-hint'
+      rest.textContent = typeof data?.text === 'string' ? data.text : ''
+      el.appendChild(rest)
       return el
     },
   })
@@ -541,6 +634,20 @@ const HsNotifs = (() => {
   // shows month count + Share button (clicks the native Twitch share so the
   // existing _enterResubShareMode flow runs) and X to dismiss. Native DOM is
   // hidden via CSS; we render our own controlled version.
+  // No token anywhere: we cannot finish the share, and neither can twitch's
+  // own button on its own — clicking it only puts TWITCH's composer into
+  // share-mode, and heatsync has replaced that composer, so the user would be
+  // left with a closed prompt and nothing sent. Fire it anyway (it is the only
+  // thing that can consume the resub, and it does work when twitch's native
+  // chat is visible) but say so out loud. Failing silently here is what hid
+  // this bug for months. Returns true when twitch owns the flow now.
+  function nativeFallback(data) {
+    const btn = data._nativeShareBtn
+    if (!btn) return false
+    window.__hsResubShare?.clickNative?.(btn)
+    emit('toast', { text: t('mc_notifs_share_token_missing'), level: 'error' })
+    return true
+  }
   registerType('twitch-resub-share', {
     layer: 'chat-docked-bottom',
     channelScoped: true,
@@ -561,16 +668,16 @@ const HsNotifs = (() => {
       const text = document.createElement('span')
       text.className = 'hs-notif-resub-text'
       const parts = [
-        ['hs-rt-prefix', 'celebrating '],
+        ['hs-rt-prefix', `${t('mc_notif_rt_prefix')} `],
         ['hs-rt-num', String(months)],
-        ['hs-rt-mo', 'mo'],
-        ['hs-rt-months', ' months'],
-        ['hs-rt-suffix', ' as a subscriber'],
+        ['hs-rt-mo', t('mc_notif_rt_mo')],
+        ['hs-rt-months', ` ${t('mc_notif_rt_months')}`],
+        ['hs-rt-suffix', ` ${t('mc_notif_rt_suffix')}`],
       ]
-      for (const [cls, t] of parts) {
+      for (const [cls, txt] of parts) {
         const s = document.createElement('span')
         s.className = cls
-        s.textContent = t
+        s.textContent = txt
         text.appendChild(s)
       }
       el.appendChild(icon)
@@ -579,19 +686,60 @@ const HsNotifs = (() => {
     },
     actions: {
       primary: {
-        label: 'share',
-        onClick: (data) => {
+        label: t('mc_notif_share'),
+        onClick: (data, dismiss) => {
           // Bypass the native Twitch share button — its native onClick auto-
           // sends a default "<user> is celebrating Nmo as a subscriber!"
           // message to chat, robbing the user of the custom-message window.
           // Call _enterResubShareMode directly via the exposed API instead.
+          //
+          // ONLY when we hold a real token, though. Our share mode finishes by
+          // calling Chat_ShareResub_UseResubToken, and with a guessed token
+          // that mutation fails and falls back to posting the text as ordinary
+          // chat — which looks like it worked while twitch never marks the
+          // resub shared, so the callout returns on every refresh. With no
+          // token, hand the click to twitch's own button: it is the only thing
+          // that can actually consume the resub.
           try {
-            window.__hsResubShare?.enter?.(data.months, data.user, data.channel, data._resubToken)
+            // Re-scan before giving up. The notif is emitted the instant the
+            // callout is detected, and the token lives in a React subtree that
+            // is not always mounted by then — measured on a live callout, the
+            // notif had no token while the payload sat in the tree the whole
+            // time. Every one of those clicks fell through to twitch's button,
+            // which posts twitch's DEFAULT celebration and drops the message
+            // the user was about to write. By click time the tree is built.
+            const token =
+              data._resubToken ||
+              window.__hsResubShare?.rescanToken?.(data._nativeCallout || data._nativeShareBtn, {
+                kind: 'cumulative',
+                count: data.months,
+              }) ||
+              null
+            if (token) {
+              window.__hsResubShare?.enter?.(data.months, data.user, data.channel, token)
+              return false // resub-share mode controls dismissal
+            }
+            // Not readable from this world (see readCalloutTokens): ask the
+            // page's own world for the callout's key — that IS twitch's token.
+            // Failing that, build it: it is only ever base64 of ids we hold
+            // ourselves, and the mutation is the judge (a wrong one is
+            // rejected loudly and the typed words are rescued into chat).
+            // Twitch's own button is the last resort, and stays one.
+            const api = window.__hsResubShare
+            if (!api) return nativeFallback(data)
+            api
+              .findToken({ kind: 'cumulative', count: data.months })
+              .then((tok) => tok || api.deriveToken?.(data.channel, data.months))
+              .then((tok) => {
+                if (tok) api.enter?.(data.months, data.user, data.channel, tok)
+                else if (nativeFallback(data)) dismiss?.()
+              })
+            return false // resub-share mode (or the fallback) controls dismissal
           } catch (_) {}
-          return false // resub-share mode controls dismissal
+          return false
         },
       },
-      dismiss: { label: '✕' },
+      dismiss: {},
     },
   })
 
@@ -611,33 +759,76 @@ const HsNotifs = (() => {
       icon.textContent = '▲'
       const text = document.createElement('span')
       text.className = 'hs-notif-watchstreak-text'
-      const parts = [
-        ['hs-wt-prefix', 'on a '],
-        ['hs-wt-num', String(n)],
-        ['hs-wt-stream', ' stream'],
-        ['hs-wt-suffix', ' watch streak'],
-      ]
-      for (const [cls, t] of parts) {
-        const s = document.createElement('span')
-        s.className = cls
-        s.textContent = t
-        text.appendChild(s)
-      }
+      text.textContent = t('mc_notif_wt', [String(n)])
       el.appendChild(icon)
       el.appendChild(text)
       return el
     },
     actions: {
       primary: {
-        label: 'share',
+        label: t('mc_notif_share'),
         onClick: (data) => {
           try {
-            window.__hsWatchstreakShare?.enter?.(data.streakCount, data.user, data.channel)
+            // Same click-time rescan as the resub prompt: the notif is emitted
+            // the instant the callout is detected, and the token lives in a
+            // subtree that is not always mounted by then.
+            // `expect` is what stops a sub-anniversary token being handed to
+            // the watch-streak share when both callouts are queued at once.
+            const token =
+              data._streakToken ||
+              window.__hsResubShare?.rescanToken?.(data._nativeCallout, { count: data.streakCount }) ||
+              null
+            if (token) {
+              window.__hsWatchstreakShare?.enter?.(data.streakCount, data.user, data.channel, token)
+            } else {
+              // same isolated-world blind spot as the resub prompt; a sub
+              // anniversary can share the count, so it must not be the kind
+              ;(
+                window.__hsResubShare?.findToken?.({ count: data.streakCount, notKind: 'cumulative' }) ??
+                Promise.resolve(null)
+              ).then((tok) => window.__hsWatchstreakShare?.enter?.(data.streakCount, data.user, data.channel, tok))
+            }
           } catch (_) {}
           return false
         },
       },
-      dismiss: { label: '✕' },
+      dismiss: {},
+    },
+  })
+
+  // Mod anniversary — twitch's own callout, not a resub (same "N month" words,
+  // different event). Share runs heatsync's share mode, never twitch's button:
+  // that only arms twitch's composer, which heatsync replaces, so the prompt
+  // closed and nothing was posted. It carries no token; the send is
+  // SendUserModiversaryNotice with the channel id and the typed text.
+  registerType('twitch-mod-anniversary-share', {
+    layer: 'chat-docked-bottom',
+    channelScoped: true,
+    dedupeKey: ({ months, channel }) => `modanniv:${channel}:${months}`,
+    render: ({ data }) => {
+      const el = document.createElement('span')
+      el.className = 'hs-notif-watchstreak-body'
+      const icon = document.createElement('span')
+      icon.className = 'hs-notif-watchstreak-icon'
+      icon.textContent = '★'
+      const text = document.createElement('span')
+      text.className = 'hs-notif-watchstreak-text'
+      text.textContent = t('mc_notif_mod_anniv', [String(data.months | 0)])
+      el.appendChild(icon)
+      el.appendChild(text)
+      return el
+    },
+    actions: {
+      primary: {
+        label: t('mc_notif_share'),
+        onClick: (data) => {
+          try {
+            window.__hsResubShare?.enter?.(data.months, data.user, data.channel, null, 'modanniv')
+          } catch (_) {}
+          return false // share mode controls dismissal
+        },
+      },
+      dismiss: {},
     },
   })
 
@@ -653,12 +844,18 @@ const HsNotifs = (() => {
       el.className = 'hs-notif-toast-text hs-notif-toast-warn'
       const body = data.msg
         ? String(data.msg).slice(0, 200)
-        : `update available — running ${data.current}, latest is ${data.min}+`
+        : t('mc_notif_update_available', [String(data.current), String(data.min)])
       el.textContent = body
       return el
     },
-    actions: { dismiss: { label: '✕' } },
+    actions: { dismiss: {} },
   })
+
+  // failure reasons that mean "not signed in over there" → where to sign in
+  const PENDING_LOGIN_LINKS = {
+    kick_not_logged_in: { label: t('mc_notif_open_kick'), url: 'https://kick.com/' },
+    chat_disabled: { label: t('mc_notif_open_youtube'), url: 'https://www.youtube.com/' },
+  }
 
   // Send-pending — fires when an outgoing chat message hasn't echoed back from
   // the platform within PENDING_ECHO_TIMEOUT_MS (input.js). Persistent: stays
@@ -672,24 +869,25 @@ const HsNotifs = (() => {
       const el = document.createElement('span')
       el.className = 'hs-notif-toast-text hs-notif-toast-warn'
       const reasonMap = {
-        auth_failed: 'twitch auth failed',
-        no_user: 'no twitch username',
-        connect_failed: 'connection failed',
-        send_failed: 'send failed',
-        kick_not_logged_in: 'kick not logged in',
-        no_kick_tab: 'no kick tab open',
-        no_channel: 'kick channel not found',
+        auth_failed: t('mc_notif_r_auth_failed'),
+        no_user: t('mc_notif_r_no_user'),
+        connect_failed: t('mc_notif_r_connect_failed'),
+        send_failed: t('mc_notif_r_send_failed'),
+        kick_not_logged_in: t('mc_notif_r_kick_not_logged_in'),
+        no_kick_tab: t('mc_notif_r_no_kick_tab'),
+        kick_bridge_timeout: t('mc_notif_r_kick_bridge_timeout'),
+        no_channel: t('mc_notif_r_no_channel'),
         // Deliberately not worded as a failure: kick may well have posted it
         // (see kick-send.js KICK_SEND_TIMEOUT_MS). "retry" here is an informed
         // choice to send it a second time, not a repair.
-        kick_unconfirmed: 'kick did not confirm — it may have posted',
-        'missing params': 'kick send rejected',
-        no_youtube_tab: 'no youtube tab open',
-        no_input: 'youtube chat still loading',
-        chat_disabled: 'log into youtube first',
-        send_disabled: 'youtube blocked the send',
-        send_not_confirmed: 'youtube did not confirm the send',
-        bridge_timeout: 'youtube chat bridge timed out',
+        kick_unconfirmed: t('mc_notif_r_kick_unconfirmed'),
+        'missing params': t('mc_notif_r_missing_params'),
+        no_youtube_tab: t('mc_notif_r_no_youtube_tab'),
+        no_input: t('mc_notif_r_no_input'),
+        chat_disabled: t('mc_notif_r_chat_disabled'),
+        send_disabled: t('mc_notif_r_send_disabled'),
+        send_not_confirmed: t('mc_notif_r_send_not_confirmed'),
+        bridge_timeout: t('mc_notif_r_bridge_timeout'),
       }
       let why
       const _reasonStr = String(data.reason || '')
@@ -697,22 +895,38 @@ const HsNotifs = (() => {
         // Name the platform(s) that never confirmed (markPendingFailed sends
         // the awaiting set) — a kick or yt no-echo used to blame twitch.
         const plat = (data.platforms || []).map((p) => (p === 'yt' ? 'youtube' : p)).join('+')
-        why = `${plat || 'platform'} did not confirm — may not have posted`
+        why = t('mc_notif_r_no_echo', [plat || t('mc_notif_r_platform')])
       } else if (_reasonStr.startsWith('chat_restricted')) {
         // "chat_restricted:<yt's human reason>" — surface yt's own words
         // (subscribers-only mode, members-only, follower age gate).
         const detail = _reasonStr.includes(':') ? _reasonStr.slice(_reasonStr.indexOf(':') + 1).toLowerCase() : ''
-        why = detail ? `chat restricted — ${detail}` : 'chat restricted'
+        why = detail ? t('mc_notif_r_restricted_detail', [detail]) : t('mc_notif_r_restricted')
       } else {
-        why = reasonMap[data.reason] || data.reason || 'send may have failed'
+        why = reasonMap[data.reason] || data.reason || t('mc_notif_r_unknown')
       }
       const snippet = String(data.text || '').slice(0, 60)
-      el.textContent = `${why}: "${snippet}${data.text?.length > 60 ? '…' : ''}"`
+      el.textContent = t('mc_notif_pending_line', [why, `${snippet}${data.text?.length > 60 ? '…' : ''}`])
+      // Login-shaped failures get a way in, like twitch-auth-required's "open twitch"
+      const login = PENDING_LOGIN_LINKS[data.reason]
+      if (login) {
+        const btn = document.createElement('button')
+        btn.type = 'button'
+        btn.className = 'hs-notif-action hs-notif-action-secondary'
+        btn.textContent = login.label
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation()
+          e.preventDefault()
+          try {
+            window.open(login.url, '_blank', 'noopener')
+          } catch (_) {}
+        })
+        el.append(' ', btn)
+      }
       return el
     },
     actions: {
       primary: {
-        label: 'retry',
+        label: t('common_retry'),
         onClick: (data) => {
           try {
             globalThis.__hsRetryPendingSend?.(data.synthId)
@@ -720,7 +934,7 @@ const HsNotifs = (() => {
           return true
         },
       },
-      dismiss: { label: '✕' },
+      dismiss: {},
     },
   })
 
@@ -735,12 +949,12 @@ const HsNotifs = (() => {
     render: ({ data }) => {
       const el = document.createElement('span')
       el.className = 'hs-notif-toast-text hs-notif-toast-error'
-      el.textContent = data.text || 'log into twitch.tv to chat'
+      el.textContent = data.text || t('mc_notif_login_twitch')
       return el
     },
     actions: {
       primary: {
-        label: 'open twitch',
+        label: t('mc_notif_open_twitch'),
         onClick: () => {
           try {
             window.open('https://www.twitch.tv/', '_blank', 'noopener')
@@ -748,7 +962,7 @@ const HsNotifs = (() => {
           return true
         },
       },
-      dismiss: { label: '✕' },
+      dismiss: {},
     },
   })
 
@@ -775,7 +989,33 @@ const HsNotifs = (() => {
           return true
         },
       },
-      dismiss: { label: '✕' },
+      dismiss: {},
+    },
+  })
+
+  // Signed out of heatsync.org (login lapsed): own emotes render as plain text
+  // with no hint why. Background sends 'signed_out_notice' once per browser
+  // session until the next sign-in. Persistent until dismissed.
+  registerType('signed-out', {
+    layer: 'toast-stack',
+    dedupeKey: () => 'signed-out',
+    render: () => {
+      const el = document.createElement('span')
+      el.className = 'hs-notif-toast-text hs-notif-toast-warn'
+      el.textContent = t('mc_signed_out_notice')
+      return el
+    },
+    actions: {
+      primary: {
+        label: t('mc_signed_out_action'),
+        onClick: () => {
+          try {
+            window.open(HS_LOGIN_URL, '_blank', 'noopener')
+          } catch (_) {}
+          return true
+        },
+      },
+      dismiss: {},
     },
   })
 
@@ -795,7 +1035,7 @@ const HsNotifs = (() => {
       el.className = 'hs-notif-toast-text hs-notif-toast-mention'
       return el
     },
-    actions: { dismiss: { label: '✕' } },
+    actions: { dismiss: {} },
   })
 
   return {

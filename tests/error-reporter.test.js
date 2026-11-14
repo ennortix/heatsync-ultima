@@ -19,7 +19,7 @@
  *   - Normal prose and stack frame text is NOT over-redacted
  */
 
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 
 // ── Harness: load the IIFE into a fresh isolated context each test ─────────────
@@ -45,9 +45,6 @@ function loadReporter({
   manifestVersion = '1.7.3',
   existingEntries = [],
 } = {}) {
-  // In-memory storage backing
-  const mem = {}
-
   // Captured setTimeout calls — we run them manually for flush control
   const timers = []
 
@@ -89,16 +86,16 @@ function loadReporter({
   const win = {
     __hsErrorReporter: undefined,
     __heatsyncReloadScheduled: undefined,
-    addEventListener(type, fn, capture) {
+    addEventListener(type, fn) {
       if (!listeners[type]) listeners[type] = []
       listeners[type].push(fn)
     },
     _listeners: listeners,
     _fireError(eventObj) {
-      for (const fn of listeners['error'] || []) fn(eventObj)
+      for (const fn of listeners.error || []) fn(eventObj)
     },
     _fireRejection(eventObj) {
-      for (const fn of listeners['unhandledrejection'] || []) fn(eventObj)
+      for (const fn of listeners.unhandledrejection || []) fn(eventObj)
     },
   }
 
@@ -130,7 +127,7 @@ function loadReporter({
     'setTimeout',
     'clearTimeout',
     'fetch',
-    SRC + '\n//# sourceURL=error-reporter-test.js',
+    `${SRC}\n//# sourceURL=error-reporter-test.js`,
   )
 
   const setTimeoutShim = (cb, ms) => {
@@ -200,7 +197,6 @@ describe('installation', () => {
   test('second load is a no-op (IIFE guard)', () => {
     // Pre-set __hsErrorReporter so the guard fires
     const win = { __hsErrorReporter: { capture: () => {}, flush: () => {}, ver: 'old', plat: 'other' } }
-    const listeners = {}
     win.addEventListener = () => {}
     const chrome = {
       runtime: { getManifest: () => ({ version: '9.9.9' }), lastError: null, id: 'x' },
@@ -252,7 +248,7 @@ describe('capture: entry shape', () => {
       stack: err.stack,
     })
     runTimers()
-    const stored = chrome.storage.local._store['hs_errors']
+    const stored = chrome.storage.local._store.hs_errors
     expect(stored).toHaveLength(1)
     const entry = stored[0]
     expect(entry).toHaveProperty('ts')
@@ -272,7 +268,7 @@ describe('capture: entry shape', () => {
     err.stack = 'Error: msg\n    at chrome-extension://abc/content.js:1:1'
     win._fireError({ error: err, filename: 'chrome-extension://abc/content.js', lineno: 1 })
     runTimers()
-    const stored = chrome.storage.local._store['hs_errors']
+    const stored = chrome.storage.local._store.hs_errors
     expect(stored).toHaveLength(1)
     expect(stored[0].msg.length).toBeLessThanOrEqual(500)
   })
@@ -280,25 +276,25 @@ describe('capture: entry shape', () => {
   test('stack is truncated to 2000 chars (via error handler)', () => {
     // Truncation of stack happens in _fmtErr called by _onError.
     const { win, runTimers, chrome } = loadReporter()
-    const longStack = 'Error: boom\n' + '    at chrome-extension://abc/content.js:1:1\n'.repeat(200)
+    const longStack = `Error: boom\n${'    at chrome-extension://abc/content.js:1:1\n'.repeat(200)}`
     const err = new Error('boom')
     err.stack = longStack
     win._fireError({ error: err, filename: 'chrome-extension://abc/content.js', lineno: 1 })
     runTimers()
-    const stored = chrome.storage.local._store['hs_errors']
+    const stored = chrome.storage.local._store.hs_errors
     expect(stored).toHaveLength(1)
     expect(stored[0].stack.length).toBeLessThanOrEqual(2000)
   })
 
   test('url is truncated to 200 chars (via error handler)', () => {
     // url is set from location.href at _onError call time, truncated to 200 chars.
-    const longHref = 'https://www.twitch.tv/' + 'a'.repeat(300)
+    const longHref = `https://www.twitch.tv/${'a'.repeat(300)}`
     const { win, runTimers, chrome } = loadReporter({ href: longHref })
     const err = new Error('boom')
     err.stack = 'Error: boom\n    at chrome-extension://abc/content.js:1:1'
     win._fireError({ error: err, filename: 'chrome-extension://abc/content.js', lineno: 1 })
     runTimers()
-    const stored = chrome.storage.local._store['hs_errors']
+    const stored = chrome.storage.local._store.hs_errors
     expect(stored).toHaveLength(1)
     expect(stored[0].url.length).toBeLessThanOrEqual(200)
   })
@@ -319,7 +315,7 @@ describe('capture: drop rules', () => {
       stack: '',
     })
     runTimers()
-    const stored = chrome.storage.local._store['hs_errors']
+    const stored = chrome.storage.local._store.hs_errors
     expect(stored ?? []).toHaveLength(0)
   })
 
@@ -335,7 +331,7 @@ describe('capture: drop rules', () => {
       stack: 'at fn (content.js:1:1)',
     })
     runTimers()
-    const stored = chrome.storage.local._store['hs_errors']
+    const stored = chrome.storage.local._store.hs_errors
     expect(stored).toHaveLength(1)
   })
 
@@ -351,7 +347,7 @@ describe('capture: drop rules', () => {
       stack: '',
     })
     runTimers()
-    const stored = chrome.storage.local._store['hs_errors']
+    const stored = chrome.storage.local._store.hs_errors
     expect(stored).toHaveLength(1)
   })
 
@@ -367,7 +363,7 @@ describe('capture: drop rules', () => {
       stack: '',
     })
     runTimers()
-    const stored = chrome.storage.local._store['hs_errors']
+    const stored = chrome.storage.local._store.hs_errors
     expect(stored ?? []).toHaveLength(0)
   })
 
@@ -383,7 +379,7 @@ describe('capture: drop rules', () => {
       stack: 'at chrome-extension://abc/content.js:10:5',
     })
     runTimers()
-    const stored = chrome.storage.local._store['hs_errors']
+    const stored = chrome.storage.local._store.hs_errors
     expect(stored).toHaveLength(1)
   })
 })
@@ -405,7 +401,7 @@ describe('ring buffer: in-memory cap at 50', () => {
       })
     }
     runTimers()
-    const stored = chrome.storage.local._store['hs_errors']
+    const stored = chrome.storage.local._store.hs_errors
     expect(stored).toHaveLength(50)
   })
 
@@ -423,7 +419,7 @@ describe('ring buffer: in-memory cap at 50', () => {
       })
     }
     runTimers()
-    const stored = chrome.storage.local._store['hs_errors']
+    const stored = chrome.storage.local._store.hs_errors
     expect(stored).toHaveLength(50)
   })
 
@@ -441,7 +437,7 @@ describe('ring buffer: in-memory cap at 50', () => {
       })
     }
     runTimers()
-    const stored = chrome.storage.local._store['hs_errors']
+    const stored = chrome.storage.local._store.hs_errors
     const msgs = stored.map((e) => e.msg)
     expect(msgs).not.toContain('msg-0')
     expect(msgs).toContain('msg-50')
@@ -461,7 +457,7 @@ describe('ring buffer: in-memory cap at 50', () => {
       })
     }
     runTimers()
-    const stored = chrome.storage.local._store['hs_errors']
+    const stored = chrome.storage.local._store.hs_errors
     expect(stored).toHaveLength(50)
     expect(stored[0].msg).toBe('msg-50')
     expect(stored[49].msg).toBe('msg-99')
@@ -491,7 +487,7 @@ describe('ring buffer: in-memory cap at 50', () => {
       })
     }
     runTimers()
-    const stored = chrome.storage.local._store['hs_errors']
+    const stored = chrome.storage.local._store.hs_errors
     // 40 existing + 20 new = 60; slice(-50) keeps newest 50
     expect(stored).toHaveLength(50)
     // oldest 10 of the original 40 should be evicted
@@ -508,24 +504,24 @@ describe('ring buffer: in-memory cap at 50', () => {
 describe('privacy: URL handling', () => {
   test('URL exactly 200 chars is stored as-is (via error handler)', () => {
     // location.href is what gets stored; build a 200-char href and verify no truncation
-    const href200 = 'https://www.twitch.tv/' + 'a'.repeat(178) // 22 + 178 = 200
+    const href200 = `https://www.twitch.tv/${'a'.repeat(178)}` // 22 + 178 = 200
     const { win, runTimers, chrome } = loadReporter({ href: href200 })
     const err = new Error('boom')
     err.stack = 'Error: boom\n    at chrome-extension://abc/content.js:1:1'
     win._fireError({ error: err, filename: 'chrome-extension://abc/content.js', lineno: 1 })
     runTimers()
-    const stored = chrome.storage.local._store['hs_errors']
+    const stored = chrome.storage.local._store.hs_errors
     expect(stored[0].url.length).toBe(200)
   })
 
   test('URL over 200 chars is truncated to exactly 200 (via error handler)', () => {
-    const href201 = 'https://www.twitch.tv/' + 'a'.repeat(179) // 22 + 179 = 201
+    const href201 = `https://www.twitch.tv/${'a'.repeat(179)}` // 22 + 179 = 201
     const { win, runTimers, chrome } = loadReporter({ href: href201 })
     const err = new Error('boom')
     err.stack = 'Error: boom\n    at chrome-extension://abc/content.js:1:1'
     win._fireError({ error: err, filename: 'chrome-extension://abc/content.js', lineno: 1 })
     runTimers()
-    const stored = chrome.storage.local._store['hs_errors']
+    const stored = chrome.storage.local._store.hs_errors
     expect(stored[0].url.length).toBe(200)
   })
 
@@ -536,7 +532,7 @@ describe('privacy: URL handling', () => {
     err.stack = 'Error: boom\n    at chrome-extension://abc/content.js:1:1'
     win._fireError({ error: err, filename: 'chrome-extension://abc/content.js', lineno: 1 })
     runTimers()
-    const stored = chrome.storage.local._store['hs_errors']
+    const stored = chrome.storage.local._store.hs_errors
     expect(stored[0].url).not.toContain('SECRET_TOKEN_abc123')
     expect(stored[0].url).toContain('access_token=REDACTED')
     // non-sensitive param preserved
@@ -550,7 +546,7 @@ describe('privacy: URL handling', () => {
     err.stack = 'at chrome-extension://abc/content.js:1:1'
     win._fireError({ error: err, filename: 'chrome-extension://abc/content.js', lineno: 1 })
     runTimers()
-    const stored = chrome.storage.local._store['hs_errors']
+    const stored = chrome.storage.local._store.hs_errors
     expect(stored[0].url).not.toContain('AUTHCODE999')
     expect(stored[0].url).not.toContain('STATEVAL')
     expect(stored[0].url).toContain('code=REDACTED')
@@ -566,7 +562,7 @@ describe('privacy: URL handling', () => {
     err.stack = 'at chrome-extension://abc/content.js:1:1'
     win._fireError({ error: err, filename: 'chrome-extension://abc/content.js', lineno: 1 })
     runTimers()
-    const stored = chrome.storage.local._store['hs_errors']
+    const stored = chrome.storage.local._store.hs_errors
     expect(stored[0].url).toBe('https://www.twitch.tv/channel')
   })
 
@@ -582,7 +578,7 @@ describe('privacy: URL handling', () => {
       stack: 'at content.js:1',
     })
     runTimers()
-    const stored = chrome.storage.local._store['hs_errors']
+    const stored = chrome.storage.local._store.hs_errors
     expect(stored[0].msg).not.toContain('eyABCDEFtokenXYZ')
     expect(stored[0].msg).toContain('[REDACTED]')
   })
@@ -596,11 +592,11 @@ describe('privacy: URL handling', () => {
       plat: 'twitch',
       ver: '1.7.3',
       url: 'https://www.twitch.tv/',
-      msg: 'token: ' + jwt,
+      msg: `token: ${jwt}`,
       stack: 'at content.js:1',
     })
     runTimers()
-    const stored = chrome.storage.local._store['hs_errors']
+    const stored = chrome.storage.local._store.hs_errors
     expect(stored[0].msg).not.toContain(jwt)
     expect(stored[0].msg).toContain('[REDACTED]')
   })
@@ -614,11 +610,11 @@ describe('privacy: URL handling', () => {
       plat: 'twitch',
       ver: '1.7.3',
       url: 'https://www.twitch.tv/',
-      msg: 'api_key=' + secret,
+      msg: `api_key=${secret}`,
       stack: 'at content.js:1',
     })
     runTimers()
-    const stored = chrome.storage.local._store['hs_errors']
+    const stored = chrome.storage.local._store.hs_errors
     expect(stored[0].msg).not.toContain(secret)
     expect(stored[0].msg).toContain('[REDACTED]')
   })
@@ -636,7 +632,7 @@ describe('privacy: URL handling', () => {
       stack: 'at content.js:1',
     })
     runTimers()
-    const stored = chrome.storage.local._store['hs_errors']
+    const stored = chrome.storage.local._store.hs_errors
     expect(stored[0].msg).toBe(safeMsg)
   })
 
@@ -654,7 +650,7 @@ describe('privacy: URL handling', () => {
       stack: safeStack,
     })
     runTimers()
-    const stored = chrome.storage.local._store['hs_errors']
+    const stored = chrome.storage.local._store.hs_errors
     // stack frames must survive — they are the primary debug value
     expect(stored[0].stack).toContain('chrome-extension://')
     expect(stored[0].stack).toContain('content.js:42:10')
@@ -727,10 +723,10 @@ describe('edge cases: must not throw', () => {
     // The hs_errors key is never written.
     const { reporter, chrome } = loadReporter()
     // Verify key absent before flush
-    expect(chrome.storage.local._store['hs_errors']).toBeUndefined()
+    expect(chrome.storage.local._store.hs_errors).toBeUndefined()
     reporter.flush()
     // Key still absent — no write occurred
-    expect(chrome.storage.local._store['hs_errors']).toBeUndefined()
+    expect(chrome.storage.local._store.hs_errors).toBeUndefined()
   })
 
   test('capture is reentrant-safe — nested capture is dropped', () => {
@@ -747,7 +743,7 @@ describe('edge cases: must not throw', () => {
       stack: 'at x',
     })
     runTimers()
-    expect(chrome.storage.local._store['hs_errors']).toHaveLength(1)
+    expect(chrome.storage.local._store.hs_errors).toHaveLength(1)
     // No throw from normal usage
     expect(() =>
       reporter.capture({
@@ -796,7 +792,7 @@ describe('read-back: entry ordering', () => {
       stack: 'at z',
     })
     runTimers()
-    const stored = chrome.storage.local._store['hs_errors']
+    const stored = chrome.storage.local._store.hs_errors
     expect(stored).toHaveLength(3)
     expect(stored[0].msg).toBe('first')
     expect(stored[1].msg).toBe('second')
@@ -825,7 +821,7 @@ describe('read-back: entry ordering', () => {
       stack: 'at b',
     })
     runTimers()
-    const stored = chrome.storage.local._store['hs_errors']
+    const stored = chrome.storage.local._store.hs_errors
     expect(stored).toHaveLength(2)
     expect(stored[0].msg).toBe('batch1-a')
     expect(stored[1].msg).toBe('batch2-a')
@@ -875,7 +871,7 @@ describe('debounce: writes are deferred', () => {
     expect(setCount).toBe(0) // timer not fired yet
     runTimers()
     expect(setCount).toBe(1) // all batched into one write
-    const stored = chrome.storage.local._store['hs_errors']
+    const stored = chrome.storage.local._store.hs_errors
     expect(stored).toHaveLength(3)
   })
 })
@@ -906,7 +902,7 @@ describe('global handlers registered', () => {
       lineno: 100,
     })
     runTimers()
-    const stored = chrome.storage.local._store['hs_errors']
+    const stored = chrome.storage.local._store.hs_errors
     expect(stored ?? []).toHaveLength(0)
   })
 
@@ -920,7 +916,7 @@ describe('global handlers registered', () => {
       lineno: 42,
     })
     runTimers()
-    const stored = chrome.storage.local._store['hs_errors']
+    const stored = chrome.storage.local._store.hs_errors
     expect(stored).toHaveLength(1)
     expect(stored[0].type).toBe('error')
     expect(stored[0].msg).toBe('ext crash')
@@ -932,7 +928,7 @@ describe('global handlers registered', () => {
     err.stack = 'Error: promise failed\n    at chrome-extension://abc/content.js:5:1'
     win._fireRejection({ reason: err })
     runTimers()
-    const stored = chrome.storage.local._store['hs_errors']
+    const stored = chrome.storage.local._store.hs_errors
     expect(stored).toHaveLength(1)
     expect(stored[0].type).toBe('rejection')
   })
@@ -943,7 +939,7 @@ describe('global handlers registered', () => {
     err.stack = 'at chrome-extension://abc/content.js:1:1'
     win._fireError({ error: err, filename: 'chrome-extension://abc/content.js', lineno: 1 })
     runTimers()
-    const stored = chrome.storage.local._store['hs_errors']
+    const stored = chrome.storage.local._store.hs_errors
     expect(stored ?? []).toHaveLength(0)
   })
 
@@ -953,7 +949,7 @@ describe('global handlers registered', () => {
     err.stack = 'at chrome-extension://abc/content.js:1:1'
     win._fireError({ error: err, filename: 'chrome-extension://abc/content.js', lineno: 1 })
     runTimers()
-    const stored = chrome.storage.local._store['hs_errors']
+    const stored = chrome.storage.local._store.hs_errors
     // ctx-death path fires scheduleCtxReload and returns early — nothing stored
     expect(stored ?? []).toHaveLength(0)
   })

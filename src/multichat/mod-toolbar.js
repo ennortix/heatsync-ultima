@@ -1,6 +1,6 @@
 // mod-toolbar + mod-action dispatch — split out of main.js (2026-07-04).
-// Hover toolbar UI, hotkeys, and the unified ban/timeout/unban/delete dispatch
-// backbone shared by every mod-action surface (toolbar/hotkey/slash/ctx/card).
+// Hover toolbar UI and the unified ban/timeout/unban/delete dispatch backbone
+// shared by every mod-action surface (toolbar/slash/ctx/card).
 
 // =====================================================================
 // MOD TOOLBAR — singleton element moved row→row on hover. Mirrors the
@@ -11,62 +11,75 @@
 const MOD_BUTTON_CATALOG = {
   delete_message: {
     label: 'x',
-    title: 'delete this message',
+    titleKey: 'mc_mtb_t_delete',
     action: 'delete',
     durationSec: null,
     needsMsgId: true,
-    hotkey: 'x',
   },
   timeout_1m: {
     label: '1m',
-    title: 'timeout 1 minute',
+    titleKey: 'mc_mtb_t_to_1m',
     action: 'timeout',
     durationSec: 60,
     needsMsgId: false,
-    hotkey: null,
   },
   timeout_10m: {
     label: '10m',
-    title: 'timeout 10 minutes',
+    titleKey: 'mc_mtb_t_to_10m',
     action: 'timeout',
     durationSec: 600,
     needsMsgId: false,
-    hotkey: 't',
   },
   timeout_1h: {
     label: '1h',
-    title: 'timeout 1 hour',
+    titleKey: 'mc_mtb_t_to_1h',
     action: 'timeout',
     durationSec: 3600,
     needsMsgId: false,
-    hotkey: null,
   },
   timeout_24h: {
     label: '24h',
-    title: 'timeout 24 hours',
+    titleKey: 'mc_mtb_t_to_24h',
     action: 'timeout',
     durationSec: 86400,
     needsMsgId: false,
-    hotkey: null,
   },
   timeout_7d: {
     label: '7d',
-    title: 'timeout 7 days',
+    titleKey: 'mc_mtb_t_to_7d',
     action: 'timeout',
     durationSec: 604800,
     needsMsgId: false,
-    hotkey: null,
   },
   purge: {
-    label: 'purge',
-    title: 'purge — clear this user’s messages (1s timeout)',
+    labelKey: 'mc_mtb_l_purge', // the button's face: a plain word, translated
+    titleKey: 'mc_mtb_t_purge',
     action: 'timeout',
     durationSec: 1,
     needsMsgId: false,
-    hotkey: null,
+    notKick: true, // kick's shortest timeout is a minute: a "purge" there would mute for 60s
+    notYt: true, // youtube's timeout is one fixed length, not a 1s clear
   },
-  ban: { label: '⛔', title: 'permanent ban', action: 'ban', durationSec: null, needsMsgId: false, hotkey: 'b' },
-  unban: { label: '✓', title: 'unban user', action: 'unban', durationSec: null, needsMsgId: false, hotkey: null },
+  ban: { label: '⛔', titleKey: 'mc_mtb_t_ban', action: 'ban', durationSec: null, needsMsgId: false },
+  unban: { label: '✓', titleKey: 'mc_mtb_t_unban', action: 'unban', durationSec: null, needsMsgId: false },
+  // opens the channel's blocked-terms panel; twitch rows only (kick has no such list)
+  blocked_terms: {
+    labelKey: 'mc_mtb_l_bt',
+    titleKey: 'mc_mtb_t_bt',
+    action: 'blocked_terms',
+    durationSec: null,
+    needsMsgId: false,
+    twitchOnly: true,
+  },
+  // opens the channel's mod tools panel (shield, unban requests, automod, chatters)
+  mod_tools: {
+    labelKey: 'mc_mtb_l_mt',
+    titleKey: 'mc_mtb_t_mt',
+    action: 'mod_tools',
+    durationSec: null,
+    needsMsgId: false,
+    twitchOnly: true,
+  },
 }
 // Hover toolbar is fully opt-in: NO buttons default-on. Even the X
 // (delete-this-message) is hidden until the user enables it in settings →
@@ -75,12 +88,54 @@ const MOD_BUTTON_CATALOG = {
 const DEFAULT_MOD_BUTTONS = []
 let modToolbarButtons = [...DEFAULT_MOD_BUTTONS]
 
+// ...but a new mod who never opened the settings saw no toolbar at all and had no
+// way to know it existed. So the FIRST time this viewer is confirmed a moderator,
+// and only if the buttons were never customised, they get a small starter set and
+// are told where to change it. "Never customised" = the storage key is absent:
+// every edit (including clearing the list) writes it, so an edit is never undone,
+// and a seed writes it too, so it only ever happens once.
+const STARTER_MOD_BUTTONS = ['delete_message', 'timeout_10m', 'ban']
+const MOD_BUTTONS_KEY = 'hs_mod_toolbar_buttons'
+const MOD_SEED_RETRY_MS = 1500
+const MOD_SEED_RETRIES = 20
+let _modSeedState = '' // '' = not yet | 'running' | 'done'
+function modSeedStarterButtons(tries = 0) {
+  if (_modSeedState) return
+  // Settings still loading: a write now would be overwritten by the hydration
+  // (it read storage before this landed). Ask again once it has finished.
+  if (typeof _settingsHydrated !== 'undefined' && !_settingsHydrated) {
+    if (tries < MOD_SEED_RETRIES) cleanup.setTimeout(() => modSeedStarterButtons(tries + 1), MOD_SEED_RETRY_MS)
+    return
+  }
+  _modSeedState = 'running'
+  ;(async () => {
+    try {
+      const stored = await browser.storage.local.get(MOD_BUTTONS_KEY)
+      if (MOD_BUTTONS_KEY in stored || modToolbarButtons.length) {
+        _modSeedState = 'done' // already customised (or already seeded): leave it alone, for good
+        return
+      }
+      if (!setSetting(MOD_BUTTONS_KEY, STARTER_MOD_BUTTONS)) {
+        _modSeedState = '' // not written: the next confirmed-mod answer tries again
+        return
+      }
+      _modSeedState = 'done'
+      showToast(t('mc_mtb_seeded'), 'info')
+    } catch (_) {
+      _modSeedState = '' // storage hiccup: nothing was written, try again next time
+    }
+  })()
+}
+
 // Per-channel mod state. Pre-fetch on tab/render so first hover doesn't lag.
 const _modStateCache = new Map()
 const _modStatePending = new Map()
-async function isModFor(channel) {
+async function isModFor(channel, { fresh = false } = {}) {
   if (!channel) return false
   channel = channel.toLowerCase()
+  // fresh: a typed command re-asks twitch instead of trusting a cached no, so a
+  // stale answer from before login/mod can't lock a real mod out.
+  if (fresh && _modStateCache.get(channel) === false) _modStateCache.delete(channel)
   if (_modStateCache.has(channel)) return _modStateCache.get(channel)
   if (_modStatePending.has(channel)) return _modStatePending.get(channel)
   const p = (async () => {
@@ -88,8 +143,11 @@ async function isModFor(channel) {
       const safe = channel.replace(/[^a-z0-9_]/g, '')
       if (!safe) return false
       const data = await twitchGql(`{ user(login: "${safe}") { self { isModerator } } }`)
-      const isMod = !!data?.data?.user?.self?.isModerator
-      _modStateCache.set(channel, isMod)
+      const self = data?.data?.user?.self
+      const isMod = !!self?.isModerator
+      // self is null until twitch knows who is asking — that is not a "no".
+      if (self) _modStateCache.set(channel, isMod)
+      if (self && isMod) modSeedStarterButtons()
       return isMod
     } catch (_) {
       return false
@@ -132,6 +190,7 @@ async function isKickModFor(slug) {
       // uncached so the next interaction retries (mirrors the twitch side,
       // which is immune only because twitchGql throws on error).
       if (res?.ok) _kickModStateCache.set(slug, isMod)
+      if (res?.ok && isMod) modSeedStarterButtons()
       return isMod
     } catch (_) {
       return false
@@ -165,10 +224,12 @@ try {
   chrome.storage.local.get('hs_yt_mod_status', (v) => {
     void chrome.runtime.lastError
     _ytModState = !!v?.hs_yt_mod_status?.isMod
+    if (_ytModState) modSeedStarterButtons()
   })
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area === 'local' && changes.hs_yt_mod_status) {
       _ytModState = !!changes.hs_yt_mod_status.newValue?.isMod
+      if (_ytModState) modSeedStarterButtons()
     }
   })
 } catch (_) {}
@@ -184,7 +245,7 @@ function buildModToolbarOnce() {
   const bar = document.createElement('div')
   bar.className = 'hs-mod-toolbar'
   bar.setAttribute('role', 'toolbar')
-  bar.setAttribute('aria-label', 'message moderation actions')
+  bar.setAttribute('aria-label', t('mc_mtb_bar_aria'))
   bar.addEventListener('mousedown', (e) => e.stopPropagation())
   bar.addEventListener('click', (e) => e.stopPropagation())
   _modToolbar = bar
@@ -200,8 +261,8 @@ function rebuildModToolbarButtons() {
     const b = document.createElement('button')
     b.className = `hs-mod-btn hs-mod-${def.action}`
     b.type = 'button'
-    b.textContent = def.label
-    b.title = def.title + (def.hotkey ? ` (${def.hotkey.toUpperCase()})` : '')
+    b.textContent = def.labelKey ? t(def.labelKey) : def.label
+    b.title = t(def.titleKey)
     b.dataset.modBtn = id
     b.tabIndex = -1
     b.addEventListener('mousedown', (e) => {
@@ -216,14 +277,35 @@ function rebuildModToolbarButtons() {
     _modToolbar.appendChild(b)
   }
 }
+// youtube moderates one message at a time, through its own menu: it can delete,
+// time out (ONE fixed length — no 1m/10m/1h to pick), hide a user and unhide one
+const YT_MOD_ACTIONS = new Set(['delete', 'timeout', 'ban', 'unban'])
+const isYtPlatform = (p) => p === 'youtube' || p === 'yt'
 function gateModButtons(ctx) {
   if (!_modToolbar) return false
+  const yt = isYtPlatform(ctx.platform)
+  let ytTimeoutShown = false
   let anyVisible = false
   for (const btn of _modToolbar.querySelectorAll('.hs-mod-btn')) {
     const def = MOD_BUTTON_CATALOG[btn.dataset.modBtn]
     let ok = !!def
     if (ok && def.needsMsgId && !ctx.msgId) ok = false
+    if (ok && def.twitchOnly && ctx.platform && ctx.platform !== 'twitch') ok = false
+    if (ok && def.notKick && ctx.platform === 'kick') ok = false
     if (ok && !ctx.user) ok = false
+    // a youtube action is addressed by the message id, never by a name or a duration
+    if (ok && yt && (!ctx.msgId || def.notYt || !YT_MOD_ACTIONS.has(def.action))) ok = false
+    // every timeout button would do the same thing there: one is enough, and it says so
+    const ytTimeout = ok && yt && def.action === 'timeout'
+    if (ytTimeout) {
+      if (ytTimeoutShown) ok = false
+      ytTimeoutShown = true
+    }
+    // the one toolbar moves between rows: a youtube row's wording must not stick to a twitch row
+    if (def) {
+      btn.textContent = ytTimeout ? t('mc_input_timeout') : def.label
+      btn.title = t(ytTimeout ? 'mc_input_timeout' : def.titleKey)
+    }
     btn.style.display = ok ? '' : 'none'
     if (ok) anyVisible = true
   }
@@ -232,9 +314,7 @@ function gateModButtons(ctx) {
 function attachToRow(row) {
   if (_modRow === row && _modToolbar?.parentElement === row) return
   const bar = buildModToolbarOnce()
-  const replyBtn = row.querySelector('.hs-mc-reply-btn')
-  if (replyBtn) row.insertBefore(bar, replyBtn)
-  else row.appendChild(bar)
+  row.appendChild(bar)
   _modRow = row
 }
 function detachModToolbar() {
@@ -273,26 +353,35 @@ function _modActor() {
   return (currentUsername || (typeof authState !== 'undefined' && authState?.nick) || '').toLowerCase()
 }
 function _modNoticeFields(action, actor, tgt, durationSec) {
-  const a = actor || tgt
+  // no known actor = the anonymous line; never the target standing in for one ("alice banned alice")
+  const a = actor
   if (action === 'ban')
-    return { noticeType: 'ban_success', systemMsg: a ? `${a} banned ${tgt}` : `${tgt} was permanently banned` }
+    return {
+      noticeType: 'ban_success',
+      systemMsg: a ? t('mc_modnotice_ban', [a, tgt]) : t('mc_modnotice_ban_anon', [tgt]),
+    }
   if (action === 'timeout') {
-    const d = Math.max(1, durationSec | 0)
+    const d = String(Math.max(1, durationSec | 0))
     return {
       noticeType: 'timeout_success',
-      systemMsg: a ? `${a} timed out ${tgt} for ${d}s` : `${tgt} timed out for ${d}s`,
+      systemMsg: a ? t('mc_modnotice_timeout', [a, tgt, d]) : t('mc_modnotice_timeout_anon', [tgt, d]),
     }
   }
   if (action === 'unban' || action === 'untimeout')
-    return { noticeType: 'unban_success', systemMsg: a ? `${a} unbanned ${tgt}` : `${tgt} is no longer banned` }
+    return {
+      noticeType: 'unban_success',
+      systemMsg: a ? t('mc_modnotice_unban', [a, tgt]) : t('mc_modnotice_unban_anon', [tgt]),
+    }
   if (action === 'delete')
     return {
       noticeType: 'delete_message_success',
       systemMsg: a
-        ? `${a} deleted a message${tgt ? ` from ${tgt}` : ''}`
+        ? tgt
+          ? t('mc_modnotice_delete_from', [a, tgt])
+          : t('mc_modnotice_delete', [a])
         : tgt
-          ? `${tgt}'s message deleted`
-          : 'message deleted',
+          ? t('mc_modnotice_delete_anon_target', [tgt])
+          : t('mc_modnotice_delete_anon'),
     }
   return null
 }
@@ -313,7 +402,7 @@ function _injectTwitchModNotice({ channel, action, target, durationSec, msgId })
       user: 'system',
       text: f.systemMsg,
       systemMsg: f.systemMsg,
-      color: '#808080',
+      color: '#ffffff',
       badges: '',
       channel: ch,
       time: Date.now(),
@@ -321,12 +410,14 @@ function _injectTwitchModNotice({ channel, action, target, durationSec, msgId })
       targetUser: tgtLc,
       targetMsgId: action === 'delete' ? msgId || '' : undefined,
       banDuration: action === 'timeout' ? Math.max(1, durationSec | 0) : 0,
+      // who did it — the mod log keeps the name (twitch's own echo is actor-less)
+      actor: _modActor(),
       isSynthetic: true,
     })
   } catch (_) {}
 }
 // Kick — KickChat has no _handleMsg; push to its buffer + emit directly. The
-// Pusher tap reflects mod actions back (kick_moderation), so self-actions are
+// kick tap reflects mod actions back (kick_moderation), so self-actions are
 // registered via noteSelfMod and the reflected line is collapsed there.
 function _injectKickModNotice({ channel, action, target, durationSec, msgId }) {
   try {
@@ -339,7 +430,7 @@ function _injectKickModNotice({ channel, action, target, durationSec, msgId }) {
     const tgtLc = tgt.toLowerCase()
     const f = _modNoticeFields(action, _modActor(), tgt, durationSec)
     if (!f) return
-    // Arm the Pusher-tap dedup: the tap reflects this same action back within
+    // Arm the kick-tap dedup: the tap reflects this same action back within
     // seconds — kickChat drops that reflected system line, keeps the dim.
     try {
       kickChat.noteSelfMod?.(slug, f.noticeType, action === 'delete' ? msgId : tgtLc)
@@ -350,19 +441,58 @@ function _injectKickModNotice({ channel, action, target, durationSec, msgId }) {
       user: 'system',
       text: f.systemMsg,
       systemMsg: f.systemMsg,
-      color: '#808080',
+      color: '#ffffff',
       badges: '',
       channel: slug,
       time: Date.now(),
       platform: 'kick',
       id: `hs-synth-kick-mod-${f.noticeType}-${slug}-${tgtLc || msgId || ''}-${Date.now()}`,
       targetUser: tgtLc,
+      // a deleted message dims its row (same field the twitch notice carries)
+      targetMsgId: action === 'delete' ? msgId || '' : undefined,
+      actor: _modActor(),
       isSynthetic: true,
     }
     buf.push(m)
     try {
       kickChat.emit('message', m)
     } catch (_) {}
+  } catch (_) {}
+}
+// YouTube — no echo to collapse against: the notice joins the acted-on row's tab
+// (social.js ingestYtModNotice, which also records it). The actor is the youtube
+// account signed in to the chat frame; a twitch name there would name the wrong person.
+// A youtube timeout is youtube's fixed five minutes.
+const YT_TIMEOUT_SEC = 300
+function _injectYoutubeModNotice({ action, target, msgId }) {
+  try {
+    if (!msgId) return
+    const tgt = String(target || '').replace(/^@/, '')
+    const tgtLc = tgt.toLowerCase()
+    const actor = (typeof ytSelfName === 'function' ? ytSelfName() : '').toLowerCase()
+    const sec = action === 'timeout' ? YT_TIMEOUT_SEC : 0
+    const f = _modNoticeFields(action, actor, tgt, sec)
+    if (!f) return
+    ingestYtModNotice(
+      {
+        type: 'notice',
+        noticeType: f.noticeType,
+        user: 'system',
+        text: f.systemMsg,
+        systemMsg: f.systemMsg,
+        color: '#ffffff',
+        badges: '',
+        time: Date.now(),
+        platform: 'youtube',
+        id: `hs-synth-yt-mod-${f.noticeType}-${tgtLc || msgId}-${Date.now()}`,
+        targetUser: tgtLc,
+        targetMsgId: action === 'delete' ? msgId : undefined,
+        banDuration: sec,
+        actor,
+        isSynthetic: true,
+      },
+      msgId,
+    )
   } catch (_) {}
 }
 try {
@@ -399,82 +529,6 @@ function _resolveModTargets(channel, platform) {
 // platform; without it (click surfaces) only the clicked platform is touched,
 // so a twitch-only mod never sees "kick failed: not a mod" noise. Returns
 // { tResp, kResp, twitchName, kickSlug, anyOk } for the caller's toast.
-// Minimal square confirm modal — Promise<boolean>. Keyboard-first (Esc=cancel,
-// Enter=confirm), backdrop-click cancels, mounted in the overlay root so it
-// works in the popout too. Reusable for any destructive action.
-// Resolves to { ok, reason }. `reasons` (optional) renders selectable chips;
-// the chosen one is returned (empty if none / cancelled).
-function hsConfirm(message, confirmLabel = 'confirm', reasons = []) {
-  return new Promise((resolve) => {
-    const root = document.getElementById('hs-mc-overlay') || document.body
-    const overlay = document.createElement('div')
-    overlay.className = 'hs-mc-confirm-overlay'
-    const box = document.createElement('div')
-    box.className = 'hs-mc-confirm-box'
-    const msg = document.createElement('div')
-    msg.className = 'hs-mc-confirm-msg'
-    msg.textContent = message
-    let selectedReason = ''
-    const btns = document.createElement('div')
-    btns.className = 'hs-mc-confirm-btns'
-    const cancelBtn = document.createElement('button')
-    cancelBtn.className = 'hs-mc-confirm-cancel'
-    cancelBtn.textContent = 'cancel'
-    const okBtn = document.createElement('button')
-    okBtn.className = 'hs-mc-confirm-ok'
-    okBtn.textContent = confirmLabel
-    const done = (v) => {
-      overlay.remove()
-      document.removeEventListener('keydown', onKey, true)
-      resolve({ ok: v, reason: v ? selectedReason : '' })
-    }
-    const onKey = (e) => {
-      if (e.key === 'Escape') {
-        e.preventDefault()
-        e.stopPropagation()
-        done(false)
-      } else if (e.key === 'Enter') {
-        e.preventDefault()
-        e.stopPropagation()
-        done(true)
-      }
-    }
-    cancelBtn.addEventListener('click', () => done(false))
-    okBtn.addEventListener('click', () => done(true))
-    overlay.addEventListener('click', (e) => {
-      if (e.target === overlay) done(false)
-    })
-    document.addEventListener('keydown', onKey, true)
-    box.append(msg)
-    if (Array.isArray(reasons) && reasons.length) {
-      const chips = document.createElement('div')
-      chips.className = 'hs-mc-confirm-reasons'
-      for (const rsn of reasons) {
-        const chip = document.createElement('button')
-        chip.className = 'hs-mc-confirm-reason'
-        chip.textContent = rsn
-        chip.addEventListener('click', () => {
-          const wasSel = chip.classList.contains('sel')
-          for (const c of chips.querySelectorAll('.hs-mc-confirm-reason')) c.classList.remove('sel')
-          if (wasSel) {
-            selectedReason = ''
-          } else {
-            selectedReason = rsn
-            chip.classList.add('sel')
-          }
-        })
-        chips.appendChild(chip)
-      }
-      box.append(chips)
-    }
-    box.append(btns)
-    btns.append(cancelBtn, okBtn)
-    overlay.append(box)
-    root.appendChild(overlay)
-    okBtn.focus()
-  })
-}
-
 async function dispatchModAction({
   channel,
   platform,
@@ -487,11 +541,10 @@ async function dispatchModAction({
   skipConfirm,
 }) {
   // Opt-in ban dialog: confirm (misclick guard) and/or reason chips. Every
-  // surface routes through here, so one gate covers toolbar/hotkey/slash/ctx/
+  // surface routes through here, so one gate covers toolbar/slash/ctx/
   // card. Shows when confirm is on OR ban reasons are configured.
-  // skipConfirm: the bulk-select action bar already confirmed once for the
-  // whole batch ("ban 3 users?") — without this, each of the N per-user calls
-  // below would re-prompt its own "ban X in #channel?" dialog on top of it.
+  // skipConfirm: a caller that already confirmed once for a fan-out (the YT
+  // leg of a twitch/kick ban) must not re-prompt per platform.
   if (action === 'ban' && !skipConfirm) {
     const banReasons = String(modBanReasons || '')
       .split('\n')
@@ -499,7 +552,11 @@ async function dispatchModAction({
       .filter(Boolean)
     if (modConfirmBan || banReasons.length) {
       const tgtName = String(target || '').replace(/^@/, '')
-      const res = await hsConfirm(`ban ${tgtName} in #${String(channel || '').replace(/^#/, '')}?`, 'ban', banReasons)
+      const res = await hsConfirm(
+        t('mc_modtoolbar_ban_confirm', [tgtName, String(channel || '').replace(/^#/, '')]),
+        t('content_card_ban'),
+        banReasons,
+      )
       if (!res.ok) return { tResp: null, kResp: null, twitchName: null, kickSlug: null, anyOk: false, cancelled: true }
       if (res.reason) reason = res.reason
     }
@@ -533,6 +590,7 @@ async function dispatchModAction({
       yVid = typeof currentYoutubeVideoId === 'function' ? currentYoutubeVideoId(lkEntry?.youtube || '') || '' : ''
     } catch (_) {}
     const yResp = await safeSendMessage({ type: 'youtube_mod_action', action, msgId, target: yTgt, videoId: yVid })
+    if (yResp?.ok) _injectYoutubeModNotice({ action, target: yTgt, msgId })
     return {
       tResp: null,
       kResp: null,
@@ -680,23 +738,36 @@ async function runModAction(id) {
   const def = MOD_BUTTON_CATALOG[id]
   if (!def || !_modCtx) return
   const { channel, user, login, msgId, row } = _modCtx
+  const platform = _modCtx.platform || 'twitch'
+  if (def.action === 'blocked_terms') {
+    detachModToolbar()
+    openBlockedTerms(channel)
+    return
+  }
+  if (def.action === 'mod_tools') {
+    detachModToolbar()
+    openModSuite(channel, 'shield')
+    return
+  }
   const target = login || user
   const wasOp = row?.style?.opacity
   if (row) row.style.opacity = '0.5'
   // Act on the row's own platform (twitch or kick), single-platform.
   const r = await dispatchModAction({
     channel,
-    platform: _modCtx.platform || 'twitch',
+    platform,
     action: def.action,
     target,
     durationSec: def.durationSec,
     msgId,
   }).catch((e) => ({ anyOk: false, tResp: { error: e?.message || 'error' } }))
   if (row) row.style.opacity = wasOp || ''
-  if (r?.anyOk && def.action === 'delete' && row && dimTimeouts) row.classList.add('hs-mc-msg-cleared')
+  if (r?.anyOk && def.action === 'delete' && row) markClearedRow(row, t('mc_mod_label_deleted'))
   const label =
     def.action === 'timeout'
-      ? t('mc_mod_label_timed_out', [String(def.durationSec)])
+      ? isYtPlatform(platform)
+        ? t('mc_input_timed_out')
+        : t('mc_mod_label_timed_out', [String(def.durationSec)])
       : def.action === 'ban'
         ? t('mc_mod_label_banned')
         : def.action === 'unban'
@@ -708,262 +779,9 @@ async function runModAction(id) {
   detachModToolbar()
 }
 
-// ===== Bulk-select mode =====
-// Mods raid-cleaning a wall of spam select N rows and fire ban/timeout ONCE
-// per unique target, instead of hovering+clicking each row individually.
-// Twitch/kick only (mirrors the hover toolbar + ctx-menu mod gate) — YT rows
-// never carry the dataset (data-msg-id etc.) mod actions need, so they're
-// simply never selectable, same as they're invisible to the hover toolbar.
-let bulkSelectMode = false
-let _bulkAnchorRow = null
-const _bulkSelected = new Set() // Set<row Element> — visual selection, source of truth for the action bar
-
-function isBulkSelectMode() {
-  return bulkSelectMode
-}
-
-// Pure — no DOM. Row descriptors in, deduped-by-user target list out. Exposed
-// at module scope (not nested) so tests can extract it in isolation, same
-// pattern as bgIrcDupModNotice.
-function dedupeBulkTargets(rows) {
-  const seen = new Set()
-  const out = []
-  for (const r of rows || []) {
-    const login = String(r?.login || '')
-      .replace(/^@/, '')
-      .toLowerCase()
-    const channel = String(r?.channel || '')
-    if (!login || !channel) continue
-    const platform = r.platform || 'twitch'
-    const key = `${platform}|${channel.toLowerCase()}|${login}`
-    if (seen.has(key)) continue
-    seen.add(key)
-    out.push({ platform, channel, login })
-  }
-  return out
-}
-
-function _bulkRowDescriptor(row) {
-  return {
-    platform: row.dataset.msgPlatform || 'twitch',
-    channel: row.dataset.msgChannel || '',
-    login: row.dataset.msgLogin || row.dataset.msgUser || '',
-  }
-}
-
-// Same gate the hover toolbar and ctx-menu mod items use: sync per-platform
-// mod-state cache, keyed off the row's own channel (never re-resolved through
-// getChannelLookup — matches the existing per-row check exactly).
-function _isModForRow(row) {
-  const plat = row.dataset.msgPlatform || 'twitch'
-  const ch = row.dataset.msgChannel || ''
-  if (!ch) return false
-  return plat === 'kick' ? isKickModForSync(ch) : isModForSync(ch)
-}
-
-function _bulkRowSelectable(row) {
-  if (!row?.dataset) return false
-  const plat = row.dataset.msgPlatform || 'twitch'
-  if (plat === 'youtube' || plat === 'yt') return false
-  if (!row.dataset.msgId || !row.dataset.msgChannel || !(row.dataset.msgLogin || row.dataset.msgUser)) return false
-  if (row.dataset.msgSelf === '1') return false
-  return _isModForRow(row)
-}
-
-function _toggleBulkRow(row) {
-  if (_bulkSelected.has(row)) {
-    _bulkSelected.delete(row)
-    row.classList.remove('hs-mc-row-selected')
-  } else {
-    _bulkSelected.add(row)
-    row.classList.add('hs-mc-row-selected')
-  }
-}
-
-function _selectBulkRange(messagesEl, fromRow, toRow) {
-  const rows = [...messagesEl.querySelectorAll('.hs-mc-msg')]
-  const i1 = rows.indexOf(fromRow)
-  const i2 = rows.indexOf(toRow)
-  if (i1 < 0 || i2 < 0) {
-    if (_bulkRowSelectable(toRow)) _toggleBulkRow(toRow)
-    return
-  }
-  const lo = Math.min(i1, i2)
-  const hi = Math.max(i1, i2)
-  for (let i = lo; i <= hi; i++) {
-    const r = rows[i]
-    if (_bulkRowSelectable(r) && !_bulkSelected.has(r)) {
-      _bulkSelected.add(r)
-      r.classList.add('hs-mc-row-selected')
-    }
-  }
-}
-
-function _updateBulkBar() {
-  let bar = document.getElementById('hs-mc-bulk-bar')
-  if (!bulkSelectMode || _bulkSelected.size === 0) {
-    if (bar) bar.remove()
-    return
-  }
-  if (!bar) {
-    bar = document.createElement('div')
-    bar.id = 'hs-mc-bulk-bar'
-    bar.innerHTML =
-      '<span id="hs-mc-bulk-count"></span>' +
-      '<button type="button" data-bulk="timeout">timeout</button>' +
-      '<button type="button" data-bulk="ban">ban</button>' +
-      '<button type="button" data-bulk="cancel">cancel</button>'
-    bar.addEventListener('click', (e) => {
-      const btn = e.target.closest('button[data-bulk]')
-      if (!btn || btn.disabled) return
-      e.preventDefault()
-      e.stopPropagation()
-      const act = btn.dataset.bulk
-      if (act === 'cancel') {
-        exitBulkSelectMode()
-        return
-      }
-      runBulkModAction(act)
-    })
-    const root = document.getElementById('hs-mc-overlay') || document.body
-    root.appendChild(bar)
-  }
-  const countEl = bar.querySelector('#hs-mc-bulk-count')
-  if (countEl) countEl.textContent = `${_bulkSelected.size} selected`
-}
-
-function enterBulkSelectMode() {
-  if (bulkSelectMode) return
-  bulkSelectMode = true
-  _bulkAnchorRow = null
-  try {
-    document.body.classList.add('hs-mc-bulk-select-active')
-  } catch (_) {}
-}
-
-function exitBulkSelectMode() {
-  if (!bulkSelectMode) return
-  bulkSelectMode = false
-  _bulkAnchorRow = null
-  for (const row of _bulkSelected) row.classList.remove('hs-mc-row-selected')
-  _bulkSelected.clear()
-  try {
-    document.body.classList.remove('hs-mc-bulk-select-active')
-  } catch (_) {}
-  _updateBulkBar()
-}
-
-// Public entry point — used by the mod ctx-menu's "select mode" item and the
-// hover hotkey. Idempotent enter + pre-selects the row that triggered it, so
-// starting from a specific spam message immediately arms the action bar.
-function startBulkSelectFrom(row) {
-  enterBulkSelectMode()
-  if (row && _bulkRowSelectable(row)) {
-    _toggleBulkRow(row)
-    _bulkAnchorRow = row
-  }
-  _updateBulkBar()
-}
-
-// Executes once per deduped target — REUSES dispatchModAction (the vetted
-// twitch+kick fan-out path), never a bespoke ban call. skipConfirm:true since
-// the batch-level confirm below already covered "are you sure".
-async function runBulkModAction(action) {
-  if (!_bulkSelected.size) return
-  // Only fire on rows still in the live DOM. A row detached by an epoch rebuild
-  // (badge/emote/settings) or a tab switch keeps a valid dataset but lost its
-  // on-screen highlight — firing it would ban a user the mod can no longer see
-  // selected. isConnected filter keeps the batch == what's visibly highlighted.
-  const attached = [..._bulkSelected].filter((row) => row.isConnected)
-  const targets = dedupeBulkTargets(attached.map(_bulkRowDescriptor))
-  if (!targets.length) {
-    exitBulkSelectMode()
-    return
-  }
-  const verb = action === 'ban' ? 'ban' : 'timeout'
-  // Surface channel scope — a batch can span platforms/channels within one tab
-  // (twitch+kick), so the mod must see WHERE this fires, not just who.
-  const chans = [...new Set(targets.map((tg) => `#${String(tg.channel).replace(/^#/, '')}`))]
-  const scope = chans.length === 1 ? ` in ${chans[0]}` : ` across ${chans.join(', ')}`
-  const names = targets.map((tg) => tg.login).join(', ')
-  const preview = names.length > 120 ? `${names.slice(0, 120)}…` : names
-  const res = await hsConfirm(
-    `${verb} ${targets.length} user${targets.length === 1 ? '' : 's'}${scope}? (${preview})`,
-    verb,
-  )
-  if (!res.ok) return
-  const bar = document.getElementById('hs-mc-bulk-bar')
-  if (bar) for (const b of bar.querySelectorAll('button')) b.disabled = true
-  let okCount = 0
-  for (const tg of targets) {
-    try {
-      const r = await dispatchModAction({
-        channel: tg.channel,
-        platform: tg.platform,
-        action,
-        target: tg.login,
-        durationSec: action === 'timeout' ? 600 : null,
-        skipConfirm: true,
-      })
-      if (r?.anyOk) okCount++
-    } catch (_) {}
-  }
-  showToast(
-    `${okCount}/${targets.length} ${verb === 'ban' ? 'banned' : 'timed out'}`,
-    okCount === targets.length ? 'success' : okCount > 0 ? 'error' : 'error',
-  )
-  exitBulkSelectMode()
-}
-
-// Row-click toggling — only wired on the primary scrollback (#hs-mc-messages),
-// never the transient reply-stack popovers (ephemeral views, not a sane bulk
-// surface). No-op while selection mode is off, so this never touches the hot
-// render/click path for the common (non-mod, non-selecting) case.
-function wireBulkSelectClicks(messagesEl) {
-  messagesEl.addEventListener(
-    'click',
-    (e) => {
-      if (!bulkSelectMode) return
-      const row = e.target.closest('.hs-mc-msg')
-      if (!row || !messagesEl.contains(row)) return
-      // Never hijack a real interactive control inside the row — only bare
-      // row surface toggles selection while the mode is active.
-      if (e.target.closest('a, button, .hs-mod-toolbar, .hs-mc-reply-btn, .hs-mc-reply-ctx')) return
-      if (!_bulkRowSelectable(row)) return
-      e.preventDefault()
-      e.stopPropagation()
-      if (e.shiftKey && _bulkAnchorRow && messagesEl.contains(_bulkAnchorRow)) {
-        _selectBulkRange(messagesEl, _bulkAnchorRow, row)
-      } else {
-        _toggleBulkRow(row)
-        _bulkAnchorRow = row
-      }
-      _updateBulkBar()
-    },
-    { capture: true, signal: mcSignal },
-  )
-}
-
-// Escape always exits selection mode — standard escape-hatch for any
-// modal-like interaction state. Harmless no-op when a confirm dialog's own
-// Escape handler also fires (it just closes the dialog on top of this).
-document.addEventListener(
-  'keydown',
-  (e) => {
-    if (!bulkSelectMode) return
-    if (e.key !== 'Escape') return
-    const tEl = e.target
-    if (tEl && (tEl.isContentEditable || ['INPUT', 'TEXTAREA'].includes(tEl.tagName))) return
-    exitBulkSelectMode()
-  },
-  { signal: mcSignal },
-)
-
 function wireModToolbarHover(messagesEl) {
   if (!messagesEl || messagesEl._hsModToolbarWired) return
   messagesEl._hsModToolbarWired = true
-  // Bulk-select click handling — primary scrollback only (see wireBulkSelectClicks).
-  if (messagesEl.id === 'hs-mc-messages') wireBulkSelectClicks(messagesEl)
   messagesEl.addEventListener(
     'mouseover',
     (e) => {
@@ -974,28 +792,28 @@ function wireModToolbarHover(messagesEl) {
         return
       }
       const plat = row.dataset.msgPlatform
-      // YT mod actions live on the right-click menu (message-scoped, driven via
-      // YT's own moderation flow) — the hover toolbar stays twitch/kick only.
-      if (plat === 'youtube' || plat === 'yt') return
+      // YouTube is message-scoped (driven through YT's own moderation flow by the
+      // row's message id), so a yt row needs no channel name — the rest is the same
+      const isYt = isYtPlatform(plat)
       const channel = row.dataset.msgChannel
       const user = row.dataset.msgUser
       const login = row.dataset.msgLogin || row.dataset.msgUser
       const msgId = row.dataset.msgId
-      if (!channel || !user) return
+      if ((!channel && !isYt) || !user) return
       // Skip own messages — mod actions on yourself are nonsense UX. Use the
       // data-msg-self flag set at build time (currentUsername may be null at
       // hover time during pre-auth bootstrap); fall back to live compare.
       if (row.dataset.msgSelf === '1') return
-      if (currentUsername && user.toLowerCase() === currentUsername.toLowerCase()) return
+      if (isSelf({ user, platform: plat })) return
       // Sync gate per platform: twitch via GQL mod-state, kick via kick_mod_status.
       // Pre-fetch the right one so the next hover in this channel is instant.
       const isKick = plat === 'kick'
-      const amMod = isKick ? isKickModForSync(channel) : isModForSync(channel)
+      const amMod = isYt ? isYtModForSync() : isKick ? isKickModForSync(channel) : isModForSync(channel)
       if (!amMod) {
-        ;(isKick ? prefetchKickModFor : prefetchModFor)(channel)
+        if (!isYt) (isKick ? prefetchKickModFor : prefetchModFor)(channel)
         return
       }
-      const ctx = { channel, user, login, msgId, row, platform: plat || 'twitch' }
+      const ctx = { channel: channel || '', user, login, msgId, row, platform: plat || 'twitch' }
       _modCtx = ctx
       buildModToolbarOnce()
       if (!gateModButtons(ctx)) return
@@ -1025,35 +843,10 @@ function wireModToolbarHover(messagesEl) {
   )
 }
 
-// Hotkeys — x (delete), t (10m timeout), b (ban), s (toggle bulk-select,
-// pre-selecting the hovered row). Hold while hovering a row.
-document.addEventListener(
-  'keydown',
-  (e) => {
-    if (!_modCtx) return
-    // OS key-repeat (~30Hz after ~500ms) fired many concurrent async
-    // dispatches for one held key before the first cleared _modCtx — a burst
-    // of error toasts (delete) or stacked confirm overlays (ban). One per press.
-    if (e.repeat) return
-    const t = e.target
-    const typing = t && (t.isContentEditable || ['INPUT', 'TEXTAREA'].includes(t.tagName))
-    if (typing) return
-    if (e.ctrlKey || e.metaKey || e.altKey) return
-    const key = (e.key || '').toLowerCase()
-    if (key === 's') {
-      e.preventDefault()
-      if (bulkSelectMode) exitBulkSelectMode()
-      else startBulkSelectFrom(_modCtx.row)
-      return
-    }
-    for (const id of modToolbarButtons) {
-      const def = MOD_BUTTON_CATALOG[id]
-      if (def?.hotkey === key) {
-        e.preventDefault()
-        runModAction(id)
-        return
-      }
-    }
-  },
-  { signal: mcSignal },
-)
+// NO bare-key mod hotkeys. x/t/b/s used to fire off a hovered row whenever the
+// composer wasn't focused — but the mouse resting over chat is the normal
+// reading position, so the first letter of a message ("thanks" → t) silently
+// timed a chatter out, and `s` opened a bulk-select mode nobody asked for.
+// Destructive actions take a deliberate click: the hover toolbar buttons, the
+// right-click menu, or the profile card. Don't re-add a bare-letter bind here
+// — the composer owns printable keys, always.

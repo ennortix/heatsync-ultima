@@ -1,6 +1,6 @@
 {
   "manifest_name": "heatsync",
-  "manifest_description": "Eén paneel voor de livechat van Twitch, Kick + YouTube. Plus een gratis inventaris met 5000 emotes die met je meegaat in elk kanaal",
+  "manifest_description": "Eén paneel voor de livechat van Twitch, Kick + YouTube. Plus een gratis inventaris met 5.000 emotes die met je meegaat in elk kanaal",
   "common_loading": "laden...",
   "common_extension_updated": "Extensie bijgewerkt — herlaad de pagina",
   "common_no_matches": "geen resultaten",
@@ -42,7 +42,6 @@
   "welcome_step2_desc": "voeg willekeurige afbeeldingen toe — 5000 slots, alle formaten ondersteund",
   "welcome_step3_title": "gebruik ze in de chat",
   "welcome_step3_desc": "klik op de heatsync-knop in de Twitch/Kick-chat om je emotes te openen",
-  "welcome_cta": "beginnen",
   "welcome_privacy": "privacy",
   "welcome_source": "broncode",
   "btn_auth_login": "inloggen",

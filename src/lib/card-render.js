@@ -1,0 +1,453 @@
+/**
+ * card-render.js — turns an `hsCardModel` model into an escaped HTML string.
+ *
+ * Pure: no DOM access, no globals, no imports outside `client/card/` (the one
+ * reader, `hsCardHotkeyTarget`, touches only the card root it is handed). Every
+ * host dependency (escaping, number formatting, bio/badge rendering) is
+ * passed in explicitly — that's what lets this file mirror byte-for-byte
+ * into the extension's non-ESM bundle and still look native there.
+ *
+ * One class namespace: everything is `.hs-card-*`. Zero inline styles — the
+ * repo's CSP forbids `style=` attributes in templates; every visual rule
+ * lives in card.css. Variants control which sections print; the model never
+ * changes shape between them (`peek` just renders less of the same model, so
+ * switching peek → full on pin/click needs no re-fetch).
+ *
+ * @module card/card-render
+ */
+
+import { hsCardAccountAge, hsCardRelativeTime, hsCardLogTime, hsCardTenureMonths, hsCardHotkeySplit } from './card-time.js'
+
+const HOTKEY_LABEL = {
+  follow: 'follow', unfollow: 'unfollow', whisper: 'whisper', dm: 'dm',
+  mention: '@mention', mute: 'mute', block: 'block', unblock: 'unblock', report: 'report',
+}
+
+/**
+ * The element a pressed key means inside a card root — the ONE place a key is
+ * mapped to a button, for every host. The model names each key (actions,
+ * platform pills, note-edit), the renderer stamps it as data-hs-hotkey beside
+ * its underline, and this reads it back: no second keymap anywhere.
+ *
+ * Lowercase match; '=' answers to '+' (the shifted key on most layouts). A cell
+ * is skipped when it is disabled, hidden, or no longer shows its underline — a
+ * host that rewrites a label ("sure?" while confirming) must not leave a key
+ * that works without being shown. Underline and key are one fact.
+ * @param {ParentNode|null} root the card element
+ * @param {string} key a KeyboardEvent.key
+ * @returns {HTMLElement|null}
+ */
+export function hsCardHotkeyTarget(root, key) {
+  if (!root || typeof key !== 'string' || !key) return null
+  const k = key === '=' ? '+' : key.toLowerCase()
+  for (const el of root.querySelectorAll('[data-hs-hotkey]')) {
+    if (el.dataset.hsHotkey !== k) continue
+    if (el.disabled || el.closest('[hidden], [disabled], [aria-disabled="true"]')) continue
+    if (!el.querySelector('.hs-card-hk')) continue
+    return el
+  }
+  return null
+}
+
+/**
+ * The card's own × — 'full' only (a pinned desktop popover or the phone
+ * full-screen sheet; 'peek'/'page' dismiss some other way, and the
+ * extension's 'panel' variant already has its own sticky × — the host
+ * suppresses this one there, see profile-card.js). Wired by the host via
+ * `data-hs-card-action="close"`, same delegation contract as follow/block/
+ * report. Static markup, no escaping needed.
+ */
+function closeButtonHtml(variant) {
+  return variant === 'full'
+    ? '<button type="button" class="hs-card-close" data-hs-card-action="close" aria-label="close">×</button>'
+    : ''
+}
+
+/**
+ * A label with its hotkey letter underlined inside it — NOT the letter plus the
+ * whole word (that duplicated the first letter: "follow" with hotkey 'f'
+ * rendered as "f" + "follow" = "ffollow"). The letter is the first occurrence
+ * of the hotkey in the label (hsCardHotkeySplit), so "unfollow" underlines its
+ * f and "@mention" its @; a label without it prints plain.
+ *
+ * The pieces go inside ONE wrapping span — every caller of this (platform
+ * links, actions, note-edit) sits in a `display:flex` container with its own
+ * `gap`, and a bare trailing text node next to the hotkey span is its OWN flex
+ * item there: "kick" rendered as "k" + gap + "ick" = "k ick". Wrapping them
+ * together makes the whole label one flex item, immune to a parent's gap no
+ * matter where it's used.
+ */
+function hk(label, hotkey, esc) {
+  const p = hsCardHotkeySplit(label, hotkey)
+  if (!p) return `<span class="hs-card-label">${esc(label)}</span>`
+  return `<span class="hs-card-label">${esc(p[0])}<span class="hs-card-hk">${esc(p[1])}</span>${esc(p[2])}</span>`
+}
+
+/** ` data-hs-hotkey="x"` exactly when the label can show the key (see hk), else ''. */
+function hkAttr(label, hotkey, esc) {
+  return hsCardHotkeySplit(label, hotkey) ? ` data-hs-hotkey="${esc(String(hotkey).toLowerCase())}"` : ''
+}
+
+/**
+ * Host-trusted fragments (bio mentions, log-line bodies, badge chips, the plus
+ * badge) may carry their own <a>. The card body has no links — navigation is
+ * the nav row — so anchors are defused to spans here, once (class/data-* kept, href kept inert as data-href, target/rel dropped), whatever the host
+ * hands in. Escaped text never contains a literal `<a`, so only real markup matches.
+ */
+function unlink(html) {
+  return html ? String(html)
+        .replace(/<a(?=[\s>])[^>]*>/gi, (tag) => `<span${tag.slice(2).replace(/\s(?:target|rel|download)=(?:"[^"]*"|'[^']*')/gi, '').replace(/\shref=/gi, ' data-href=')}`)
+        .replace(/<\/a>/gi, '</span>')
+    : ''
+}
+
+function relRow(esc, fmtTime, entry) {
+  // {text, since} sheet-row value → "text since"
+  const since = entry.since ? ` ${fmtTime(entry.since)}` : ''
+  return esc(entry.text) + esc(since)
+}
+
+/**
+ * @param {object} model output of `hsCardModel`
+ * @param {object} opts
+ * @param {'peek'|'full'|'page'|'panel'} opts.variant
+ * @param {(s: string) => string} opts.escapeHtml
+ * @param {(bio: string) => string} [opts.renderBio] host-trusted HTML for the
+ *   bio line (mentions/emotes linked) — falls back to plain escaped text
+ * @param {(badgeId: string) => string} [opts.renderBadge] host's own heatsync
+ *   badge mark (utils/badge-token.js), '' for an id it does not know. Absent =
+ *   no badge drawn.
+ * @param {(sinceIso: string) => string} [opts.renderPlusBadge] host's own
+ *   plus-badge markup — falls back to a bare glyph
+ * @param {(hex: string) => string} [opts.paintColor] host's dark-color-boost
+ *   (fixDarkColors+safeColor) — stamped as `data-color` on the name element,
+ *   never as `style=`. The host applies it via CSSOM at mount
+ *   (`el.style.setProperty('color', el.dataset.color)`), same pattern every
+ *   other per-user color in this app already uses under CSP. Falls back to
+ *   the raw model color, unclamped, when omitted.
+ * @param {boolean} [opts.hotkeys] the host dispatches this card's keys (it
+ *   listens and goes through `hsCardHotkeyTarget`). Only then do the cells carry
+ *   `data-hs-hotkey` and their underline — an underline is a promise that the key
+ *   works. Honoured on 'full' and 'panel' only: a peek or a profile page is
+ *   somewhere typing belongs to the composer, whatever the host passes.
+ * @param {boolean} [opts.navInBar] the host draws the destination row itself
+ *   (site: the bar stack, from `hsCardNavItems`) — print none in the card
+ * @param {(model: object) => string} [opts.renderBadges] host-trusted HTML
+ *   for a chip row (native chat badges, 7TV/BTTV/FFZ/Chatterino paints) —
+ *   the shared model carries no chat-badge data (it's per-message, not
+ *   per-profile), so this is purely a host hook, same contract as
+ *   `renderBio`. Omitted or empty return → no chip row.
+ * @returns {string}
+ */
+export function hsCardHtml(model, opts) {
+  const esc = opts.escapeHtml
+  const variant = opts.variant || 'full'
+  const fmtTime = (v) => hsCardRelativeTime(v)
+  const clickable = !!opts.clickable
+  const hideLogsLink = !!opts.hideLogsLink
+  const keys = !!opts.hotkeys && (variant === 'full' || variant === 'panel')
+
+  if (!model || model.kind === 'not-found') {
+    return `<div class="hs-card hs-card-${esc(variant)} hs-card-empty">${closeButtonHtml(variant)}<div class="hs-card-name">${esc(model?.identity?.login || 'unknown')}</div></div>`
+  }
+  if (model.kind === 'error') {
+    return `<div class="hs-card hs-card-${esc(variant)} hs-card-empty">${closeButtonHtml(variant)}<div class="hs-card-name">${esc(model?.identity?.login || 'unknown')}</div><div class="hs-card-meta">lookup failed</div></div>`
+  }
+  if (model.kind === 'chatter') {
+    return renderChatter(model, { esc, variant, navInBar: !!opts.navInBar })
+  }
+  return renderProfile(model, {
+    esc,
+    variant,
+    fmtTime,
+    renderBio: opts.renderBio,
+    renderPlusBadge: opts.renderPlusBadge,
+    renderBadge: opts.renderBadge,
+    paintColor: opts.paintColor,
+    renderBadges: opts.renderBadges,
+    clickable,
+    hideLogsLink,
+    navInBar: !!opts.navInBar,
+    keys,
+  })
+}
+
+function renderChatter(model, { esc, variant, navInBar }) {
+  const parts = []
+  parts.push(closeButtonHtml(variant))
+  const name = `<div class="hs-card-name">${esc(model.displayName)}<span class="hs-card-plat">${esc(model.identity.platform)}</span></div>`
+  // a chatter-only card has a face only when the archive has seen one (youtube)
+  parts.push(model.avatarUrl
+    ? `<div class="hs-card-identity"><img class="hs-card-avatar" src="${esc(model.avatarUrl)}" alt="${esc(model.displayName)}" data-imgerr-src="/anon.webp">${name}</div>`
+    : name)
+  if (model.corpus) parts.push(renderCorpusRow(model.corpus, esc))
+  if (!navInBar) parts.push(renderNavRow(model, esc, variant, false))
+  return `<div class="hs-card hs-card-${esc(variant)} hs-card-chatter">${parts.join('')}</div>`
+}
+
+function renderCorpusRow(corpus, esc) {
+  const bits = []
+  if (corpus.text) bits.push(esc(corpus.text))
+  if (corpus.also) bits.push(`also ${esc(corpus.also)}`)
+  return `<div class="hs-card-sheet-row"><dt>${esc(corpus.label)}</dt><dd>${bits.join(' · ')}</dd></div>`
+}
+
+function renderSheetValue(k, value, esc, fmtTime) {
+  if (k === 'acctage') return esc(hsCardAccountAge(value) || '')
+  if (value && typeof value === 'object') {
+    if ('text' in value) return relRow(esc, fmtTime, value)
+    if ('count' in value) {
+      const sample = (value.sample || []).slice(0, 3)
+      const avatars = sample.map(s => `<img class="hs-card-mutual-av" src="${esc(s.avatar_url || '/anon.webp')}" alt="${esc(s.display_name || s.username || '')}" title="${esc(s.display_name || s.username || '')}">`).join('')
+      const more = value.count > sample.length ? ` +${value.count - sample.length}` : ''
+      return `${avatars}<span class="hs-card-mutual-n">${esc(String(value.count))}${esc(more)}</span>`
+    }
+  }
+  return esc(String(value))
+}
+
+function renderSheet(sheet, esc, fmtTime) {
+  if (!sheet.length) return ''
+  const rows = sheet.map(r => `<div class="hs-card-sheet-row" data-tone="${esc(r.tone || '')}"><dt>${esc(r.label)}</dt><dd>${renderSheetValue(r.k, r.value, esc, fmtTime)}</dd></div>`).join('')
+  return `<dl class="hs-card-sheet">${rows}</dl>`
+}
+
+function renderChannel(channel, esc, fmtTime) {
+  if (!channel) return ''
+  const rows = channel.rows.map(r => {
+    let value
+    if (r.months != null) value = esc(hsCardTenureMonths(r.months) || '')
+    else if (r.notFollowing) value = 'not following'
+    else if (r.since) value = esc(fmtTime(r.since))
+    else value = ''
+    return `<div class="hs-card-sheet-row" data-tone="${esc(r.tone || '')}"><dt>${esc(r.label)}</dt><dd>${esc(channel.name)} ${value}</dd></div>`
+  }).join('')
+  return `<dl class="hs-card-sheet hs-card-channel-sheet">${rows}</dl>`
+}
+
+function renderNote(note, esc, keys) {
+  if (!note) return ''
+  const text = note.text ? `<span class="hs-card-note-text">${esc(note.text)}</span>` : ''
+  const hotkey = keys ? note.hotkey : ''
+  const btn = note.canEdit ? `<button type="button" class="hs-card-note-edit" data-hs-card-action="note-edit"${hkAttr('edit', hotkey, esc)}>${hk('edit', hotkey, esc)}</button>` : ''
+  return `<div class="hs-card-sheet-row" data-tone="note"><dt>note</dt><dd>${text}${btn}</dd></div>`
+}
+
+function renderRecent(recent, esc) {
+  if (!recent || !recent.length) return ''
+  const rows = [...recent].reverse().map(r => {
+    const ts = hsCardLogTime(r.timestamp)
+    const tsEl = `<span class="hs-card-log-ts">${esc(ts)}</span>`
+    const ch = r.channel ? `<span class="hs-card-log-ch">#${esc(r.channelLabel || r.channel)}</span>` : ''
+    let body = unlink(r.messageHtml) || esc(r.message)
+    // partial links ("watch?v=…") read as links here too — defused again below so
+    // the row stays inert, but they carry the link class/colour
+    // @ts-ignore — extension-only global, probed with typeof
+    if (typeof linkifyPartialLinks === 'function') {
+      // @ts-ignore
+      body = unlink(linkifyPartialLinks(body))
+    }
+    return `<div class="hs-card-log-row">${tsEl}${ch}<span class="hs-card-log-body">${body}</span></div>`
+  }).join('')
+  return `<div class="hs-card-recent"><div class="hs-card-recent-head"><span>recent</span></div><div class="hs-card-recent-list">${rows}</div></div>`
+}
+
+function renderActions(actions, esc, userId, keys) {
+  if (!actions || !actions.length) return ''
+  const uid = userId != null ? ` data-user-id="${esc(String(userId))}"` : ''
+  const btns = actions.map(a => {
+    const label = a.key === 'follow' ? (a.following ? 'unfollow' : 'follow') : a.key === 'block' ? (a.blocked ? 'unblock' : 'block') : HOTKEY_LABEL[a.key] || a.key
+    const active = (a.key === 'follow' && a.following) || (a.key === 'block' && a.blocked) ? ' hs-card-active' : ''
+    const hotkey = keys ? a.hotkey : ''
+    return `<button type="button" class="hs-card-action${active}" data-hs-card-action="${esc(a.key)}"${hkAttr(label, hotkey, esc)}${uid}>${hk(label, hotkey, esc)}</button>`
+  }).join('')
+  return `<div class="hs-card-actions">${btns}</div>`
+}
+
+function renderSocials(socials, esc) {
+  if (!socials?.length) return ''
+  const items = socials
+    .map((s) => `<span>${esc(s.label)}</span>`)
+    .join('')
+  return `<div class="hs-card-socials">${items}</div>`
+}
+
+// Host-only mod actions (ctx.modGroups — see card-model.js doc). Pure escaped
+// HTML with data-hs-card-mod-* attributes; the host wires real handlers via
+// event delegation on the card root, same discipline as the actions row.
+function renderMod(mod, esc) {
+  if (!mod?.groups?.length) return ''
+  const reason = `<input type="text" class="hs-card-mod-reason" placeholder="reason (optional)" maxlength="200">`
+  const groups = mod.groups
+    .map((g) => {
+      const chLabel = g.platform === 'kick' ? `#${g.channel} (kick)` : `#${g.channel}`
+      const attrs = (extra) =>
+        `data-hs-card-mod-channel="${esc(g.channel)}" data-hs-card-mod-platform="${esc(g.platform)}" data-hs-card-mod-login="${esc(g.login)}"${g.msgId ? ` data-hs-card-mod-msg-id="${esc(g.msgId)}"` : ''}${extra}`
+      const actionBtns = (g.actions || [])
+        .map(
+          (a) =>
+            `<button type="button" class="hs-card-mod-btn${a.danger ? ' hs-card-mod-btn-danger' : ''}" ${attrs(` data-hs-card-mod-action="${esc(a.action)}"${a.durationSec ? ` data-hs-card-mod-duration="${esc(String(a.durationSec))}"` : ''}`)}${a.disabled ? ' disabled' : ''} title="${esc(a.title || '')}">${esc(a.label)}</button>`,
+        )
+        .join('')
+      const roleBtns = (g.roleActions || [])
+        .map(
+          (a) =>
+            `<button type="button" class="hs-card-mod-btn" data-hs-card-mod-role="${esc(a.kind)}" data-hs-card-mod-add="${a.add ? '1' : '0'}" data-hs-card-mod-channel="${esc(g.channel)}" title="${esc(a.title || '')}">${esc(a.label)}</button>`,
+        )
+        .join('')
+      return `<div class="hs-card-mod-group"><div class="hs-card-mod-ch">${esc(chLabel)}</div>${actionBtns ? `<div class="hs-card-mod-row">${actionBtns}</div>` : ''}${roleBtns ? `<div class="hs-card-mod-row">${roleBtns}</div>` : ''}</div>`
+    })
+    .join('')
+  return `<div class="hs-card-mod">${reason}${groups}</div>`
+}
+
+const PLATFORM_CELL = { ttv: 'twitch', kick: 'kick', yt: 'youtube', hs: 'heatsync' }
+
+/**
+ * The card's ONE navigation surface: a navbar-form row of square flush cells
+ * at the bottom edge. Nothing else on the card is a link — the body (name,
+ * badges, bio, stats, recent lines, identities) is text. Same-origin cells
+ * (profile / logs / chatter) keep target=_blank here because this file is
+ * mirrored into the extension, where heatsync.org is another app and opens a
+ * tab; the site intercepts own-origin card links and routes them in place
+ * (click-delegation.js). Platform cells open the platform. Only destinations
+ * that resolve for this person print.
+ */
+function navCell(cls, attrs, href, label) {
+  return `<a class="hs-card-nav-cell${cls ? ` ${cls}` : ''}"${attrs} href="${href}" target="_blank" rel="noopener">${label}</a>`
+}
+
+/**
+ * The destinations this card can name, as data — what the nav row prints, and
+ * what a host that draws its own row (the site's bar stack) builds cells from.
+ * @param {object} model output of `hsCardModel`
+ * @param {{variant?: string, hideLogsLink?: boolean}} [o]
+ * @returns {{key: string, label: string, href: string, external: boolean, tone?: string, hotkey?: string, login?: string, live?: boolean, viewers?: number|null, verified?: boolean}[]}
+ */
+export function hsCardNavItems(model, o = {}) {
+  const items = []
+  const links = model?.links || {}
+  // The page variant IS the profile — a cell that reopens it is noise.
+  if (o.variant !== 'page' && links.profileUrl) items.push({ key: 'profile', label: 'profile', href: links.profileUrl, external: false, tone: 'hs' })
+  if (!o.hideLogsLink && links.logsUrl) items.push({ key: 'logs', label: 'logs', href: links.logsUrl, external: false })
+  if (links.chatterUrl) items.push({ key: 'chatter', label: 'chatter', href: links.chatterUrl, external: false })
+  // the heatsync platform IS the profile cell above (it carries tone "hs")
+  for (const p of model?.platforms || []) {
+    if (!p.url || p.key === 'hs') continue
+    items.push({ key: p.key, label: PLATFORM_CELL[p.key] || p.key, href: p.url, external: true, tone: p.key, hotkey: p.hotkey, login: p.login, live: !!p.live, viewers: p.viewers || null, verified: !!p.verified })
+  }
+  return items
+}
+
+function renderNavRow(model, esc, variant, hideLogsLink, keys) {
+  const cells = hsCardNavItems(model, { variant, hideLogsLink }).map((it) => {
+    if (it.key === 'profile') return navCell('hs-card-plat-link', ` data-hs-link="profile" data-tone="hs"`, esc(it.href), 'profile')
+    if (!it.external) return navCell('', ` data-hs-link="${esc(it.key)}"`, esc(it.href), esc(it.label))
+    const live = it.live ? `<span class="hs-card-live" data-tone="live">●${it.viewers ? esc(String(it.viewers)) : ''}</span>` : ''
+    const verified = it.verified ? '<span class="hs-card-verified">✓</span>' : ''
+    const hotkey = keys ? it.hotkey : ''
+    return navCell('hs-card-plat-link', ` data-tone="${esc(it.tone)}" title="${esc(it.login || '')}"${hkAttr(it.label, hotkey, esc)}`, esc(it.href), `${hk(it.label, hotkey, esc)}${verified}${live}`)
+  })
+  if (!cells.length) return ''
+  return `<div class="hs-card-nav">${cells.join('')}</div>`
+}
+
+function renderProfile(
+  model,
+  { esc, variant, fmtTime, renderBio, renderPlusBadge, renderBadge, paintColor, renderBadges, clickable, hideLogsLink, navInBar, keys },
+) {
+  const peek = variant === 'peek'
+  const cls = [`hs-card`, `hs-card-${esc(variant)}`, model.isOwnProfile ? 'hs-card-own' : ''].filter(Boolean).join(' ')
+  const nameColor = paintColor ? paintColor(model.color) : model.color
+  // Whole-card navigation (search results) — click-delegation.js's
+  // setupProfileCardClickHandler matches this exact attribute contract.
+  // tabindex/role make it a real Tab stop with Enter/Space activation
+  // (same handler) — a hover-only CSS invert with nothing focusable to
+  // trigger it was half a feature.
+  const clickAttrs = (clickable && model.identity.userId != null)
+    ? ` data-user-id="${esc(String(model.identity.userId))}" data-clickable="true" tabindex="0" role="link"${model.identity.platform ? ` data-platform="${esc(model.identity.platform)}" data-username="${esc(model.identity.login)}"` : ''}${model.links.profileUrl ? ` data-profile-url="${esc(model.links.profileUrl)}"` : ''}`
+    : ''
+  // Same CSSOM-at-mount discipline as data-color/paintColor above — the host
+  // reads this and calls el.style.setProperty('--hs-card-accent', ...) once
+  // it has a value (often resolved asynchronously, after a banner fetch).
+  const accentAttr = ` data-accent="${esc(model.accent || '')}"`
+
+  const plusBadge = model.plusSince
+    ? (renderPlusBadge ? unlink(renderPlusBadge(model.plusSince)) : `<span class="hs-card-plus" title="plus">+</span>`)
+    : ''
+  const badge = model.badge && renderBadge ? unlink(renderBadge(model.badge)) : ''
+  const flair = model.flair
+    ? `<img class="hs-card-flair" src="${esc(model.flair.badgeUrl)}" alt="${esc(model.flair.broadcasterLogin)} sub" title="${esc(model.flair.broadcasterLogin)} sub" width="16" height="16">`
+    : ''
+  const ember = model.ember ? `<span class="hs-card-ember" title="${esc(model.ember.name)}">🜂</span>` : ''
+  const pronouns = model.pronouns ? `<span class="hs-card-pronouns">${esc(model.pronouns)}</span>` : ''
+
+  // The name is an identity surface, so it is a paint target like a chat row
+  // or a DM — but this file cannot reach the paint runtime (pure, mirrored
+  // into the extension), so it only says WHOSE name this is and that nobody
+  // has resolved it yet. The host's names/card-name-paint.js does the rest;
+  // a host without one is left with the flat colour, which is today.
+  const paintAttrs = (model.identity.userId != null && !model.identity.isAnonymous)
+    ? ` data-paint-pending="1" data-paint-uid="${esc(String(model.identity.userId))}" data-platform="${esc(model.identity.platform || '')}"`
+    : ''
+  const identityRow = `
+    <div class="hs-card-identity">
+      <img class="hs-card-avatar" src="${esc(model.avatarUrl)}" alt="${esc(model.displayName)}" data-imgerr-src="/anon.webp">
+      <strong class="hs-card-name" data-color="${esc(nameColor)}"${paintAttrs}>${esc(model.displayName)}</strong>
+      ${pronouns}${plusBadge}${badge}${flair}${ember}
+    </div>`
+
+  // Host-only chat-badge chip row (native + 7TV/BTTV/FFZ/Chatterino) — see
+  // opts.renderBadges doc. Shown on peek too (the old hover tooltip had it).
+  const badgesInner = renderBadges ? unlink(renderBadges(model)) : ''
+  const badgesHtml = badgesInner ? `<div class="hs-card-badges">${badgesInner}</div>` : ''
+
+  // Own-profile bio carries the inline-edit affordance (click-delegation.js
+  // setupBioEditHandler) — kept on its legacy class names (.profile-bio-line/
+  // .profile-bio-text/.bio-edit-trigger) since that handler is DOM-structure
+  // generic and this is the lowest-risk reuse, same rationale as the
+  // follow/block/report action classes below.
+  const bioInner = model.bio ? (renderBio ? unlink(renderBio(model.bio)) : esc(model.bio)) : ''
+  const bioHtml = model.isOwnProfile
+    ? `<div class="hs-card-bio profile-bio-line"><span class="profile-bio-text" data-userid="${esc(String(model.identity.userId ?? ''))}">${model.bio ? bioInner : '<span class="bio-edit-trigger">add bio</span>'}</span></div>`
+    : model.bio ? `<div class="hs-card-bio">${bioInner}</div>` : ''
+
+  const navHtml = navInBar ? '' : renderNavRow(model, esc, variant, hideLogsLink, keys)
+
+  if (peek) {
+    return `<div class="${cls}"${clickAttrs}${accentAttr}>
+      <div class="hs-card-hero" data-banner-pending="1" data-username="${esc(model.identity.login || '')}" data-platform="${esc(model.identity.platform || '')}"><div class="hs-card-hero-img"></div><div class="hs-card-hero-scrim"></div></div>
+      <div class="hs-card-body">
+        ${identityRow}
+        ${badgesHtml}
+        ${bioHtml}
+        ${renderSheet(model.sheet, esc, fmtTime)}
+      </div>
+    </div>`
+  }
+
+  // On the inline variants the banner is the backdrop of the TOP section only
+  // (identity, bio, stats, logs row) — the hero lives inside that wrapper so it
+  // can cover exactly it. Floating cards keep the 48px strip above the body.
+  const heroHtml = `<div class="hs-card-hero" data-banner-pending="1" data-username="${esc(model.identity.login || '')}" data-platform="${esc(model.identity.platform || '')}"><div class="hs-card-hero-img"></div><div class="hs-card-hero-scrim"></div></div>`
+  const inline = variant === 'page' || variant === 'panel'
+  const topHtml = `${identityRow}
+      ${badgesHtml}
+      ${bioHtml}
+      ${renderSocials(model.socials, esc)}
+      ${renderSheet(model.sheet, esc, fmtTime)}
+      ${renderChannel(model.channel, esc, fmtTime)}
+      ${model.corpus ? `<dl class="hs-card-sheet">${renderCorpusRow(model.corpus, esc)}</dl>` : ''}`
+  return `<div class="${cls}"${clickAttrs}${accentAttr}>
+    ${closeButtonHtml(variant)}
+    ${inline ? '' : heroHtml}
+    <div class="hs-card-body">
+      ${inline ? `<div class="hs-card-top">${heroHtml}${topHtml}</div>` : topHtml}
+      ${renderNote(model.note, esc, keys)}
+      ${renderRecent(model.recent, esc)}
+      ${renderMod(model.mod, esc)}
+    </div>
+    ${renderActions(model.actions, esc, model.identity.userId, keys)}
+    ${navHtml}
+  </div>`
+}

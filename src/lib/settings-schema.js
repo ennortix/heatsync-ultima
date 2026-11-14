@@ -1,4 +1,11 @@
 // @ts-check
+// Relative import, same pattern as paint-spec.js: the build's stripExports
+// removes this line and relies on font-grid.js being concatenated before this
+// file (see readLib in build.js), while `bun test` imports it for real.
+import { ALL_SIZES, sizesFor } from './font-grid.js'
+import { HS_PLAT_COLORS } from './palette.js'
+import { namePaintsOn } from './utils.js'
+
 // settings registry — every multichat setting as one declarative entry.
 // pure data + pure validators only: no DOM, no chrome.*, no i18n calls.
 // bundled at IIFE scope (build.js lib list) so main.js, every multichat
@@ -13,7 +20,7 @@
 //              subkeys, each with {value, default, color, tag?, label(/Key)?,
 //              tip(/Key)?}; coercion merges partial stored maps over default
 //              json = structured array/object stored raw (state blobs like
-//              customPresets); validated as JSON-serializable, size-capped
+//              hiddenPaintUsers); validated as JSON-serializable, size-capped
 //              via maxLen (stringified length)
 //   default    value assumed when storage is empty; written by reset
 //   scope      'sync'         → ui_settings.<key> in chrome.storage.sync
@@ -21,7 +28,7 @@
 //              'local-mirror' → saveUiSetting() splits to local via
 //                               UI_SYNC_BLOCKLIST; mirrorKey names the
 //                               actual local storage key
-//   category   settings subtab id (display|chat|notifs|mod|filters|tweaks|system)
+//   category   settings subtab id (display|chat|notifs|mod|filters|system)
 //   section    group title within the subtab (sectionKey when i18n'd)
 //   label/tip  literal lowercase strings — or labelKey/tipKey when the
 //              string is i18n'd (renderer resolves via t(); not available here)
@@ -57,12 +64,14 @@
 //   noReset    excluded from resetSettingsToDefaults (server-coupled prefs)
 //   reloadApply  value fully applies only after a page reload — renderer
 //              shows a [reload] chip when current differs from boot
+//   hosts      ['twitch'|'kick'|'youtube'] — the sites the row affects; the
+//              settings page shows it only there (absent = every site)
 //   cw         {stateKey, serverBody, noun} — per-viewer content-warning
 //              filter: local bool + server PATCH /api/user/settings with
 //              rollback; main.js derives CW_CATS from these
 
 /**
- * @typedef {{ value: *, label?: string, labelKey?: string, tip?: string, tipKey?: string, default?: boolean, tag?: string, color?: string, borderColor?: string, applies?: 'live'|'reload' }} SettingOption
+ * @typedef {{ value: *, label?: string, labelKey?: string, tip?: string, tipKey?: string, default?: boolean, tag?: string, tagKey?: string, color?: string, borderColor?: string, applies?: 'live'|'reload' }} SettingOption
  */
 
 /**
@@ -80,6 +89,10 @@
  * @property {string} [tipKey] i18n key for tip
  * @property {'pill'|'select'|'sizebtns'|'range'|'text'|'textarea'|'custom'} [control]
  * @property {SettingOption[]|{min:number,max:number,step:number}} [options]
+ * @property {(get: (key: string) => any) => SettingOption[]} [optionsFor]
+ *   Render-time narrowing of `options` for the CURRENT settings state — used by
+ *   fontSize so a bitmap family only offers the sizes it has. `options` stays
+ *   the static union because validate/coerce/lint read it with no state in hand.
  * @property {boolean} [basic] show in the default (basic) settings view
  * @property {string} [alias] extra search keywords
  * @property {{key:string,equals?:*}} [dependsOn]
@@ -103,6 +116,7 @@
  * @property {boolean} [noReset]
  * @property {boolean} [reloadApply]
  * @property {number} [displayScale]
+ * @property {('twitch'|'kick'|'youtube')[]} [hosts] sites the row affects
  * @property {{stateKey:string,serverBody:string,noun:string}} [cw]
  */
 
@@ -113,11 +127,14 @@ const SETTINGS = [
   // ── display / font ────────────────────────────────────────────────────
   {
     key: 'fontFamily',
+    basic: true,
     type: 'enum',
-    default: 'CozetteVector',
+    default: 'monospace',
+    coerce: (v) => (v === 'CozetteVector' || v === 'GohuFont' || v === 'DepartureMono' ? 'monospace' : undefined),
     scope: 'sync',
     category: 'display',
     section: 'font',
+    sectionKey: 'lib_sec_font',
     labelKey: 'mc_settings_font_family',
     tipKey: 'mc_settings_font_family_desc',
     control: 'select',
@@ -126,10 +143,9 @@ const SETTINGS = [
     applyOnLoad: true,
     rerenderSettings: true,
     options: [
-      { value: 'CozetteVector', label: 'CozetteVector (13px)' },
-      { value: 'monospace', label: 'system monospace' },
-      { value: 'twitch', label: 'platform default (Inter — twitch + kick)' },
-      { value: 'custom', label: 'custom...' },
+      { value: 'monospace', label: 'system monospace', labelKey: 'lib_opt_system_monospace' },
+      { value: 'twitch', label: 'platform default (Inter — twitch + kick)', labelKey: 'lib_opt_platform_default' },
+      { value: 'custom', label: 'custom...', labelKey: 'lib_opt_custom' },
     ],
   },
   {
@@ -139,6 +155,7 @@ const SETTINGS = [
     scope: 'sync',
     category: 'display',
     section: 'font',
+    sectionKey: 'lib_sec_font',
     labelKey: 'mc_settings_custom_font_name',
     control: 'text',
     alias: 'customfontname',
@@ -150,18 +167,25 @@ const SETTINGS = [
   {
     key: 'fontSize',
     basic: true, // day-one row — shows in the default (basic) settings view
-    type: 'range',
-    default: 13,
+    // enum, not range: a face may declare SIZES, not a continuum (see
+    // src/lib/font-grid.js; today every face is a vector face). `options` is the static UNION of every size any family may hold —
+    // validateSettingValue/coerceSettingValue/lint read it directly and have no
+    // access to the current family — and `optionsFor` narrows it to the
+    // selected family at render time. See src/lib/font-grid.js.
+    type: 'enum',
+    default: 15,
     scope: 'sync',
     category: 'display',
     section: 'font',
+    sectionKey: 'lib_sec_font',
     labelKey: 'mc_settings_font_size',
     tipKey: 'mc_settings_font_size_desc',
-    control: 'range',
     alias: 'fontsize',
     apply: 'fonts',
     applyOnLoad: true,
-    options: { min: 10, max: 22, step: 1 },
+    control: 'sizebtns',
+    options: ALL_SIZES.map((px) => ({ value: px, label: `${px}px` })),
+    optionsFor: (get) => sizesFor(get('fontFamily')).map((px) => ({ value: px, label: `${px}px` })),
   },
 
   // ── display / display ─────────────────────────────────────────────────
@@ -173,6 +197,7 @@ const SETTINGS = [
     scope: 'local',
     category: 'display',
     section: 'chat messages',
+    sectionKey: 'lib_sec_chat_messages',
     labelKey: 'mc_settings_emote_size',
     tipKey: 'mc_settings_emote_size_desc',
     control: 'sizebtns',
@@ -188,11 +213,13 @@ const SETTINGS = [
   },
   {
     key: 'hs_emoji_size',
+    basic: true,
     type: 'enum',
     default: 2,
     scope: 'local',
     category: 'display',
     section: 'chat messages',
+    sectionKey: 'lib_sec_chat_messages',
     labelKey: 'mc_settings_emoji_size',
     tipKey: 'mc_settings_emoji_size_desc',
     control: 'sizebtns',
@@ -214,6 +241,7 @@ const SETTINGS = [
     scope: 'sync',
     category: 'display',
     section: 'chat messages',
+    sectionKey: 'lib_sec_chat_messages',
     labelKey: 'mc_settings_timestamps',
     tipKey: 'mc_settings_timestamps_desc',
     control: 'pill',
@@ -223,11 +251,13 @@ const SETTINGS = [
   },
   {
     key: 'timestampFormat',
+    basic: true,
     type: 'enum',
     default: '24h',
     scope: 'sync',
     category: 'display',
     section: 'chat messages',
+    sectionKey: 'lib_sec_chat_messages',
     labelKey: 'mc_settings_timestamp_format',
     tipKey: 'mc_settings_timestamp_format_desc',
     control: 'sizebtns',
@@ -246,6 +276,7 @@ const SETTINGS = [
     scope: 'sync',
     category: 'display',
     section: 'chat messages',
+    sectionKey: 'lib_sec_chat_messages',
     labelKey: 'mc_settings_show_avatars',
     tipKey: 'mc_settings_avatars_desc',
     control: 'pill',
@@ -255,11 +286,13 @@ const SETTINGS = [
   },
   {
     key: 'zebra',
+    basic: true,
     type: 'bool',
     default: true,
     scope: 'sync',
     category: 'display',
     section: 'chat messages',
+    sectionKey: 'lib_sec_chat_messages',
     labelKey: 'mc_settings_zebra',
     tipKey: 'mc_settings_zebra_desc',
     control: 'pill',
@@ -268,12 +301,28 @@ const SETTINGS = [
     rerender: true,
   },
   {
+    key: 'hoverReply',
+    type: 'bool',
+    default: false,
+    scope: 'sync',
+    category: 'display',
+    section: 'chat messages',
+    sectionKey: 'lib_sec_chat_messages',
+    labelKey: 'mc_settings_hover_reply',
+    tipKey: 'mc_settings_hover_reply_desc',
+    control: 'pill',
+    alias: 'reply button hover',
+    runtimeVar: 'hoverReplyEnabled',
+  },
+  {
     key: 'hs_readable_names',
+    basic: true,
     type: 'bool',
     default: true,
     scope: 'local',
     category: 'display',
     section: 'chat messages',
+    sectionKey: 'lib_sec_chat_messages',
     labelKey: 'mc_settings_readable_names',
     tipKey: 'mc_settings_readable_names_desc',
     control: 'pill',
@@ -288,6 +337,7 @@ const SETTINGS = [
     scope: 'sync',
     category: 'display',
     section: 'chat messages',
+    sectionKey: 'lib_sec_chat_messages',
     labelKey: 'mc_settings_first_chatter',
     tipKey: 'mc_settings_first_chatter_desc',
     control: 'pill',
@@ -302,6 +352,7 @@ const SETTINGS = [
     scope: 'sync',
     category: 'display',
     section: 'chat messages',
+    sectionKey: 'lib_sec_chat_messages',
     labelKey: 'mc_settings_auto_hide',
     tipKey: 'mc_settings_auto_hide_desc',
     control: 'pill',
@@ -311,17 +362,55 @@ const SETTINGS = [
   },
   {
     key: 'showPlatformBadges',
+    basic: true,
     type: 'bool',
     default: true,
     scope: 'sync',
     category: 'display',
     section: 'chat messages',
+    sectionKey: 'lib_sec_chat_messages',
     labelKey: 'mc_settings_platform_badges',
     tipKey: 'mc_settings_platform_badges_desc',
     control: 'pill',
     alias: 'showplatformbadges',
     runtimeVar: 'platformBadgesEnabled',
     rerender: true,
+  },
+  {
+    key: 'textBadges',
+    basic: true,
+    type: 'bool',
+    default: false,
+    scope: 'sync',
+    category: 'display',
+    section: 'chat messages',
+    sectionKey: 'lib_sec_chat_messages',
+    labelKey: 'mc_settings_text_badges',
+    tipKey: 'mc_settings_text_badges_desc',
+    control: 'pill',
+    alias: 'textbadges',
+    runtimeVar: 'textBadgesEnabled',
+    rerender: true,
+  },
+  {
+    key: 'tabCounter',
+    basic: true,
+    type: 'enum',
+    default: 'unread',
+    scope: 'sync',
+    category: 'display',
+    section: 'chat messages',
+    sectionKey: 'lib_sec_chat_messages',
+    labelKey: 'mc_settings_tab_counter',
+    tipKey: 'mc_settings_tab_counter_desc',
+    control: 'sizebtns',
+    alias: 'tabcounter unread heat',
+    options: [
+      { value: 'off', label: 'off', labelKey: 'mc_cm_off' },
+      { value: 'unread', label: 'unread', labelKey: 'lib_opt_unread' },
+      { value: 'heat', label: 'heat', labelKey: 'lib_opt_heat' },
+    ],
+    apply: 'tabCounter',
   },
 
   // ── display / layout ──────────────────────────────────────────────────
@@ -330,11 +419,13 @@ const SETTINGS = [
   // stores it) so hydration never un-hides a deliberately hidden chat.
   {
     key: 'tabPosition',
+    basic: true,
     type: 'enum',
     default: 'top',
     scope: 'sync',
     category: 'display',
     section: 'layout',
+    sectionKey: 'lib_sec_layout',
     labelKey: 'mc_settings_tab_position',
     tipKey: 'mc_settings_tab_position_desc',
     control: 'sizebtns',
@@ -342,10 +433,10 @@ const SETTINGS = [
     apply: 'tabPosition',
     rerender: true,
     options: [
-      { value: 'top', label: 'top' },
-      { value: 'right', label: 'right' },
-      { value: 'bottom', label: 'bottom' },
-      { value: 'left', label: 'left' },
+      { value: 'top', label: 'top', labelKey: 'lib_opt_top' },
+      { value: 'right', label: 'right', labelKey: 'lib_opt_right' },
+      { value: 'bottom', label: 'bottom', labelKey: 'lib_opt_bottom' },
+      { value: 'left', label: 'left', labelKey: 'lib_opt_left' },
     ],
   },
   {
@@ -356,26 +447,29 @@ const SETTINGS = [
     scope: 'sync',
     category: 'display',
     section: 'layout',
+    sectionKey: 'lib_sec_layout',
     labelKey: 'mc_settings_chat_position',
     tipKey: 'mc_settings_chat_position_desc',
     control: 'sizebtns',
     runtimeVar: 'chatPosition',
     apply: 'chatPosition',
     options: [
-      { value: 'right', label: 'right' },
-      { value: 'bottom', label: 'bottom' },
-      { value: 'left', label: 'left' },
-      { value: 'top', label: 'top' },
-      { value: 'hidden', label: 'hidden' },
+      { value: 'right', label: 'right', labelKey: 'lib_opt_right' },
+      { value: 'bottom', label: 'bottom', labelKey: 'lib_opt_bottom' },
+      { value: 'left', label: 'left', labelKey: 'lib_opt_left' },
+      { value: 'top', label: 'top', labelKey: 'lib_opt_top' },
+      { value: 'hidden', label: 'hidden', labelKey: 'lib_opt_hidden' },
     ],
   },
   {
     key: 'ytShowSuggestions',
+    hosts: ['youtube'],
     type: 'bool',
     default: false,
     scope: 'sync',
     category: 'display',
     section: 'layout',
+    sectionKey: 'lib_sec_layout',
     labelKey: 'mc_settings_yt_suggestions',
     tipKey: 'mc_settings_yt_suggestions_desc',
     control: 'pill',
@@ -384,15 +478,19 @@ const SETTINGS = [
   },
   {
     key: 'ytChatOnNonLive',
+    hosts: ['youtube'],
     type: 'bool',
-    default: true,
-    // default flipped false→true (chat on all YT pages); one-shot migration
-    // so installs with a materialized `false` in the sync blob adopt the new
-    // default once — opting out afterwards sticks (guard key stamped)
-    migrate: 'ytChatOnNonLiveOn_v1',
+    default: false,
+    // default is OFF: panel shows only on a page's own live stream (or a
+    // followed-live channel) unless the user opts into chat on every YT
+    // page. A prior migration force-flipped this true for everyone
+    // (including explicit opt-outs) — removed; no migration needed to
+    // reach the schema default, and forcing a flip in either direction
+    // stomps a user's real choice.
     scope: 'sync',
     category: 'display',
     section: 'layout',
+    sectionKey: 'lib_sec_layout',
     labelKey: 'mc_settings_yt_chat_non_live',
     tipKey: 'mc_settings_yt_chat_non_live_desc',
     control: 'pill',
@@ -409,62 +507,37 @@ const SETTINGS = [
     scope: 'sync',
     category: 'display',
     section: 'density',
+    sectionKey: 'lib_sec_density',
     labelKey: 'mc_settings_message_density',
     tipKey: 'mc_settings_message_density_desc',
     control: 'sizebtns',
     apply: 'density',
     applyOnLoad: true,
+    // the retired lineHeight knob did the same job: a taller line reads as cozy
+    legacy: (ui) => (ui.lineHeight === '22' || ui.lineHeight === '26' ? 'cozy' : undefined),
     options: [
-      { value: 'compact', label: 'compact' },
-      { value: 'cozy', label: 'cozy' },
+      { value: 'compact', label: 'compact', labelKey: 'lib_opt_compact' },
+      { value: 'cozy', label: 'cozy', labelKey: 'lib_opt_cozy' },
     ],
-  },
-  {
-    key: 'lineHeight',
-    type: 'enum',
-    default: '18',
-    scope: 'sync',
-    category: 'display',
-    section: 'density',
-    labelKey: 'mc_settings_line_height',
-    tipKey: 'mc_settings_line_height_desc',
-    control: 'sizebtns',
-    apply: 'density',
-    applyOnLoad: true,
-    options: [
-      { value: '18', label: '18' },
-      { value: '22', label: '22' },
-      { value: '26', label: '26' },
-    ],
-  },
-  {
-    key: 'hs_dom_render_cap',
-    type: 'range',
-    default: 500,
-    scope: 'local',
-    category: 'display',
-    section: 'density',
-    labelKey: 'mc_settings_max_visible_messages',
-    tipKey: 'mc_settings_max_visible_messages_desc',
-    control: 'range',
-    runtimeVar: 'domRenderCap',
-    apply: 'renderCap',
-    options: { min: 100, max: 1500, step: 100 },
   },
 
   // ── display / cosmetics (per-provider) ────────────────────────────────
   {
     key: 'showNamePaints',
+    basic: true,
     type: 'bool',
     default: true,
     scope: 'sync',
     category: 'display',
     section: 'cosmetics',
+    sectionKey: 'btn_settings_cosmetics',
     labelKey: 'mc_settings_name_paints',
     tipKey: 'mc_settings_name_paints_desc',
     control: 'pill',
     rerender: true,
     apply: 'namePaints',
+    // the site's modes (full/static/off) map without inverting
+    coerce: (v) => (typeof v === 'string' ? namePaintsOn(v) : v),
   },
   {
     key: 'sevenTvPaints',
@@ -473,42 +546,41 @@ const SETTINGS = [
     scope: 'sync',
     category: 'display',
     section: 'cosmetics',
+    sectionKey: 'btn_settings_cosmetics',
     labelKey: 'mc_settings_seventv_paints',
     tipKey: 'mc_settings_seventv_paints_desc',
     control: 'pill',
     rerender: true,
   },
   {
-    key: 'bttvBadges',
+    // one switch for other tools' badges on chatters (bttv, ffz, chatterino)
+    key: 'thirdPartyBadges',
     type: 'bool',
     default: true,
     scope: 'sync',
     category: 'display',
     section: 'cosmetics',
-    labelKey: 'mc_settings_bttv_badges',
-    tipKey: 'mc_settings_bttv_badges_desc',
+    sectionKey: 'btn_settings_cosmetics',
+    labelKey: 'mc_settings_third_party_badges',
+    tipKey: 'mc_settings_third_party_badges_desc',
     control: 'pill',
     rerender: true,
+    // the three retired per-provider switches: any turned off carries over as off
+    legacy: (ui) =>
+      ['bttvBadges', 'ffzBadges', 'chatterinoBadges'].some((k) => typeof ui[k] === 'boolean')
+        ? ui.bttvBadges !== false && ui.ffzBadges !== false && ui.chatterinoBadges !== false
+        : undefined,
   },
-  {
-    key: 'ffzBadges',
-    type: 'bool',
-    default: true,
-    scope: 'sync',
-    category: 'display',
-    section: 'cosmetics',
-    labelKey: 'mc_settings_ffz_badges',
-    tipKey: 'mc_settings_ffz_badges_desc',
-    control: 'pill',
-    rerender: true,
-  },
+
   {
     key: 'animateEmotes',
+    basic: true,
     type: 'enum',
     default: 'always',
     scope: 'sync',
     category: 'display',
     section: 'cosmetics',
+    sectionKey: 'btn_settings_cosmetics',
     labelKey: 'mc_settings_animate_emotes',
     tipKey: 'mc_settings_animate_emotes_desc',
     control: 'sizebtns',
@@ -523,51 +595,84 @@ const SETTINGS = [
     // pre-1.7.16 installs stored a bool under this key — map, never drop
     coerce: (v) => (typeof v === 'boolean' ? (v ? 'always' : 'never') : v),
     options: [
-      { value: 'always', label: 'always' },
-      { value: 'hover', label: 'hover' },
-      { value: 'never', label: 'never' },
+      { value: 'always', label: 'always', labelKey: 'lib_opt_always' },
+      { value: 'hover', label: 'hover', labelKey: 'lib_opt_hover' },
+      { value: 'never', label: 'never', labelKey: 'lib_opt_never' },
     ],
   },
   {
-    key: 'chatterinoBadges',
+    // Paint motion. Deliberately NOT gated on prefers-reduced-motion — that is
+    // a browser flag rather than a per-site preference, and a chromium run with
+    // --force-prefers-reduced-motion froze every paint on every page at frame 0
+    // with nothing that could turn them back on. Same call already made for
+    // emote modifiers above; this is the control that replaces the media query.
+    // Two states, not the emote trio: 'hover' is already taken for paints and
+    // means the opposite — hovering a painted name FREEZES it and flattens it
+    // to a readable white chip (see ensureHsPaintSheet).
+    key: 'animatePaints',
+    basic: true,
+    type: 'enum',
+    default: 'always',
+    scope: 'sync',
+    category: 'display',
+    section: 'cosmetics',
+    sectionKey: 'btn_settings_cosmetics',
+    labelKey: 'mc_settings_animate_paints',
+    tipKey: 'mc_settings_animate_paints_desc',
+    control: 'sizebtns',
+    apply: 'paintAnimation',
+    // The applier stamps data-hs-paint-anim on <html>, which is what the paint
+    // sheet gates on. Without the boot pass the attribute would only appear
+    // after the user touched the setting, so 'never' would silently behave like
+    // 'always' on every fresh load — the same trap animateEmotes hit.
+    applyOnLoad: true,
+    options: [
+      { value: 'always', label: 'always', labelKey: 'lib_opt_always' },
+      { value: 'never', label: 'never', labelKey: 'lib_opt_never' },
+    ],
+  },
+
+  // name marks (name-marks.js): sub flair, 🔥, heat bar before a twitch chatter's name
+  {
+    key: 'subFlair',
     type: 'bool',
     default: true,
     scope: 'sync',
     category: 'display',
     section: 'cosmetics',
-    labelKey: 'mc_settings_chatterino_badges',
-    tipKey: 'mc_settings_chatterino_badges_desc',
+    sectionKey: 'btn_settings_cosmetics',
+    labelKey: 'mc_settings_sub_flair',
+    tipKey: 'mc_settings_sub_flair_desc',
     control: 'pill',
     rerender: true,
   },
   {
-    // Which third-party provider wins when the same emote NAME exists in
-    // more than one (7TV/BTTV/FFZ) within a channel's or the global pool.
-    // Default '7tv' matches the pre-existing hardcoded winner (BTTV < FFZ <
-    // 7TV last-write-wins in the merge) — picking it changes nothing.
-    key: 'emoteProviderPriority',
-    type: 'enum',
-    default: '7tv',
+    key: 'flame',
+    type: 'bool',
+    default: true,
     scope: 'sync',
     category: 'display',
     section: 'cosmetics',
-    labelKey: 'mc_settings_emote_provider_priority',
-    tipKey: 'mc_settings_emote_provider_priority_desc',
-    control: 'select',
-    runtimeVar: 'emoteProviderPriority',
-    apply: 'emoteProviderPriority',
-    // loadAllSettings() hydrates this var concurrently with the init-time
-    // loadEmotes() call (Promise.allSettled race) — a non-default choice
-    // could lose that race on cold boot. applyOnLoad forces one more
-    // loadEmotes() pass strictly after hydration so the picked provider is
-    // never momentarily wrong.
-    applyOnLoad: true,
-    options: [
-      { value: '7tv', label: '7tv' },
-      { value: 'bttv', label: 'bttv' },
-      { value: 'ffz', label: 'ffz' },
-    ],
+    sectionKey: 'btn_settings_cosmetics',
+    labelKey: 'mc_settings_flame_mark',
+    tipKey: 'mc_settings_flame_mark_desc',
+    control: 'pill',
+    rerender: true,
   },
+  {
+    key: 'heatBars',
+    type: 'bool',
+    default: true,
+    scope: 'sync',
+    category: 'display',
+    section: 'cosmetics',
+    sectionKey: 'btn_settings_cosmetics',
+    labelKey: 'mc_settings_heat_bars',
+    tipKey: 'mc_settings_heat_bars_desc',
+    control: 'pill',
+    rerender: true,
+  },
+
   {
     // Inventory emotes (yours and every other sender's) render as images.
     // Off = the plain word, exactly as it went over the wire. Channel/global
@@ -578,6 +683,7 @@ const SETTINGS = [
     scope: 'sync',
     category: 'display',
     section: 'cosmetics',
+    sectionKey: 'btn_settings_cosmetics',
     labelKey: 'mc_settings_render_inventory_emotes',
     tipKey: 'mc_settings_render_inventory_emotes_desc',
     control: 'pill',
@@ -586,15 +692,43 @@ const SETTINGS = [
   },
   {
     key: 'hs_show_pronouns',
+    basic: true,
     type: 'bool',
     default: true,
     scope: 'sync',
     category: 'display',
     section: 'cosmetics',
+    sectionKey: 'btn_settings_cosmetics',
     labelKey: 'mc_settings_show_pronouns',
     tipKey: 'mc_settings_show_pronouns_desc',
     control: 'pill',
     runtimeVar: 'pronounsEnabled',
+  },
+
+  // ── display / accessibility ───────────────────────────────────────────
+  {
+    // How much of the chat a screen reader says out loud (multichat/sr-announce.js). The message
+    // list is a polite live region, so on a busy channel `all` is a firehose: `mentions` silences
+    // it and says only the lines that @ you, through a separate region. `all` is how it always was.
+    key: 'hs_sr_announce',
+    basic: true, // whoever needs it can't be expected to dig through "show all" to find it
+    type: 'enum',
+    default: 'all',
+    scope: 'local',
+    category: 'display',
+    section: 'accessibility',
+    sectionKey: 'lib_sec_accessibility',
+    labelKey: 'mc_settings_sr_announce',
+    tipKey: 'mc_settings_sr_announce_desc',
+    control: 'select',
+    alias: 'screen reader aria live announce read aloud nvda jaws voiceover orca accessibility blind quiet',
+    apply: 'srAnnounce',
+    applyOnLoad: true,
+    options: [
+      { value: 'all', label: 'all messages', labelKey: 'lib_opt_sr_all' },
+      { value: 'mentions', label: 'mentions only', labelKey: 'lib_opt_sr_mentions' },
+      { value: 'off', label: 'off', labelKey: 'mc_cm_off' },
+    ],
   },
 
   // ── chat / input ──────────────────────────────────────────────────────
@@ -608,6 +742,7 @@ const SETTINGS = [
     scope: 'sync',
     category: 'chat',
     section: 'input',
+    sectionKey: 'btn_settings_input',
     labelKey: 'mc_settings_suggest_inventory_emotes',
     tipKey: 'mc_settings_suggest_inventory_emotes_desc',
     control: 'pill',
@@ -620,6 +755,7 @@ const SETTINGS = [
     scope: 'sync',
     category: 'chat',
     section: 'input',
+    sectionKey: 'btn_settings_input',
     labelKey: 'mc_settings_input_preview',
     tipKey: 'mc_settings_input_preview_desc',
     control: 'pill',
@@ -627,6 +763,8 @@ const SETTINGS = [
     runtimeVar: 'wysiwygEnabled',
     apply: 'rebuildInput',
     migrate: 'wysiwygDefaultOn_v1',
+    // the emote picker's retired panel stored the same switch as emoteWysiwyg
+    legacy: (ui) => (typeof ui.emoteWysiwyg === 'boolean' ? ui.emoteWysiwyg : undefined),
   },
   {
     key: 'viMode',
@@ -635,12 +773,47 @@ const SETTINGS = [
     scope: 'sync',
     category: 'chat',
     section: 'input',
+    sectionKey: 'btn_settings_input',
     labelKey: 'mc_settings_vi_mode',
     tipKey: 'mc_settings_vi_mode_desc',
     control: 'pill',
     alias: 'vi',
     runtimeVar: 'viModeEnabled',
     apply: 'viMode',
+  },
+  {
+    // Up/Down in the composer bring back what you sent. On: the list also survives a reload,
+    // kept in chrome.storage.local only (sent-history.js). Off: this page only, nothing stored.
+    // sent-history.js watches this key itself, so there is no applier.
+    key: 'hs_remember_sent',
+    basic: true,
+    type: 'bool',
+    default: true,
+    scope: 'local',
+    category: 'chat',
+    section: 'input',
+    sectionKey: 'btn_settings_input',
+    labelKey: 'mc_settings_remember_sent',
+    tipKey: 'mc_settings_remember_sent_desc',
+    control: 'pill',
+    alias: 'history up down arrow recall sent messages privacy',
+  },
+  {
+    // Default off, as the composer has always been. Read at build time of the composer and
+    // pushed live by the applier, so it takes effect without a reload.
+    key: 'hs_spellcheck',
+    type: 'bool',
+    default: false,
+    scope: 'local',
+    category: 'chat',
+    section: 'input',
+    sectionKey: 'btn_settings_input',
+    labelKey: 'mc_settings_spellcheck',
+    tipKey: 'mc_settings_spellcheck_desc',
+    control: 'pill',
+    alias: 'spell check squiggle typo red underline',
+    apply: 'spellcheck',
+    applyOnLoad: true,
   },
 
   // ── chat / messages ───────────────────────────────────────────────────
@@ -652,6 +825,7 @@ const SETTINGS = [
     scope: 'sync',
     category: 'chat',
     section: 'messages',
+    sectionKey: 'lib_sec_messages',
     labelKey: 'mc_settings_clickable_links',
     tipKey: 'mc_settings_clickable_links_desc',
     control: 'pill',
@@ -659,27 +833,16 @@ const SETTINGS = [
     runtimeVar: 'linksEnabled',
     rerender: true,
   },
-  {
-    key: 'partialLinksEnabled',
-    type: 'bool',
-    default: true,
-    scope: 'sync',
-    category: 'chat',
-    section: 'messages',
-    labelKey: 'mc_settings_partial_links',
-    tipKey: 'mc_settings_partial_links_desc',
-    control: 'pill',
-    alias: 'partiallinks',
-    runtimeVar: 'partialLinksEnabled',
-    rerender: true,
-  },
+
   {
     key: 'linkPreviewsEnabled',
+    basic: true,
     type: 'bool',
     default: true,
     scope: 'sync',
     category: 'chat',
     section: 'messages',
+    sectionKey: 'lib_sec_messages',
     labelKey: 'mc_settings_link_previews',
     tipKey: 'mc_settings_link_previews_desc',
     control: 'pill',
@@ -694,6 +857,7 @@ const SETTINGS = [
     scope: 'sync',
     category: 'chat',
     section: 'messages',
+    sectionKey: 'lib_sec_messages',
     labelKey: 'mc_settings_media_embeds',
     tipKey: 'mc_settings_media_embeds_desc',
     control: 'pill',
@@ -703,11 +867,13 @@ const SETTINGS = [
   },
   {
     key: 'hs_auto_claim_points',
+    basic: true,
     type: 'bool',
     default: true,
     scope: 'local',
     category: 'chat',
     section: 'messages',
+    sectionKey: 'lib_sec_messages',
     labelKey: 'mc_settings_auto_claim',
     tipKey: 'mc_settings_auto_claim_desc',
     control: 'pill',
@@ -724,42 +890,27 @@ const SETTINGS = [
     scope: 'local',
     category: 'chat',
     section: 'messages',
+    sectionKey: 'lib_sec_messages',
     labelKey: 'mc_settings_dim_timeouts',
     tipKey: 'mc_settings_dim_timeouts_desc',
     control: 'pill',
     alias: 'dimtimeouts',
     runtimeVar: 'dimTimeouts',
   },
-  {
-    key: 'keywordHighlights',
-    type: 'text',
-    default: '',
-    scope: 'local-mirror',
-    mirrorKey: 'keyword_highlights',
-    legacySyncFallback: true,
-    category: 'chat',
-    section: 'messages',
-    labelKey: 'mc_settings_keyword_highlights',
-    tipKey: 'mc_settings_keyword_highlights_desc',
-    placeholderKey: 'mc_settings_keyword_highlights_placeholder',
-    control: 'textarea',
-    alias: 'keywordhighlights',
-    runtimeVar: 'keywordHighlights',
-    apply: 'keywordRegex',
-    applyOnLoad: true,
-    rerender: true,
-    maxLen: 65536,
-  },
 
   // ── chat / privacy ────────────────────────────────────────────────────
   {
     key: 'anonChat',
+    // twitch's gql typing/presence is the only signal it suppresses
+    hosts: ['twitch'],
+    basic: true,
     type: 'bool',
     default: false,
     scope: 'sync',
     category: 'chat',
     section: 'privacy',
-    labelKey: 'mc_settings_anon_chat',
+    sectionKey: 'welcome_privacy',
+    labelKey: 'mc_settings_anon_chat_twitch',
     tipKey: 'mc_settings_anon_chat_desc',
     control: 'pill',
   },
@@ -771,11 +922,13 @@ const SETTINGS = [
   // ── notifs / inline notifications ─────────────────────────────────────
   {
     key: 'whisperToast',
+    basic: true,
     type: 'bool',
     default: true,
     scope: 'sync',
     category: 'notifs',
     section: 'whispers',
+    sectionKey: 'mc_settings_sub_whispers',
     labelKey: 'mc_settings_whisper_toast',
     tipKey: 'mc_settings_whisper_toast_desc',
     control: 'pill',
@@ -783,6 +936,7 @@ const SETTINGS = [
   },
   {
     key: 'inlineNotifs',
+    basic: true,
     type: 'boolmap',
     scope: 'sync',
     category: 'notifs',
@@ -843,6 +997,7 @@ const SETTINGS = [
   // ── notifs / stream events (twitch + youtube) ─────────────────────────
   {
     key: 'hermesEvents',
+    basic: true,
     type: 'boolmap',
     scope: 'sync',
     category: 'notifs',
@@ -870,28 +1025,28 @@ const SETTINGS = [
       {
         value: 'online',
         default: true,
-        color: '#00ff7f',
+        color: '#ff0000',
         labelKey: 'mc_settings_evt_online',
         tipKey: 'mc_settings_evt_online_desc',
       },
       {
         value: 'offline',
         default: false,
-        color: '#808080',
+        color: '#ffffff',
         labelKey: 'mc_settings_evt_offline',
         tipKey: 'mc_settings_evt_offline_desc',
       },
       {
         value: 'gameSwitch',
         default: true,
-        color: '#ff00ff',
+        color: '#ffff00',
         labelKey: 'mc_settings_evt_game_switch',
         tipKey: 'mc_settings_evt_game_switch_desc',
       },
       {
         value: 'raid',
         default: true,
-        color: '#9146ff',
+        color: HS_PLAT_COLORS.twitch,
         labelKey: 'mc_settings_raids',
         tipKey: 'mc_settings_raids_desc',
       },
@@ -905,63 +1060,63 @@ const SETTINGS = [
       {
         value: 'sub',
         default: true,
-        color: '#00ff7f',
+        color: '#00ff00',
         labelKey: 'mc_settings_gift_subs',
         tipKey: 'mc_settings_gift_subs_desc',
       },
       {
         value: 'redeem',
         default: true,
-        color: '#00bfff',
+        color: '#00ffff',
         labelKey: 'mc_settings_redeems',
         tipKey: 'mc_settings_redeems_desc',
       },
       {
         value: 'pred',
         default: true,
-        color: '#387aff',
+        color: '#ffffff',
         labelKey: 'mc_settings_prediction_banner',
         tipKey: 'mc_settings_prediction_banner_desc',
       },
       {
         value: 'poll',
         default: true,
-        color: '#00c853',
+        color: '#00ff00',
         labelKey: 'mc_settings_poll_banner',
         tipKey: 'mc_settings_poll_banner_desc',
       },
       {
         value: 'ytSuperchat',
         default: true,
-        color: '#ffca28',
+        color: '#ffff00',
         labelKey: 'mc_settings_yt_superchat',
         tipKey: 'mc_settings_yt_superchat_desc',
       },
       {
         value: 'ytSupersticker',
         default: true,
-        color: '#ff8a65',
+        color: '#ff0000',
         labelKey: 'mc_settings_yt_supersticker',
         tipKey: 'mc_settings_yt_supersticker_desc',
       },
       {
         value: 'ytMembership',
         default: true,
-        color: '#2ba640',
+        color: '#00ff00',
         labelKey: 'mc_settings_yt_membership',
         tipKey: 'mc_settings_yt_membership_desc',
       },
       {
         value: 'ytMilestone',
         default: true,
-        color: '#00e5ff',
+        color: '#00ffff',
         labelKey: 'mc_settings_yt_milestone',
         tipKey: 'mc_settings_yt_milestone_desc',
       },
       {
         value: 'ytGiftMemberships',
         default: true,
-        color: '#ff4081',
+        color: '#ff0000',
         labelKey: 'mc_settings_yt_gift_memberships',
         tipKey: 'mc_settings_yt_gift_memberships_desc',
       },
@@ -977,6 +1132,7 @@ const SETTINGS = [
     scope: 'local',
     category: 'notifs',
     section: 'when you get @mentioned',
+    sectionKey: 'lib_sec_mentioned',
     labelKey: 'mc_settings_browser_notification',
     tipKey: 'mc_settings_browser_notification_desc',
     control: 'pill',
@@ -989,9 +1145,56 @@ const SETTINGS = [
     scope: 'sync',
     category: 'notifs',
     section: 'when you get @mentioned',
+    sectionKey: 'lib_sec_mentioned',
     labelKey: 'mc_settings_tab_title_flash',
     tipKey: 'mc_settings_tab_title_flash_desc',
     control: 'pill',
+  },
+  {
+    key: 'mentionSound',
+    basic: true,
+    type: 'enum',
+    default: 'ping',
+    scope: 'sync',
+    category: 'notifs',
+    section: 'when you get @mentioned',
+    sectionKey: 'lib_sec_mentioned',
+    labelKey: 'mc_settings_mention_sound',
+    tipKey: 'mc_settings_mention_sound_desc',
+    control: 'select',
+    alias: 'mentionsound ping blip knock chime audio custom file',
+    apply: 'mentionSoundPick',
+    syncSilent: true,
+    // the first four are the built-in presets (SFX_PRESETS in multichat/sounds.js,
+    // pinned by tests/chat-sounds.test.js); 'custom' plays the file picked on this device
+    options: [
+      { value: 'ping', label: 'ping' },
+      { value: 'blip', label: 'blip' },
+      { value: 'knock', label: 'knock' },
+      { value: 'chime', label: 'chime' },
+      { value: 'custom', label: 'my file', labelKey: 'mc_sfx_opt_file' },
+    ],
+  },
+  {
+    // Name of the file picked for the @mention sound. The bytes never sync or
+    // export — they sit in chrome.storage.local on the device that picked them
+    // (hs_sfx_mention); only this label travels. Emptying it (remove, or
+    // reset to defaults) deletes the file. Rendered by sound-ui.js, not auto.
+    key: 'mentionSoundName',
+    basic: true,
+    type: 'text',
+    default: '',
+    scope: 'sync',
+    category: 'notifs',
+    section: 'when you get @mentioned',
+    sectionKey: 'lib_sec_mentioned',
+    labelKey: 'mc_settings_mention_sound_file',
+    tipKey: 'mc_sfx_note',
+    control: 'custom',
+    alias: 'mentionsoundfile upload audio mp3 wav ogg custom sound file',
+    apply: 'mentionSoundFile',
+    syncSilent: true,
+    maxLen: 60,
   },
   {
     key: 'mentionSoundVolume',
@@ -1001,6 +1204,7 @@ const SETTINGS = [
     scope: 'sync',
     category: 'notifs',
     section: 'when you get @mentioned',
+    sectionKey: 'lib_sec_mentioned',
     labelKey: 'mc_settings_mention_volume',
     tipKey: 'mc_settings_mention_volume_desc',
     control: 'range',
@@ -1009,6 +1213,26 @@ const SETTINGS = [
     displayScale: 100,
     syncSilent: true,
     options: { min: 0, max: 1, step: 0.05 },
+  },
+  {
+    // The @mention sound only ever played while this window was in the background;
+    // highlight-rule sounds always play. 'away' is that old behaviour (the default).
+    key: 'mentionSoundWhen',
+    basic: true,
+    type: 'enum',
+    default: 'away',
+    scope: 'sync',
+    category: 'notifs',
+    section: 'when you get @mentioned',
+    sectionKey: 'lib_sec_mentioned',
+    labelKey: 'mc_settings_mention_sound_when',
+    tipKey: 'mc_settings_mention_sound_when_desc',
+    control: 'select',
+    alias: 'mentionsoundwhen away focused always sound play',
+    options: [
+      { value: 'away', label: "only when i'm away", labelKey: 'mc_set_msw_away' },
+      { value: 'always', label: 'always', labelKey: 'mc_set_msw_always' },
+    ],
   },
 
   // ── notifs / cross-platform follow ────────────────────────────────────
@@ -1019,6 +1243,7 @@ const SETTINGS = [
     scope: 'sync',
     category: 'notifs',
     section: 'cross-platform follow',
+    sectionKey: 'lib_sec_cross_follow',
     labelKey: 'mc_settings_cross_follow_kick',
     tipKey: 'mc_settings_cross_follow_kick_desc',
     control: 'pill',
@@ -1030,19 +1255,9 @@ const SETTINGS = [
     scope: 'sync',
     category: 'notifs',
     section: 'cross-platform follow',
+    sectionKey: 'lib_sec_cross_follow',
     labelKey: 'mc_settings_cross_follow_twitch',
     tipKey: 'mc_settings_cross_follow_twitch_desc',
-    control: 'pill',
-  },
-  {
-    key: 'crossFollowTwitchNotify',
-    type: 'bool',
-    default: true,
-    scope: 'sync',
-    category: 'notifs',
-    section: 'cross-platform follow',
-    labelKey: 'mc_settings_cross_follow_twitch_notify',
-    tipKey: 'mc_settings_cross_follow_twitch_notify_desc',
     control: 'pill',
   },
 
@@ -1058,6 +1273,7 @@ const SETTINGS = [
     scope: 'local',
     category: 'mod',
     section: 'mod toolbar',
+    sectionKey: 'lib_sec_mod_toolbar',
     labelKey: 'mc_settings_mod_toolbar_buttons',
     tipKey: 'mc_settings_mod_toolbar_buttons_desc',
     control: 'pill',
@@ -1071,9 +1287,11 @@ const SETTINGS = [
       { value: 'timeout_1h', tag: '1h', labelKey: 'mc_settings_mod_btn_timeout_1h' },
       { value: 'timeout_24h', tag: '24h', labelKey: 'mc_settings_mod_btn_timeout_24h' },
       { value: 'timeout_7d', tag: '7d', labelKey: 'mc_settings_mod_btn_timeout_7d' },
-      { value: 'purge', tag: 'purge', labelKey: 'mc_settings_mod_btn_purge' },
+      { value: 'purge', tagKey: 'mc_mtb_l_purge', labelKey: 'mc_settings_mod_btn_purge' },
       { value: 'ban', tag: '⛔', labelKey: 'mc_settings_mod_btn_ban' },
       { value: 'unban', tag: '✓', labelKey: 'mc_settings_mod_btn_unban' },
+      { value: 'blocked_terms', tagKey: 'mc_mtb_l_bt', labelKey: 'mc_settings_mod_btn_blocked_terms' },
+      { value: 'mod_tools', tagKey: 'mc_mtb_l_mt', labelKey: 'mc_ms_title' },
     ],
   },
 
@@ -1084,6 +1302,7 @@ const SETTINGS = [
     scope: 'sync',
     category: 'mod',
     section: 'mod toolbar',
+    sectionKey: 'lib_sec_mod_toolbar',
     labelKey: 'mc_settings_confirm_ban',
     tipKey: 'mc_settings_confirm_ban_desc',
     control: 'pill',
@@ -1097,6 +1316,7 @@ const SETTINGS = [
     scope: 'sync',
     category: 'mod',
     section: 'mod toolbar',
+    sectionKey: 'lib_sec_mod_toolbar',
     labelKey: 'mc_settings_ban_reasons',
     tipKey: 'mc_settings_ban_reasons_desc',
     control: 'textarea',
@@ -1104,113 +1324,87 @@ const SETTINGS = [
     applyOnLoad: true,
   },
 
-  // ── mod / automod ─────────────────────────────────────────────────────
-  {
-    key: 'automodAllCaps',
-    type: 'bool',
-    default: false,
-    scope: 'sync',
-    category: 'mod',
-    section: 'automod',
-    labelKey: 'mc_settings_automod_caps',
-    tipKey: 'mc_settings_automod_caps_desc',
-    control: 'pill',
-    apply: 'automod',
-    applyOnLoad: true,
-  },
-  {
-    key: 'automodRegex',
-    type: 'text',
-    default: '',
-    scope: 'sync',
-    category: 'mod',
-    section: 'automod',
-    labelKey: 'mc_settings_automod_regex',
-    tipKey: 'mc_settings_automod_regex_desc',
-    placeholderKey: 'mc_settings_automod_regex_placeholder',
-    control: 'textarea',
-    alias: 'automodregex',
-    apply: 'automod',
-    applyOnLoad: true,
-    maxLen: 4096,
-  },
-
   // ── filters / content — per-viewer content-warning emote filters ──────
-  // local bool + server PATCH with rollback; sexual + gore hidden by
-  // default server-side, weapons/drugs/hate shown by default
+  // local bool + server PATCH with rollback; every category is hidden
+  // by default, so `default` resets them (switching off needs no age check)
   {
     key: 'viewer_show_sexual',
+    basic: true,
     type: 'bool',
     default: false,
     scope: 'local',
     category: 'filters',
     section: 'content',
+    sectionKey: 'lib_sec_content',
     labelKey: 'mc_settings_show_sexual',
     tipKey: 'mc_settings_show_sexual_desc',
     control: 'pill',
     apply: 'cwServerPatch',
     syncSilent: true,
-    noReset: true,
     cw: { stateKey: 'sexual', serverBody: 'show_sexual_emotes', noun: 'sexual emotes setting' },
   },
   {
     key: 'viewer_show_gore',
+    basic: true,
     type: 'bool',
     default: false,
     scope: 'local',
     category: 'filters',
     section: 'content',
+    sectionKey: 'lib_sec_content',
     labelKey: 'mc_settings_show_gore',
     tipKey: 'mc_settings_show_gore_desc',
     control: 'pill',
     apply: 'cwServerPatch',
     syncSilent: true,
-    noReset: true,
     cw: { stateKey: 'gore', serverBody: 'show_gore_emotes', noun: 'gore emotes setting' },
   },
   {
     key: 'viewer_show_weapon',
+    basic: true,
     type: 'bool',
-    default: true,
+    default: false,
     scope: 'local',
     category: 'filters',
     section: 'content',
+    sectionKey: 'lib_sec_content',
     labelKey: 'mc_settings_show_weapon',
     tipKey: 'mc_settings_show_weapon_desc',
     control: 'pill',
     apply: 'cwServerPatch',
     syncSilent: true,
-    noReset: true,
     cw: { stateKey: 'weapon', serverBody: 'show_weapon_emotes', noun: 'weapons setting' },
   },
   {
     key: 'viewer_show_drug',
+    basic: true,
     type: 'bool',
-    default: true,
+    default: false,
     scope: 'local',
     category: 'filters',
     section: 'content',
+    sectionKey: 'lib_sec_content',
     labelKey: 'mc_settings_show_drug',
     tipKey: 'mc_settings_show_drug_desc',
     control: 'pill',
     apply: 'cwServerPatch',
     syncSilent: true,
-    noReset: true,
     cw: { stateKey: 'drug', serverBody: 'show_drug_emotes', noun: 'drugs setting' },
   },
   {
     key: 'viewer_show_hate',
+    basic: true,
     type: 'bool',
-    default: true,
+    default: false,
     scope: 'local',
     category: 'filters',
     section: 'content',
+    sectionKey: 'lib_sec_content',
     labelKey: 'mc_settings_show_hate',
     tipKey: 'mc_settings_show_hate_desc',
     control: 'pill',
     apply: 'cwServerPatch',
     syncSilent: true,
-    noReset: true,
     cw: { stateKey: 'hate', serverBody: 'show_hate_emotes', noun: 'hate setting' },
   },
 
@@ -1225,6 +1419,7 @@ const SETTINGS = [
     scope: 'sync',
     category: 'filters',
     section: 'messages',
+    sectionKey: 'lib_sec_messages',
     labelKey: 'mc_settings_hide_bots',
     tipKey: 'mc_settings_hide_bots_desc',
     control: 'pill',
@@ -1232,11 +1427,13 @@ const SETTINGS = [
   },
   {
     key: 'hideCommands',
+    basic: true,
     type: 'bool',
     default: false,
     scope: 'sync',
     category: 'filters',
     section: 'messages',
+    sectionKey: 'lib_sec_messages',
     labelKey: 'mc_settings_hide_commands',
     tipKey: 'mc_settings_hide_commands_desc',
     control: 'pill',
@@ -1249,26 +1446,11 @@ const SETTINGS = [
     scope: 'sync',
     category: 'filters',
     section: 'messages',
+    sectionKey: 'lib_sec_messages',
     labelKey: 'mc_settings_hide_duplicates',
     tipKey: 'mc_settings_hide_duplicates_desc',
     control: 'pill',
     rerender: true,
-  },
-  {
-    key: 'hs_mute_keywords',
-    type: 'text',
-    default: '',
-    scope: 'local',
-    category: 'filters',
-    section: 'messages',
-    labelKey: 'mc_settings_mute_keywords',
-    tipKey: 'mc_settings_mute_keywords_desc',
-    placeholderKey: 'mc_settings_mute_keywords_placeholder',
-    control: 'textarea',
-    apply: 'muteKeywords',
-    applyOnLoad: true,
-    rerender: true,
-    maxLen: 65536,
   },
 
   // ── filters / rules — per-rule highlight/hide engine ─────────────────
@@ -1282,6 +1464,7 @@ const SETTINGS = [
     mirrorKey: 'chat_filter_rules',
     category: 'filters',
     section: 'rules',
+    sectionKey: 'lib_sec_rules',
     labelKey: 'mc_settings_filter_rules',
     tipKey: 'mc_settings_filter_rules_desc',
     control: 'custom',
@@ -1291,179 +1474,70 @@ const SETTINGS = [
     maxLen: 524288,
   },
 
-  // ── tweaks — twitch ui noise toggles (content.js CSS-hide flags) ──────
-  // order defines section ordering in the tweaks subtab
-  {
-    key: 'hideRecommendedChannels',
-    type: 'bool',
-    default: false,
-    scope: 'sync',
-    category: 'tweaks',
-    section: 'sidebar / chrome',
-    tweak: true,
-    control: 'pill',
-    labelKey: 'mc_settings_hide_recommended',
-    tipKey: 'mc_settings_hide_recommended_desc',
-  },
-  {
-    key: 'hideStories',
-    type: 'bool',
-    default: false,
-    scope: 'sync',
-    category: 'tweaks',
-    section: 'sidebar / chrome',
-    tweak: true,
-    control: 'pill',
-    labelKey: 'mc_settings_hide_stories',
-    tipKey: 'mc_settings_hide_stories_desc',
-  },
-  {
-    key: 'hidePrimeLoot',
-    type: 'bool',
-    default: false,
-    scope: 'sync',
-    category: 'tweaks',
-    section: 'sidebar / chrome',
-    tweak: true,
-    control: 'pill',
-    labelKey: 'mc_settings_hide_prime_loot',
-    tipKey: 'mc_settings_hide_prime_loot_desc',
-  },
-  {
-    key: 'hideTwitchTurbo',
-    type: 'bool',
-    default: false,
-    scope: 'sync',
-    category: 'tweaks',
-    section: 'sidebar / chrome',
-    tweak: true,
-    control: 'pill',
-    labelKey: 'mc_settings_hide_turbo',
-    tipKey: 'mc_settings_hide_turbo_desc',
-  },
-  {
-    key: 'hideSubtember',
-    type: 'bool',
-    default: false,
-    scope: 'sync',
-    category: 'tweaks',
-    section: 'sidebar / chrome',
-    tweak: true,
-    control: 'pill',
-    labelKey: 'mc_settings_hide_subtember',
-    tipKey: 'mc_settings_hide_subtember_desc',
-  },
-  {
-    key: 'hideLiveNotifBtn',
-    type: 'bool',
-    default: false,
-    scope: 'sync',
-    category: 'tweaks',
-    section: 'sidebar / chrome',
-    tweak: true,
-    control: 'pill',
-    labelKey: 'mc_settings_hide_live_notif_btn',
-    tipKey: 'mc_settings_hide_live_notif_btn_desc',
-  },
-  {
-    key: 'hideUnfollowBtn',
-    type: 'bool',
-    default: false,
-    scope: 'sync',
-    category: 'tweaks',
-    section: 'sidebar / chrome',
-    tweak: true,
-    control: 'pill',
-    labelKey: 'mc_settings_hide_unfollow_btn',
-    tipKey: 'mc_settings_hide_unfollow_btn_desc',
-  },
-  {
-    key: 'hideSubscribeBtn',
-    type: 'bool',
-    default: false,
-    scope: 'sync',
-    category: 'tweaks',
-    section: 'sidebar / chrome',
-    tweak: true,
-    control: 'pill',
-    labelKey: 'mc_settings_hide_subscribe_btn',
-    tipKey: 'mc_settings_hide_subscribe_btn_desc',
-  },
-  {
-    key: 'hideOnscreenCelebrations',
-    type: 'bool',
-    default: false,
-    scope: 'sync',
-    category: 'tweaks',
-    section: 'player overlay',
-    tweak: true,
-    control: 'pill',
-    labelKey: 'mc_settings_hide_celebrations',
-    tipKey: 'mc_settings_hide_celebrations_desc',
-  },
-  {
-    key: 'hidePlayerExtensions',
-    type: 'bool',
-    default: false,
-    scope: 'sync',
-    category: 'tweaks',
-    section: 'player overlay',
-    tweak: true,
-    control: 'pill',
-    labelKey: 'mc_settings_hide_player_ext',
-    tipKey: 'mc_settings_hide_player_ext_desc',
-  },
   {
     // BTTV-style scroll-wheel volume — not a CSS-hide flag (no `tweak: true`),
     // gated live by the wheel listener reading scrollWheelVolumeEnabled.
     key: 'scrollWheelVolume',
+    basic: true,
     type: 'bool',
-    default: true,
+    default: false,
     scope: 'sync',
-    category: 'tweaks',
-    section: 'player overlay',
+    category: 'display',
+    section: 'player',
+    sectionKey: 'lib_sec_player',
     control: 'pill',
     runtimeVar: 'scrollWheelVolumeEnabled',
     labelKey: 'mc_settings_scroll_wheel_volume',
     tipKey: 'mc_settings_scroll_wheel_volume_desc',
   },
 
-  // ── mod / native chat ─────────────────────────────────────────────────
+  {
+    // Read by src/content/player-volume.js, a content script that runs inside the
+    // player frames themselves and reads ui_settings straight from storage —
+    // so no runtimeVar/apply here, and it follows a change live via
+    // storage.onChanged.
+    key: 'channelVolumeMemory',
+    basic: true,
+    type: 'bool',
+    default: true,
+    scope: 'sync',
+    category: 'display',
+    section: 'player',
+    sectionKey: 'lib_sec_player',
+    control: 'pill',
+    labelKey: 'mc_settings_channel_volume',
+    tipKey: 'mc_settings_channel_volume_desc',
+    alias: 'volume memory channel remember',
+  },
 
-  // ── tweaks / native chat chrome ───────────────────────────────────────
   {
-    key: 'hideStreamTitle',
-    type: 'bool',
-    default: false,
+    key: 'channelVolumeDefault',
+    type: 'range',
+    default: 0,
     scope: 'sync',
-    category: 'tweaks',
-    section: 'sidebar / chrome',
-    tweak: true,
-    control: 'pill',
-    labelKey: 'mc_settings_hide_stream_title',
-    tipKey: 'mc_settings_hide_stream_title_desc',
+    category: 'display',
+    section: 'player',
+    sectionKey: 'lib_sec_player',
+    control: 'range',
+    labelKey: 'mc_settings_channel_volume_default',
+    tipKey: 'mc_settings_channel_volume_default_desc',
+    alias: 'default volume new channel starting',
+    displayScale: 100,
+    syncSilent: true,
+    options: { min: 0, max: 1, step: 0.05 },
   },
-  {
-    key: 'hideViewerCount',
-    type: 'bool',
-    default: false,
-    scope: 'sync',
-    category: 'tweaks',
-    section: 'sidebar / chrome',
-    tweak: true,
-    control: 'pill',
-    labelKey: 'mc_settings_hide_viewer_count',
-    tipKey: 'mc_settings_hide_viewer_count_desc',
-  },
+
+  // ── mod / native chat ─────────────────────────────────────────────────
 
   // ── system / tabs ─────────────────────────────────────────────────────
   {
     key: 'hiddenTabs',
     type: 'multiselect',
-    default: ['pinned'],
+    default: ['pinned', 'modlog', 'discover'],
     scope: 'sync',
     category: 'system',
     section: 'tabs',
+    sectionKey: 'lib_sec_tabs',
     labelKey: 'mc_settings_visible_tabs',
     control: 'pill',
     runtimeVar: 'hiddenTabs',
@@ -1471,6 +1545,7 @@ const SETTINGS = [
     invertDisplay: true,
     options: [
       { value: 'feed', labelKey: 'mc_tab_feed' },
+      { value: 'discover', labelKey: 'mc_tab_discover' },
       { value: 'whispers', labelKey: 'mc_tab_whispers' },
       { value: 'mentions', labelKey: 'mc_tab_mentions' },
       { value: 'pinned', labelKey: 'mc_tab_pinned' },
@@ -1490,6 +1565,7 @@ const SETTINGS = [
     scope: 'local',
     category: 'system',
     section: 'language',
+    sectionKey: 'lib_sec_language',
     labelKey: 'mc_settings_ui_locale',
     tipKey: 'mc_settings_ui_locale_desc',
     control: 'select',
@@ -1534,194 +1610,57 @@ const SETTINGS = [
     ],
   },
 
-  // ── system / subsystems — compose your own chat ───────────────────────
-  // Whole features OFF for real: gated at init so a disabled subsystem
-  // never creates its sockets/listeners/DOM (RAM + CPU reclaim). Most
-  // need a reload to apply (applies:'reload'); live ones tear down in
-  // place. Server health kill-switch (__hsHealth.disabled) overrides.
+  // Plumbing that stays on: no panel toggle (nobody wants chat without tab-complete
+  // or the native-chat tap), but the gates still exist in code. Anything stored
+  // `false` for these from an older panel is reset on boot (main.js snapshotGates).
+  // ── system / subsystems — heatsync chat on or off, per site ───────────
+  // Off = heatsync never mounts there and the page keeps its own chat;
+  // decided at boot, so it applies on reload. The other gates (feed,
+  // whispers, cosmetics, ...) are no longer the user's: they stay on unless
+  // the server health kill-switch (__hsHealth.disabled) turns one off.
   {
     key: 'subsystems',
     type: 'boolmap',
     scope: 'sync',
     category: 'system',
     section: 'subsystems',
+    sectionKey: 'mc_settings_subsystems',
     labelKey: 'mc_settings_subsystems',
     apply: 'subsystemToggle',
     control: 'pill',
     default: {
-      'irc-twitch': true,
-      'chat-kick': true,
-      'chat-youtube': true,
-      cosmetics: true,
-      feed: true,
-      whispers: true,
-      mentions: true,
-      'stream-stats': true,
-      'profile-cards': true,
-      'emote-render': true,
-      'tab-complete': true,
-      'picker-button': true,
-      'native-takeover': true,
-      'kick-native-tap': true,
-      'yt-innertube-tap': true,
-      'automod-queue': true,
+      'overlay-twitch': true,
+      'overlay-kick': true,
+      'overlay-youtube': true,
     },
     options: [
+      // The whole overlay, per site: off = heatsync never mounts there and the page keeps its own chat
+      // untouched. Decided once at boot (before anything paints), so there is nothing to hide or give back.
       {
-        value: 'irc-twitch',
+        value: 'overlay-twitch',
         default: true,
-        color: '#9146ff',
+        color: HS_PLAT_COLORS.twitch,
         applies: 'reload',
-        labelKey: 'mc_settings_sub_irc_twitch',
-        tipKey: 'mc_settings_sub_irc_twitch_desc',
+        labelKey: 'mc_settings_sub_overlay_twitch',
+        tipKey: 'mc_settings_sub_overlay_desc',
       },
       {
-        value: 'chat-kick',
+        value: 'overlay-kick',
         default: true,
-        color: '#53fc18',
+        color: HS_PLAT_COLORS.kick,
         applies: 'reload',
-        labelKey: 'mc_settings_sub_chat_kick',
-        tipKey: 'mc_settings_sub_chat_kick_desc',
+        labelKey: 'mc_settings_sub_overlay_kick',
+        tipKey: 'mc_settings_sub_overlay_desc',
       },
       {
-        value: 'chat-youtube',
+        value: 'overlay-youtube',
         default: true,
-        color: '#ff0000',
+        color: HS_PLAT_COLORS.youtube,
         applies: 'reload',
-        labelKey: 'mc_settings_sub_chat_youtube',
-        tipKey: 'mc_settings_sub_chat_youtube_desc',
-      },
-      {
-        value: 'cosmetics',
-        default: true,
-        color: '#00ffff',
-        applies: 'reload',
-        labelKey: 'mc_settings_sub_cosmetics',
-        tipKey: 'mc_settings_sub_cosmetics_desc',
-      },
-      {
-        value: 'feed',
-        default: true,
-        color: '#00ff7f',
-        applies: 'reload',
-        labelKey: 'mc_settings_sub_feed',
-        tipKey: 'mc_settings_sub_feed_desc',
-      },
-      {
-        value: 'whispers',
-        default: true,
-        color: '#ffff00',
-        applies: 'reload',
-        labelKey: 'mc_settings_sub_whispers',
-        tipKey: 'mc_settings_sub_whispers_desc',
-      },
-      {
-        value: 'mentions',
-        default: true,
-        color: '#ff00ff',
-        applies: 'live',
-        labelKey: 'mc_settings_sub_mentions',
-        tipKey: 'mc_settings_sub_mentions_desc',
-      },
-      {
-        value: 'stream-stats',
-        default: true,
-        color: '#387aff',
-        applies: 'live',
-        labelKey: 'mc_settings_sub_stream_stats',
-        tipKey: 'mc_settings_sub_stream_stats_desc',
-      },
-      {
-        value: 'profile-cards',
-        default: true,
-        color: '#00c853',
-        applies: 'reload',
-        labelKey: 'mc_settings_sub_profile_cards',
-        tipKey: 'mc_settings_sub_profile_cards_desc',
-      },
-      {
-        value: 'emote-render',
-        default: true,
-        color: '#fff',
-        applies: 'reload',
-        labelKey: 'mc_settings_sub_emote_render',
-        tipKey: 'mc_settings_sub_emote_render_desc',
-      },
-      {
-        value: 'tab-complete',
-        default: true,
-        color: '#fff',
-        applies: 'reload',
-        labelKey: 'mc_settings_sub_tab_complete',
-        tipKey: 'mc_settings_sub_tab_complete_desc',
-      },
-      {
-        value: 'picker-button',
-        default: true,
-        color: '#fff',
-        applies: 'reload',
-        labelKey: 'mc_settings_sub_picker_button',
-        tipKey: 'mc_settings_sub_picker_button_desc',
-      },
-      {
-        value: 'native-takeover',
-        default: true,
-        color: '#9146ff',
-        applies: 'live',
-        labelKey: 'mc_settings_sub_native_takeover',
-        tipKey: 'mc_settings_sub_native_takeover_desc',
-      },
-      {
-        value: 'kick-native-tap',
-        default: true,
-        color: '#53fc18',
-        applies: 'live',
-        labelKey: 'mc_settings_sub_kick_native_tap',
-        tipKey: 'mc_settings_sub_kick_native_tap_desc',
-      },
-      {
-        value: 'yt-innertube-tap',
-        default: true,
-        color: '#ff0000',
-        applies: 'live',
-        labelKey: 'mc_settings_sub_yt_innertube_tap',
-        tipKey: 'mc_settings_sub_yt_innertube_tap_desc',
-      },
-      {
-        value: 'automod-queue',
-        default: true,
-        color: '#ffd700',
-        applies: 'live',
-        labelKey: 'mc_settings_sub_automod_queue',
-        tipKey: 'mc_settings_sub_automod_queue_desc',
+        labelKey: 'mc_settings_sub_overlay_youtube',
+        tipKey: 'mc_settings_sub_overlay_desc',
       },
     ],
-  },
-
-  // ── system / advanced ─────────────────────────────────────────────────
-  {
-    key: 'crashTelemetry',
-    type: 'bool',
-    default: false,
-    scope: 'sync',
-    category: 'system',
-    section: 'advanced',
-    labelKey: 'mc_settings_diag_errors',
-    tipKey: 'mc_settings_diag_errors_desc',
-    control: 'pill',
-    rerenderSettings: true,
-  },
-  {
-    key: 'debugLogging',
-    type: 'bool',
-    default: false,
-    scope: 'sync',
-    category: 'system',
-    section: 'advanced',
-    labelKey: 'mc_settings_debug_logging',
-    tipKey: 'mc_settings_debug_logging_desc',
-    control: 'pill',
-    reloadApply: true,
   },
 
   // ── system / state — ui state persisted via saveUiSetting, no settings
@@ -1729,7 +1668,7 @@ const SETTINGS = [
   // not in the system subtab's rendered-sections list). declared so the
   // registry stays the single source of truth for every ui_settings key.
   // noReset: these are session state / user data, not preferences — "reset
-  // to defaults" must not close the user's tab or wipe their presets.
+  // to defaults" must not close the user's tab.
   {
     key: 'activeTab',
     type: 'text',
@@ -1756,18 +1695,7 @@ const SETTINGS = [
     maxLen: 128,
     noReset: true,
   },
-  {
-    key: 'nativeVisible',
-    type: 'bool',
-    default: false,
-    scope: 'sync',
-    category: 'system',
-    section: 'state',
-    label: 'native chat visible',
-    tip: 'user chose to keep the platform-native chat column visible alongside the overlay',
-    control: 'custom',
-    noReset: true,
-  },
+
   {
     key: 'chatPositionPrevious',
     type: 'enum',
@@ -1782,108 +1710,22 @@ const SETTINGS = [
     noReset: true,
   },
   {
-    key: 'customPresets',
+    // Paint uids whose name paint this viewer hides. Same key + shape as
+    // heatsync.org, managed from the row menu (hide/show <user>'s paint).
+    key: 'hiddenPaintUsers',
     type: 'json',
     default: [],
     scope: 'sync',
-    category: 'system',
-    section: 'state',
-    label: 'custom presets',
-    tip: 'user-saved settings presets — diff-vs-defaults snapshots, managed from the presets bar',
+    category: 'display',
+    section: 'cosmetics',
+    sectionKey: 'btn_settings_cosmetics',
+    label: 'hidden paint users',
+    tip: 'users whose name paint you have hidden — toggle via right-click on their name',
     control: 'custom',
-    maxLen: 6000,
+    maxLen: 3000,
+    // people, not a preference — a display reset must not wipe it (and the
+    // wipe would sync to heatsync.org)
     noReset: true,
-  },
-]
-
-// ── presets ("builds") — sparse diffs over registry defaults ──────────────
-// Composite keys (boolmap/multiselect) carry whole values. Anything not in
-// a diff stays untouched, so presets compose with user tweaks and survive
-// new settings. A preset reads "active" only when ALL its diff keys match.
-const SETTINGS_PRESETS = [
-  {
-    id: 'minimal',
-    label: 'minimal',
-    labelKey: 'mc_settings_preset_minimal',
-    tip: 'just chat — no cosmetics, feed, stats or extra chrome',
-    diff: {
-      avatars: false,
-      zebra: false,
-      firstChatterGlow: false,
-      showPlatformBadges: false,
-      linkPreviewsEnabled: false,
-      hiddenTabs: ['feed', 'whispers', 'mentions', 'pinned'],
-      subsystems: {
-        'irc-twitch': true,
-        'chat-kick': true,
-        'chat-youtube': true,
-        cosmetics: false,
-        feed: false,
-        whispers: false,
-        mentions: false,
-        'stream-stats': false,
-        'profile-cards': true,
-        'emote-render': true,
-        'tab-complete': true,
-        'picker-button': true,
-        'native-takeover': true,
-        'kick-native-tap': true,
-        'yt-innertube-tap': true,
-        'automod-queue': true,
-      },
-    },
-  },
-  {
-    id: 'power-user',
-    label: 'power user',
-    labelKey: 'mc_settings_preset_power_user',
-    tip: 'every tab on, timestamps, vi keys',
-    diff: {
-      viMode: true,
-      timestamps: true,
-      hiddenTabs: [],
-    },
-  },
-  {
-    id: 'moderator',
-    label: 'moderator',
-    labelKey: 'mc_settings_preset_moderator',
-    tip: 'timestamps + readable names + all-caps automod',
-    diff: {
-      timestamps: true,
-      automodAllCaps: true,
-      hs_readable_names: true,
-    },
-  },
-  {
-    id: 'low-ram',
-    label: 'low ram',
-    labelKey: 'mc_settings_preset_low_ram',
-    tip: 'cosmetics, feed, whispers, stats and previews off; 1x emotes',
-    diff: {
-      hs_emote_size: 1,
-      hs_emoji_size: 1,
-      avatars: false,
-      linkPreviewsEnabled: false,
-      subsystems: {
-        'irc-twitch': true,
-        'chat-kick': true,
-        'chat-youtube': true,
-        cosmetics: false,
-        feed: false,
-        whispers: false,
-        mentions: true,
-        'stream-stats': false,
-        'profile-cards': false,
-        'emote-render': true,
-        'tab-complete': true,
-        'picker-button': true,
-        'native-takeover': true,
-        'kick-native-tap': true,
-        'yt-innertube-tap': true,
-        'automod-queue': true,
-      },
-    },
   },
 ]
 
@@ -1894,6 +1736,62 @@ const SETTINGS_PRESETS = [
  * @param {*} v
  * @returns {boolean}
  */
+/**
+ * The option list to RENDER for a def, given the current settings.
+ *
+ * `def.options` is the static union — validateSettingValue/coerceSettingValue/
+ * lintSettings read it directly and have no other settings in hand, so it must
+ * stay the full set of legally storable values. `def.optionsFor` narrows that
+ * to the current state for display: fontSize uses it so a bitmap family only
+ * ever offers the sizes it has.
+ *
+ * Lives here rather than inline in the renderer so it is testable without a
+ * browser — the extension's settings UI only exists inside the multichat
+ * overlay on twitch/kick/youtube, which is not something a test should need.
+ *
+ * @param {SettingDef} def
+ * @param {(key: string) => any} get
+ * @returns {SettingOption[]}
+ */
+export function resolveOptions(def, get) {
+  if (def && typeof def.optionsFor === 'function') {
+    try {
+      const narrowed = def.optionsFor(get)
+      if (Array.isArray(narrowed) && narrowed.length) return narrowed
+    } catch (_) {
+      // A throwing narrower must not blank the control — fall back to the union.
+    }
+  }
+  return /** @type {SettingOption[]} */ (def && def.options) || []
+}
+
+const SETTING_HOSTS = ['twitch', 'kick', 'youtube']
+
+/**
+ * Does this row belong on the current site? `host` is the overlay's
+ * hostPlatform ('twitch' | 'kick' | 'yt'); unknown/absent shows everything.
+ * @param {SettingDef} def
+ * @param {string} [host]
+ * @returns {boolean}
+ */
+function settingShowsOnHost(def, host) {
+  if (!def || !def.hosts || !host) return true
+  const h = /** @type {'twitch' | 'kick' | 'youtube'} */ (host === 'yt' ? 'youtube' : host)
+  return def.hosts.includes(h)
+}
+
+/**
+ * The user's subsystem gates: the stored map's per-site overlay switches over
+ * their defaults. Anything else an older panel stored (feed: false, ...) is
+ * no longer a switch and must not gate anything.
+ * @param {*} stored raw ui_settings.subsystems
+ * @returns {Record<string, boolean>}
+ */
+function userSubsystemGates(stored) {
+  const def = /** @type {SettingDef} */ (SETTINGS.find((d) => d.key === 'subsystems'))
+  return coerceSettingValue(def, stored && typeof stored === 'object' ? stored : {}) || { ...def.default }
+}
+
 function validateSettingValue(def, v) {
   if (!def) return false
   switch (def.type) {
@@ -2049,6 +1947,9 @@ function lintSettings(syncBlocklist) {
     if (def.cw && (!def.cw.stateKey || !def.cw.serverBody || !def.cw.noun)) {
       problems.push(`cw sub-shape incomplete: ${def.key}`)
     }
+    if (def.hosts && (!def.hosts.length || !def.hosts.every((h) => SETTING_HOSTS.includes(h)))) {
+      problems.push(`bad hosts: ${def.key}`)
+    }
     if (def.dependsOn) {
       const depKey = def.dependsOn.key
       if (!SETTINGS.some((d) => d.key === depKey)) problems.push(`dependsOn unknown key: ${def.key}`)
@@ -2058,38 +1959,37 @@ function lintSettings(syncBlocklist) {
   // 8 KB sync quota headroom — defaults must leave room for user values
   var size = JSON.stringify(syncDefaults).length
   if (size > 7000) problems.push(`sync defaults too large: ${size} bytes`)
-  // preset diffs must reference real keys with valid values
-  var presetIds = new Set()
-  for (var p = 0; p < SETTINGS_PRESETS.length; p++) {
-    var preset = SETTINGS_PRESETS[p]
-    if (presetIds.has(preset.id)) problems.push(`duplicate preset id: ${preset.id}`)
-    presetIds.add(preset.id)
-    for (var dk in preset.diff) {
-      var target = SETTINGS.find((d) => d.key === dk)
-      if (!target) {
-        problems.push(`preset ${preset.id} references unknown key: ${dk}`)
-        continue
-      }
-      if (!validateSettingValue(target, preset.diff[dk])) {
-        problems.push(`preset ${preset.id} has invalid value for: ${dk}`)
-      }
-      // boolmap diffs must carry every option key — coerce merges partial
-      // maps over defaults, silently reverting user-toggled missing keys
-      if (target.type === 'boolmap') {
-        for (var bk in target.default) {
-          if (!(bk in preset.diff[dk])) {
-            problems.push(`preset ${preset.id} boolmap diff missing key: ${dk}.${bk}`)
-          }
-        }
-      }
-    }
-  }
   return problems
 }
 
 // Global export (IIFE bundle path — mirrors utils.js)
 if (typeof window !== 'undefined') {
-  window.heatsyncSettingsSchema = { SETTINGS, SETTINGS_PRESETS, validateSettingValue, coerceSettingValue, lintSettings }
+  window.heatsyncSettingsSchema = {
+    SETTINGS,
+    validateSettingValue,
+    coerceSettingValue,
+    lintSettings,
+    settingShowsOnHost,
+  }
 }
 
-export { coerceSettingValue, lintSettings, SETTINGS, SETTINGS_PRESETS, validateSettingValue }
+const SUBSYSTEMS_ALWAYS_ON = [
+  'profile-cards',
+  'emote-render',
+  'tab-complete',
+  'picker-button',
+  'native-takeover',
+  'kick-native-tap',
+  'yt-innertube-tap',
+  'automod-queue',
+]
+
+export {
+  coerceSettingValue,
+  lintSettings,
+  SETTINGS,
+  SUBSYSTEMS_ALWAYS_ON,
+  settingShowsOnHost,
+  userSubsystemGates,
+  validateSettingValue,
+}

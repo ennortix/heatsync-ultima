@@ -21,7 +21,13 @@ const _onceGuardsAutomod = {}
 // ── pure mappers (unit-tested; no chrome.*/DOM) ─────────────────────────────
 
 const AUTOMOD_HOLD_DEDUPE_TTL_MS = 10 * 60 * 1000
-const AUTOMOD_EXPIRE_MS = 6 * 60 * 1000
+// Twitch auto-denies a held message 60 minutes after it holds it, and that is
+// the only clock that decides whether allow/deny still works. This was 6
+// minutes, which greyed out rows twitch would still have accepted — the queue
+// expired messages the mod could have released. The server's pending backfill
+// uses the same 60, and a 404 from the action route ('gone') still overrides
+// both the moment twitch says otherwise.
+const AUTOMOD_EXPIRE_MS = 60 * 60 * 1000
 const AUTOMOD_SWEEP_INTERVAL_MS = 25 * 60 * 1000
 
 // Wire payload (automod_hold, already coerced once by background.js) → the
@@ -126,6 +132,10 @@ function shouldProcessAutomodHold(seen, msgId, now) {
 const _automodSeenHolds = new Map() // msgId -> firstSeenAt
 const _automodExpireTimers = new Map() // msgId -> timeout id
 const _automodBroadcasterIdCache = new Map() // twitch login -> numeric id
+// Channels this page has already asked to backfill. The first sweep after a
+// load is the one that needs it — later sweeps have the live socket, and
+// asking again would only spend a request to be told nothing is new.
+const _automodBackfilled = new Set()
 // One relink toast per page session — BG's own dedupe (_automodRelinkNotified)
 // is per-SW-lifetime, and MV3 kills/respawns the service worker independently
 // of any open tab, so BG can legitimately re-broadcast automod_relink more
@@ -207,13 +217,20 @@ function clearAutomodExpiry(msgId) {
 // message twitch already discarded.
 function scheduleAutomodExpiry(row) {
   clearAutomodExpiry(row.msgId)
-  const id = cleanup.setTimeout(() => {
-    _automodExpireTimers.delete(row.msgId)
-    if (row.status !== 'pending' && row.status !== 'error' && row.status !== 'resolving') return
-    row.status = 'expired'
-    row.resolvedBy = null
-    patchAutomodRowDom(row)
-  }, AUTOMOD_EXPIRE_MS)
+  // Measured from when TWITCH held the message, not from when this tab heard
+  // about it. A backfilled hold arrives already part-aged; timing it from now
+  // would leave a dead row looking actionable for another full hour.
+  const age = Math.max(0, Date.now() - (Number(row.heldAt) || Date.now()))
+  const id = cleanup.setPageTimeout(
+    () => {
+      _automodExpireTimers.delete(row.msgId)
+      if (row.status !== 'pending' && row.status !== 'error' && row.status !== 'resolving') return
+      row.status = 'expired'
+      row.resolvedBy = null
+      patchAutomodRowDom(row)
+    },
+    Math.max(0, AUTOMOD_EXPIRE_MS - age),
+  )
   _automodExpireTimers.set(row.msgId, id)
 }
 
@@ -231,7 +248,57 @@ function insertAutomodHoldRow(row) {
   scheduleAutomodExpiry(row)
 }
 
+// Backfill: the holds twitch is still holding, handed back by the watch call.
+// Same row model, same insert path, same expiry clock as a live push — the
+// only difference is that these can be minutes old, so they are checked
+// against the buffer rather than only against the seen-map. The map's TTL is
+// shorter than a hold's life, so a hold that arrived live and was still on
+// screen would otherwise come back a second time as a duplicate row.
+function injectPendingAutomodHolds(pending) {
+  if (!Array.isArray(pending) || !pending.length) return 0
+  let added = 0
+  for (const payload of pending) {
+    const row = automodHoldToRowModel(payload)
+    if (!row) continue
+    if (findAutomodRow(row.broadcasterLogin, row.msgId)) continue // already on screen
+    if (isAutomodResolved(row.msgId)) continue // server backfill missed the resolution — don't resurrect
+    if (!shouldProcessAutomodHold(_automodSeenHolds, row.msgId, Date.now())) continue
+    // Nothing to act on any more — don't resurrect it as a live row.
+    if (Date.now() - row.heldAt >= AUTOMOD_EXPIRE_MS) continue
+    insertAutomodHoldRow(row)
+    added++
+  }
+  return added
+}
+
+// Holds the server has already resolved but still returns in automod_watch
+// backfill — its pending list can miss a resolution the same way tabs can
+// miss the automod:update broadcast. Persisted per-origin so a refresh
+// doesn't resurrect a hold the mod already actioned: twitch rejects the
+// re-action and the row read "action failed" on every reload. TTL sits
+// comfortably past the 60-min hold lifetime; the map self-prunes on write.
+const AUTOMOD_RESOLVED_KEY = 'hs_automod_resolved_v1'
+const AUTOMOD_RESOLVED_TTL_MS = 2 * 60 * 60 * 1000
+function markAutomodResolved(msgId) {
+  try {
+    const now = Date.now()
+    const m = JSON.parse(localStorage.getItem(AUTOMOD_RESOLVED_KEY) || '{}')
+    m[msgId] = now
+    for (const k of Object.keys(m)) if (now - m[k] > AUTOMOD_RESOLVED_TTL_MS) delete m[k]
+    localStorage.setItem(AUTOMOD_RESOLVED_KEY, JSON.stringify(m))
+  } catch (_) {}
+}
+function isAutomodResolved(msgId) {
+  try {
+    const m = JSON.parse(localStorage.getItem(AUTOMOD_RESOLVED_KEY) || '{}')
+    return m[msgId] !== undefined && Date.now() - m[msgId] <= AUTOMOD_RESOLVED_TTL_MS
+  } catch (_) {
+    return false
+  }
+}
+
 function resolveAutomodRow(broadcasterLogin, msgId, status, modLogin) {
+  markAutomodResolved(msgId)
   const row = findAutomodRow(broadcasterLogin, msgId)
   if (!row) return // resolved a hold we never rendered (different mod tab, expired buffer) — ignore
   row.status = status === 'approved' || status === 'denied' ? status : 'expired'
@@ -263,8 +330,19 @@ function handleAutomodActionClick(rowEl, action) {
   patchAutomodRowDom(row)
   safeSendMessage({ type: 'automod_action', msgId, action })
     .then((res) => {
-      if (res?.ok) return // stays 'resolving' until the automod:update broadcast confirms
+      if (res?.ok) {
+        // The POST succeeding IS the confirmation — the action landed on
+        // twitch. Resolve locally instead of waiting on the automod:update
+        // broadcast: that WS frame has no backfill path (holds do, resolves
+        // don't), so a SW restart or WS reconnect at the wrong moment left
+        // rows stuck on "resolving…" forever. The broadcast still serves
+        // other tabs/mods, and when it does arrive it re-patches this row
+        // with the resolver's name.
+        resolveAutomodRow(broadcasterLogin, msgId, action === 'allow' ? 'approved' : 'denied', null)
+        return
+      }
       if (res?.error === 'gone') {
+        markAutomodResolved(msgId)
         row.status = 'expired'
         row.resolvedBy = null
         clearAutomodExpiry(msgId)
@@ -272,7 +350,16 @@ function handleAutomodActionClick(rowEl, action) {
         return
       }
       row.status = 'error'
-      row.errorText = res?.error === 'relink_required' ? t('mc_automod_relink_toast') : t('mc_automod_error')
+      // Three distinct failures, three distinct sentences. `relink_required`
+      // is the twitch grant; `auth_required` is our own expired session, and
+      // telling someone to relink twitch for that sends them round a loop
+      // relinking can never close.
+      row.errorText =
+        res?.error === 'relink_required'
+          ? t('mc_automod_relink_toast')
+          : res?.error === 'auth_required'
+            ? t('mc_automod_signin')
+            : t('mc_automod_error')
       patchAutomodRowDom(row)
     })
     .catch(() => {
@@ -360,8 +447,15 @@ async function automodSweep() {
           trace.push(`${login}:no-id`)
           return
         }
-        await safeSendMessage({ type: 'automod_watch', broadcasterId })
-        trace.push(`${login}:watched`)
+        // wantPending on the first pass only: BG throttles the watch call to
+        // once per 30min per channel, and a page that reloads inside that
+        // window would otherwise open an empty queue over messages twitch is
+        // still holding — the exact case the backfill exists for.
+        const wantPending = !_automodBackfilled.has(broadcasterId)
+        const res = await safeSendMessage({ type: 'automod_watch', broadcasterId, wantPending })
+        if (wantPending) _automodBackfilled.add(broadcasterId)
+        const added = res?.ok ? injectPendingAutomodHolds(res.pending) : 0
+        trace.push(`${login}:watched${added ? `+${added}pending` : ''}`)
       } catch (e) {
         trace.push(`${login}:err(${e?.message || 'unknown'})`)
       }
@@ -383,33 +477,38 @@ function _stampSweepTrace(text) {
 }
 
 function initAutomodQueue() {
-  cleanup.addListener(chrome.runtime?.onMessage, (msg) => {
-    if (!msg || typeof msg !== 'object') return
-    if (msg.type === 'automod_hold') {
-      if (!isEnabled('automod-queue')) return
-      const row = automodHoldToRowModel(msg)
-      if (!row) return
-      if (!shouldProcessAutomodHold(_automodSeenHolds, row.msgId, Date.now())) return
-      insertAutomodHoldRow(row)
-      return
-    }
-    if (msg.type === 'automod_update') {
-      if (!isEnabled('automod-queue')) return
-      const broadcasterLogin = String(msg.broadcasterLogin || '').toLowerCase()
-      const msgId = String(msg.msgId || '')
-      if (!broadcasterLogin || !msgId) return
-      resolveAutomodRow(broadcasterLogin, msgId, msg.status, msg.modLogin)
-      return
-    }
-    if (msg.type === 'automod_relink') {
-      if (!isEnabled('automod-queue')) return
-      if (_automodRelinkShown) return
-      _automodRelinkShown = true
-      try {
-        HsNotifs.emit('automod-relink', {})
-      } catch (_) {}
-    }
-  })
+  // init() runs again on every full SPA reinit and this listener is only removed
+  // on full teardown, so an unguarded add stacked one more per channel hop.
+  if (!_onceGuardsAutomod.messageListener) {
+    _onceGuardsAutomod.messageListener = true
+    cleanup.addListener(chrome.runtime?.onMessage, (msg) => {
+      if (!msg || typeof msg !== 'object') return
+      if (msg.type === 'automod_hold') {
+        if (!isEnabled('automod-queue')) return
+        const row = automodHoldToRowModel(msg)
+        if (!row) return
+        if (!shouldProcessAutomodHold(_automodSeenHolds, row.msgId, Date.now())) return
+        insertAutomodHoldRow(row)
+        return
+      }
+      if (msg.type === 'automod_update') {
+        if (!isEnabled('automod-queue')) return
+        const broadcasterLogin = String(msg.broadcasterLogin || '').toLowerCase()
+        const msgId = String(msg.msgId || '')
+        if (!broadcasterLogin || !msgId) return
+        resolveAutomodRow(broadcasterLogin, msgId, msg.status, msg.modLogin)
+        return
+      }
+      if (msg.type === 'automod_relink') {
+        if (!isEnabled('automod-queue')) return
+        if (_automodRelinkShown) return
+        _automodRelinkShown = true
+        try {
+          HsNotifs.emit('automod-relink', {})
+        } catch (_) {}
+      }
+    })
+  }
   installAutomodClickHandler()
   // Give config/mod-state a moment to settle after boot rather than racing them.
   cleanup.setTimeout(() => automodSweep(), 3000)

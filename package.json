@@ -1,6 +1,6 @@
 {
   "name": "heatsync-extension",
-  "version": "1.7.47",
+  "version": "1.7.134",
   "description": "Custom emotes for Twitch, Kick, and YouTube live chat — 5000 slots, real-time sync, multichat overlay",
   "private": true,
   "license": "MIT",
@@ -11,21 +11,36 @@
   },
   "bugs": "https://github.com/mellen9999/heatsync-extension/issues",
   "scripts": {
+    "test": "bun test",
+    "test:smoke": "bun run build.js chrome --minify && bun scripts/smoke-extension.ts",
+    "test:smoke:firefox": "bun run build.js firefox --minify && bun scripts/smoke-firefox.ts",
+    "test:freshness:firefox": "bun run build.js firefox --minify && bun scripts/freshness-firefox.ts",
+    "test:render": "bun run build.js chrome --minify && bun scripts/render-extension.ts",
+    "test:rtl": "bun run build.js chrome --minify && bun scripts/render-rtl.ts",
+    "test:emotes": "bun run build.js chrome --minify && bun scripts/render-emote-collisions.ts && bun scripts/render-emote-collisions-native.ts && bun scripts/render-emote-collisions-kick.ts",
+    "test:e2e-live": "bun run build.js chrome --minify && bun scripts/e2e-live.ts",
+    "test:heap": "bun run build.js chrome --minify && bun scripts/heap-soak.ts",
+    "test:heap-tabs": "bun run build.js chrome --minify && bun scripts/heap-tabs.ts",
+    "test:heap-budget": "bun run build.js chrome --minify && bun scripts/heap-budget.ts",
+    "test:heap-budget:quick": "bun run build.js chrome --minify && bun scripts/heap-budget.ts --quick",
     "build": "bun run build.js",
     "build:chrome": "bun run build.js chrome",
     "build:firefox": "bun run build.js firefox",
     "package": "bun run build.js --package",
     "publish": "bun scripts/publish.js",
     "typecheck": "tsc --noEmit",
-    "lint": "biome check src/ chrome/ tests/ build.js",
-    "lint:fix": "biome check --write src/ chrome/ tests/ build.js",
-    "format": "biome format --write src/ chrome/ tests/ build.js"
+    "lint": "biome check src/ tests/ build.js",
+    "lint:fix": "biome check --write src/ tests/ build.js",
+    "format": "biome format --write src/ tests/ build.js",
+    "typecheck:signal": "bun run build.js chrome && node scripts/type-signal.mjs"
   },
   "type": "module",
   "devDependencies": {
     "@biomejs/biome": "^2.5.1",
     "@types/chrome": "^0.2.0",
     "esbuild": "^0.28.0",
+    "happy-dom": "21.0.4",
+    "playwright-core": "^1.63.0",
     "typescript": "^6.0.3"
   }
 }

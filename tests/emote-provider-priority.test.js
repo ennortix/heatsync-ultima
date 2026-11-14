@@ -11,7 +11,7 @@
 
 import { beforeEach, describe, expect, test } from 'bun:test'
 import * as mods from '../src/lib/modifiers.js'
-import { emoteProviderOrder, resolveEmoteProviderWinner } from '../src/lib/utils.js'
+import { EMOTE_TIER_ORDER, emoteProviderOrder, resolveEmoteProviderWinner } from '../src/lib/utils.js'
 
 globalThis.cleanup = { setIntervalIfVisible: () => {}, persistInterval: () => {} }
 globalThis.HS_MOD_TOKENS = mods.HS_MOD_TOKENS
@@ -27,6 +27,7 @@ globalThis.getLiveChannel = () => 'chan-a'
 // resolveEmoteProviderWinner is concatenated in from src/lib/utils.js by the
 // real bundle (build.js) — stub it here, same as the HS_MOD_* bridge above.
 globalThis.resolveEmoteProviderWinner = resolveEmoteProviderWinner
+globalThis.EMOTE_TIER_ORDER = EMOTE_TIER_ORDER
 
 const { _buildChannelEmoteCache, channelEmoteCaches, inventoryEmotes } = await import('../src/multichat/emotes.js')
 
@@ -125,7 +126,7 @@ describe('resolveEmoteProviderWinner', () => {
 // ── _buildChannelEmoteCache integration — default behavior unchanged ───────
 
 describe('_buildChannelEmoteCache: provider-priority wiring', () => {
-  test('default priority: same-name bttv/ffz/7tv channel emotes resolve to 7tv (unchanged from pre-existing behavior)', () => {
+  test('default priority (ffz, 2026-10-23): same-name bttv/ffz/7tv channel emotes resolve to ffz', () => {
     const emotes = [
       { name: 'Cabge', url: 'https://cdn.betterttv.net/emote/1/1x.webp', source: 'bttv' },
       { name: 'Cabge', url: 'https://cdn.frankerfacez.com/emote/1/1', source: 'ffz' },
@@ -133,8 +134,8 @@ describe('_buildChannelEmoteCache: provider-priority wiring', () => {
     ]
     _buildChannelEmoteCache('chan-a', emotes, 'twitch')
     const entry = channelEmoteCaches['chan-a'].get('Cabge')
-    expect(entry.source).toBe('7tv')
-    expect(entry.url).toBe('https://cdn.7tv.app/emote/1/1x.webp')
+    expect(entry.source).toBe('ffz')
+    expect(entry.url).toBe('https://cdn.frankerfacez.com/emote/1/1')
   })
 
   test('non-colliding names all survive the merge', () => {

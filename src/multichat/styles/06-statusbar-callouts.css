@@ -13,8 +13,8 @@
       display: flex;
       align-items: stretch;
       min-height: 0;
-      background: #0a0a0d;
-      border-bottom: 1px solid #2a2a2e;
+      background: #000000;
+      border-bottom: none;
       overflow: hidden;
     }
     /* No toast → no bar at all. Reclaims the row; never a reserved gap. */
@@ -26,8 +26,8 @@
        the window IS the chat so there's nothing to collapse. */
     #hs-mc-collapse-btn::before { content: '>'; }
     body.hs-chat-left   #hs-mc-collapse-btn::before { content: '<'; }
-    body.hs-chat-top    #hs-mc-collapse-btn::before { content: '\\2303'; }
-    body.hs-chat-bottom #hs-mc-collapse-btn::before { content: '\\2304'; }
+    body.hs-chat-top    #hs-mc-collapse-btn::before { content: '\2303'; }
+    body.hs-chat-bottom #hs-mc-collapse-btn::before { content: '\2304'; }
     body.hs-popout #hs-mc-collapse-btn { display: none; }
 
     /* Toast slot — single-line status text; gone when empty. */
@@ -75,8 +75,8 @@
        grabs the eye despite being inline. */
     #hs-mc-statusbar:has(.hs-notif-toast-error) { animation: hs-statusbar-flash-err 700ms ease-out; }
     #hs-mc-statusbar:has(.hs-notif-toast-warn)  { animation: hs-statusbar-flash-warn 700ms ease-out; }
-    @keyframes hs-statusbar-flash-err  { 0% { background: #3a0f0f; } 100% { background: #0a0a0d; } }
-    @keyframes hs-statusbar-flash-warn { 0% { background: #38330d; } 100% { background: #0a0a0d; } }
+    @keyframes hs-statusbar-flash-err  { 0% { background: #000000; } 100% { background: #000000; } }
+    @keyframes hs-statusbar-flash-warn { 0% { background: #000000; } 100% { background: #000000; } }
     @media (prefers-reduced-motion: reduce) {
       #hs-mc-statusbar { animation: none !important; }
     }
@@ -95,10 +95,9 @@
        inputbar below. */
     .hs-notif-layer-chat-docked-bottom > .hs-notif {
       border: none;
-      border-top: 1px solid #808080;
-      border-bottom: 1px solid #808080;
-      box-shadow: 0 -2px 8px rgba(0,0,0,0.5);
-      background: #0a0a0d;
+      border-top: 1px solid var(--hs-border);
+      border-bottom: 1px solid var(--hs-border);
+      background: #000000;
     }
     .hs-notif-resub-body {
       display: flex;
@@ -160,16 +159,9 @@
       text-overflow: ellipsis;
       white-space: nowrap;
       color: var(--hs-brand);
-      font-weight: 600;
-    }
-    @container (max-width: 240px) {
-      .hs-wt-prefix { display: none; }
-    }
-    @container (max-width: 180px) {
-      .hs-wt-suffix { display: none; }
+      font-weight: 700;
     }
     @container (max-width: 140px) {
-      .hs-wt-stream { display: none; }
       .hs-notif-watchstreak-icon { display: none; }
     }
     /* Hide native Twitch resub-share callout queue — HsNotifs renders our own
@@ -200,12 +192,11 @@
       overflow: hidden !important;
       z-index: 100000 !important;
       pointer-events: auto !important;
-      background: #18181b !important;
+      background: #000000 !important;
       border: none !important;
-      border-top: 1px solid #808080 !important;
-      border-bottom: 1px solid #808080 !important;
+      border-top: 1px solid var(--hs-border) !important;
+      border-bottom: 1px solid var(--hs-border) !important;
       border-radius: 0 !important;
-      box-shadow: 0 -2px 8px rgba(0,0,0,0.5) !important;
       box-sizing: border-box !important;
     }
     /* Hide Twitch's native Pin toggle on the callout — it pins the resub to
@@ -223,7 +214,7 @@
       gap: 8px !important;
       padding: 4px 8px !important;
       min-height: 0 !important;
-      line-height: 15px !important;
+      line-height: 20px !important;
       min-width: 0 !important;
       max-width: 100% !important;
       overflow: hidden !important;
@@ -237,7 +228,7 @@
     [data-test-selector="chat-private-callout-queue__callout-container"] .pinned-callout :is(div, span, p):not(:has(button)) {
       display: inline !important;
       font-size: 13px !important;
-      line-height: 15px !important;
+      line-height: 20px !important;
     }
     /* Text wrapper — single block that ellipsifies when chat narrows.
        flex: 1 1 0 + min-width: 0 lets it shrink past content width, which is

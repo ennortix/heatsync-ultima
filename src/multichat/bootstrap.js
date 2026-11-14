@@ -1,6 +1,8 @@
 // Bootstrap - lifecycle controller, cleanup utilities, debug log
 
 const MC_DEBUG = false
+// sign-in goes to the 3-way chooser (twitch/kick/youtube), never straight to twitch oauth
+const HS_LOGIN_URL = 'https://heatsync.org/login'
 function log(...args) {
   if (MC_DEBUG) console.log(LOG_PREFIX, ...args)
 }
@@ -39,6 +41,24 @@ const mcSignal = lifecycle.signal
 // every other per-channel timer so they don't stack one set per navigation,
 // but skips these. lifecycle.abort() (full teardown) still clears everything.
 const _timers = { intervals: [], timeouts: [], observers: [], persistent: new Set() }
+// The channel switch's half of the teardown: every per-channel timer goes,
+// the persistent ones stay. init() re-registers its own pollers afterwards.
+function drainChannelTimers() {
+  _timers.intervals = _timers.intervals.filter((id) => {
+    if (_timers.persistent.has(id)) return true
+    try {
+      clearInterval(id)
+    } catch {}
+    return false
+  })
+  _timers.timeouts = _timers.timeouts.filter((id) => {
+    if (_timers.persistent.has(id)) return true
+    try {
+      clearTimeout(id)
+    } catch {}
+    return false
+  })
+}
 const _pendingRafs = new Set()
 // Singleton DOM nodes appended to <body> (tooltips, toasts, overlays). On
 // SPA reinit / pagehide, lifecycle.abort() removes them so they don't pile up
@@ -117,7 +137,7 @@ window.addEventListener('pageshow', (ev) => {
     if (typeof irc !== 'undefined' && irc?.channels) {
       for (const ch of irc.channels.keys()) {
         try {
-          chrome.runtime.sendMessage({ type: 'bg_irc_join', channel: ch }).catch(() => {})
+          browser.runtime.sendMessage({ type: 'bg_irc_join', channel: ch }).catch(() => {})
         } catch (_) {}
       }
     }
@@ -194,7 +214,6 @@ function _hsBuildDbg() {
       typeof config !== 'undefined' && Array.isArray(config?.channels)
         ? config.channels.map((c) => ({ id: c.id, twitch: c.twitch, kick: c.kick, youtube: c.youtube }))
         : 'no config.channels',
-    platformFilters: typeof platformFilters !== 'undefined' ? platformFilters : null,
     kickResolved: kickResolvedSample,
     kickPendingLookups: kickPending,
   }
@@ -388,7 +407,7 @@ if (typeof __HS_DEV_BUILD__ !== 'undefined' ? __HS_DEV_BUILD__ : true) {
     },
     { capture: true, signal: mcSignal },
   )
-  // hs-dbg-kick-tap → round-trip to BG for pusher-tap/relay routing state
+  // hs-dbg-kick-tap → round-trip to BG for kick-tap/relay routing state
   // (subscribed chatrooms, per-slug delivery counters). Kick echo failures are
   // silent — this makes "which source delivered what" observable.
   document.addEventListener(
@@ -396,7 +415,7 @@ if (typeof __HS_DEV_BUILD__ !== 'undefined' ? __HS_DEV_BUILD__ : true) {
     () => {
       ;(async () => {
         try {
-          const resp = await chrome.runtime.sendMessage({ type: 'dbg_kick_tap' })
+          const resp = await browser.runtime.sendMessage({ type: 'dbg_kick_tap' })
           document.documentElement.dataset.hsDbgKickTap = JSON.stringify(resp)
         } catch (e) {
           document.documentElement.dataset.hsDbgKickTap = `err:${e?.message || 'unknown'}`
@@ -558,7 +577,6 @@ if (typeof __HS_DEV_BUILD__ !== 'undefined' ? __HS_DEV_BUILD__ : true) {
         const ircMsgs = tw && typeof irc !== 'undefined' ? irc?.getMessages(tw) || [] : []
         const kickMsgs = kk && typeof kickChat !== 'undefined' ? kickChat?.getMessages(kk) || [] : []
         const ytMsgs = typeof channelYtMessages !== 'undefined' ? channelYtMessages.get(id) || [] : []
-        const filt = typeof getPlatformFilter === 'function' ? getPlatformFilter(id) : null
         const out = {
           id,
           ch_twitch: tw,
@@ -566,7 +584,6 @@ if (typeof __HS_DEV_BUILD__ !== 'undefined' ? __HS_DEV_BUILD__ : true) {
           ircMsgs_len: ircMsgs.length,
           kickMsgs_len: kickMsgs.length,
           ytMsgs_len: ytMsgs.length,
-          filt,
           ircTimes: ircMsgs.slice(-3).map((m) => ({ u: m.user, t: m.time, txt: (m.text || '').slice(0, 30) })),
           ytTimes: ytMsgs.slice(-3).map((m) => ({ u: m.user, t: m.time, txt: (m.text || '').slice(0, 30) })),
           ircHidden: ircMsgs.filter((m) => m?.hidden).length,
@@ -633,7 +650,7 @@ if (typeof __HS_DEV_BUILD__ !== 'undefined' ? __HS_DEV_BUILD__ : true) {
         // async tail: raw storage row for the probed name — distinguishes
         // "BG persisted stale data" from "content ingestion dropped a field"
         if (probe && chrome?.storage?.local) {
-          chrome.storage.local.get('global_emotes').then((st) => {
+          browser.storage.local.get('global_emotes').then((st) => {
             out.storageRow = (st.global_emotes || []).find((e) => e.name === probe) || null
             document.documentElement.dataset.hsDbgEmotes = JSON.stringify(out)
           })
@@ -659,8 +676,7 @@ if (typeof __HS_DEV_BUILD__ !== 'undefined' ? __HS_DEV_BUILD__ : true) {
         const autoYt = typeof channelYtMessages !== 'undefined' ? channelYtMessages.get('__live_yt_auto__') || [] : []
         // per-channel tabs no longer merge __live_yt_auto__ (mirrors renderMessages — bleed fix)
         const ytAutoMerged = false
-        const filt = typeof getPlatformFilter === 'function' ? getPlatformFilter(id) : null
-        const fmInput = [filt?.twitch ? ircMsgs : [], filt?.kick ? kickMsgs : [], filt?.youtube ? ytMsgs : []]
+        const fmInput = [ircMsgs, kickMsgs, ytMsgs]
         const merged = typeof fairMerge === 'function' ? fairMerge(fmInput) : []
         const out = {
           id,
@@ -671,7 +687,6 @@ if (typeof __HS_DEV_BUILD__ !== 'undefined' ? __HS_DEV_BUILD__ : true) {
           ytMsgs_len: ytMsgs.length,
           autoYt_len: autoYt.length,
           ytAutoMerged,
-          filt,
           fmInputLens: fmInput.map((s) => s.length),
           merged_len: merged.length,
           mergedSampleTop: merged
@@ -732,12 +747,78 @@ if (typeof __HS_DEV_BUILD__ !== 'undefined' ? __HS_DEV_BUILD__ : true) {
   )
 }
 
+// Diagnostic ring — localStorage, so ANY same-origin tab (another window,
+// devtools, an automation tab) can read what a wedged or dying tab saw
+// after the fact. The ext has no other eyes into a frozen popout. No
+// message content, no PII: event names, timestamps, visibility bits.
+const _hsDiagTag = `${location.pathname.startsWith('/popout/') ? 'popout' : 'page'}-${Math.random().toString(36).slice(2, 6)}`
+function hsDiag(event, extra) {
+  try {
+    const arr = JSON.parse(localStorage.getItem('hs_diag_ring') || '[]')
+    arr.push({ t: Date.now(), tab: _hsDiagTag, e: event, ...(extra || {}) })
+    while (arr.length > 300) arr.shift()
+    localStorage.setItem('hs_diag_ring', JSON.stringify(arr))
+  } catch (_) {}
+}
+// diag.js (heatsync-button, document_idle) may have run first and left its
+// snapshot/verbose handle here — carry it onto the function, don't drop it.
+if (window.__hsDiag && typeof window.__hsDiag === 'object') Object.assign(hsDiag, window.__hsDiag)
+window.__hsDiag = hsDiag
+// build.js replaces the placeholder with `<sha><+dirty>-<yyyymmddhhmm>` at
+// bundle time — the ring must name WHICH build a tab ran, or a postmortem
+// can't tell "known bug, fix not yet loaded" from "new failure in the fix".
+hsDiag('boot', { hidden: document.hidden, focus: document.hasFocus(), build: '__HS_BUILD_STAMP__' })
+
+// Shared death handler for the detectors below (interval probe, port
+// onDisconnect, port reconnect failure). Tear down lifecycle, then defer the
+// reload until a signal proves the user can see the tab again — active tab
+// reloads in 1–5s, background tabs wait. Avoids the N-tab thundering React
+// mount herd that crashes Chrome. visibilitychange ALONE is not a safe wait:
+// popout windows can miss the hidden→visible flip (wayland/occlusion
+// tracking), which left a torn-down popout frozen until a manual refresh —
+// window focus and pageshow are the escape hatches, and the wake accepts
+// document.hasFocus() as proof-of-visible in case the visibility state
+// itself is stuck at 'hidden'.
+function _hsMcOnCtxDeath() {
+  try {
+    lifecycle.abort()
+  } catch (_) {}
+  if (window.__heatsyncReloadScheduled) return
+  window.__heatsyncReloadScheduled = true
+  hsDiag('ctx_death', { hidden: document.hidden, focus: document.hasFocus() })
+  const doReload = () => {
+    if (_hsMcTakenOver) return
+    try {
+      location.reload()
+    } catch (_) {}
+  }
+  if (document.visibilityState === 'visible') {
+    setTimeout(doReload, 1000 + Math.random() * 4000)
+    return
+  }
+  hsDiag('reload_deferred')
+  const wake = () => {
+    if (document.visibilityState !== 'visible' && !document.hasFocus()) return
+    document.removeEventListener('visibilitychange', wake)
+    window.removeEventListener('focus', wake)
+    window.removeEventListener('pageshow', wake)
+    hsDiag('reload_wake')
+    setTimeout(doReload, 500 + Math.random() * 2000)
+  }
+  document.addEventListener('visibilitychange', wake)
+  window.addEventListener('focus', wake)
+  window.addEventListener('pageshow', wake)
+}
+
 // Fast context-death detector. chrome.runtime.id becomes undefined sync on
-// extension reload. Tear down lifecycle immediately, then defer reload to
-// visibility — active tab reloads in 1–5s, background tabs wait until user
-// focuses them. Avoids the N-tab thundering React mount herd that crashes
-// Chrome. content.js sets __heatsyncReloadScheduled — dedupe across scripts.
+// extension reload. content.js sets __heatsyncReloadScheduled — dedupe across
+// scripts.
 const _hsMcCtxDeathTimer = setInterval(() => {
+  // Nothing to do while the tab is hidden: the reload is deferred to
+  // visibilitychange anyway, so probing 30 times a minute in a background tab
+  // buys nothing and just wakes it. The port detector below still fires
+  // synchronously on invalidation regardless of visibility.
+  if (document.hidden) return
   // chrome.runtime?.id access can throw "Extension context invalidated" on
   // orphaned content scripts — without try/catch the detector silently dies
   // each tick and reload never arms.
@@ -749,26 +830,7 @@ const _hsMcCtxDeathTimer = setInterval(() => {
   }
   if (alive) return
   clearInterval(_hsMcCtxDeathTimer)
-  try {
-    lifecycle.abort()
-  } catch (_) {}
-  if (window.__heatsyncReloadScheduled) return
-  window.__heatsyncReloadScheduled = true
-  const doReload = () => {
-    if (_hsMcTakenOver) return
-    try {
-      location.reload()
-    } catch (_) {}
-  }
-  if (document.visibilityState === 'visible') {
-    setTimeout(doReload, 1000 + Math.random() * 4000)
-  } else {
-    document.addEventListener('visibilitychange', function once() {
-      if (document.visibilityState !== 'visible') return
-      document.removeEventListener('visibilitychange', once)
-      setTimeout(doReload, 500 + Math.random() * 2000)
-    })
-  }
+  _hsMcOnCtxDeath()
 }, 2000)
 _timers.intervals.push(_hsMcCtxDeathTimer)
 // Registered once at module load, NOT inside init() — must outlive SPA reinit.
@@ -780,12 +842,18 @@ _timers.persistent.add(_hsMcCtxDeathTimer)
 // can suspend the orphaned setInterval. Catches the cases the 2s interval
 // misses. Distinguishes "ext gone" from "SW idle-suspended" via the post-
 // disconnect chrome.runtime?.id probe.
-function _hsMcOpenCtxDeathPort() {
+function _hsMcOpenCtxDeathPort(isReconnect) {
   let port
   try {
     if (!chrome?.runtime?.connect) return
     port = chrome.runtime.connect({ name: 'heatsync-ctx-death' })
   } catch (_) {
+    // connect() throwing on a RECONNECT means the context died between
+    // onDisconnect's alive-probe and now (runtime.id can read stale-alive for
+    // a beat after invalidation) — without this the detector gave up silently
+    // and a hidden tab never armed its reload. At module load a throw with a
+    // live context is not a death signal, so only the reconnect path escalates.
+    if (isReconnect) _hsMcOnCtxDeath()
     return
   }
   port.onDisconnect.addListener(() => {
@@ -796,32 +864,13 @@ function _hsMcOpenCtxDeathPort() {
       alive = false
     }
     if (alive) {
-      setTimeout(_hsMcOpenCtxDeathPort, 500)
+      setTimeout(() => _hsMcOpenCtxDeathPort(true), 500)
       return
     }
-    try {
-      lifecycle.abort()
-    } catch (_) {}
-    if (window.__heatsyncReloadScheduled) return
-    window.__heatsyncReloadScheduled = true
-    const doReload = () => {
-      if (_hsMcTakenOver) return
-      try {
-        location.reload()
-      } catch (_) {}
-    }
-    if (document.visibilityState === 'visible') {
-      setTimeout(doReload, 1000 + Math.random() * 4000)
-    } else {
-      document.addEventListener('visibilitychange', function once() {
-        if (document.visibilityState !== 'visible') return
-        document.removeEventListener('visibilitychange', once)
-        setTimeout(doReload, 500 + Math.random() * 2000)
-      })
-    }
+    _hsMcOnCtxDeath()
   })
 }
-_hsMcOpenCtxDeathPort()
+_hsMcOpenCtxDeathPort(false)
 
 // Optional perf tracer. window.__hsPerfTrace = true at runtime to log
 // callbacks exceeding 50ms into window.__hsPerfLog. Source captured at
@@ -885,7 +934,12 @@ const hsSched = (() => {
   for (const ev of ['scroll', 'wheel', 'touchmove', 'pointerdown']) {
     try {
       window.addEventListener(ev, markBusy, { passive: true, capture: true, signal: mcSignal })
-    } catch {}
+    } catch (e) {
+      // Parallel copy of the content.js busy-listener block — see
+      // 'busy-listener-content'. Same failure, same consequence: the busy-yield
+      // never engages and emote work stops backing off during scroll.
+      swallow(e, 'busy-listener-multichat')
+    }
   }
   const _yield = () => {
     if (typeof scheduler !== 'undefined' && typeof scheduler.yield === 'function') {
@@ -974,6 +1028,7 @@ const cleanup = {
   },
   clearInterval(id) {
     clearInterval(id)
+    _timers.persistent.delete(id)
     const i = _timers.intervals.indexOf(id)
     if (i !== -1) _timers.intervals.splice(i, 1)
   },
@@ -985,6 +1040,7 @@ const cleanup = {
   setTimeout(fn, ms) {
     const w = _hsPerfWrap(fn, ms, 'timeout')
     const id = setTimeout(() => {
+      _timers.persistent.delete(id)
       const idx = _timers.timeouts.indexOf(id)
       if (idx !== -1) _timers.timeouts.splice(idx, 1)
       w()
@@ -994,11 +1050,55 @@ const cleanup = {
   },
   clearTimeout(id) {
     clearTimeout(id)
+    _timers.persistent.delete(id)
     const i = _timers.timeouts.indexOf(id)
     if (i !== -1) _timers.timeouts.splice(i, 1)
   },
-  addEventListener(target, event, handler) {
-    target.addEventListener(event, _hsPerfWrap(handler, 0, `event:${event}`), { signal: mcSignal })
+  // Timers of something that outlives a channel switch: the send socket and
+  // the whispers socket stay open across twitch's in-page navigation, so their
+  // keepalive, reconnect and handshake timers must stay too. A drained
+  // keepalive left a dead socket reading as alive, and every send after it
+  // went nowhere until a page refresh. Full teardown still clears them.
+  // The rule: a timer that works on module state, storage or the network (a
+  // debounced save, a poll, a promise's give-up clock) is a page timer. One
+  // that works on the panel's DOM is not: its sentinel is nulled in
+  // fullSpaReinit so the rebuilt panel starts it again. A sentinel guard
+  // (`if (x) return`) on a plain cleanup timer is the bug that tests/
+  // drained-timers-ratchet.test.js fails on.
+  setPageTimeout(fn, ms) {
+    const id = cleanup.setTimeout(fn, ms)
+    _timers.persistent.add(id)
+    return id
+  },
+  setPageInterval(fn, ms) {
+    const id = cleanup.setInterval(fn, ms)
+    _timers.persistent.add(id)
+    return id
+  },
+  // The visibility-gated twin, for page-lifetime pollers that sleep in a hidden tab.
+  setPageIntervalIfVisible(fn, ms) {
+    const id = cleanup.setIntervalIfVisible(fn, ms)
+    _timers.persistent.add(id)
+    return id
+  },
+  // `opts` is merged, with signal always forced to mcSignal so teardown can
+  // never be opted out of. It used to be absent from the signature while
+  // callers passed one anyway (paints.js hover passes { passive: true }), so
+  // production silently dropped it — while the non-cleanup fallback branch in
+  // those callers forwarded it to the real addEventListener. That split meant a
+  // future { once: true } or { capture: true } would behave correctly under a
+  // test harness and be ignored in the browser. Non-object args (emotes.js
+  // passes a debug label) are ignored, as they always were.
+  //
+  // Returns a function that takes THIS listener down again. The handler is
+  // wrapped before it is registered, so removeEventListener(event, handler)
+  // never matched anything — a caller that must detach early (the emote
+  // picker's document click + Esc, per open) keeps this instead.
+  addEventListener(target, event, handler, opts) {
+    const o = opts && typeof opts === 'object' ? { ...opts, signal: mcSignal } : { signal: mcSignal }
+    const wrapped = _hsPerfWrap(handler, 0, `event:${event}`)
+    target.addEventListener(event, wrapped, o)
+    return () => target.removeEventListener(event, wrapped, o)
   },
   // For chrome.runtime.onMessage / chrome.storage.onChanged etc — APIs that
   // expose addListener/removeListener but ignore AbortSignal.
@@ -1042,4 +1142,15 @@ const cleanup = {
     _trackedNodes.push(node)
     return node
   },
+}
+
+// A custom-property write on <html> restyles every element of the host page
+// (~9k on a twitch channel), and the next layout read pays for it on the spot.
+// Skip a write that changes nothing, so a layout pass that re-publishes the
+// same geometry costs no restyle at all. null removes.
+function setRootVar(name, value) {
+  const s = document.documentElement.style
+  if (value == null) {
+    if (s.getPropertyValue(name) !== '') s.removeProperty(name)
+  } else if (s.getPropertyValue(name) !== value) s.setProperty(name, value)
 }

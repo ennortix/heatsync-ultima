@@ -17,6 +17,48 @@ function _hashText(s) {
   for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0
   return h
 }
+// A twitch whisper reaches handleIncomingWhisper over up to three transports:
+// twitch eventsub (whisper_id, a uuid), the server's whisper:new push (the same
+// uuid) and auth-irc's WHISPER line, whose only id is the numeric message-id
+// tag. The id key pairs the first two; nothing paired irc with them, so one
+// whisper landed twice — two rows, two toasts. Pair by content instead: same
+// sender, same text, a DIFFERENT transport, within 15s. The same transport
+// repeating itself is a real repeat and stays.
+const _WHISPER_TWIN_MS = 15000
+const _whisperRecent = [] // { src, user, hash, time }
+const _WHISPER_RECENT_MAX = 50
+function _whisperTwinSeen(src, user, text, time) {
+  const u = String(user || '').toLowerCase()
+  const hash = _hashText(String(text || ''))
+  const t = time || Date.now()
+  const twin = _whisperRecent.some(
+    (r) => r.src !== src && r.user === u && r.hash === hash && Math.abs(r.time - t) <= _WHISPER_TWIN_MS,
+  )
+  _whisperRecent.push({ src, user: u, hash, time: t })
+  if (_whisperRecent.length > _WHISPER_RECENT_MAX) _whisperRecent.shift()
+  return twin
+}
+// The stored timeline may hold twins from before the pairing existed. The
+// loader drops the second copy: same sender, same text, within 15s, and ids
+// of different shapes (irc's numeric tag vs the uuid) or no ids at all. Two
+// uuids or two numerics 15s apart are the same transport repeating — kept.
+function _whisperIdShape(id) {
+  const s = String(id || '')
+  if (!s) return 'none'
+  return /^\d+$/.test(s) ? 'num' : 'uuid'
+}
+function _whisperTimelineHasTwin(list, msg) {
+  const u = String(msg.user || '').toLowerCase()
+  const t = msg.time || 0
+  return list.some((m) => {
+    if (m.text !== msg.text) return false
+    if (m.time === msg.time) return true
+    if (msg.self || m.self || msg.platform !== 'twitch' || m.platform !== 'twitch') return false
+    if (String(m.user || '').toLowerCase() !== u || Math.abs((m.time || 0) - t) > _WHISPER_TWIN_MS) return false
+    const a = _whisperIdShape(m.id)
+    return a !== _whisperIdShape(msg.id) || a === 'none'
+  })
+}
 function _whisperDedupKey(platform, id, user, time, text) {
   if (id) return `${platform}:${id}`
   return `${platform}|${(user || '').toLowerCase()}|${time || 0}|${_hashText(text || '')}`
@@ -85,6 +127,14 @@ let armedReplyKey = null
 let whisperDmsLoaded = false
 let selfWhisperColor = null // current user's Twitch color
 
+// The whispers-tab usage line. /w is a twitch whisper, so a viewer with no twitch
+// identity (kick/youtube only) is told about heatsync DMs first, not a command
+// that can't work for them.
+function whisperHint() {
+  const hasTwitch = !!(currentUsername || (typeof authState !== 'undefined' && authState?.nick))
+  return t(hasTwitch ? 'mc_whisper_hint' : 'mc_whisper_hint_dm')
+}
+
 // Resolve own color from IRC buffers, chat DOM, or Twitch cookie color
 function resolveSelfColor() {
   if (selfWhisperColor) return
@@ -149,7 +199,7 @@ function loadWhispers() {
         if (data) {
           if (Array.isArray(data.timeline)) {
             for (const msg of data.timeline) {
-              if (!whisperTimeline.some((m) => m.time === msg.time && m.text === msg.text)) {
+              if (!_whisperTimelineHasTwin(whisperTimeline, msg)) {
                 whisperTimeline.push(msg)
               }
             }
@@ -207,6 +257,13 @@ function loadWhispers() {
 }
 
 function handleIncomingWhisper(msg) {
+  // The `whispers` switch lives here, at the chokepoint, because THREE
+  // transports reach this function and only one of them was gated:
+  // eventsub-whispers.js (gated at startEventSubWhispers), auth-irc.js's
+  // WHISPER line (gated on irc-twitch, not on whispers), and the server's
+  // dm_new push (ungated). Two of the three delivered whispers to a user who
+  // had switched whispers off.
+  if (gateAtBoot('whispers') === false) return
   // Blocked users can't reach you via Twitch whisper — no timeline entry, no
   // red-dot/badge, no popup. (These arrive straight from Twitch EventSub/IRC,
   // so there's no server-side gate like HeatSync DMs have.) Checked BEFORE the
@@ -214,6 +271,8 @@ function handleIncomingWhisper(msg) {
   if (typeof isUserBlocked === 'function' && isUserBlocked(msg.user, 'twitch')) return
   // O(1) dedup that also collapses dual IRC↔EventSub delivery when ID is missing
   if (_whisperMarkSeen(_whisperDedupKey('twitch', msg.id, msg.user, msg.time, msg.text))) return
+  // irc carries a different id for the same whisper — pair it by content
+  if (_whisperTwinSeen(msg.src, msg.user, msg.text, msg.time)) return
 
   const key = `twitch:${msg.user.toLowerCase()}`
   whisperUsersSet(key, {
@@ -257,6 +316,38 @@ function handleIncomingWhisper(msg) {
   whisperSaveDebounced()
 }
 
+// The server's whisper:new push, relayed by background as dm_new with
+// platform twitch, in the chokepoint's shape. Its id is the eventsub whisper_id
+// (external_message_id) so the id key pairs it with the eventsub socket's copy;
+// routing it through handleIncomingDm would key on the hs row id and double it.
+function handleServerWhisperPush(data) {
+  handleIncomingWhisper({
+    user: data.from_display_name || data.from_twitch_login || 'unknown',
+    userId: data.from_twitch_id,
+    text: data.content,
+    color: data.from_color || '#fff',
+    time: data.created_at ? new Date(data.created_at).getTime() : Date.now(),
+    id: data.external_message_id || data.id || '',
+    src: 'server',
+  })
+}
+
+// a heatsync DM deleted on another client leaves this timeline too
+function dropDmFromTimeline(messageId) {
+  const id = String(messageId || '')
+  if (!id) return 0
+  let n = 0
+  for (let i = whisperTimeline.length - 1; i >= 0; i--) {
+    const w = whisperTimeline[i]
+    if (w.platform === 'heatsync' && w.id === id) {
+      whisperTimeline.splice(i, 1)
+      n++
+    }
+  }
+  if (n && currentTab === 'whispers') renderWhispersTab()
+  return n
+}
+
 function handleIncomingDm(data) {
   const time = data.created_at ? new Date(data.created_at).getTime() : Date.now()
   if (_whisperMarkSeen(_whisperDedupKey('heatsync', data.id, data.from_display_name, time, data.content))) return
@@ -289,6 +380,7 @@ function handleIncomingDm(data) {
     injectInlineNotif('dm', {
       type: 'inline-dm',
       user: data.from_display_name,
+      userId: data.from_user_id,
       text: data.content,
       color: data.from_color || '#fff',
       time,
@@ -306,6 +398,49 @@ function handleIncomingDm(data) {
   whisperSaveDebounced()
 }
 
+// ── live threaded DMs (server dm:message / dm:thread-update / dm:typing) ──────
+// Background shapes the frame; these only decide what the whispers tab does.
+
+// A message in a thread. Your own sends echo back here — skip them (the local
+// echo already drew the line, and handleIncomingDm would paint it as incoming).
+function handleDmThreadMessage(data) {
+  if (!data || String(data.from_user_id) === String(hsCurrentUserId)) return
+  handleIncomingDm(data)
+}
+
+// A thread moved. The list we hold may be stale (a missed frame, a thread we
+// never fetched): forget the load latch so the next whispers render re-asks
+// /api/dm, and if the tab is open do that now — debounced, because a message
+// sends dm:message AND dm:thread-update back to back.
+let _dmThreadRefreshTimer = null
+function handleDmThreadUpdate() {
+  whisperDmsLoaded = false
+  if (currentTab !== 'whispers') return
+  clearTimeout(_dmThreadRefreshTimer)
+  _dmThreadRefreshTimer = setTimeout(() => {
+    if (currentTab === 'whispers') renderWhispersTab()
+  }, 1500)
+}
+
+// Someone you talk to is typing. A trailing "name …" row on the open whispers
+// tab; the next render (or the timeout) removes it. Strangers are ignored — the
+// row needs a name.
+const WHISPER_TYPING_MS = 6000
+function handleDmTyping(userId) {
+  if (String(userId) === String(hsCurrentUserId)) return
+  const who = whisperUsers.get(`hs:${userId}`)
+  const msgsEl = currentTab === 'whispers' ? document.getElementById('hs-mc-messages') : null
+  if (!who?.displayName || !msgsEl) return
+  const key = `hs:${userId}`
+  for (const old of msgsEl.querySelectorAll('.hs-dm-typing')) if (old.dataset.key === key) old.remove()
+  const row = document.createElement('div')
+  row.className = 'hs-mc-empty hs-dm-typing'
+  row.dataset.key = key
+  row.textContent = `${who.displayName} …`
+  msgsEl.appendChild(row)
+  setTimeout(() => row.remove(), WHISPER_TYPING_MS)
+}
+
 // Direct whisper using the page's twitch.tv session. Sends from whichever
 // Twitch acct is logged in on twitch.tv, independent of any HS JWT.
 //
@@ -315,13 +450,13 @@ function handleIncomingDm(data) {
 // via Apollo's link chain (fingerprint + session correlation). The SendWhisper
 // Document is loaded from Twitch's webpack by searchTerm. Mirrors _followMutation.
 async function sendTwitchWhisperDirect(toUserId, message) {
-  const { token } = await getTwitchAuthTokenAsync()
-  if (!token) return { ok: false, noToken: true }
+  const { loggedIn } = await getTwitchLoginAsync()
+  if (!loggedIn) return { ok: false, noToken: true }
   const nonce = crypto?.randomUUID?.() || `${Date.now()}_${Math.random().toString(36).slice(2, 12)}`
   const variables = { input: { recipientUserID: String(toUserId), message: String(message), nonce } }
   const result = await apolloMutate({ searchTerm: 'SendWhisper', variables, resultField: 'sendWhisper' })
   if (result?.ok) return { ok: true }
-  const errMsg = String(result?.error || 'whisper failed')
+  const errMsg = String(result?.error || t('mc_misc_whisper_failed'))
   return { ok: false, error: errMsg, integrity: /integrity/i.test(errMsg) }
 }
 
@@ -379,14 +514,14 @@ async function sendTwitchWhisper(toUserId, message) {
     }
     if (isAuthFail) {
       showToast(t('mc_whisper_login'), 'error')
-      return { ok: false, error: 'log in to heatsync.org to send whispers', errorKind: 'auth' }
+      return { ok: false, error: t('mc_whisper_login'), errorKind: 'auth' }
     }
     if (serverThrew || respStatus >= 500 || !serverResp) {
-      const msg = 'heatsync server unreachable'
+      const msg = t('mc_misc_hs_unreachable')
       showToast(t('mc_whisper_failed', [msg]), 'error')
       return { ok: false, error: msg, errorKind: 'server' }
     }
-    const errText = respError || `twitch error ${respStatus}`
+    const errText = respError || t('mc_misc_twitch_error', [String(respStatus)])
     showToast(t('mc_whisper_failed', [errText]), 'error')
     return { ok: false, error: errText }
   }
@@ -397,7 +532,7 @@ async function sendTwitchWhisper(toUserId, message) {
     if (direct.ok) return { ok: true }
     if (direct.noToken) {
       showToast(t('mc_whisper_login'), 'error')
-      return { ok: false, error: 'no twitch session', errorKind: 'auth' }
+      return { ok: false, error: t('mc_misc_no_twitch_session'), errorKind: 'auth' }
     }
     // The GQL fallback failed too — but if the PROXY already told us why
     // (twitch OAuth missing user:manage:whispers), that's the only error the
@@ -411,7 +546,7 @@ async function sendTwitchWhisper(toUserId, message) {
       return { ok: false, error: emsg, errorKind: 'relink' }
     }
     showToast(t('mc_whisper_failed', [direct.error || t('mc_common_unknown')]), 'error')
-    return { ok: false, error: direct.error || 'unknown' }
+    return { ok: false, error: direct.error || t('mc_common_unknown') }
   } catch (e) {
     if (needsRelink) {
       const emsg = respError || t('mc_whisper_not_enabled')
@@ -436,7 +571,7 @@ async function sendWhisperMessage(key, text) {
   const msg = {
     user: 'you',
     text,
-    color: '#808080',
+    color: '#ffffff',
     time: Date.now(),
     self: true,
     platform: userInfo.platform,
@@ -453,9 +588,13 @@ async function sendWhisperMessage(key, text) {
   // path's else-branch (line 244/289). Without this a /r from a channel tab
   // stored the message silently and the user couldn't tell anything sent.
   // outgoing:true flips the render to "→ recipient" (see main.js inline-dm).
+  // force: this is a receipt for something YOU just did, not a notification
+  // about someone else — the inline-DM toggle (off by default) silences other
+  // people's whispers, and used to silence your own send with them.
+  let inlineEcho = null
   if (currentTab === 'whispers') renderWhispersTab()
-  else
-    injectInlineNotif('dm', {
+  else {
+    inlineEcho = {
       type: 'inline-dm',
       outgoing: true,
       user: userInfo.displayName || key,
@@ -464,7 +603,10 @@ async function sendWhisperMessage(key, text) {
       color: userInfo.color,
       time: msg.time,
       platform: userInfo.platform,
-    })
+      sendId,
+    }
+    injectInlineNotif('dm', inlineEcho, { force: true })
+  }
   whisperSaveDebounced()
 
   let ok = false
@@ -480,7 +622,7 @@ async function sendWhisperMessage(key, text) {
       const toUserId = key.slice(3)
       const resp = await apiFetch('/api/dm', { method: 'POST', body: { toUserId, content: text } })
       ok = !!resp.ok
-      errMsg = resp.error || (ok ? '' : 'unknown error')
+      errMsg = resp.error || (ok ? '' : t('mc_misc_unknown_error'))
       if (!ok && resp?.status === 401) errorKind = 'auth'
       // DMs need a follow in BOTH directions. Being told that with no way to
       // act on it is a dead end — the row grows a follow button that follows
@@ -494,6 +636,20 @@ async function sendWhisperMessage(key, text) {
 
   // Mutate the original push (still referenced by sendId) so re-renders pick up state.
   msg.status = ok ? 'sent' : 'failed'
+  // The inline receipt must not keep claiming a send that failed.
+  if (!ok && inlineEcho) {
+    inlineEcho.failed = true
+    inlineEcho.error = errMsg
+    // The strike-through said "failed"; the reason lived only on the whispers
+    // tab. Same mark as a command receipt, on the row you are looking at.
+    for (const el of document.querySelectorAll(`[data-send-id="${sendId}"]`)) {
+      el.classList.add('hs-whisper-failed')
+      const mark = document.createElement('span')
+      mark.className = 'hs-cmd-mark hs-cmd-fail'
+      mark.textContent = ` ✗${errMsg ? ` ${errMsg}` : ''}`
+      el.appendChild(mark)
+    }
+  }
   if (!ok) {
     msg.error = errMsg
     if (errorKind) msg.errorKind = errorKind
@@ -527,8 +683,20 @@ async function retryWhisperSend(sendId) {
   await sendWhisperMessage(old.key, old.text)
 }
 
+// Server shapes: GET /api/dm -> { conversations: [{ other_user_id, display_name,
+// user_color, ... }] }; GET /api/dm/:userId -> { messages: [...], otherUser, ... }.
+function whisperConversations(data) {
+  const list = data?.conversations ?? []
+  return Array.isArray(list) ? list : []
+}
+
+function whisperThreadMessages(data) {
+  const list = data?.messages ?? []
+  return Array.isArray(list) ? list : []
+}
+
 function renderWhispersTab() {
-  if (typeof activeProfileCard !== 'undefined' && activeProfileCard) return
+  if ((typeof activeProfileCard !== 'undefined' && activeProfileCard) || hsPanePanelOpen()) return
   const msgsEl = document.getElementById('hs-mc-messages')
   if (!msgsEl) return
   resolveSelfColor()
@@ -538,7 +706,7 @@ function renderWhispersTab() {
     whisperDmsLoaded = true
     apiFetch('/api/dm')
       .then((resp) => {
-        if (!resp.ok || !Array.isArray(resp.data)) {
+        if (!resp.ok || !Array.isArray(resp.data?.conversations)) {
           // Clear the latch so the next render retries. apiFetch RESOLVES
           // {ok:false} on failure (it never throws), so the .catch below never
           // runs for this path — without this reset a single failed fetch (a
@@ -548,27 +716,29 @@ function renderWhispersTab() {
           whisperDmsLoaded = false
           return
         }
-        for (const dm of resp.data) {
+        for (const dm of whisperConversations(resp.data)) {
+          const otherName = dm.display_name || dm.username || ''
+          const otherColor = dm.user_color || '#fff'
           const key = `hs:${dm.other_user_id}`
           whisperUsersSet(key, {
             platform: 'heatsync',
             userId: dm.other_user_id,
-            displayName: dm.other_display_name,
-            color: dm.other_color || '#fff',
+            displayName: otherName,
+            color: otherColor,
           })
           // Fetch recent messages for each conversation
           apiFetch(`/api/dm/${dm.other_user_id}`)
             .then((resp2) => {
-              if (!resp2.ok || !Array.isArray(resp2.data)) return
+              if (!resp2.ok) return
               let added = false
-              for (const m of resp2.data) {
+              for (const m of whisperThreadMessages(resp2.data)) {
                 const t = new Date(m.created_at).getTime()
                 if (_whisperMarkSeen(_whisperDedupKey('heatsync', m.id, m.from_display_name, t, m.content))) continue
                 const isSelf = m.from_user_id !== dm.other_user_id
                 whisperTimeline.push({
-                  user: isSelf ? 'you' : dm.other_display_name,
+                  user: isSelf ? 'you' : otherName,
                   text: m.content,
-                  color: isSelf ? '#808080' : dm.other_color || '#fff',
+                  color: isSelf ? '#ffffff' : otherColor,
                   time: t,
                   self: isSelf,
                   platform: 'heatsync',
@@ -607,7 +777,7 @@ function renderWhispersTab() {
     if (whisperDmsLoaded && hsAuthToken) {
       emptyDiv.textContent = t('common_loading') || 'loading…'
     } else {
-      emptyDiv.textContent = t('mc_whisper_hint')
+      emptyDiv.textContent = whisperHint()
     }
     msgsEl.appendChild(emptyDiv)
     return
@@ -630,12 +800,11 @@ function renderWhispersTab() {
     else if (m.status === 'failed') cls += ' hs-whisper-failed'
     div.className = cls
     if (m.sendId) div.dataset.sendId = m.sendId
-    if (zebraEnabled && ++zebraCount % 2 === 0) div.classList.add('hs-mc-zebra')
+    if (zebraEnabled && ++zebraCount % 2 === 0) div.classList.add('hs-mc-zebra', 'hs-zebra')
 
     const ts = formatTimeFromTs(m.time)
     const tsHtml = ts ? `<span class="hs-mc-ts">${ts}</span>` : ''
-    const platColor = m.platform === 'twitch' ? 'var(--hs-plat-twitch)' : '#808080'
-    const platTag = m.platform === 'twitch' ? 'T' : 'H'
+    const wmark = platformMark(m.platform)
 
     // Show sender -> recipient for both directions (the links below swap by
     // m.self, so the separator itself is direction-free on purpose)
@@ -648,24 +817,18 @@ function renderWhispersTab() {
     // Paint the name with the user's 7TV cosmetic when known (Twitch only —
     // heatsync ids aren't 7TV-keyed); falls back to their plain color.
     function userLink(name, color, username, uid) {
-      const safe = escapeHtml(name)
       const lower = username.toLowerCase()
-      const safeUser = escapeHtml(lower)
       const href =
         m.platform === 'heatsync'
           ? `https://heatsync.org/user/${encodeURIComponent(username)}`
           : `https://heatsync.org/twitch/${encodeURIComponent(username)}`
-      // 7TV paint (side-effect: queues the cosmetics + HS-paint lookup so a
-      // later reopen paints even when nothing was cached this render).
-      const paint = m.platform === 'heatsync' ? '' : userPaintStyle(uid, lower, 'twitch')
-      // HeatSync paint (own-platform cosmetic) wins over 7TV — same precedence
-      // rule as the live sender row (see hsPaintRender in paints.js).
-      const hsPaint = m.platform === 'heatsync' || !uid ? null : hsPaintRender(uid, name)
-      const cls = `hs-mc-user${hsPaint ? ` ${hsPaint.cls}` : ''}`
-      const style = hsPaint ? '' : paint || `color:${color};font-weight:600`
-      const inner = hsPaint ? hsPaint.html : safe
-      const splitAttr = hsPaint ? hsPaint.splitAttr : ''
-      return `<a href="${href}" target="_blank" rel="noopener noreferrer" class="${cls}" data-username="${safeUser}"${splitAttr} style="${style}">${inner}</a>`
+      // HeatSync paint (twitch whispers and native heatsync DMs alike) wins
+      // over 7TV (twitch ids only), then the flat colour — one decision for
+      // every surface (name-style.js); it also queues the lookups so a later
+      // reopen paints even when nothing was cached this render.
+      const p = hsNameParts({ name, userId: uid, platform: m.platform, colour: color, login: lower })
+      const cls = `hs-mc-user hs-dm-name${p.cls ? ` ${p.cls}` : ''}`
+      return `<a href="${href}" target="_blank" rel="noopener noreferrer" class="${cls}" data-username="${escapeHtml(lower)}"${p.attrs} style="${escapeHtml(p.style)}">${p.inner}</a>`
     }
 
     // Self side is a plain "you" token (matches the inline-dm row) — in a mixed
@@ -673,32 +836,32 @@ function renderWhispersTab() {
     // orange/cyan border + arrow reinforce it. The OTHER party keeps their
     // painted, clickable link.
     const themUid = target?.userId || ''
-    const youTok = '<span class="hs-whisper-you">you</span>'
+    const youTok = `<span class="hs-whisper-you">${escapeHtml(t('mc_tagcard_you'))}</span>`
     const themLink = userLink(them, theirColor, theirUsername, themUid)
     const senderLink = m.self ? youTok : themLink
     const recipientLink = m.self ? themLink : youTok
 
     let statusHtml = ''
     if (m.status === 'pending') {
-      statusHtml = ` <span class="hs-whisper-status" title="sending">…</span>`
+      statusHtml = ` <span class="hs-whisper-status" title="${escapeHtml(t('mc_misc_sending'))}">…</span>`
     } else if (m.status === 'failed') {
-      const errSafe = escapeHtml(m.error || 'failed')
+      const errText = m.error || t('mc_logs_failed')
       const idSafe = escapeHtml(m.sendId || '')
       if (m.errorKind === 'relink') {
         // relink can't auto-retry (retryAuthFailedWhispers only fires on a
         // logged-out→logged-in transition; this happens while already
         // authed) — keep manual retry available alongside the re-link link
-        statusHtml = ` <a href="https://heatsync.org/api/auth/login?scopes=whispers&return_to=%2Fhome%2Fhot" target="_blank" rel="noopener noreferrer" class="hs-whisper-status hs-whisper-relogin" title="${errSafe} — click to grant the twitch whisper permission on heatsync">⚠ enable twitch whispers — re-link</a> <span class="hs-whisper-status hs-whisper-retry" title="click to retry" data-retry="${idSafe}">retry</span>`
+        statusHtml = ` <a href="https://heatsync.org/api/auth/login?scopes=whispers&return_to=%2Fhome%2Fhot" target="_blank" rel="noopener noreferrer" class="hs-whisper-status hs-whisper-relogin" title="${escapeHtml(t('mc_misc_relink_title', [errText]))}">⚠ ${escapeHtml(t('mc_misc_relink'))}</a> <span class="hs-whisper-status hs-whisper-retry" title="${escapeHtml(t('mc_misc_click_retry'))}" data-retry="${idSafe}">${escapeHtml(t('common_retry'))}</span>`
       } else if (m.errorKind === 'follow') {
         // hs: keys carry the recipient's heatsync id — the only thing the
         // follow call needs. Non-hs keys can never reach this branch (the
         // code only comes from /api/dm), so there's no id to miss.
         const followIdSafe = escapeHtml(m.key?.startsWith('hs:') ? m.key.slice(3) : '')
-        statusHtml = ` <span class="hs-whisper-status hs-whisper-follow" title="${errSafe} — click to follow ${escapeHtml(them)} and send" data-follow="${followIdSafe}" data-retry="${idSafe}">⚠ ${escapeHtml(t('mc_whisper_follow_to_dm', [them]))}</span>`
+        statusHtml = ` <span class="hs-whisper-status hs-whisper-follow" title="${escapeHtml(t('mc_misc_follow_title', [errText, them]))}" data-follow="${followIdSafe}" data-retry="${idSafe}">⚠ ${escapeHtml(t('mc_whisper_follow_to_dm', [them]))}</span>`
       } else if (m.errorKind === 'auth') {
-        statusHtml = ` <a href="https://heatsync.org/api/auth/login?return_to=%2Fhome%2Fhot" target="_blank" rel="noopener noreferrer" class="hs-whisper-status hs-whisper-relogin" title="${errSafe} — click to log in on heatsync">⚠ log in on heatsync to send</a>`
+        statusHtml = ` <a href="${HS_LOGIN_URL}" target="_blank" rel="noopener noreferrer" class="hs-whisper-status hs-whisper-relogin" title="${escapeHtml(t('mc_misc_login_title', [errText]))}">⚠ ${escapeHtml(t('mc_misc_login_send'))}</a>`
       } else {
-        statusHtml = ` <span class="hs-whisper-status hs-whisper-retry" title="click to retry" data-retry="${idSafe}">⚠ ${errSafe} — retry</span>`
+        statusHtml = ` <span class="hs-whisper-status hs-whisper-retry" title="${escapeHtml(t('mc_misc_click_retry'))}" data-retry="${idSafe}">⚠ ${escapeHtml(t('mc_misc_err_retry', [errText]))}</span>`
       }
     }
 
@@ -709,17 +872,17 @@ function renderWhispersTab() {
     // 7TV → color precedence + twitch-space id-guard are reused, not duplicated.
     const whisperBody = highlightHashtagsInHtml(
       highlightMentionsInHtml(
-        processEmotes(escapeHtml(m.text), null, undefined, undefined, undefined, true),
+        processEmotes(escapeHtml(m.text), null, hsAnyChannelEmotes(), undefined, undefined, true),
         m.platform,
       ),
     )
     // Reply affordance — clicking arms /r at the input so nobody has to
     // remember the command ("I keep forgetting to type /r"). Keyed per row:
     // replying to an older conversation retargets lastWhisperKey to it.
-    const replyBtn = `<button class="hs-mc-reply-btn hs-whisper-reply" data-wkey="${escapeHtml(m.key)}" title="reply (${escapeHtml(them)})">↩</button>`
+    const replyBtn = `<button class="hs-mc-reply-btn hs-whisper-reply" data-wkey="${escapeHtml(m.key)}" title="${escapeHtml(t('mc_misc_reply_to', [them]))}">↩</button>`
     const dirColor = m.self ? 'var(--hs-brand)' : 'var(--hs-reply)'
     const arrow = `<span class="hs-whisper-arrow" style="color:${dirColor}">→</span>`
-    div.innerHTML = `${tsHtml}<span style="color:${platColor};font-size:13px;font-weight:700">[${platTag}]</span> ${senderLink} ${arrow} ${recipientLink}: ${whisperBody}${statusHtml}${replyBtn}`
+    div.innerHTML = `${tsHtml}<span style="color:${wmark.color};font-size:13px;font-weight:700">${wmark.label}</span> ${senderLink}${arrow}${recipientLink}: ${whisperBody}${statusHtml}${replyBtn}`
     frag.appendChild(div)
   }
 

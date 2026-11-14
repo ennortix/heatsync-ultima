@@ -32,27 +32,34 @@ function _hsnHasStorage() {
   return typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local
 }
 
-// Resolve a chatter to their lowercased alias set. Sync path (getUserAliases) for
-// render/indicator; the async path (expandUserAliases, also pulls the server
+// Every key is `platform:name`, so a twitch "alice" and an unrelated kick "alice"
+// never share a note. Notes saved before this were keyed by the bare name; they
+// load as twitch (see _hsnKey) — never dropped, never re-guessed.
+const _hsnPlat = (p) => (p === 'yt' ? 'youtube' : p || 'twitch')
+const _hsnKey = (k) => (String(k).includes(':') ? String(k) : `twitch:${k}`)
+const _hsnSelfKey = (u, platform) => `${_hsnPlat(platform)}:${u.replace(/^@/, '')}`
+
+// Resolve a chatter to their lowercased alias-key set. Sync path (getUserAliasKeys)
+// for render/indicator; the async path (expandUserAliasKeys, also pulls the server
 // identity graph) is used on save so a note captures the fullest alias set known.
 function _hsnAliasesSync(username, platform) {
   const u = String(username || '').toLowerCase()
   if (!u) return []
-  if (typeof getUserAliases === 'function') {
+  if (typeof getUserAliasKeys === 'function') {
     try {
-      const a = getUserAliases(u, platform)
+      const a = getUserAliasKeys(u, _hsnPlat(platform))
       if (Array.isArray(a) && a.length) return [...new Set(a.map((x) => String(x).toLowerCase()))]
     } catch {}
   }
-  return [u]
+  return [_hsnSelfKey(u, platform)]
 }
 
 async function _hsnAliasesAsync(username, platform) {
   const u = String(username || '').toLowerCase()
   if (!u) return []
-  if (typeof expandUserAliases === 'function') {
+  if (typeof expandUserAliasKeys === 'function') {
     try {
-      const a = await expandUserAliases(u, platform)
+      const a = await expandUserAliasKeys(u, _hsnPlat(platform))
       if (Array.isArray(a) && a.length) return [...new Set(a.map((x) => String(x).toLowerCase()))]
     } catch {}
   }
@@ -102,14 +109,24 @@ function _hsnLoad() {
       chrome.storage.local.get([HS_NOTES_KEY, 'hs_user_notes'], (d) => {
         const raw = d?.[HS_NOTES_KEY]
         if (raw && typeof raw === 'object') {
+          // pre-namespace (bare) keys are adopted as twitch; flag a write-back so it happens once
+          let rekeyed = false
           if (raw.notes && typeof raw.notes === 'object') {
             for (const [k, v] of Object.entries(raw.notes)) {
-              if (v && typeof v.text === 'string') _hsnNotes.set(k, { text: v.text, updatedAt: v.updatedAt || 0 })
+              if (v && typeof v.text === 'string') {
+                if (!k.includes(':')) rekeyed = true
+                _hsnNotes.set(_hsnKey(k), { text: v.text, updatedAt: v.updatedAt || 0 })
+              }
             }
           }
           if (raw.index && typeof raw.index === 'object') {
-            for (const [k, v] of Object.entries(raw.index)) if (typeof v === 'string') _hsnIndex.set(k, v)
+            for (const [k, v] of Object.entries(raw.index)) {
+              if (typeof v !== 'string') continue
+              if (!k.includes(':') || !v.includes(':')) rekeyed = true
+              _hsnIndex.set(_hsnKey(k), _hsnKey(v))
+            }
           }
+          if (rekeyed) _hsnPersist()
         }
         // One-time legacy migration. v1 wins on conflict (it's what the user
         // has been editing since the popover shipped); a legacy-only username
@@ -119,7 +136,7 @@ function _hsnLoad() {
         if (legacy && typeof legacy === 'object') {
           let migrated = 0
           for (const [k, v] of Object.entries(legacy)) {
-            const key = String(k).toLowerCase()
+            const key = _hsnKey(String(k).toLowerCase())
             if (!v || typeof v.text !== 'string' || !v.text.trim()) continue
             if (_hsnNotes.has(key) || _hsnNotes.has(_hsnIndex.get(key) || '')) continue
             _hsnNotes.set(key, { text: v.text.slice(0, 500), updatedAt: v.ts || Date.now() })
@@ -172,8 +189,9 @@ if (typeof window !== 'undefined' && _hsnHasStorage() && !_onceGuardsUserNotes.n
     const raw = changes[HS_NOTES_KEY].newValue
     if (!raw || typeof raw !== 'object') return
     if (raw.notes && typeof raw.notes === 'object') {
-      for (const [k, v] of Object.entries(raw.notes)) {
+      for (const [k0, v] of Object.entries(raw.notes)) {
         if (!v || typeof v.text !== 'string') continue
+        const k = _hsnKey(k0)
         const local = _hsnNotes.get(k)
         if (!local || (v.updatedAt || 0) >= (local.updatedAt || 0)) {
           _hsnNotes.set(k, { text: v.text, updatedAt: v.updatedAt || 0 })
@@ -181,7 +199,7 @@ if (typeof window !== 'undefined' && _hsnHasStorage() && !_onceGuardsUserNotes.n
       }
     }
     if (raw.index && typeof raw.index === 'object') {
-      for (const [k, v] of Object.entries(raw.index)) if (typeof v === 'string') _hsnIndex.set(k, v)
+      for (const [k, v] of Object.entries(raw.index)) if (typeof v === 'string') _hsnIndex.set(_hsnKey(k), _hsnKey(v))
     }
   })
 }
@@ -205,28 +223,115 @@ function hsNoteHas(username, platform) {
   return !!n?.text
 }
 
-/** Create/update a note. Async so it can pull the fullest alias set. Empty text deletes. */
-async function hsNoteSave(username, platform, text, nowMs) {
+// ── server sync (logged-in only) ───────────────────────────────────────────
+// PUT/GET /api/user-notes/:profileId — the SAME note a server-authoritative
+// card (site, or this ext once logged in) reads via /api/card's note part
+// (server/routes/card.ts calls the identical fetchUserNote). `profileId`
+// must be a real heatsync user id — kick_<id>/yt_<id> synth ids (unregistered
+// chatters, see pcSynthFromKickEnrich/pcSynthFromYtContext in profile-card.js)
+// have no server-side note row to read or write, so those stay local-only,
+// same as today.
+function hsNoteServerEligible(profileId) {
+  return !!profileId && !/^(kick|yt)_/.test(String(profileId))
+}
+
+async function hsNotePutServer(profileId, text) {
+  if (!hsNoteServerEligible(profileId) || typeof apiFetch !== 'function') return false
+  try {
+    const resp = await apiFetch(`/api/user-notes/${encodeURIComponent(profileId)}`, {
+      method: 'PUT',
+      auth: true,
+      body: { note: text },
+    })
+    return !!resp?.ok
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Called once per card open (logged in + a real profileId only). Server is
+ * the source of truth once logged in: a server note overwrites the local
+ * cache; an EMPTY server note with a local-only, never-synced note left over
+ * uploads it once (the one-time local→server migration).
+ *
+ * `prefetchedNote` is /api/card's own `note` part (server/routes/card.ts's
+ * resolveCardNote — the exact function GET /api/user-notes/:id used to
+ * call), already fetched as part of the same round trip that got the
+ * profile — no separate GET here anymore. It's `''`/null/undefined for "the
+ * server has nothing" (a real empty note and "no row yet" are the same
+ * answer, same as the old GET's `resp.data.note || ''`), which is
+ * indistinguishable from "the note PART of /api/card failed" — that part is
+ * wrapped in its own Promise.allSettled server-side and collapses to null on
+ * a throw, same as "nothing". That's an accepted, low-frequency edge case: a
+ * transient failure there can trigger a redundant-but-harmless local→server
+ * upload instead of a true no-op, never data loss (the local write always
+ * happens regardless in hsNoteSave).
+ */
+async function hsNoteSyncOnOpen(username, platform, profileId, prefetchedNote) {
+  if (!(typeof hsAuthToken !== 'undefined' && hsAuthToken) || !hsNoteServerEligible(profileId)) return false
+  await _hsnLoad()
+  const serverText = prefetchedNote || ''
+  const aliases = await _hsnAliasesAsync(username, platform)
+  if (!aliases.length) return false
+  const local = hsNoteGet(username, platform)
+  if (serverText) {
+    if (local?.text !== serverText || !local?.serverSynced) {
+      const canonical = _hsnCanonicalFor(aliases) || aliases.slice().sort()[0]
+      _hsnNotes.set(canonical, { text: serverText, updatedAt: _hsnNow(), serverSynced: true, profileId })
+      for (const a of aliases) _hsnIndex.set(a, canonical)
+      _hsnPersist()
+      return true
+    }
+    return false
+  }
+  if (local?.text && !local.serverSynced) {
+    const ok = await hsNotePutServer(profileId, local.text)
+    if (ok) {
+      local.serverSynced = true
+      local.profileId = profileId
+      _hsnPersist()
+    }
+    return false // text didn't change, just its sync state — no repaint needed
+  }
+  return false
+}
+
+/**
+ * Create/update a note. Async so it can pull the fullest alias set and — when
+ * logged in with a real profileId — write through to the server. The local
+ * write always happens regardless of the server call's outcome: a failed PUT
+ * never loses the note, it just leaves `serverSynced: false` so the next
+ * hsNoteSyncOnOpen (or edit) retries it. Empty text deletes.
+ */
+async function hsNoteSave(username, platform, text, nowMs, profileId) {
   await _hsnLoad() // never build a snapshot from a model the initial read hasn't populated yet
   const clean = String(text == null ? '' : text)
     .slice(0, HS_NOTE_MAX)
     .trim()
   const aliases = await _hsnAliasesAsync(username, platform)
   if (!aliases.length) return null
-  if (!clean) return hsNoteDelete(username, platform)
+  if (!clean) return hsNoteDelete(username, platform, profileId)
   const canonical = _hsnCanonicalFor(aliases) || aliases.slice().sort()[0]
-  const rec = { text: clean, updatedAt: typeof nowMs === 'number' ? nowMs : _hsnNow() }
+  let serverSynced = false
+  if (typeof hsAuthToken !== 'undefined' && hsAuthToken && hsNoteServerEligible(profileId)) {
+    serverSynced = await hsNotePutServer(profileId, clean)
+  }
+  const rec = { text: clean, updatedAt: typeof nowMs === 'number' ? nowMs : _hsnNow(), serverSynced, profileId }
   _hsnNotes.set(canonical, rec)
   for (const a of aliases) _hsnIndex.set(a, canonical)
   _hsnPersist()
   return rec
 }
 
-/** Delete a note and every alias pointer at it. */
-async function hsNoteDelete(username, platform) {
+/** Delete a note and every alias pointer at it. Best-effort server delete too (empty PUT). */
+async function hsNoteDelete(username, platform, profileId) {
   await _hsnLoad()
   const aliases = await _hsnAliasesAsync(username, platform)
   const canonical = _hsnCanonicalFor(aliases)
+  if (typeof hsAuthToken !== 'undefined' && hsAuthToken && hsNoteServerEligible(profileId)) {
+    await hsNotePutServer(profileId, '') // best-effort — local delete proceeds regardless of outcome
+  }
   if (!canonical) return false
   _hsnNotes.delete(canonical)
   for (const [a, c] of [..._hsnIndex]) if (c === canonical) _hsnIndex.delete(a)
@@ -248,7 +353,7 @@ function _hsnNow() {
 // One small square terminal-styled popover, reused by the context menu and the
 // profile-card "edit" button. Autofocus, char counter, debounced auto-save,
 // esc / outside-click to close (saves on close). No modal, no framework.
-function hsNoteOpenEditor(username, platform, x, y, onSaved) {
+function hsNoteOpenEditor(username, platform, x, y, onSaved, profileId) {
   if (typeof document === 'undefined') return
   document.getElementById('hs-note-editor')?.remove()
   const existing = hsNoteGet(username, platform)
@@ -259,14 +364,14 @@ function hsNoteOpenEditor(username, platform, x, y, onSaved) {
 
   const head = document.createElement('div')
   head.className = 'hs-note-editor-head'
-  head.textContent = `note · ${String(username || '').toLowerCase()}`
+  head.textContent = t('mc_notes_head', [String(username || '').toLowerCase()])
   box.appendChild(head)
 
   const ta = document.createElement('textarea')
   ta.className = 'hs-note-editor-ta'
   ta.rows = 4
   ta.maxLength = HS_NOTE_MAX
-  ta.placeholder = 'private note — only you see this. follows them across platforms.'
+  ta.placeholder = t('mc_notes_placeholder')
   ta.value = existing?.text || ''
   ta.spellcheck = false
   box.appendChild(ta)
@@ -275,10 +380,10 @@ function hsNoteOpenEditor(username, platform, x, y, onSaved) {
   foot.className = 'hs-note-editor-foot'
   const status = document.createElement('span')
   status.className = 'hs-note-editor-status'
-  status.textContent = 'esc to close'
+  status.textContent = t('mc_notes_esc')
   const del = document.createElement('button')
   del.className = 'hs-note-editor-del'
-  del.textContent = 'delete'
+  del.textContent = t('mc_notes_delete')
   del.style.visibility = existing?.text ? '' : 'hidden'
   foot.appendChild(status)
   foot.appendChild(del)
@@ -304,9 +409,9 @@ function hsNoteOpenEditor(username, platform, x, y, onSaved) {
   const flush = async () => {
     if (!dirty) return
     dirty = false
-    await hsNoteSave(username, platform, ta.value)
+    await hsNoteSave(username, platform, ta.value, undefined, profileId)
     del.style.visibility = ta.value.trim() ? '' : 'hidden'
-    status.textContent = 'saved · esc to close'
+    status.textContent = t('mc_notes_saved')
     if (typeof onSaved === 'function') {
       try {
         onSaved()
@@ -315,14 +420,14 @@ function hsNoteOpenEditor(username, platform, x, y, onSaved) {
   }
   ta.addEventListener('input', () => {
     dirty = true
-    status.textContent = 'saving…'
+    status.textContent = t('mc_notes_saving')
     if (saveTimer) clearTimeout(saveTimer)
     saveTimer = setTimeout(flush, 350)
   })
   del.addEventListener('click', async () => {
     ta.value = ''
     dirty = false
-    await hsNoteDelete(username, platform)
+    await hsNoteDelete(username, platform, profileId)
     if (typeof onSaved === 'function') {
       try {
         onSaved()
@@ -357,11 +462,18 @@ function hsNoteOpenEditor(username, platform, x, y, onSaved) {
   }, 0)
 }
 
-/** Build the profile-card "notes" section (read preview + edit button). */
-function hsNoteRenderCardSection(username, platform, mkSection) {
+/**
+ * Build the profile-card "notes" section (read preview + edit button).
+ * `profileId` (the heatsync user id — data.id on the card's profile, absent
+ * for kick/yt synth profiles) enables server sync: logged in + a real id →
+ * `prefetchedNote` (part of the same POST /api/card that got the profile —
+ * no separate GET) is adopted, or a local-only note that's never been synced
+ * uploads once; either way this repaints when hsNoteSyncOnOpen resolves.
+ */
+function hsNoteRenderCardSection(username, platform, mkSection, profileId, prefetchedNote) {
   if (typeof document === 'undefined') return null
   const make = typeof mkSection === 'function' ? mkSection : typeof pcMakeSection === 'function' ? pcMakeSection : null
-  const sec = make ? make('notes') : document.createElement('div')
+  const sec = make ? make(t('mc_notes_section')) : document.createElement('div')
   if (!make) sec.className = 'hs-pcard-section'
   sec.classList.add('hs-pcard-notes')
 
@@ -372,15 +484,18 @@ function hsNoteRenderCardSection(username, platform, mkSection) {
 
   const paint = () => {
     const n = hsNoteGet(username, platform)
-    body.textContent = n?.text || 'no note yet'
+    body.textContent = n?.text || t('mc_notes_empty')
     body.classList.toggle('hs-pcard-note-empty', !n?.text)
-    btn.textContent = n?.text ? 'edit' : 'add note'
+    btn.textContent = n?.text ? t('mc_notes_edit') : t('mc_notes_add')
   }
   btn.addEventListener('click', (e) => {
     const r = btn.getBoundingClientRect()
-    hsNoteOpenEditor(username, platform, e?.clientX || r.left, e?.clientY || r.bottom, paint)
+    hsNoteOpenEditor(username, platform, e?.clientX || r.left, e?.clientY || r.bottom, paint, profileId)
   })
   paint()
+  hsNoteSyncOnOpen(username, platform, profileId, prefetchedNote).then((changed) => {
+    if (changed && sec.isConnected) paint()
+  })
   sec.appendChild(body)
   sec.appendChild(btn)
   return sec
@@ -407,6 +522,9 @@ export {
   hsNoteGet,
   hsNoteHas,
   hsNoteOpenEditor,
+  hsNotePutServer,
   hsNoteRenderCardSection,
   hsNoteSave,
+  hsNoteServerEligible,
+  hsNoteSyncOnOpen,
 }

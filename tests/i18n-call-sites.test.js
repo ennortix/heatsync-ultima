@@ -18,7 +18,7 @@ function walk(dir, out = []) {
     // chrome/multichat-*.js are build output — concatenations of src/multichat.
     if (st.isDirectory()) {
       if (f !== 'node_modules' && f !== '_locales') walk(p, out)
-    } else if (f.endsWith('.js') && !/^multichat-(kick|twitch|youtube)\.js$/.test(f)) {
+    } else if (f.endsWith('.js') && !/^multichat(-\w+)?\.js$/.test(f)) {
       out.push(p)
     }
   }
@@ -45,7 +45,7 @@ describe('t() call sites match their messages', () => {
   for (const f of FILES) {
     const src = readFileSync(f, 'utf8')
     for (const m of src.matchAll(/\bt\('([a-z0-9_]+)',\s*\[([^\]]*)\]/g)) {
-      sites.push({ file: f.replace(ROOT + '/', ''), key: m[1], args: countArgs(m[2]) })
+      sites.push({ file: f.replace(`${ROOT}/`, ''), key: m[1], args: countArgs(m[2]) })
     }
   }
 

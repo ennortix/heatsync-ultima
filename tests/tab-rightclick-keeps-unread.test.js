@@ -1,0 +1,35 @@
+/**
+ * Right-click on a tab clears red/attention states, never the plain unread
+ * count. On a fast chat the count refills at once, so a handler that cleared
+ * "has-new" hijacked every right-click and the remove/edit menu was unreachable.
+ */
+import { describe, expect, test } from 'bun:test'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { mainSource } from './main-src.js'
+
+const SRC = mainSource()
+const at = SRC.indexOf("container.addEventListener('contextmenu', (e) => {")
+const handler = SRC.slice(at, SRC.indexOf('// Live tab gets platform edit context menu', at))
+
+describe('tab right-click', () => {
+  test('plain unread (has-new) does not trigger the clear', () => {
+    const cond = handler.slice(handler.indexOf('if ('), handler.indexOf('e.preventDefault()'))
+    expect(cond).toContain('has-mentions')
+    expect(cond).toContain('has-stream-event')
+    expect(cond).toContain('has-whispers')
+    expect(cond).not.toContain('has-new')
+  })
+
+  test('the clear leaves has-new and a channel tab count alone', () => {
+    expect(handler).toContain("classList.remove('has-mentions', 'has-stream-event', 'has-whispers')")
+    expect(handler).toContain('if (mcIsReservedTab(tabId)) {\n        markTabRead(tabId)')
+  })
+
+  test('mentions / whispers drop the unread flag too, so they never sit white', () => {
+    expect(handler).toContain("tab.classList.remove('has-new')")
+    const css = readFileSync(join(import.meta.dir, '..', 'src', 'multichat', 'styles', '02-tab-bar.css'), 'utf8')
+    expect(css).toMatch(/\[data-tab="mentions"\]\.has-new:not\(\.has-mentions\)[\s\S]*?\{[^}]*color:\s*var\(--hs-dim\)/)
+    expect(css).toMatch(/\[data-tab="whispers"\]\.has-new:not\(\.has-whispers\)/)
+  })
+})

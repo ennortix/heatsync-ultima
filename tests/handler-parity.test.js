@@ -1,0 +1,179 @@
+import { describe, expect, test } from 'bun:test'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+
+/**
+ * The twitch, kick and youtube chat handlers must run the same pipeline.
+ *
+ * Each platform carries its own copy of "a message arrived, now what" — echo
+ * dedup, ownership attribution, automod, filter rules, mentions, stats, seen
+ * state. Three copies drift, silently, and the drift is invisible until someone
+ * notices a feature working on one platform and not another:
+ *
+ *   - restoreOwnReplyBar existed only on twitch, so replying on kick or youtube
+ *     rendered your own message with no reply bar.
+ *   - youtube folded evaluateFilterRules() into an if-condition and kept only
+ *     .hide, so a highlight rule's SOUND fired on twitch and kick and was mute
+ *     on youtube.
+ *
+ * Both were found by diffing the three handlers, so the diff is the test.
+ *
+ * This pins the pipeline STEPS, not the code — each handler still does its own
+ * platform-specific work around them (kick queues its own cosmetics lookup,
+ * youtube resolves a videoId to a channel bucket). What it refuses to allow is
+ * one platform quietly losing a step the other two run.
+ */
+
+const SRC = (f) => readFileSync(join(import.meta.dir, '..', 'src', 'multichat', f), 'utf8')
+
+/** Slice from an anchor to its matching closing brace. */
+function spanFrom(src, anchor) {
+  const start = src.indexOf(anchor)
+  if (start === -1) throw new Error(`handler anchor not found: ${anchor}`)
+  let i = src.indexOf('{', start)
+  let depth = 0
+  for (; i < src.length; i++) {
+    if (src[i] === '{') depth++
+    else if (src[i] === '}') {
+      depth--
+      if (depth === 0) return src.slice(start, i + 1)
+    }
+  }
+  throw new Error(`unterminated handler: ${anchor}`)
+}
+
+function handlers() {
+  const main = SRC('main.js')
+  const social = SRC('social.js')
+  return {
+    twitch: spanFrom(main, "irc.on('message', (msg) => {"),
+    kick: spanFrom(main, "kickChat.on('message', (msg) => {"),
+    // youtube_chat_message dispatches into handleYoutubeChatMsg — shared by
+    // the single-message relay and each item of a youtube_chat_batch — so the
+    // pipeline steps live in the function body, not the dispatch site.
+    youtube: spanFrom(social, 'function handleYoutubeChatMsg(msg) {'),
+  }
+}
+
+/**
+ * Steps every platform's handler owes a message. Deliberately NOT exhaustive —
+ * this is the list whose absence is a bug on any platform, not everything a
+ * handler happens to call.
+ *
+ * confirmPending is absent on purpose: youtube echoes do not loop back through
+ * a chat handler, so 'yt' only enters the pending tracker's awaiting set for a
+ * pure-YT send, which the send path confirms itself (see registerPendingSend in
+ * input.js). That is a documented asymmetry, not drift — which is exactly why
+ * it has to be written down somewhere that fails if someone "fixes" it.
+ */
+const PIPELINE = [
+  'isSentEcho', // own-send dedup
+  'peekSentHost', // ownership → badge/platform attribution
+  'restoreOwnReplyBar', // reply bar on our own echo
+  'evaluateFilterRules', // user filter rules
+  'playFilterRuleSound', // highlight rule audio cue
+  'isMention', // mention detection
+  'ruleAlertsMention', // a highlight rule's "also notify me" counts as a mention
+  'bumpStreamStats', // per-channel stats
+  'mentionsBuffer.push', // mention buffering
+  'persistMentions',
+  'notifyMention',
+  'noteSeenEvent', // unread bookkeeping
+]
+
+// The steps that alert the user about a line — a replay must never run them.
+const ALERT_STEPS = [
+  'playFilterRuleSound',
+  'mentionsBuffer.push',
+  'persistMentions',
+  'notifyMention',
+  'noteSeenEvent',
+  'bumpStreamStats',
+]
+
+describe('chat handler parity', () => {
+  test('all three handlers are found and are real spans', () => {
+    for (const [name, src] of Object.entries(handlers())) {
+      expect(src.length, `${name} handler looks too small to be the real one`).toBeGreaterThan(1000)
+    }
+  })
+
+  for (const step of PIPELINE) {
+    test(`every platform runs ${step}`, () => {
+      const missing = Object.entries(handlers())
+        .filter(([, src]) => !src.includes(step))
+        .map(([name]) => name)
+      expect(missing).toEqual([])
+    })
+  }
+
+  test('every platform feeds the open chat-logs view live (youtube from where it commits a paced live line)', () => {
+    // twitch + kick call chatLogsLive in their handler; youtube's live line only
+    // exists once commitPacedYtMsg paces it, so the call sits there — and never in
+    // the replay path, whose lines are history (chatLogsLive drops isHistory anyway).
+    const h = handlers()
+    expect(h.twitch.includes('chatLogsLive(msg)')).toBe(true)
+    expect(h.kick.includes('chatLogsLive(msg)')).toBe(true)
+    const social = SRC('social.js')
+    expect(spanFrom(social, 'function commitPacedYtMsg(').includes('chatLogsLive(ytMsg)')).toBe(true)
+    expect(spanFrom(social, 'function ingestReplayYtMsg(').includes('chatLogsLive')).toBe(false)
+  })
+
+  test('a replayed youtube line renders but alerts nothing', () => {
+    // youtube is the one platform whose history (the subscribe backfill, up to
+    // 200 lines) runs through the live handler, flagged replay:true. Every
+    // alerting step must sit inside its !msg.replay gate — or 200 old lines
+    // ring, notify, announce and fill the mentions tab.
+    const yt = handlers().youtube
+    const gate = spanFrom(yt, 'if (!msg.replay) {')
+    for (const step of ALERT_STEPS) {
+      expect(gate.includes(step), `${step} runs outside the replay gate`).toBe(true)
+      expect(yt.split(step).length - 1, `${step} also runs outside the replay gate`).toBe(gate.split(step).length - 1)
+    }
+  })
+
+  test('twitch and kick history never reaches their live handlers', () => {
+    // their rule is structural: history lands in the buffer directly. Every
+    // method that stamps a row isHistory must not emit it as a live message.
+    const irc = SRC('irc.js')
+    const methodRe = /\n {2}(?:async )?[_a-zA-Z]+\([^)]*\) \{\n/g
+    let at = irc.indexOf('m.isHistory = true')
+    let seen = 0
+    while (at !== -1) {
+      let start = -1
+      for (const m of irc.slice(0, at).matchAll(methodRe)) start = m.index + 1
+      const method = spanFrom(irc.slice(start), irc.slice(start, irc.indexOf('{', start) + 1))
+      expect(method.includes(".emit('message'"), `${method.split('\n')[0]} emits history as live`).toBe(false)
+      seen++
+      at = irc.indexOf('m.isHistory = true', at + 1)
+    }
+    expect(seen).toBeGreaterThanOrEqual(4)
+  })
+
+  test('every platform records its mod actions in the mod log', () => {
+    const { twitch, kick } = handlers()
+    expect(twitch.includes('modLogStore.record(msg)')).toBe(true)
+    expect(kick.includes('modLogStore.record(msg)')).toBe(true)
+    // youtube mod actions never echo through a chat handler: heatsync's own
+    // action notice is the only line, and it goes through ingestYtModNotice
+    expect(spanFrom(SRC('social.js'), 'function ingestYtModNotice(').includes('modLogStore.record(')).toBe(true)
+    // ...and the youtube leg of the one mod dispatcher hands every confirmed action to it
+    const mod = SRC('mod-toolbar.js')
+    const ytLeg = mod.slice(
+      mod.indexOf("type: 'youtube_mod_action'"),
+      mod.indexOf('const { twitchName, kickSlug } = _resolveModTargets('),
+    )
+    expect(ytLeg).toContain('if (yResp?.ok) _injectYoutubeModNotice(')
+    const inject = mod.slice(mod.indexOf('function _injectYoutubeModNotice('))
+    expect(inject.slice(0, inject.indexOf('\n}\n'))).toContain('ingestYtModNotice(')
+  })
+
+  test('the filter-rule verdict is kept, not collapsed to .hide', () => {
+    // Folding the call into an if-condition is how youtube lost the sound: the
+    // verdict object carries more than .hide, and an inline call discards it.
+    for (const [name, src] of Object.entries(handlers())) {
+      const inlineOnly = /evaluateFilterRules\([^)]*\)\.hide/.test(src)
+      expect(inlineOnly, `${name} discards the filter-rule verdict`).toBe(false)
+    }
+  })
+})

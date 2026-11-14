@@ -20,11 +20,12 @@ import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { HS_MOD_CLASS_TO_TOKEN, HS_MOD_TOKENS, hsModClassify, hsModComposeAll } from '../src/lib/modifiers.js'
+import { mainSource } from './main-src.js'
 
 const ROOT = join(import.meta.dir, '..')
 const CSS = readFileSync(join(ROOT, 'src', 'multichat', 'styles', '10-emotes.css'), 'utf8')
 const EMOTES_JS = readFileSync(join(ROOT, 'src', 'multichat', 'emotes.js'), 'utf8')
-const MAIN_JS = readFileSync(join(ROOT, 'src', 'multichat', 'main.js'), 'utf8')
+const MAIN_JS = mainSource()
 
 // The public contract — every token a user can type. Hard-coded on purpose:
 // deriving it from HS_MOD_TOKENS would make a deleted token pass silently.
@@ -88,8 +89,18 @@ describe('animated effects have CSS', () => {
     test(`hs-fx-${a} has a keyframes block`, () => {
       expect(CSS).toContain(`@keyframes hs-fx-${a}`)
     })
-    test(`hs-fx-${a} has an img rule wired to that keyframes`, () => {
-      expect(new RegExp(`img\\.hs-fx-${a}\\s*\\{[^}]*animation:\\s*hs-fx-${a}\\b`).test(CSS)).toBe(true)
+    test(`hs-fx-${a} is wired for BOTH an emote img and an emoji span`, () => {
+      // An emoji is a <span class="hs-mc-emoji">, not an <img>. These rules were
+      // tag-scoped to img, so an emoji could carry the effect class and never
+      // match anything: the static half of a modifier applied and the animated
+      // half silently did nothing. Both selectors are required, and the img one
+      // keeps its specificity rather than being widened away.
+      const rule = new RegExp(`([^{}]*)\\bhs-fx-${a}\\s*\\{[^}]*animation:\\s*hs-fx-${a}\\b`)
+      const m = CSS.match(rule)
+      expect(m, `no rule wires hs-fx-${a} to its keyframes`).toBeTruthy()
+      const selector = m[0].split('{')[0]
+      expect(selector, 'emote imgs must still match').toContain(`img.hs-fx-${a}`)
+      expect(selector, 'a modified emoji span must match too').toContain(`.hs-mc-emoji.hs-fx-${a}`)
     })
   }
 })
@@ -123,7 +134,7 @@ describe('animated effects are gated on animateEmotes, not the OS motion flag', 
 
   test('main.js stamps the mode on <html> (including on load)', () => {
     const apply = MAIN_JS.slice(MAIN_JS.indexOf('emoteAnimation: ('))
-    const body = apply.slice(0, apply.indexOf('\n    },'))
+    const body = apply.slice(0, apply.indexOf('\n  },'))
     expect(body).toContain('documentElement.dataset.hsEmoteAnim')
     // must be set BEFORE the onLoad early-return, or a fresh boot stays unset
     expect(body.indexOf('hsEmoteAnim')).toBeLessThan(body.indexOf('if (onLoad) return'))

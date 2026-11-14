@@ -1,6 +1,10 @@
     .hs-mc-emote {
       width: auto;
-      height: auto;
+      /* Fill the line like the site does (messages.css: height: --emote-size)
+         instead of drawing at the asset's own pixel size, which left twitch's
+         28px emotes visibly smaller than heatsync.org's. Wide emotes keep their
+         aspect through width:auto; max-height below still caps oversize ones. */
+      height: calc(var(--hs-emote-size, 32px) * var(--hs-os, 1));
       /* --hs-os = oversize ratio for BTTV emotes whose declared 1x height
          exceeds the 28px baseline (NaM = 40/28). Raising the CLAMP (not
          forcing a height) lets the asset draw at its true pixel size at
@@ -22,10 +26,9 @@
       cursor: pointer;
       box-sizing: content-box;
     }
-    /* Feed content is rendered in CozetteVector (a pixel font). A bare inline
-       emote with vertical-align:middle recenters the line box and lands adjacent
-       text on a half-pixel Y, blurring the glyphs. bottom keeps text on an
-       integer baseline. Chat uses .hs-mc-emote-wrapper, so this is feed-only. */
+    /* oversize BTTV emotes (--hs-os is stamped against a 28px baseline) keep
+       drawing at their own true height — forcing size*os would overshoot it. */
+    .hs-mc-emote[style*="--hs-os"] { height: auto; }
     .hs-feed-body .hs-mc-emote { vertical-align: bottom; }
     /* Tighten gap between consecutive emotes so "eel1 eel2 eel3"
        reads as one continuous run instead of three spaced-out images.
@@ -106,19 +109,26 @@
     .hs-mc-picker-emote-wrap.blocked::before {
       opacity: 1;
       background: none;
-      border: 2px dashed #808080;
+      border: 2px dashed var(--hs-border);
     }
     .hs-mc-picker-emote-wrap.blocked img {
       visibility: hidden !important;
     }
+    /* The keyboard cursor (arrow keys in the search box) is the --hs-sel plate,
+       not the white one: white is where the pointer is, cyan is where Enter
+       lands. Same split as the gifs grid and every other list in the overlay. */
+    .hs-mc-picker-emote-wrap[aria-selected='true']::before {
+      opacity: 1;
+      background: var(--hs-sel);
+    }
+    .hs-mc-picker-emote-wrap[aria-selected='true']:not(.blocked) > img {
+      filter: brightness(0.2);
+    }
+    .hs-mc-picker-emote-wrap.blocked[aria-selected='true']::before {
+      background: none;
+      border-color: var(--hs-sel);
+    }
 
-    /* Emojis — scale driven by --hs-emoji-scale (1|2|4). Default 2x.
-       line-height MUST match the parent message's integer line-height
-       (18px) so a tall color-emoji glyph does NOT grow the inline line-box.
-       If the line-box grows from emoji metrics, half-leading for 13px text
-       becomes fractional and every character that follows the emoji on
-       the same row renders at a sub-integer baseline (= bitmap smear).
-       Emoji visual overflows the 18px box vertically — intentional. */
     .hs-mc-emoji {
       font-size: calc(1em * var(--hs-emoji-scale, 2));
       /* line-height matches --hs-emote-size so the inline-block reports the
@@ -129,13 +139,6 @@
          and below the glyph, matches emote-row visual height, keeps mixed
          emoji+text rows visually consistent with emote+text rows. */
       line-height: var(--hs-emote-size, 32px);
-      /* text-bottom, NOT middle/bottom: middle anchors the box at baseline +
-         xHeight/2, and Cozette's 13px x-height is fractional (3.546875px
-         half) — the grown line-box lands every adjacent glyph on a half-pixel
-         baseline (= bitmap smear). Plain bottom anchors to the LINE-BOX
-         bottom, which middle-aligned badge imgs also place fractionally.
-         text-bottom anchors to the parent font's strut — integer growth,
-         immune to sibling boxes. */
       vertical-align: text-bottom;
       display: inline-block;
     }
@@ -144,9 +147,6 @@
       display: inline-flex;
       align-items: center;
       position: relative;
-      /* text-bottom for integer line-box growth — same bitmap-smear rationale
-         as .hs-mc-emoji above. middle shifted every mixed emote+text row's
-         glyphs onto a .546875px baseline. */
       vertical-align: text-bottom;
       /* Lock height so collapsed↔expanded toggle doesn't shift line height
          (expanded adds 2px vertical padding via pseudo-element). */
@@ -192,7 +192,7 @@
       pointer-events: auto;
     }
     /* EMOTE STACK EXPAND/COLLAPSE */
-    .hs-mc-stack-collapse,
+    .hs-mc-emote-stack .hs-mc-stack-collapse,
     .hs-mc-stack-block-all {
       display: none;
       cursor: pointer;
@@ -227,21 +227,15 @@
       content: '';
       position: absolute;
       inset: -2px -6px;
-      background: #808080;
+      background: var(--hs-border);
       z-index: -1;
       pointer-events: none;
     }
     .hs-mc-emote-stack.expanded > .hs-mc-emote-stack-emotes > .hs-mc-emote-wrapper {
       grid-area: auto;
     }
-    .hs-mc-emote-stack.expanded .hs-mc-stack-collapse,
-    .hs-mc-emote-stack.expanded .hs-mc-stack-block-all {
-      display: inline-block;
-    }
-    .hs-mc-stack-collapse:hover {
-      background: #fff;
-      color: #000;
-    }
+    .hs-mc-emote-stack.expanded .hs-mc-stack-collapse { display: inline-flex; }
+    .hs-mc-emote-stack.expanded .hs-mc-stack-block-all { display: inline-block; }
     .hs-mc-stack-block-all:hover {
       background: #fff;
       color: #000;
@@ -272,19 +266,6 @@
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      /* Reserve the emote's full box height from first paint so a lazy-loading
-         emote can't grow its row on arrival and shove every row below it down
-         (the measured layout-shift jank). A bare wrapper holds a 0-height img
-         until load, collapsing the line to text height (~19px) then snapping to
-         ~36px — a per-row vertical jolt on scroll / slow load / cache miss.
-         min-height (not a fixed img height) keeps aspect intact and never
-         upscales a small emote, so bitmap crispness is untouched. +4px covers
-         the img's 2px content-box padding (matches .hs-mc-emote-stack's 36px
-         lock). Width stays auto — width-pop is within-row and negligible.
-         Excluded from stacked overlays: overlay wrappers live inside the
-         stack's fixed-height grid, so the reservation is redundant and the
-         min-height inflates the grid row to 36px, stretching the overlay img
-         beyond its natural size and pushing it off-center over the base. */
       min-height: calc(var(--hs-emote-size, 32px) + 4px);
     }
     .hs-mc-emote-stack-emotes > .hs-mc-emote-wrapper:not(:first-child) {
@@ -297,11 +278,6 @@
          them — pin it to 0 so the overlay centres exactly on the widest emote. */
       margin-left: 0;
     }
-    /* same bitmap-smear math for the badge family — any middle-aligned
-       inline box taller than the strut grows the row's line box by a
-       fractional amount and lands every glyph (the reported blurry
-       "mellen") on a half-pixel baseline. row-scoped: cards/pickers
-       keep middle. */
     .hs-mc-msg .hs-mc-platform-badge,
     .hs-mc-msg .hs-mc-badge,
     .hs-mc-msg .hs-mc-bits-badge,
@@ -355,7 +331,7 @@
       visibility: visible !important;
       filter: none !important;
     }
-    body.hs-tab-cycling .hs-mc-emote-stack:not(.expanded):has(.hs-mc-emote-wrapper.hs-emote-highlight)::before {
+    body.hs-tab-cycling .hs-mc-emote-stack:not(.expanded).hs-stack-hl::before {
       opacity: 0 !important;
     }
 
@@ -373,7 +349,7 @@
        on the chat side. */
     .hs-mc-picker-emote-wrap.hs-state-nsfw > img,
     img.hs-input-emote.hs-state-nsfw {
-      border: 2px dashed #008080 !important;
+      border: 2px dashed #00ffff !important;
       box-sizing: border-box !important;
     }
     /* Per-category color coding on decision surfaces — teal above stays the
@@ -383,20 +359,19 @@
        chat-side .hs-mc-emote-wrapper.hs-mc-emote-cw[data-cw] and web
        .hs-pe-wrap > img.hs-state-nsfw[data-cw]. */
     .hs-mc-picker-emote-wrap.hs-state-nsfw[data-cw="sexual"] > img,
-    img.hs-input-emote.hs-state-nsfw[data-cw="sexual"] { border-color: #ff00ff !important; }
+    img.hs-input-emote.hs-state-nsfw[data-cw="sexual"] { border-color: var(--hs-thread) !important; }
     .hs-mc-picker-emote-wrap.hs-state-nsfw[data-cw="gore"] > img,
     img.hs-input-emote.hs-state-nsfw[data-cw="gore"]   { border-color: #ff0000 !important; }
     .hs-mc-picker-emote-wrap.hs-state-nsfw[data-cw="drugs"] > img,
-    img.hs-input-emote.hs-state-nsfw[data-cw="drugs"]  { border-color: #00d700 !important; }
+    img.hs-input-emote.hs-state-nsfw[data-cw="drugs"]  { border-color: #00ff00 !important; }
     .hs-mc-picker-emote-wrap.hs-state-nsfw[data-cw="hate"] > img,
-    img.hs-input-emote.hs-state-nsfw[data-cw="hate"]   { border-color: #808080 !important; }
+    img.hs-input-emote.hs-state-nsfw[data-cw="hate"]   { border-color: var(--hs-border) !important; }
 
     /* Stale ghost: emote was in the channel set when the message posted but
        has since been removed. Dim + desaturate the cached IMG; muted-orange
        marker on the wrap ::before signals "stale, channel removed it". */
     .hs-mc-emote-wrapper.hs-state-stale > img {
-      opacity: 0.55;
-      filter: saturate(0.45);
+       filter: saturate(0.45);
       transition: none;
     }
     .hs-mc-emote-wrapper.hs-state-stale:hover > img {
@@ -404,7 +379,7 @@
       filter: none;
     }
     .hs-mc-emote-wrapper.hs-state-stale::before {
-      background: #7a4400;
+      background: #000000;
     }
 
     /* Blocked emotes: hide img (keeps natural dimensions), dashed line via ::before.
@@ -417,12 +392,12 @@
     .hs-mc-emote-wrapper.hs-state-blocked::before {
       opacity: 1;
       background: none;
-      border: 2px dashed #808080;
+      border: 2px dashed var(--hs-border);
       inset: 0;
       box-sizing: border-box;
     }
     .hs-mc-emote-stack.expanded .hs-mc-emote-wrapper.hs-state-blocked::before {
-      border-color: #fff;
+      border-color: var(--hs-dim);
     }
     .hs-mc-emote-wrapper.hs-state-blocked.hs-emote-highlight::before {
       background: var(--hs-danger);
@@ -441,9 +416,9 @@
       height: var(--hs-emote-size, 32px);
       min-width: var(--hs-emote-size, 32px);
       padding: 0 6px;
-      border: 2px dashed #00ffff;
+      border: 2px dashed var(--hs-reply);
       box-sizing: border-box;
-      color: #00ffff;
+      color: var(--hs-reply);
       font-size: 13px;
       line-height: normal;
       cursor: default;
@@ -452,10 +427,10 @@
     /* Per-category color coding — border+text together. Cyan above stays the
        fallback for unknown categories. ansi: 201/196/40/244. Mirror of web
        .hs-emote-cw[data-cw]. */
-    .hs-mc-emote-wrapper.hs-mc-emote-cw[data-cw="sexual"] { border-color: #ff00ff; color: #ff00ff; }
+    .hs-mc-emote-wrapper.hs-mc-emote-cw[data-cw="sexual"] { border-color: var(--hs-thread); color: var(--hs-thread); }
     .hs-mc-emote-wrapper.hs-mc-emote-cw[data-cw="gore"]   { border-color: #ff0000; color: #ff0000; }
-    .hs-mc-emote-wrapper.hs-mc-emote-cw[data-cw="drugs"]  { border-color: #00d700; color: #00d700; }
-    .hs-mc-emote-wrapper.hs-mc-emote-cw[data-cw="hate"]   { border-color: #808080; color: #808080; }
+    .hs-mc-emote-wrapper.hs-mc-emote-cw[data-cw="drugs"]  { border-color: #00ff00; color: #00ff00; }
+    .hs-mc-emote-wrapper.hs-mc-emote-cw[data-cw="hate"]   { border-color: var(--hs-border); color: var(--hs-border); }
     /* Sized stub — when a prior sighting of this URL cached its rendered box
        width (_hsEmoteBoxW, same cache the normal wrapper's wAttr reads), the
        stub takes that exact footprint so toggling the filter pref shifts
@@ -481,7 +456,7 @@
     /* When the stack is hovered, hide ALL per-wrapper ::before indicators
        (incl. persistent blocked-dash on emotes that aren't the cross-highlight
        target) so only the unified stack rect shows. */
-    .hs-mc-emote-stack:not(.expanded):has(.hs-mc-emote-wrapper.hs-emote-highlight) .hs-mc-emote-wrapper::before {
+    .hs-mc-emote-stack:not(.expanded).hs-stack-hl .hs-mc-emote-wrapper::before {
       display: none !important;
     }
     .hs-mc-emote-stack:not(.expanded)::before {
@@ -495,7 +470,7 @@
          a flat filled rectangle covering the art. */
       z-index: 0;
     }
-    .hs-mc-emote-stack:not(.expanded):has(.hs-mc-emote-wrapper.hs-emote-highlight)::before {
+    .hs-mc-emote-stack:not(.expanded).hs-stack-hl::before {
       opacity: 1;
       /* White plate (clickable convention), matching the single-emote default;
          --hs-highlight-color stays the hook for the red blocked tint. */
@@ -505,16 +480,16 @@
     /* Darken the whole stacked composite to brightness 0.2 (base + overlays)
        instead of hiding it — dark-on-white, mirroring the single-emote hover.
        Full-color identity is carried by the 4x preview that fires alongside. */
-    .hs-mc-emote-stack:not(.expanded):has(.hs-mc-emote-wrapper.hs-emote-highlight) > .hs-mc-emote-stack-emotes > .hs-mc-emote-wrapper:not(.hs-state-blocked) > img {
+    .hs-mc-emote-stack:not(.expanded).hs-stack-hl > .hs-mc-emote-stack-emotes > .hs-mc-emote-wrapper:not(.hs-state-blocked) > img {
       filter: brightness(0.2);
     }
 
     /* Flash animations */
-    @keyframes hs-flash-paste { 0% { box-shadow: 0 0 12px 4px #fff; } 100% { box-shadow: none; } }
-    @keyframes hs-flash-add { 0% { box-shadow: 0 0 12px 4px var(--hs-ok); } 100% { box-shadow: none; } }
-    @keyframes hs-flash-block { 0% { box-shadow: 0 0 12px 4px var(--hs-danger); } 100% { box-shadow: none; } }
-    @keyframes hs-flash-unblock { 0% { box-shadow: 0 0 12px 4px var(--hs-ok); } 100% { box-shadow: none; } }
-    @keyframes hs-flash-remove { 0% { box-shadow: 0 0 12px 4px #fff; } 100% { box-shadow: none; } }
+    @keyframes hs-flash-paste { 0% { box-shadow: 0 0 0 2px #ffffff; } 100% { box-shadow: none; } }
+    @keyframes hs-flash-add { 0% { box-shadow: 0 0 0 2px var(--hs-ok); } 100% { box-shadow: none; } }
+    @keyframes hs-flash-block { 0% { box-shadow: 0 0 0 2px var(--hs-danger); } 100% { box-shadow: none; } }
+    @keyframes hs-flash-unblock { 0% { box-shadow: 0 0 0 2px var(--hs-ok); } 100% { box-shadow: none; } }
+    @keyframes hs-flash-remove { 0% { box-shadow: 0 0 0 2px #ffffff; } 100% { box-shadow: none; } }
     .hs-flash-paste { animation: hs-flash-paste 0.4s ease-out; }
     .hs-flash-add { animation: hs-flash-add 0.4s ease-out; }
     .hs-flash-block { animation: hs-flash-block 0.4s ease-out; }
@@ -540,7 +515,7 @@
       flex-direction: column;
       align-items: center;
       gap: 4px;
-      border: 1px solid #808080;
+      border: 1px solid var(--hs-border);
     }
     #hs-badge-tooltip.visible {
       display: flex;
@@ -553,7 +528,7 @@
     #hs-badge-tooltip .tooltip-name {
       color: #fff;
       font-size: 13px;
-      font-weight: 600;
+      font-weight: 700;
     }
     #hs-badge-tooltip .tooltip-source {
       font-size: 13px;
@@ -563,7 +538,7 @@
       color: #fff;
       width: calc(100% + 16px);
       text-align: center;
-      background: #808080;
+      background: var(--hs-border);
     }
 
     /* Emote hover tooltip - 4x preview */
@@ -580,7 +555,7 @@
       flex-direction: column;
       align-items: center;
       gap: 6px;
-      border: 1px solid #808080;
+      border: 1px solid var(--hs-border);
     }
     #hs-emote-tooltip.visible {
       display: flex;
@@ -599,7 +574,7 @@
     #hs-emote-tooltip .tooltip-name {
       color: #fff;
       font-size: 13px;
-      font-weight: 600;
+      font-weight: 700;
       /* Cap + wrap so a deep-nest name list never forces the tooltip wider than
          the viewport (the preview image carries the full composite anyway). */
       max-width: 480px;
@@ -623,16 +598,16 @@
     #hs-emote-tooltip .tooltip-source.unadded,
     #hs-emote-tooltip .tooltip-source.global,
     #hs-emote-tooltip .tooltip-source.channel { background: #fff; color: #000; }
-    #hs-emote-tooltip .tooltip-source.sub { background: #9146ff; color: #fff; }
-    #hs-emote-tooltip .tooltip-source.blocked { background: var(--hs-danger); color: #fff; }
+    #hs-emote-tooltip .tooltip-source.sub { background: #000000; border: 1px solid var(--hs-plat-twitch); color: var(--hs-plat-twitch); }
+    #hs-emote-tooltip .tooltip-source.blocked { background: #000000; border: 1px solid var(--hs-danger); color: var(--hs-danger); }
     /* Per-provider source label colors (override .global/.channel) */
-    #hs-emote-tooltip .tooltip-source.src-7tv { background: #29d8f6; color: #000; }
-    #hs-emote-tooltip .tooltip-source.src-bttv { background: #d50014; color: #fff; }
-    #hs-emote-tooltip .tooltip-source.src-ffz { background: #0086c8; color: #fff; }
-    #hs-emote-tooltip .tooltip-source.src-twitch { background: var(--hs-plat-twitch); color: #fff; }
-    #hs-emote-tooltip .tooltip-source.src-kick { background: var(--hs-plat-kick); color: #000; }
+    #hs-emote-tooltip .tooltip-source.src-7tv { background: #000000; border: 1px solid #00ffff; color: #00ffff; }
+    #hs-emote-tooltip .tooltip-source.src-bttv { background: #000000; border: 1px solid #ff0000; color: #ff0000; }
+    #hs-emote-tooltip .tooltip-source.src-ffz { background: #ffffff; color: #000; }
+    #hs-emote-tooltip .tooltip-source.src-twitch { background: #000000; border: 1px solid var(--hs-plat-twitch); color: var(--hs-plat-twitch); }
+    #hs-emote-tooltip .tooltip-source.src-kick { background: #000000; border: 1px solid var(--hs-plat-kick); color: var(--hs-plat-kick); }
     #hs-emote-tooltip .tooltip-source.src-heatsync,
-    #hs-emote-tooltip .tooltip-source.src-hs { background: var(--hs-plat-hs); color: #000; }
+    #hs-emote-tooltip .tooltip-source.src-hs { background: #000000; border: 1px solid var(--hs-plat-hs); color: var(--hs-plat-hs); }
 
     /* Max z-index + showLinkTooltip re-appends to body — beats reply-stack overlay. */
     #hs-link-tooltip {
@@ -646,7 +621,7 @@
       flex-direction: row;
       gap: 8px;
       max-width: 350px;
-      border: 1px solid #808080;
+      border: 1px solid var(--hs-border);
     }
     #hs-link-tooltip.visible { display: flex; }
     #hs-link-tooltip img {
@@ -666,7 +641,7 @@
     #hs-link-tooltip .link-title {
       color: #fff;
       font-size: 13px;
-      font-weight: 600;
+      font-weight: 700;
       overflow: hidden;
       text-overflow: ellipsis;
       display: -webkit-box;
@@ -687,7 +662,7 @@
       font-size: 13px;
     }
     #hs-link-tooltip .link-loading {
-      color: #aaa;
+      color: var(--hs-muted);
       font-size: 13px;
     }
 
@@ -702,37 +677,37 @@
    hue-rotate(var(--hs-fx-hue)) so an animated hue STACKS with a static filter
    (cursed) instead of the keyframe replacing the filter. */
 @property --hs-fx-hue { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
-img.hs-fx-rainbow { animation: hs-fx-rainbow 2s linear infinite; }
+img.hs-fx-rainbow, .hs-mc-emoji.hs-fx-rainbow { animation: hs-fx-rainbow 2s linear infinite; }
 @keyframes hs-fx-rainbow { from { --hs-fx-hue: 0deg; } to { --hs-fx-hue: 360deg; } }
 
-img.hs-fx-party { animation: hs-fx-party 1.5s linear infinite; }
+img.hs-fx-party, .hs-mc-emoji.hs-fx-party { animation: hs-fx-party 1.5s linear infinite; }
 @keyframes hs-fx-party { from { --hs-fx-hue: 0deg; } to { --hs-fx-hue: 360deg; } }
 
-img.hs-fx-spin { animation: hs-fx-spin 1.5s linear infinite; }
+img.hs-fx-spin, .hs-mc-emoji.hs-fx-spin { animation: hs-fx-spin 1.5s linear infinite; }
 @keyframes hs-fx-spin { from { rotate: 0deg; } to { rotate: 360deg; } }
 
-img.hs-fx-shake { animation: hs-fx-shake 500ms step-start infinite; }
+img.hs-fx-shake, .hs-mc-emoji.hs-fx-shake { animation: hs-fx-shake 500ms step-start infinite; }
 @keyframes hs-fx-shake {
   0%{translate:0 1px}10%{translate:2px 0}20%{translate:1px -2px}30%{translate:-2px 1px}
   40%{translate:0 -1px}50%{translate:2px 2px}60%{translate:-1px -1px}70%{translate:-2px 2px}
   80%{translate:2px 1px}90%{translate:-1px -2px}100%{translate:1px 0}
 }
 
-img.hs-fx-hyper { animation: hs-fx-hyper 0.1s linear infinite; }
+img.hs-fx-hyper, .hs-mc-emoji.hs-fx-hyper { animation: hs-fx-hyper 0.1s linear infinite; }
 @keyframes hs-fx-hyper {
   0%{translate:1px 1px}10%{translate:-1px -2px}20%{translate:-3px 0}30%{translate:3px 2px}
   40%{translate:1px -1px}50%{translate:-1px 2px}60%{translate:-3px 1px}70%{translate:3px 1px}
   80%{translate:-1px -1px}90%{translate:1px 2px}100%{translate:1px -2px}
 }
 
-img.hs-fx-bounce { transform-origin: bottom center; animation: hs-fx-bounce 0.5s linear infinite; }
+img.hs-fx-bounce, .hs-mc-emoji.hs-fx-bounce { transform-origin: bottom center; animation: hs-fx-bounce 0.5s linear infinite; }
 @keyframes hs-fx-bounce {
   0%{scale:.8 1}10%{scale:.9 .8}20%{scale:1 .4}25%{scale:1.2 .3}30%{scale:1 .4}
   40%{scale:.9 .8}50%{scale:.8 1}60%{scale:.9 .8}70%{scale:1 .4}75%{scale:1.2 .3}
   80%{scale:1 .4}90%{scale:.9 .8}100%{scale:.8 1}
 }
 
-img.hs-fx-jam { animation: hs-fx-jam 0.6s linear infinite; }
+img.hs-fx-jam, .hs-mc-emoji.hs-fx-jam { animation: hs-fx-jam 0.6s linear infinite; }
 @keyframes hs-fx-jam {
   0%{translate:-2px -2px;rotate:-6deg}10%{translate:-1.5px -2px;rotate:-8deg}
   20%{translate:1px -1.5px;rotate:-8deg}30%{translate:3px 2.5px;rotate:-6deg}
@@ -742,22 +717,22 @@ img.hs-fx-jam { animation: hs-fx-jam 0.6s linear infinite; }
   100%{translate:-2px -2px;rotate:-5deg}
 }
 
-img.hs-fx-slide { animation: hs-fx-slide 1.5s linear infinite; }
+img.hs-fx-slide, .hs-mc-emoji.hs-fx-slide { animation: hs-fx-slide 1.5s linear infinite; }
 @keyframes hs-fx-slide { from{translate:-50% 0} to{translate:50% 0} }
 
-img.hs-fx-arrive { animation: hs-fx-arrive 3s linear infinite; }
+img.hs-fx-arrive, .hs-mc-emoji.hs-fx-arrive { animation: hs-fx-arrive 3s linear infinite; }
 @keyframes hs-fx-arrive {
   0%{translate:-18px 0;scale:.1}20%{translate:-18px 0;scale:.1}
   45%{translate:0 0;scale:1}100%{translate:0 0;scale:1}
 }
 
-img.hs-fx-leave { animation: hs-fx-leave 3s linear infinite; }
+img.hs-fx-leave, .hs-mc-emoji.hs-fx-leave { animation: hs-fx-leave 3s linear infinite; }
 @keyframes hs-fx-leave {
   0%{translate:0 0;scale:1}55%{translate:0 0;scale:1}
   80%{translate:18px 0;scale:.1}100%{translate:18px 0;scale:.1}
 }
 
-img.hs-fx-zero { margin-left: -4px; }
+img.hs-fx-zero, .hs-mc-emoji.hs-fx-zero { margin-left: -4px; }
 
 /* Emote effects follow the animateEmotes setting, NOT prefers-reduced-motion.
    A modifier is CONTENT the sender chose — same class of motion as an animated
@@ -769,9 +744,17 @@ img.hs-fx-zero { margin-left: -4px; }
    never → off entirely; hover → chat rows animate only under the pointer,
    mirroring the gif hover-swap in main.js. Composer/picker chips are outside
    .hs-mc-msg so they keep animating in hover mode (they're what you're editing). */
-html[data-hs-emote-anim="never"] img[class*="hs-fx-"] { animation: none !important; }
-html[data-hs-emote-anim="hover"] .hs-mc-msg img[class*="hs-fx-"] { animation-play-state: paused !important; }
-html[data-hs-emote-anim="hover"] .hs-mc-msg:hover img[class*="hs-fx-"] { animation-play-state: running !important; }
+/* Scoped to BOTH an emote img and an emoji span. These were img-only, which
+   meant the setting could not switch off an effect running on an emoji — the
+   effect itself reaches emoji (see the hs-fx rules above), so a control that
+   does not is worse than no control: the user turns animation off and something
+   keeps moving. */
+html[data-hs-emote-anim="never"] img[class*="hs-fx-"],
+html[data-hs-emote-anim="never"] .hs-mc-emoji[class*="hs-fx-"] { animation: none !important; }
+html[data-hs-emote-anim="hover"] .hs-mc-msg img[class*="hs-fx-"],
+html[data-hs-emote-anim="hover"] .hs-mc-msg .hs-mc-emoji[class*="hs-fx-"] { animation-play-state: paused !important; }
+html[data-hs-emote-anim="hover"] .hs-mc-msg:hover img[class*="hs-fx-"],
+html[data-hs-emote-anim="hover"] .hs-mc-msg:hover .hs-mc-emoji[class*="hs-fx-"] { animation-play-state: running !important; }
 
     /* Composition tooltip — base + overlays + ordered effects. Colours are set
        inline per piece (provider brand / c!#hex tint); these rules only carry
@@ -783,11 +766,30 @@ html[data-hs-emote-anim="hover"] .hs-mc-msg:hover img[class*="hs-fx-"] { animati
       font-weight: 700;
     }
     #hs-emote-tooltip .tooltip-join {
-      color: #6a6a6a;
+      color: #ffffff;
     }
     /* Effects read as a distinct class of thing from emote names — slightly
        dimmer weight so the composition scans base-first. */
     #hs-emote-tooltip .tooltip-mod {
       font-weight: 700;
       letter-spacing: 0.02em;
+    }
+
+    /* Kick wide emote: the wrapper is cropped to the art inside Kick's square
+       canvas (vars from _kickCropStyle) so it draws at full height like any
+       other wide emote instead of a thin strip in a square. */
+    .hs-mc-emote-wrapper.hs-kick-crop {
+      position: relative;
+      overflow: hidden;
+      height: var(--hs-emote-size, 32px) !important;
+      width: calc(var(--hs-emote-size, 32px) * var(--kc-ar)) !important;
+    }
+    .hs-mc-emote-wrapper.hs-kick-crop > img.hs-mc-emote {
+      position: absolute;
+      padding: 0;
+      max-height: none;
+      width: auto;
+      height: calc(100% * var(--kc-sh));
+      left: calc(-100% * var(--kc-x));
+      top: calc(-100% * var(--kc-y));
     }

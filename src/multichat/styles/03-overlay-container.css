@@ -25,8 +25,7 @@
     #hs-kick-resize-handle,
     #hs-c-resize-handle {
       background: #fff;
-      opacity: 0.9;
-      transition: opacity 0.12s;
+       transition: opacity 0.12s;
     }
     #hs-mc-resize-handle::before,
     #hs-yt-resize-handle::before,
@@ -75,7 +74,7 @@
          for density. (The pred/poll/hype banner is now an absolute overlay
          sibling, not an in-flow child, so no margin mirroring is needed here.) */
       padding: 6px 6px 6px 6px;
-      font-size: var(--hs-chat-font, 13px) !important;
+      font-size: var(--hs-chat-font, 15px) !important;
       line-height: 18px !important;
       word-wrap: break-word;
       word-break: break-word;
@@ -148,14 +147,43 @@
       gap: 2px;
       padding: 0;
     }
+    /* The banner is a CONTROL, not a notice — clicking it opens the full
+       predictions/polls view. It read as neither: a flat strip with no edge,
+       painting over the top chat rows, with a hover plate as the only hint it
+       did anything. A left accent bar (the same device mention/reply rows use
+       to mean "this row is not ordinary chat") plus a bottom rule give it an
+       edge against the messages it covers, and the ▸ marks it as an opener. */
     .hs-mc-chat-banner-item {
       display: flex;
       align-items: center;
       gap: 6px;
-      padding: 5px 10px;
+      padding-block: 5px;
+      padding-inline: 8px 10px;
       font-size: 13px;
-      font-weight: 600;
+      font-weight: 700;
       transition: none;
+      cursor: pointer;
+      border-inline-start: 3px solid var(--hs-brand);
+      border-bottom: 1px solid var(--hs-border);
+      box-shadow: 0 2px 0 #000000;
+    }
+    .hs-mc-chat-banner-pred { border-inline-start-color: var(--hs-brand); }
+    .hs-mc-chat-banner-poll { border-inline-start-color: var(--hs-reply); }
+    /* Opener affordance, pinned right after the timer/badge. */
+    .hs-mc-chat-banner-item::after {
+      content: '▸';
+      margin-inline-start: auto;
+      padding-inline-start: 6px;
+     }
+    .hs-mc-chat-banner-item:hover::after { opacity: 1; }
+    .hs-mc-chat-banner-item:dir(rtl)::after { content: '◂'; }
+    /* The title is the part that must survive a narrow panel — it ellipsises
+       while the timer, badge and ▸ keep their space. */
+    .hs-mc-chat-banner-title {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      min-width: 0;
     }
     .hs-mc-chat-banner-item:hover {
       background: #fff;
@@ -165,24 +193,24 @@
       color: #000 !important;
     }
     .hs-mc-chat-banner-pred {
-      background: #0e0e10;
-      border-bottom: 1px solid rgba(56,122,255,0.3);
-      color: #a8c8ff;
+      background: #000000;
+      border-bottom: 1px solid #ffffff;
+      color: #ffffff;
     }
     .hs-mc-chat-banner-poll {
-      background: #0e0e10;
-      border-bottom: 1px solid rgba(0,200,100,0.25);
-      color: #80e0a0;
+      background: #000000;
+      border-bottom: 1px solid #00ff00;
+      color: #00ff00;
     }
     .hs-mc-chat-banner-pin {
-      background: #0e0e10;
-      border-bottom: 1px solid rgba(191,148,255,0.2);
-      color: #d4bfff;
+      background: #000000;
+      border-bottom: 1px solid #ff00ff;
+      color: #ffffff;
     }
     .hs-mc-chat-banner-hype {
-      background: #0e0e10;
-      border-bottom: 1px solid rgba(255,135,0,0.3);
-      color: #ffb060;
+      background: #000000;
+      border-bottom: 1px solid #ffffff;
+      color: #ffff00;
     }
     .hs-mc-chat-banner-icon {
       font-size: 14px;
@@ -196,11 +224,11 @@
       color: #fff;
     }
     .hs-mc-chat-banner-timer {
-      font-family: 'SF Mono', 'Consolas', monospace;
+      font-family: monospace;
       font-size: 13px;
       font-weight: 700;
       color: #fff;
-      background: rgba(0,0,0,0.4);
+      background: #000000;
       padding: 1px 5px;
       border-radius: 0;
       flex-shrink: 0;
@@ -209,7 +237,7 @@
       font-size: 13px;
       font-weight: 700;
       color: var(--hs-danger);
-      text-transform: uppercase;
+      text-transform: none;
       letter-spacing: 0.5px;
       flex-shrink: 0;
     }
@@ -228,16 +256,20 @@
       display: none;
       align-items: center;
       gap: 4px;
-      background: var(--hs-mention);
-      color: #000;
-      border: none;
+      background: #000000;
+      color: var(--hs-mention);
+      border: 1px solid var(--hs-mention);
       border-radius: 0;
       padding: 4px 12px;
       font-size: 13px;
-      font-weight: 600;
+      font-weight: 700;
       cursor: pointer;
       z-index: 1005;
       transition: none;
+    }
+    /* the player owns the pane; a jump-to-bottom pill over it is noise */
+    .hs-mc-fill-on #hs-mc-new-msgs {
+      display: none !important;
     }
     #hs-mc-new-msgs:hover {
       background: #fff;
@@ -250,3 +282,20 @@
       top: -1px;
     }
 
+
+    /* no italics anywhere: emphasis is bold, underline, reverse or blink only.
+       markdown *x* / _x_ renders <em>, so it reads as underline here. */
+    #hs-mc-overlay :is(em, i, cite, dfn, var, address) { font-style: normal; }
+    #hs-mc-overlay em { text-decoration: underline; }
+
+    /* Words for a screen reader and nobody else: the mentions-only live region
+       (sr-announce.js). The standard visually-hidden box — present for assistive
+       tech, takes no room, paints nothing. display:none would hide it from them too. */
+    .hs-mc-sr-only {
+      position: absolute;
+      width: 1px; height: 1px;
+      margin: -1px; padding: 0; border: 0;
+      overflow: hidden;
+      clip: rect(0 0 0 0);
+      white-space: nowrap;
+    }

@@ -3,7 +3,7 @@
  * Centralized configuration for heatsync extension.
  * All URLs, timing constants, limits, selectors, CSS classes, and z-index values.
  *
- * Bundled at IIFE scope into content scripts — use window.heatsyncConfig to access.
+ * Bundled at IIFE scope into content scripts — import { CONFIG }.
  */
 
 const CONFIG = {
@@ -63,8 +63,6 @@ const CONFIG = {
     HEAT_BATCH_INTERVAL: 2000, // debounce for heat batch fetches
     HEAT_CACHE_PRUNE_INTERVAL: 300000, // 5 min
     COSMETICS_TTL: 30 * 60 * 1000, // 30 min
-    MSG_CACHE_TTL: 24 * 60 * 60 * 1000, // 24 hr
-    MSG_CACHE_SAVE_DEBOUNCE: 5000,
     BROADCAST_TTL: 30000, // drop duplicate broadcasts after 30s
     BROADCAST_PRUNE_INTERVAL: 30000,
     REPROCESS_DEBOUNCE: 200,
@@ -107,13 +105,6 @@ const CONFIG = {
     TWITCH_ID_CACHE_MAX: 200,
     MAX_YT_VIDEO_ENTRIES: 100, // LRU cap for ytVideoToChannel map
     SEVENTV_MAX_RECONNECT_ATTEMPTS: 5,
-
-    // Content script caches (content.js)
-    MSG_CACHE_MAX: 2000, // matches website behavior
-    HEAT_CACHE_MAX: 1000,
-    COSMETICS_MAX: 500,
-    PROFILE_CACHE_MAX: 50,
-    MAX_USERNAME_ATTEMPTS: 30, // prevent console spam on slow page loads
 
     // Multichat (multichat.js)
     MAX_SEND_QUEUE: 50, // IRC send queue cap
@@ -174,7 +165,7 @@ const CONFIG = {
 
     // Kick chat containers — fallback ARRAY consumed via qsArray/qsaArray
     // (src/lib/utils.js): tries each entry in order, first match wins.
-    // Order preserves the priority already live in chrome/content.js's
+    // Order preserves the priority already live in src/content/content.js's
     // findChatContainer() cascade (inner scrollable div, then the message
     // list root, then the outer room) with config.js's class-based
     // defensive fallbacks appended after — a strict superset, never a
@@ -249,21 +240,6 @@ const CONFIG = {
     PREVIEW_ACTIVE: 'heatsync-preview-active',
     USERNAME_COLORED: 'hs-username-colored',
     MENTION_COLORED: 'hs-mention-colored',
-    HEAT_BREATHE: 'hs-heat-breathe', // animation class for tier 8+ emotes
-
-    // Profile card
-    PC_LOADING: 'hs-pc-loading',
-    PC_AVATAR: 'hs-pc-avatar',
-    PC_INFO: 'hs-pc-info',
-    PC_HEADER_LINE: 'hs-pc-header-line',
-    PC_PLATFORM: 'hs-pc-platform',
-    PC_NAME: 'hs-pc-name',
-    PC_ROLE: 'hs-pc-role',
-    PC_VERIFIED: 'hs-pc-verified',
-    PC_AGE: 'hs-pc-age',
-    PC_LIVE: 'hs-pc-live',
-    PC_BADGE_OP: 'hs-pc-badge-op',
-    PC_OP: 'hs-pc-op',
 
     // Multichat container IDs / classes
     MC_CONTAINER: 'hs-mc-container',

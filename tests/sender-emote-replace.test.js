@@ -7,13 +7,14 @@
  * chrome, main.js tab state) are stubbed on globalThis before import.
  */
 
-import { beforeEach, describe, expect, test } from 'bun:test'
+import { afterAll, beforeEach, describe, expect, test } from 'bun:test'
 import * as mods from '../src/lib/modifiers.js'
 
 globalThis.cleanup = {
   setIntervalIfVisible: () => {},
   persistInterval: () => {},
   setTimeout: (fn, ms) => setTimeout(fn, ms),
+  setPageTimeout: (fn, ms) => setTimeout(fn, ms),
   clearTimeout: (t) => clearTimeout(t),
 }
 globalThis.HS_MOD_TOKENS = mods.HS_MOD_TOKENS
@@ -32,25 +33,42 @@ globalThis.currentTab = 'chan-a'
 globalThis.getCurrentChannel = () => 'chan-a'
 globalThis.getLiveChannel = () => 'chan-a'
 
-// chrome.storage.local stub with an inspectable backing store
+// chrome.storage.local stub with an inspectable backing store.
+//
+// PUT BACK WHAT WAS THERE. bun runs every test file in one process, so this
+// global outlives the file — and these stubs are promise-returning, while
+// src/lib/browser-api.js promisifies chrome's storage by passing a CALLBACK
+// that a promise-returning stub never invokes. Any file loading browser-api
+// after this one therefore awaited a promise that could not settle: four
+// browser-api tests timed out and the whole `bun test` process hung, which on
+// CI meant the release job sat until github's 6h cap and shipped nothing
+// (v1.7.59 and v1.7.60 both died that way). File order is the only reason it
+// passed locally.
+const _chromeBeforeThisFile = globalThis.chrome
+const _browserBeforeThisFile = globalThis.browser
 const storageData = {}
-globalThis.chrome = {
-  storage: {
-    local: {
-      get: async (keys) => {
-        const out = {}
-        for (const k of Array.isArray(keys) ? keys : [keys]) {
-          if (k in storageData) out[k] = storageData[k]
-        }
-        return out
-      },
-      set: async (obj) => Object.assign(storageData, obj),
-      remove: async (keys) => {
-        for (const k of Array.isArray(keys) ? keys : [keys]) delete storageData[k]
-      },
+const storageStub = {
+  local: {
+    get: async (keys) => {
+      const out = {}
+      for (const k of Array.isArray(keys) ? keys : [keys]) {
+        if (k in storageData) out[k] = storageData[k]
+      }
+      return out
+    },
+    set: async (obj) => Object.assign(storageData, obj),
+    remove: async (keys) => {
+      for (const k of Array.isArray(keys) ? keys : [keys]) delete storageData[k]
     },
   },
 }
+// dropEmoteFromAllSenders/loadSenderEmoteSets/mergeSenderEmotes/replaceSenderEmotes
+// are storage-only — no runtime.sendMessage call in that path — so both stubs
+// only need storage. They share one backing store so either the old
+// callback-style chrome.storage.* call (untouched, F-ext-1 scope) or the
+// promise-style browser.storage.* call (the F-ext-1 fix) sees the same data.
+globalThis.chrome = { storage: storageStub }
+globalThis.browser = { storage: storageStub }
 
 const { dropEmoteFromAllSenders, loadSenderEmoteSets, mergeSenderEmotes, replaceSenderEmotes, senderEmoteSets } =
   await import('../src/multichat/emotes.js')
@@ -168,4 +186,11 @@ describe('loadSenderEmoteSets versioning', () => {
     await loadSenderEmoteSets()
     expect(senderEmoteSets.size).toBe(0)
   })
+})
+
+afterAll(() => {
+  if (_chromeBeforeThisFile === undefined) delete globalThis.chrome
+  else globalThis.chrome = _chromeBeforeThisFile
+  if (_browserBeforeThisFile === undefined) delete globalThis.browser
+  else globalThis.browser = _browserBeforeThisFile
 })

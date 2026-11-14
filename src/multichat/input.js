@@ -5,12 +5,6 @@
 // handlers dead until hard refresh
 const _onceGuardsInput = {}
 
-// Message history — up/down arrow recalls previously sent messages
-const mcMessageHistory = []
-const MC_HISTORY_MAX = 50
-let mcHistoryIndex = -1
-let mcHistoryDraft = ''
-
 // Broken-image recovery for input-area emote imgs. Browser negatively caches
 // failed image responses (proxy hiccup, CDN blip); without this hook the typed
 // word renders forever as a broken-image placeholder in the composer.
@@ -84,15 +78,16 @@ function _unkickEmotes(s) {
 // eaten unless YOUR send was itself a reply within the dedup window.
 function _echoTextMatches(entry, msgText) {
   if (entry.text === msgText) return true
-  const a = _unkickEmotes(entry.text)
-  const b = _unkickEmotes(msgText)
+  const a = _unkickEmotes(stripDupBypass(entry.text))
+  const b = _unkickEmotes(stripDupBypass(msgText))
   if (a === b) return true
   return !!entry.reply && b.replace(/^@\S+\s+/, '') === a
 }
 
-function trackSentMessage(text, hostOverride, synthId, echoes, reply) {
+function trackSentMessage(text, hostOverride, synthId, echoes, reply, sendId) {
   _recentSentMessages.push({
     text,
+    sendId: sendId || '',
     time: Date.now(),
     host: hostOverride || hostPlatform,
     synthId,
@@ -181,9 +176,20 @@ function _echoPlatformKey(p) {
   return s || 'unknown'
 }
 
-function isSentEcho(msgText, msgPlatform) {
+// Is this row provably someone else's? When this platform's own name is known and the sender is
+// another name, the words matching one of our sends is a coincidence ("gm", "LUL"), not our echo.
+// Unknown self name (cross-origin popout) proves nothing: the text match stands, as it always did.
+function _notOurLine(msg, platform) {
+  const names = platform === 'twitch' || platform === 'kick' ? selfNamesFor(platform) : []
+  return !!(names.length && msg?.user && !names.includes(String(msg.user).toLowerCase()))
+}
+
+// msg (the echo itself, when the caller has it) lets a stranger's identical line pass through without
+// taking the echo credit that belongs to the send, which would drop their line and double yours.
+function isSentEcho(msgText, msgPlatform, msg) {
   const cutoff = Date.now() - SENT_DEDUP_WINDOW
   const platform = _echoPlatformKey(msgPlatform)
+  if (msg && _notOurLine(msg, platform)) return false
   // FIFO oldest-first: each echo is claimed by the OLDEST send that hasn't
   // already taken an echo from THIS platform. The old newest-first scan locked
   // two same-text sends onto one entry, so the 2nd send's only echo was counted
@@ -225,7 +231,7 @@ function isSentEcho(msgText, msgPlatform) {
 // Retro-fold: fold own-send platform echoes that RENDERED BEFORE the
 // cross-device origin_broadcast arrived. isSentEcho only folds echoes that
 // arrive AFTER the entry exists — but a kick send from another device relays
-// through THIS extension, so the local pusher echo often beats the phone's
+// through THIS extension, so the local tap echo often beats the phone's
 // origin_tag round-trip and paints as a bare [K] row that isSentEcho never
 // saw. Called right after trackSentMessage stores a broadcast entry: the
 // earliest already-painted leg is retagged [H] and claims its platform; any
@@ -249,11 +255,13 @@ function retroFoldOwnEchoes() {
     // never re-claim them, and never fold system rows.
     if (m.platform === 'heatsync' || m.type) continue
     if (!_echoTextMatches(entry, m.text)) continue
-    const plat = _echoPlatformKey(m.platform || 'twitch')
+    // the chat it came from: a host-retagged echo (a kick line wearing the twitch mark) still counts as kick
+    const plat = _echoPlatformKey(m.badgePlatform || m.platform || 'twitch')
+    if (_notOurLine(m, plat)) continue // somebody else saying the same words is not a leg of this send
     const seen = entry.seenPlatforms || (entry.seenPlatforms = [])
     if (seen.includes(plat)) continue
     seen.push(plat)
-    legs.push({ div, m })
+    legs.push({ div, m, plat })
   }
   if (!legs.length) return
   // Survivor: prefer the TWITCH leg — its tmi-sent-ts orders consistently
@@ -261,18 +269,17 @@ function retroFoldOwnEchoes() {
   // set. A kick echo often paints FIRST (it relays through this very ext)
   // but bare and with a laggier timestamp, which strands the row rows-up in
   // a busy chat since rows never move once placed.
-  const survivor = legs.find((l) => (l.m.platform || 'twitch') === 'twitch') || legs[0]
+  const survivor = legs.find((l) => l.plat === 'twitch') || legs[0]
   if (!entry.rendered) {
     entry.rendered = true
     const m = survivor.m
-    m.badgePlatform = m.badgePlatform || m.platform
+    // twitch rows carry no platform: without the explicit name the row forgets which chat it came
+    // from, so its origin (keyed by platform + message id) is never found and it can't join the fold
+    m.badgePlatform = m.badgePlatform || m.platform || 'twitch'
     m.platform = 'heatsync'
     const pb = survivor.div.querySelector('.hs-mc-platform-badge')
     if (pb) {
-      pb.classList.remove('hs-mc-pb-twitch', 'hs-mc-pb-kick', 'hs-mc-pb-yt')
-      pb.classList.add('hs-mc-pb-heatsync')
-      pb.style.color = HS_PLAT_COLORS.heatsync
-      pb.textContent = '[H]'
+      hsMarkBadgeHeatsync(pb)
     }
   }
   for (const leg of legs) {
@@ -315,6 +322,21 @@ function claimHydratedEcho(msgText, msgPlatform, msgTime) {
 // matches — letting echoes from elsewhere (e.g. heatsync.org website sends)
 // keep whatever platform tag the server attached.
 function peekSentHost(msgText) {
+  return _peekSent(msgText)?.host || null
+}
+// the send id of OUR send of these words, '' when there is none: an entry from another
+// device has no id (only the device that sent records the origin), and an echo older than
+// the dedup window is not the echo of a send but a line typed since, natively, with the
+// same words — it must not inherit the old send's id (it would fold into that old row)
+function peekSentId(msgText) {
+  const cutoff = Date.now() - SENT_DEDUP_WINDOW
+  for (let i = _recentSentMessages.length - 1; i >= 0; i--) {
+    const e = _recentSentMessages[i]
+    if (e.sendId && e.time >= cutoff && _echoTextMatches(e, msgText)) return e.sendId
+  }
+  return ''
+}
+function _peekSent(msgText) {
   // Use the longer SENT_HOST_WINDOW (24h) — badge attribution must survive
   // page refresh, BG buffer replay, and channel-switch hydration. The dedup
   // path (isSentEcho) uses the tighter 10s window separately.
@@ -325,9 +347,18 @@ function peekSentHost(msgText) {
     // time order, so a stale entry early in the reverse scan must not abort the
     // search before a valid newer match (mirrors isSentEcho). Array is capped.
     if (entry.time < cutoff) continue
-    if (_echoTextMatches(entry, msgText)) return entry.host || null
+    if (_echoTextMatches(entry, msgText)) return entry
   }
   return null
+}
+
+// peekSentHost for a row we are about to mark: the text match alone says "some
+// line said these words", so when this platform's own name is known and the
+// sender is someone else, it is not our send and keeps its own platform's mark.
+// Unknown self name (cross-origin popout) keeps the text-match proof as before.
+function peekOwnSentHost(msg, platform) {
+  if (_notOurLine(msg, platform)) return null
+  return peekSentHost(msg.text)
 }
 
 // Own-reply echo bar. A reply we send is echoed back by whichever read transport
@@ -356,6 +387,21 @@ function peekOwnReply(echoText) {
     if (_echoTextMatches({ text: e.text, reply: true }, echoText)) return e.replyTo
   }
   return null
+}
+
+// Stamp the reply bar back onto our own echo, for every read transport on every
+// platform. Twitch's tagged copy only sometimes wins the race; kick's echo of
+// our own send carries no reply payload; youtube has no reply threading at all.
+// One helper so the three message handlers cannot drift — they did, and the two
+// that never had it were why a reply sent on kick or youtube rendered bare.
+//
+// The CALLER must already have proved this echo is ours (a peekSentHost hit —
+// text alone is not ownership, or a stranger repeating your line gets your
+// reply bar). Never overwrites a replyTo the transport did carry.
+function restoreOwnReplyBar(msg) {
+  if (!msg || msg.replyTo) return
+  const own = peekOwnReply(msg.text)
+  if (own?.user) msg.replyTo = own
 }
 
 // ============================================
@@ -411,51 +457,16 @@ function makeSynthId() {
 // for real means discovering each mutation and reading the result back, the
 // way setTwitchChatMode does.
 // Twitch killed these as IRC chat commands (Feb 2023); refused rather than sent
-// as literal text. vip/unvip left OFF this list — they're now wired via GQL
-// (VIPUser/UnVIPUser), so they must reach their handler instead of being refused.
-const DEAD_TWITCH_CHAT_COMMANDS = new Set(['clear', 'color', 'raid', 'unraid', 'commercial', 'marker'])
+// as literal text. vip/unvip and color left OFF this list — they're now wired via
+// GQL (VIPUser/UnVIPUser, updateChatColor), so they must reach their handler
+// instead of being refused.
+const DEAD_TWITCH_CHAT_COMMANDS = new Set(['clear', 'raid', 'unraid', 'commercial', 'marker'])
 
-const NON_ECHOING_CHAT_COMMANDS = new Set([
-  'followers',
-  'followersoff',
-  'emoteonly',
-  'emoteonlyoff',
-  'subscribers',
-  'subscribersoff',
-  'slow',
-  'slowoff',
-  'uniquechat',
-  'uniquechatoff',
-  'r9kbeta',
-  'r9kbetaoff',
-  'clear',
-  'color',
-  'mod',
-  'unmod',
-  'vip',
-  'unvip',
-  'untimeout',
-  'unban',
-  'raid',
-  'unraid',
-  'commercial',
-  'marker',
-  'announce',
-  'announceblue',
-  'announcegreen',
-  'announceorange',
-  'announcepurple',
-])
-function isNonEchoingCommand(text) {
-  if (typeof text !== 'string' || text[0] !== '/') return false
-  const m = text.match(/^\/(\w+)/)
-  return !!m && NON_ECHOING_CHAT_COMMANDS.has(m[1].toLowerCase())
-}
-
-function registerPendingSend({ text, channel, platforms, replyParentId, replyUser, noEcho }) {
+function registerPendingSend({ sendId, text, channel, platforms, replyParentId, replyUser }) {
   const synthId = makeSynthId()
   const entry = {
     synthId,
+    sendId,
     text,
     channel,
     platforms,
@@ -468,20 +479,11 @@ function registerPendingSend({ text, channel, platforms, replyParentId, replyUse
     replyUser: replyUser || null,
     sentAt: Date.now(),
     state: 'pending',
-    noEcho: !!noEcho,
     timer: null,
   }
-  entry.timer = cleanup.setTimeout(() => {
+  entry.timer = cleanup.setPageTimeout(() => {
     const e = pendingSends.get(synthId)
     if (e?.state !== 'pending') return
-    // Non-echoing platform commands get no PRIVMSG echo — the write already
-    // succeeded, so retire silently rather than firing a false no_echo. Genuine
-    // write failures still surface via the explicit markPendingFailed calls in
-    // the send paths (auth_failed/send_failed).
-    if (e.noEcho) {
-      pendingSends.delete(synthId)
-      return
-    }
     markPendingFailed(synthId, 'no_echo')
   }, PENDING_ECHO_TIMEOUT_MS)
   pendingSends.set(synthId, entry)
@@ -521,20 +523,27 @@ function confirmPending(synthId, platform) {
 // normalized match (collapses NBSP/tabs/runs of spaces) which catches cases
 // where the input serializer added/stripped a space the echo didn't, e.g.
 // wysiwyg-chip + trailing text-node combinations.
-function findPendingByEchoText(text) {
+function findPendingByEchoText(text, msg, platform) {
+  // somebody else's identical words confirm nothing of ours (a false confirm is a dropped send never retried)
+  if (msg && _notOurLine(msg, platform)) return null
+  // a send that was written off may still land (a queued line drains on reconnect, a slow platform):
+  // its echo retires the retry notice instead of leaving a button that sends it a second time
+  return _pendingByEcho(text, 'pending') || _pendingByEcho(text, 'failed')
+}
+function _pendingByEcho(text, state) {
   if (!text || !pendingSends.size) return null
   for (const [id, entry] of pendingSends) {
-    if (entry.state !== 'pending') continue
+    if (entry.state !== state) continue
     if (_echoTextMatches({ text: entry.text, reply: !!entry.replyParentId }, text)) return id
   }
   const norm = (s) =>
     _unkickEmotes(s)
-      .replace(/[ \s]+/g, ' ')
+      .replace(/[\u00a0\s]+/g, ' ')
       .trim()
   const wantN = norm(text)
   if (!wantN) return null
   for (const [id, entry] of pendingSends) {
-    if (entry.state !== 'pending') continue
+    if (entry.state !== state) continue
     if (norm(entry.text) === wantN) return id
     // Reply echoes carry twitch's server-side "@login " prefix — match the
     // normalized remainder too (mirrors _echoTextMatches, reply entries only).
@@ -544,7 +553,7 @@ function findPendingByEchoText(text) {
     try {
       const dump = []
       for (const [, entry] of pendingSends) {
-        if (entry.state !== 'pending') continue
+        if (entry.state !== state) continue
         dump.push({
           pendingText: entry.text,
           pendingLen: entry.text.length,
@@ -590,12 +599,29 @@ try {
   globalThis.__hsFindPendingByChannelFifo = findPendingByChannelFifo
 } catch (_) {}
 
+// The text of the send a channel is still waiting on — what a held-for-approval notice is about,
+// so the echo of that exact text can retire it later.
+function pendingTextByChannel(channel) {
+  const id = findPendingByChannelFifo(channel)
+  return id ? pendingSends.get(id)?.text || '' : ''
+}
+try {
+  globalThis.__hsPendingTextByChannel = pendingTextByChannel
+} catch (_) {}
+
 function markPendingFailed(synthId, reason) {
   const entry = pendingSends.get(synthId)
   if (!entry) return
   if (entry.timer) cleanup.clearTimeout(entry.timer)
   entry.state = 'failed'
   entry.reason = reason
+  // twitch never echoed it: the send socket is the suspect, so the next send
+  // gets a fresh one (recycleAuthIrc) instead of the same silent dead end
+  if (reason === 'no_echo' && entry.awaiting.has('twitch') && typeof recycleAuthIrc === 'function') {
+    try {
+      recycleAuthIrc('a send twitch never echoed')
+    } catch (_) {}
+  }
   if (reason === 'no_echo' && MC_DEBUG) {
     console.warn('[heatsync-ext] send no_echo:', {
       text: entry.text,
@@ -678,7 +704,17 @@ function retryPendingSend(synthId) {
       replyState = { msgId: entry.replyParentId, user: entry.replyUser || undefined }
     } catch (_) {}
   }
-  sendMessage()
+  // A twitch line the socket queued for its reconnect is still in line: the retry replaces it, never joins
+  // it (both would post when the socket is back).
+  if (entry.awaiting.has('twitch')) {
+    const chan = String(entry.channel).toLowerCase()
+    const i = authState.sendQueue.findIndex(
+      (q) => q.channel === chan && (q.text === entry.text || q.text === `\x01ACTION ${entry.text}\x01`),
+    )
+    if (i >= 0) authState.sendQueue.splice(i, 1)
+  }
+  // only the platforms that never confirmed: a leg that did is on the platform already
+  sendMessage({ only: new Set(entry.awaiting), sendId: entry.sendId })
 }
 
 // Expose for the notif action handler
@@ -704,6 +740,9 @@ const acState = {
 // in the viewer's set get auto-added — so a remote emote you searched and sent
 // becomes yours and renders next time. Bounded; explicit tracking beats sniffing
 // chips so it works in plain-text mode too.
+// `variant: true` marks a catalog pick (a hit from the search itself, not a name
+// the channel/globals/inventory already answer to). Only a variant may replace a
+// different emote you own under the same name — see autoAddInputEmotes.
 const recentRemoteCompletions = new Map()
 const REMOTE_COMPLETION_CAP = 300
 
@@ -719,13 +758,25 @@ function trackCompletionForAutoAdd(match) {
   // persisted a bogus literal "name0" emote server-side, burning an inventory
   // slot. The base emote is tracked on its own; the "0" is a render convention.
   if (match._synthOverlay) return
-  const src = match.source
-  if (src !== '7tv' && src !== 'bttv' && src !== 'ffz') return
+  // The latest pick for a name is the only one that counts: cycling from a
+  // catalog IDK back onto the channel's IDK (or onto a native twitch/kick one
+  // that never registers below) must un-pick the catalog one, or the send
+  // would add an emote the box no longer shows.
   recentRemoteCompletions.delete(match.name)
+  const src = match.source
+  // 'heatsync' = another user's personal emote clicked out of a chat row. The
+  // server dedups it onto the existing row; without it the paste rendered for
+  // you only until the next reload, then fell back to raw text.
+  if (src !== '7tv' && src !== 'bttv' && src !== 'ffz' && src !== 'heatsync') return
   // Carry zeroWidth so optimistic viewerPersonalEmotes.set and the server add
   // both inherit the overlay flag — without it, a tab-completed 7TV overlay
   // emote (CarrotTime, wavE) renders as a standalone base after auto-add.
-  recentRemoteCompletions.set(match.name, { url: match.url, source: src, zeroWidth: !!match.zeroWidth })
+  recentRemoteCompletions.set(match.name, {
+    url: match.url,
+    source: src,
+    zeroWidth: !!match.zeroWidth,
+    ...(match.remote && { variant: true }),
+  })
   while (recentRemoteCompletions.size > REMOTE_COMPLETION_CAP) {
     recentRemoteCompletions.delete(recentRemoteCompletions.keys().next().value)
   }
@@ -792,7 +843,10 @@ if (/(^|\.)twitch\.tv$/.test(location.hostname)) {
       if (!NAME_RE.test(e.name) || typeof e.url !== 'string' || !CDN_RE.test(e.url)) continue
       if (e.source !== '7tv' && e.source !== 'bttv' && e.source !== 'ffz') continue
       recentRemoteCompletions.delete(e.name)
-      recentRemoteCompletions.set(e.name, { url: e.url, source: e.source, zeroWidth: !!e.zeroWidth })
+      // The hook only relays catalog picks the user Tabbed onto and then sent, so each one is a
+      // deliberate choice (rule 7): `variant` lets it swap a different picture you own under
+      // the name, exactly like the overlay composer's Tab pick does.
+      recentRemoteCompletions.set(e.name, { url: e.url, source: e.source, zeroWidth: !!e.zeroWidth, variant: true })
       names.push(e.name)
     }
     while (recentRemoteCompletions.size > REMOTE_COMPLETION_CAP) {
@@ -816,6 +870,16 @@ if (/(^|\.)twitch\.tv$/.test(location.hostname)) {
 // Prefix-only on purpose: catalog substring hits (NotSad, KekSadge) are noise.
 // Local substring matches still surface via findEmoteMatches.
 let _acRemoteAbort = null
+// A picture's identity across size variants and formats: the provider + asset id
+// out of a cdn url (…/emote/<id>/1x.avif and …/emote/<id>/2x.webp are ONE emote),
+// the whole url for anything else ('' for none). Emotes that share a NAME are told
+// apart by this — a twin is the same picture, never merely the same name.
+const _AC_PIC_RE = /^https?:\/\/(cdn\.7tv\.app|cdn\.betterttv\.net|cdn\.frankerfacez\.com)\/emote\/([^/?#]+)/i
+function _acPicKey(url) {
+  if (!url) return ''
+  const m = _AC_PIC_RE.exec(url)
+  return m ? `${m[1].toLowerCase()}/${m[2]}` : String(url)
+}
 let _acRemoteToken = 0
 // Searches the remote catalog will never serve: @user, :emoji, modifier
 // tokens, short fragments. Shared with the Tab-cycle hold-at-end check —
@@ -868,6 +932,15 @@ async function fetchRemoteEmoteMatches(search) {
       !ex.ffz && typeof mcSearchFfzApi === 'function'
         ? mcSearchFfzApi(search, ac.signal, { page })
         : Promise.resolve(null),
+      // mcSearchBttvApi does not exist, deliberately: BTTV closed its shared-
+      // emote search (api.betterttv.net/3/emotes/shared/search answers 403
+      // {"message":"unauthorized"} without credentials we do not have). The
+      // typeof guard resolves null, drain() sees a non-array and flips
+      // ex.bttv on the first page, so the cycle still terminates. Do NOT just
+      // delete this arm — ex.bttv would then stay false forever and the
+      // "everything exhausted" check below would never fire, so Tab-cycling
+      // would never wrap back to 1. BTTV emotes themselves are unaffected;
+      // only catalog SEARCH is unavailable.
       !ex.bttv && typeof mcSearchBttvApi === 'function'
         ? mcSearchBttvApi(search, ac.signal, { page })
         : Promise.resolve(null),
@@ -902,33 +975,67 @@ async function fetchRemoteEmoteMatches(search) {
     // FFZ's `uses` is real popularity — sort descending so the merged stream
     // leads with highest-use FFZ emotes first.
     rf.sort((a, b) => (b.uses || 0) - (a.uses || 0))
-    // 7TV leads — its relevance ranking IS the culture ("pls" → the dancing
-    // XxxPls family), then BTTV, then FFZ-by-uses (the oldest catalog trails).
-    // The old FFZ-first + prefix-only combo made catalog cycling feel dead:
-    // every "…Pls"/"…JAM" suffix-named emote was filtered out and FFZ prefix
-    // junk led whatever survived.
-    const items = [...r7, ...rb, ...rf]
-    // Lowercase dedupe (collapses 10x "Sadge" uploads to one — emote names are
-    // case-insensitive in practice; first-seen wins so 7TV's top result holds).
-    // Also dedupes against existing locals (already lowercased below).
-    const have = new Set(acState.matches.map((m) => (m.name || '').toLowerCase()))
+    // Order follows the provider setting. 7TV led here for its relevance
+    // ranking ("pls" → the dancing XxxPls family), and the old FFZ-first combo
+    // felt dead because it was prefix-only; substring matching (below) fixed
+    // that, so the fast provider can lead again.
+    // emoteProviderPriority leads (ffz — fast and reliable);
+    // the other two keep their old relative order.
+    const byProvider = { '7tv': r7, bttv: rb, ffz: rf }
+    const order =
+      typeof emoteProviderOrder === 'function' && typeof emoteProviderPriority === 'string'
+        ? emoteProviderOrder(emoteProviderPriority)
+        : ['7tv', 'bttv', 'ffz']
+    const items = order.flatMap((k) => byProvider[k] || [])
+    // Twin check: the very same PICTURE under the same (case-insensitive) name,
+    // already in the cycle as a local or an earlier page. A different picture
+    // under a name something here already answers to is NOT a twin — that is the
+    // point: the 7tv IDK next to the channel's IDK, so you can pick the other one.
+    const picsByName = new Map()
+    // Names the CATALOG itself already put in the cycle. While the query is still
+    // partial, same-name uploads collapse to the first (10x "Sadge" is noise;
+    // first-seen wins so 7TV's top result holds). Typed in full, every upload
+    // stays its own entry (7TV has nine "shrujj": the art you meant may be any).
+    const catalogNames = new Set()
+    for (const m of acState.matches) {
+      if (m.type !== 'emote' || !m.name) continue
+      const l = m.name
+      if (!picsByName.has(l)) picsByName.set(l, new Set())
+      picsByName.get(l).add(_acPicKey(m.url))
+      if (m.remote) catalogNames.add(l)
+    }
+    // A local emote that answers to the name typed in full: sending that name
+    // means THAT one. A catalog variant is taken only by tabbing onto it.
+    const typedHasLocal = acState.matches.some((m) => m.type === 'emote' && !m.remote && (m.name || '') === search)
+    let exactRegistered = false
     const add = []
     for (const it of items) {
       if (!it.name) continue
-      const lower = it.name.toLowerCase()
-      if (have.has(lower)) continue
+      // dedupe on the EXACT name: KEKW and kekw are two emotes; only the prefix test is case-blind
+      const lower = it.name
+      const pic = _acPicKey(it.url)
+      if (pic && picsByName.get(lower)?.has(pic)) continue
+      // ("typed in full" is judged case-blind: idk + Tab still lists every IDK upload)
+      if (it.name.toLowerCase() !== searchLower && catalogNames.has(lower)) continue
       // Substring is fine — the providers already relevance-matched the query;
       // requiring a literal prefix dropped the suffix-named families users
       // actually mean. Drop only fuzzy hits that don't contain the query.
-      if (!lower.includes(searchLower)) continue
+      if (!it.name.toLowerCase().includes(searchLower)) continue
       // A blocked name must never surface from the remote catalog either —
       // same leak as the local pool, just a different source.
       if (typeof _hsAcEmoteBlocked === 'function' && _hsAcEmoteBlocked(it.name, null)) continue
-      have.add(lower)
+      // A name the globals already own can't take a second emote: the server
+      // refuses to add one (isGlobalTwin), so offering it would be a pick that
+      // can never be kept.
+      if (typeof emoteCache !== 'undefined' && emoteCache.get(it.name)?.state === 'global') continue
+      if (!picsByName.has(lower)) picsByName.set(lower, new Set())
+      picsByName.get(lower).add(pic)
+      catalogNames.add(lower)
       const src = it.provider || '7tv'
       add.push({
         name: it.name,
         url: it.url,
+        id: it.id,
         source: src,
         priority: 0,
         type: 'emote',
@@ -949,16 +1056,22 @@ async function fetchRemoteEmoteMatches(search) {
       // search this session got silently added to the viewer's inventory —
       // hundreds of names the user never saw, burning finite slots. Harmless
       // while the fetch was lazy; not once it fires on the first Tab.
-      if (lower === searchLower) {
-        recentRemoteCompletions.delete(it.name)
-        recentRemoteCompletions.set(it.name, { url: it.url, source: src, zeroWidth: !!it.zeroWidth })
-        while (recentRemoteCompletions.size > REMOTE_COMPLETION_CAP) {
-          recentRemoteCompletions.delete(recentRemoteCompletions.keys().next().value)
+      if (lower === search && !exactRegistered) {
+        exactRegistered = true
+        // ...unless something local already answers to that name (the channel's
+        // IDK): the box shows that one, so registering the catalog's IDK would
+        // silently add an emote nobody picked.
+        if (!typedHasLocal) {
+          recentRemoteCompletions.delete(it.name)
+          recentRemoteCompletions.set(it.name, { url: it.url, source: src, zeroWidth: !!it.zeroWidth, variant: true })
+          while (recentRemoteCompletions.size > REMOTE_COMPLETION_CAP) {
+            recentRemoteCompletions.delete(recentRemoteCompletions.keys().next().value)
+          }
         }
       }
     }
     if (add.length) {
-      _acMergeRemoteMatches(add, searchLower)
+      _acMergeRemoteMatches(add, searchLower, search)
       break // got new content; the next page fetches as the user nears the new end
     }
     // all duplicates — chase the next page
@@ -982,11 +1095,11 @@ async function fetchRemoteEmoteMatches(search) {
 // Append-only: existing entries never move, so N/M only ever grows forward;
 // the new block is ordered internally (exact match first, then fetch order:
 // FFZ-by-uses → BTTV → 7TV, pages in sequence via the persistent _ai).
-function _acMergeRemoteMatches(add, searchLower) {
+function _acMergeRemoteMatches(add, searchLower, typed) {
   const wasEmpty = acState.matches.length === 0
   add.sort((a, b) => {
-    const ax = (a.name || '').toLowerCase() === searchLower ? 0 : 1
-    const bx = (b.name || '').toLowerCase() === searchLower ? 0 : 1
+    const ax = (a.name || '') === typed ? 0 : (a.name || '').toLowerCase() === searchLower ? 1 : 2
+    const bx = (b.name || '') === typed ? 0 : (b.name || '').toLowerCase() === searchLower ? 1 : 2
     if (ax !== bx) return ax - bx
     return (a._ai || 0) - (b._ai || 0)
   })
@@ -1036,59 +1149,15 @@ const MENTION_DROPDOWN_MAX = 20
 
 // Slash command autocomplete dropdown — shows command list when input begins
 // with /<word>. Heatsync-owned + common pass-through Twitch/Kick mod commands.
-const SLASH_COMMANDS = [
-  { cmd: 'op', args: '<text>', desc: 'post to home feed' },
-  { cmd: 'opr', args: '<text>', desc: 'reply to the last [OP] shown in chat' },
-  { cmd: 'w', args: '<user> <msg>', desc: 'twitch whisper' },
-  { cmd: 'dm', args: '<user> <msg>', desc: 'heatsync DM' },
-  { cmd: 'r', args: '<msg>', desc: 'reply to last whisper' },
-  { cmd: 'follow', args: '<user>', desc: 'follow on heatsync (+ twitch/kick mirror)' },
-  { cmd: 'unfollow', args: '<user>', desc: 'unfollow on heatsync (+ twitch/kick mirror)' },
-  { cmd: 'mute', args: '<user>', desc: 'local mute 24h' },
-  { cmd: 'unmute', args: '<user>', desc: 'local unmute' },
-  { cmd: 'shrug', args: '[text]', desc: 'append ¯\\_(ツ)_/¯' },
-  { cmd: 'tableflip', args: '[text]', desc: 'append (╯°□°)╯︵ ┻━┻' },
-  { cmd: 'unflip', args: '[text]', desc: 'append ┬─┬ノ( ゜-゜ノ)' },
-  { cmd: 'lclear', args: '', desc: 'clear current tab locally' },
-  { cmd: 'status', args: '[channel]', desc: 'show chat modes + stream info' },
-  { cmd: 'help', args: '', desc: 'list commands' },
-  { cmd: 'me', args: '<action>', desc: 'twitch/kick action message' },
-  { cmd: 'highlight', args: '<msg>', desc: 'highlight your message (twitch bits power-up)' },
-  { cmd: 'ban', args: '<user>', desc: 'twitch/kick ban (mod)' },
-  { cmd: 'timeout', args: '<user> [secs]', desc: 'twitch/kick timeout (mod)' },
-  { cmd: 'unban', args: '<user>', desc: 'twitch/kick unban (mod)' },
-  { cmd: 'untimeout', args: '<user>', desc: 'twitch/kick untimeout (mod)' },
-  { cmd: 'delete', args: '<msg-id>', desc: 'delete one message (mod)' },
-  { cmd: 'nuke', args: '<term> [secs]', desc: 'bulk-delete matching messages (mod)' },
-  { cmd: 'announce', args: '<msg>', desc: 'twitch announcement (mod, +blue/green/orange/purple)' },
-  { cmd: 'slow', args: '[secs|off]', desc: 'slow mode (twitch mod)' },
-  { cmd: 'followers', args: '[mins|off]', desc: 'followers-only (twitch mod)' },
-  { cmd: 'emoteonly', args: '[off]', desc: 'emote-only mode (twitch mod)' },
-  { cmd: 'subscribers', args: '[off]', desc: 'subs-only mode (twitch mod)' },
-  { cmd: 'unique', args: '[off]', desc: 'unique-chat/r9k (twitch mod)' },
-  { cmd: 'poll', args: '<q> | <a> | <b> [| …] [| secs]', desc: 'create a poll (twitch broadcaster)' },
-  { cmd: 'endpoll', args: '', desc: 'end the active poll (twitch broadcaster)' },
-  { cmd: 'vote', args: '<n>', desc: 'vote for choice n in the active poll (twitch)' },
-  { cmd: 'prediction', args: '<title> | <a> | <b> [| …] [| secs]', desc: 'start a prediction (twitch broadcaster)' },
-  { cmd: 'bet', args: '<n> <points>', desc: 'bet points on prediction outcome n (twitch)' },
-  { cmd: 'lockpred', args: '', desc: 'lock the active prediction (twitch broadcaster)' },
-  { cmd: 'resolvepred', args: '<n>', desc: 'resolve the prediction to outcome n (twitch broadcaster)' },
-  { cmd: 'cancelpred', args: '', desc: 'cancel the active prediction (twitch broadcaster)' },
-  { cmd: 'note', args: '<user> <text>', desc: 'save a private note on a user' },
-  { cmd: 'delnote', args: '<user>', desc: 'remove your note on a user' },
-  { cmd: 'block', args: '<user>', desc: 'toggle block for a user' },
-  { cmd: 'hide', args: '<user>', desc: 'hide a user in THIS tab only (ephemeral)' },
-  { cmd: 'unhide', args: '<user>', desc: 'unhide a user in this tab' },
-  { cmd: 'set', args: '<setting> <value>', desc: 'change a setting (e.g. /set zebra off, /set fontsize 15)' },
-  { cmd: 'tab', args: '<name>', desc: 'switch tab (live/feed/mentions/whispers/settings or a channel)' },
-  { cmd: 'vip', args: '<user>', desc: 'VIP a user (twitch broadcaster)' },
-  { cmd: 'unvip', args: '<user>', desc: 'remove a user VIP (twitch broadcaster)' },
-  { cmd: 'mod', args: '<user>', desc: 'mod a user (twitch broadcaster)' },
-  { cmd: 'unmod', args: '<user>', desc: 'unmod a user (twitch broadcaster)' },
-]
+// Advertised command list + alias map, both projections of slash-registry.js.
+// They used to be hand-maintained here alongside a third copy (SLASH_HELP_LINES)
+// and three more in the site repo; the site's drifted far enough to advertise
+// commands Twitch removed in 2023.
+const SLASH_COMMANDS = slashCommandsFor('ext')
+
 const slashAcState = { active: false, matches: [], index: 0 }
 
-// vi-mode (chrome/vi-mode.js, same isolated world) asks this before treating
+// vi-mode (src/content/vi-mode.js, same isolated world) asks this before treating
 // Escape as enter-normal-mode. Every composer overlay closes on Escape via
 // its own handler — vi's window-capture intercept starved them all: the
 // dropdown stayed open, the user got dumped into normal mode mid-message,
@@ -1098,6 +1167,7 @@ window.__hsEscOwned = () => {
   try {
     if (emojiAcState.active || mentionAcState.active || slashAcState.active || acState.active) return true
     if (typeof replyState !== 'undefined' && replyState) return true
+    if (typeof quoteState !== 'undefined' && quoteState) return true
     const picker = document.getElementById('hs-mc-emote-picker')
     if (picker && picker.offsetParent !== null) return true
     if (document.getElementById('hs-mc-msg-ctx')) return true
@@ -1133,7 +1203,7 @@ function rebuildInput() {
     div.id = 'hs-mc-input'
     div.contentEditable = 'true'
     div.setAttribute('data-placeholder', t('mc_input_send_message'))
-    div.spellcheck = false
+    div.spellcheck = hsSpellcheckOn()
     if (emoteBtn) bar.insertBefore(div, emoteBtn)
   } else {
     const input = document.createElement('input')
@@ -1141,7 +1211,7 @@ function rebuildInput() {
     input.id = 'hs-mc-input'
     input.placeholder = t('mc_input_send_message')
     input.autocomplete = 'off'
-    input.spellcheck = false
+    input.spellcheck = hsSpellcheckOn()
     if (emoteBtn) bar.insertBefore(input, emoteBtn)
   }
 
@@ -1168,14 +1238,14 @@ function createInputBar() {
   const iconBlackUrl = chrome.runtime.getURL('icon-48-black.png')
 
   const inputHtml = wysiwygEnabled
-    ? `<div id="hs-mc-input" contenteditable="true" data-placeholder="${t('mc_input_send_message')}" spellcheck="false"></div>`
-    : `<input type="text" id="hs-mc-input" placeholder="${t('mc_input_send_message')}" autocomplete="off" spellcheck="false">`
+    ? `<div id="hs-mc-input" contenteditable="true" data-placeholder="${t('mc_input_send_message')}" spellcheck="${hsSpellcheckOn()}"></div>`
+    : `<input type="text" id="hs-mc-input" placeholder="${t('mc_input_send_message')}" autocomplete="off" spellcheck="${hsSpellcheckOn()}">`
 
   bar.innerHTML = `
+    <span id="hs-mc-send-tag" hidden></span>
     ${inputHtml}
-    <span id="hs-mc-sendtargets"></span>
     <input type="file" id="hs-mc-attach-input" accept="image/*,video/*" hidden>
-    <button id="hs-mc-attach-btn" type="button" title="${t('mc_input_attach')}" aria-label="${t('mc_input_attach')}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="18" height="18"></rect><circle cx="8.5" cy="8.5" r="1.6" fill="currentColor" stroke="none"></circle><path d="M21 15l-5-5L4 21"></path></svg></button>
+    <button id="hs-mc-attach-btn" type="button" title="${t('mc_input_attach')}" aria-label="${t('mc_input_attach')}">+</button>
     <button id="hs-mc-emote-btn" title="${t('mc_input_emote_picker')}" aria-label="${t('mc_input_emote_picker')}"><img src="${iconUrl}" data-src="${iconUrl}" data-src-black="${iconBlackUrl}" alt="hs"></button>
   `
 
@@ -1183,63 +1253,8 @@ function createInputBar() {
   // emote-btn block (single wiring source — survives rebuild/rewire paths).
   setTimeout(() => {
     initInput()
-    renderSendTargetChips()
   }, 0)
   return bar
-}
-
-/**
- * Render the composer's per-platform send-target toggle chips for the
- * active channel tab. Empty (no chips) on 0/1-linked-platform tabs and on
- * non-channel tabs (live/feed/whispers/mentions/settings/add) — those have
- * no persisted per-channel sendTargets config to toggle. Mirrors
- * renderPlatformFilterButtons' shape (main.js) but drives SEND routing
- * rather than a view-side message filter.
- */
-function renderSendTargetChips() {
-  const group = document.getElementById('hs-mc-sendtargets')
-  if (!group) return
-  while (group.firstChild) group.removeChild(group.firstChild)
-  const ch = config.channels.find((c) => c.id === currentTab)
-  if (!ch) return
-  const linked = { twitch: !!ch.twitch, kick: !!ch.kick, youtube: !!ch.youtube }
-  if (Object.values(linked).filter(Boolean).length < 2) return
-  const resolved = resolveSendTargets(ch.sendTargets, linked)
-  const meta = [
-    { key: 'twitch', label: 'T' },
-    { key: 'kick', label: 'K' },
-    { key: 'youtube', label: 'Y' },
-  ]
-  // No text label — composer width is precious (side-tab layouts). Both T K Y
-  // clusters now share ONE style (outline); they're told apart by place and
-  // by this one-glyph marker: → means "where it goes". Tooltips carry the
-  // words.
-  const arrow = document.createElement('span')
-  arrow.className = 'hs-mc-st-arrow'
-  arrow.textContent = '\u2192'
-  arrow.title = 'send targets'
-  group.appendChild(arrow)
-  for (const p of meta) {
-    if (!linked[p.key]) continue
-    const on = resolved[p.key]
-    const btn = document.createElement('button')
-    btn.type = 'button'
-    btn.className = `hs-mc-st-btn hs-mc-st-${p.key}`
-    btn.classList.toggle('off', !on)
-    btn.textContent = p.label
-    btn.title = `send to ${p.key}: ${on ? 'on' : 'off'}`
-    // Chip click must never steal focus from the composer input.
-    btn.addEventListener('mousedown', (e) => e.preventDefault())
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation()
-      const next = nextSendTargets(ch.sendTargets, linked, p.key, !on)
-      if (!next) return // refuse to disable the last active target
-      ch.sendTargets = next
-      saveConfig()
-      renderSendTargetChips()
-    })
-    group.appendChild(btn)
-  }
 }
 
 // Get text from input (handles both input and contenteditable)
@@ -1331,6 +1346,7 @@ function initInput() {
     setTimeout(initInput, 100)
     return
   }
+  hsComposerCombobox(input)
   // Mark input as initialized to avoid duplicate handlers. The mark is a
   // per-injection token, NOT a boolean: on firefox, same-principal expandos
   // outlive the sandbox that set them, so after an AMO auto-update reinjects
@@ -1485,19 +1501,20 @@ function initInput() {
   // Set up drag-drop handlers for media upload
   setupMediaDropHandlers()
 
-  // Pasted image handler — applies in BOTH wysiwyg and plain modes
+  // Pasted image/video handler — applies in BOTH wysiwyg and plain modes
   input.addEventListener('paste', (e) => {
     const items = e.clipboardData?.items
     if (!items) return
+    const files = []
     for (const item of items) {
-      if (item.kind === 'file' && item.type.startsWith('image/')) {
+      if (item.kind === 'file' && (item.type.startsWith('image/') || item.type.startsWith('video/'))) {
         const file = item.getAsFile()
-        if (file) {
-          e.preventDefault()
-          handleMediaUpload(file)
-          return
-        }
+        if (file) files.push(file)
       }
+    }
+    if (files.length) {
+      e.preventDefault()
+      handleMediaUpload(files, clipboardImageSourceUrl(e.clipboardData))
     }
   })
 
@@ -1550,7 +1567,10 @@ function initInput() {
       const file = fileInput.files?.[0]
       // Reset first so picking the SAME file twice re-fires change.
       fileInput.value = ''
-      if (file) handleMediaUpload(file)
+      // No source url, stated rather than omitted: a file picked off disk has
+      // no clipboard behind it, so there is nothing to recover the original from
+      // — and the picked file already IS the original.
+      if (file) handleMediaUpload(file, '')
     })
   }
 
@@ -1581,12 +1601,11 @@ function initInput() {
       if (picker?.classList.contains('visible')) {
         picker.classList.remove('visible')
         hideInputBar()
-        if (_pickerCloseHandler) {
-          document.removeEventListener('click', _pickerCloseHandler)
-          _pickerCloseHandler = null
-        }
+        detachPickerCloseHandlers()
       } else {
         showEmotePicker()
+        // detail 0 = Enter/Space on the button: a keyboard reader, who lands in the search box
+        if (e.detail === 0) hsPickerFocusSearch()
       }
     })
   }
@@ -1649,9 +1668,14 @@ function initInput() {
   }
 
   // Global `\` toggle → hide/show chat. Mirrors heatsync.org keyboard shortcut.
-  // Skip when input is focused so users can type `\` into chat normally.
+  // Skip when input is focused so users can type `\` into chat normally —
+  // vi normal mode reaches it as <Space>\ instead (see overlay-keys.js).
   if (!_onceGuardsInput.chatToggleHandler) {
     _onceGuardsInput.chatToggleHandler = true
+    registerOverlayKey('\\', () => {
+      toggleChatHidden()
+      return true
+    })
     document.addEventListener(
       'keydown',
       (e) => {
@@ -1665,6 +1689,52 @@ function initInput() {
           toggleChatHidden()
         } catch (err) {
           log('chat-toggle keydown:', err)
+        }
+      },
+      { capture: true, signal: mcSignal },
+    )
+  }
+
+  // Tab mode — a rover cursor over the tab strip (tab-mode.js), opened with
+  // <Space>t from vi normal mode.
+  //
+  // It used to open on a bare `t` with the composer blurred, and that is the
+  // exact bug this whole area had: the mouse resting on the panel is the
+  // reading position, so typing "thanks" opened the rover instead of writing a
+  // message. The composer owns printable keys now, always.
+  //
+  // The rover is modal — it takes j/k/d/a/enter and the rest of the keyboard —
+  // so it can't run with the composer still focused: vi normal mode would eat
+  // every key first. Entering therefore blurs the composer and tells vi to let
+  // go NOW (__hsViDetachNow), because vi's own focusout detach is 150ms behind
+  // and the first rover key would land inside that gap.
+  if (!_onceGuardsInput.tabModeHandler) {
+    _onceGuardsInput.tabModeHandler = true
+    registerOverlayKey('t', () => {
+      // enterTabMode returns false when there is no visible strip.
+      if (!enterTabMode()) return false
+      const inp = document.getElementById('hs-mc-input')
+      try {
+        inp?.blur()
+        window.__hsViDetachNow?.(inp)
+      } catch (_) {}
+      return true
+    })
+    document.addEventListener(
+      'keydown',
+      (e) => {
+        if (e.ctrlKey || e.altKey || e.metaKey) return
+        const active = document.activeElement
+        if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) return
+        try {
+          if (!tabModeActive()) return
+          if (handleTabModeKey(e)) {
+            e.preventDefault()
+            e.stopImmediatePropagation()
+            ownKeyup(e)
+          }
+        } catch (err) {
+          log('tab-mode keydown:', err)
         }
       },
       { capture: true, signal: mcSignal },
@@ -1741,18 +1811,20 @@ function initInput() {
         // Don't steal paste from other inputs
         const active = document.activeElement
         if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) return
-        // Check for pasted image first
+        // Check for pasted image/video first
         const items = e.clipboardData?.items
         if (items) {
+          const files = []
           for (const item of items) {
-            if (item.kind === 'file' && item.type.startsWith('image/')) {
+            if (item.kind === 'file' && (item.type.startsWith('image/') || item.type.startsWith('video/'))) {
               const file = item.getAsFile()
-              if (file) {
-                e.preventDefault()
-                handleMediaUpload(file)
-                return
-              }
+              if (file) files.push(file)
             }
+          }
+          if (files.length) {
+            e.preventDefault()
+            handleMediaUpload(files, clipboardImageSourceUrl(e.clipboardData))
+            return
           }
         }
         const text = e.clipboardData?.getData('text/plain')
@@ -1801,6 +1873,25 @@ function initInput() {
         source: img?.dataset.source || 'unknown',
       }
     }
+    // Logs surfaces (card recent lines, chat-logs panel, archive html) draw bare
+    // <img>s whose src is heatsync's own /e/<source>/ mirror — no wrapper, no
+    // 7tv.app host — so the src sniff below never saw them.
+    if (
+      target.tagName === 'IMG' &&
+      (target.classList.contains('hs-cl-emote') ||
+        target.classList.contains('hs-archive-emote') ||
+        (target.classList.contains('emote') && target.closest('.hs-card-log-body')))
+    ) {
+      const name = target.alt || 'emote'
+      const source = target.src?.match(/\/e\/(7tv|bttv|ffz|hs|twitch|kick)\//)?.[1] || 'unknown'
+      return {
+        wrapper: null,
+        emoteName: name,
+        state: blockedEmoteNames.has(name) ? 'blocked' : getEmoteState(name, source),
+        emoteUrl: target.src || '',
+        source,
+      }
+    }
     // Fallback: direct IMG (Twitch/7TV/BTTV native emotes, picker emotes,
     // and multichat WYSIWYG input chips — class match catches blocked input
     // emotes whose src has been swapped to a transparent placeholder).
@@ -1829,44 +1920,50 @@ function initInput() {
     return null
   }
 
-  function openEmoteCtxMenu(x, y, { emoteName, emoteUrl, state, source, targetEl }) {
+  function openEmoteCtxMenu(x, y, { emoteName, emoteUrl, state, source, targetEl, wrapper }) {
     const hi = getHighResUrl(emoteUrl)
     const items = []
     // Block/unblock + remove-from-set live here so the shift menu is the
-    // complete per-emote surface. Plain right-click is the block/unblock fast
-    // path; removal is menu-only — it mutates your set server-side and lost
-    // its fast-path slot when right-click became always-block.
+    // complete per-emote surface. Plain right-click is the fast path: unblock a
+    // blocked emote, remove an inventory one, block anything else — so for an
+    // inventory emote this menu is where 'block' (keeps the set) lives.
     if (state === 'blocked') {
-      items.push({ label: 'unblock', fn: () => unblockEmote(emoteName) })
+      items.push({
+        label: t('mc_input_unblock'),
+        fn: () => unblockEmote(emoteName, { hash: wrapper?.dataset?.emoteHash || undefined }),
+      })
     } else {
-      items.push({ label: 'block', fn: () => blockEmote(emoteName, emoteUrl, source) })
+      items.push({
+        label: t('content_card_block'),
+        fn: () => blockEmote(emoteName, emoteUrl, source, { hash: wrapper?.dataset?.emoteHash || undefined }),
+      })
       if (state === 'owned' && inventoryEmotes.has(emoteName)) {
-        items.push({ label: 'remove from set', fn: () => removeEmoteFromInventory(emoteName, targetEl) })
+        items.push({ label: t('mc_input_remove_from_set'), fn: () => removeEmoteFromInventory(emoteName, targetEl) })
       }
     }
     items.push('sep')
     let m
     if ((m = emoteUrl.match(/cdn\.7tv\.app\/emote\/([^/]+)/))) {
       items.push({
-        label: 'open on 7TV',
+        label: t('mc_input_open_on', ['7TV']),
         fn: () => window.open(`https://7tv.app/emotes/${m[1]}`, '_blank', 'noopener,noreferrer'),
       })
     } else if ((m = emoteUrl.match(/cdn\.betterttv\.net\/emote\/([^/]+)/))) {
       items.push({
-        label: 'open on BTTV',
+        label: t('mc_input_open_on', ['BTTV']),
         fn: () => window.open(`https://betterttv.com/emotes/${m[1]}`, '_blank', 'noopener,noreferrer'),
       })
     } else if ((m = emoteUrl.match(/cdn\.frankerfacez\.com\/emote\/(\d+)/))) {
       items.push({
-        label: 'open on FFZ',
+        label: t('mc_input_open_on', ['FFZ']),
         fn: () => window.open(`https://www.frankerfacez.com/emoticon/${m[1]}`, '_blank', 'noopener,noreferrer'),
       })
     }
     items.push(
-      { label: 'view image', fn: () => window.open(hi, '_blank', 'noopener,noreferrer') },
+      { label: t('mc_input_view_image'), fn: () => window.open(hi, '_blank', 'noopener,noreferrer') },
       'sep',
       {
-        label: 'copy :name:',
+        label: t('mc_input_copy_emote_name'),
         fn: () => {
           try {
             navigator.clipboard
@@ -1877,7 +1974,7 @@ function initInput() {
         },
       },
       {
-        label: 'copy image url',
+        label: t('mc_input_copy_image_url'),
         fn: () => {
           try {
             navigator.clipboard
@@ -1904,7 +2001,7 @@ function initInput() {
     const items = []
     if (name)
       items.push({
-        label: 'copy :name:',
+        label: t('mc_input_copy_emote_name'),
         fn: () => {
           try {
             navigator.clipboard
@@ -1916,7 +2013,7 @@ function initInput() {
       })
     if (char)
       items.push({
-        label: 'copy emoji',
+        label: t('mc_input_copy_emoji'),
         fn: () => {
           try {
             navigator.clipboard
@@ -1972,24 +2069,27 @@ function initInput() {
           return
         }
 
-        const { emoteName, state, emoteUrl, source } = emoteInfo
+        const { emoteName, emoteUrl, source, wrapper } = emoteInfo
+        // Yours = this exact emote, not the name: another chatter's channel W under a W
+        // you own is blocked, never a removal of yours (rule 10).
+        const state =
+          emoteInfo.state === 'owned' && wrapper && !isViewerEmoteUrl(emoteName, emoteUrl, wrapper?.dataset?.emoteHash)
+            ? 'global'
+            : emoteInfo.state
 
         // Race-guard against rapid clicking
         if (pendingEmoteOps.has(emoteName)) return
 
-        // 2-state right-click: blocked → unblock, everything else → block —
-        // including your own inventory emotes. Block is NOT an inventory
-        // mutation (caches + server user_emotes row preserved; unblock returns
-        // the emote to "in set"), so one gesture = one meaning with nothing
-        // destructive on the common path. The old 3rd branch routed owned
-        // emotes to remove-from-inventory, which silently mutated the set
-        // server-side and made blocking an owned emote take two right-clicks
-        // (or zero, when the removed name stopped resolving). Removal lives in
-        // the shift menu now (openEmoteCtxMenu).
+        // Right-click acts on what the emote IS to you: blocked → unblock, in
+        // your inventory → remove it from the inventory (what "inventory" on the
+        // emote promises), anything else → block. Blocking an owned emote is the
+        // shift menu's 'block' — it keeps the server row, removal does not.
         if (state === 'blocked') {
-          unblockEmote(emoteName)
+          unblockEmote(emoteName, { hash: wrapper?.dataset?.emoteHash || undefined })
+        } else if (state === 'owned' && inventoryEmotes.has(emoteName)) {
+          removeEmoteFromInventory(emoteName, e.target)
         } else {
-          blockEmote(emoteName, emoteUrl, source)
+          blockEmote(emoteName, emoteUrl, source, { hash: wrapper?.dataset?.emoteHash || undefined })
         }
       },
       { capture: true, signal: mcSignal },
@@ -2009,7 +2109,7 @@ function initInput() {
           const stack = e.target.closest('.hs-mc-emote-stack')
           if (stack) {
             stack.classList.remove('expanded')
-            stack.setAttribute('title', 'expand')
+            stack.setAttribute('title', t('mc_input_expand'))
           }
           return
         }
@@ -2203,21 +2303,53 @@ function initInput() {
     )
   }
 
-  // Reply button click → set reply state and focus input
-  if (!_onceGuardsInput.replyHandler) {
-    _onceGuardsInput.replyHandler = true
+  // Thread button click → quote mode, one click. A native twitch/kick message
+  // has no heatsync id, so it can never be a reply_to target — quoting it into
+  // a NEW top-level thread is the only honest on-ramp. The composer switches
+  // to quote mode (chip above the input, distinct border) instead of sending
+  // immediately: the user still types their own take, they just no longer
+  // have to know the /op command exists or retype a citation by hand.
+  //
+  // The citation is the /search/logs permalink, not the text. heatsync archives the
+  // line, so the post can point AT the original instead of carrying a retyped
+  // copy: both heatsync.org and the panel resolve the link back into the real
+  // chat line — the author, the time, the emotes, the channel — and a reader
+  // can click through to the surrounding log. A pasted copy is a claim about
+  // what someone said; the permalink is the receipt. That is the whole point of
+  // quoting someone else's words, and a copy sitting next to the receipt would
+  // only give the two a way to disagree.
+  //
+  // Falls back to the quoted text when the line cannot be cited — a row with no
+  // archived platform, channel or send time. Better a soft quote than a link to
+  // a page that was never going to hold the message.
+  if (!_onceGuardsInput.threadHandler) {
+    _onceGuardsInput.threadHandler = true
     document.addEventListener(
       'click',
       (e) => {
-        const btn = e.target.closest('.hs-mc-reply-btn')
+        const btn = e.target.closest('.hs-mc-thread-btn')
         if (!btn) return
-        const msg = btn.closest('.hs-mc-msg')
-        if (!msg?.dataset.msgId) return
-        setReplyState({
-          msgId: msg.dataset.msgId,
-          user: msg.dataset.msgUser,
-          channel: msg.dataset.msgChannel,
-        })
+        startQuoteFromRow(btn.closest('.hs-mc-msg'))
+      },
+      { signal: mcSignal },
+    )
+  }
+
+  if (typeof initHoverReply === 'function') initHoverReply()
+
+  // The held-for-approval row's x: a mod can leave a hold open for good, so the sender decides when
+  // it goes. Retired on the buffered notice itself, so a re-render or a tab switch keeps it gone.
+  if (!_onceGuardsInput.heldDismissHandler) {
+    _onceGuardsInput.heldDismissHandler = true
+    document.addEventListener(
+      'click',
+      (e) => {
+        const x = e.target.closest('.hs-mc-held-x')
+        if (!x) return
+        const row = x.closest('.hs-mc-msg')
+        const held = irc?.getMessages(row?.dataset.msgChannel).find((m) => m.id === row.dataset.msgId)
+        if (held) held.resolved = true
+        row?.remove()
       },
       { signal: mcSignal },
     )
@@ -2238,7 +2370,10 @@ function initInput() {
         // also fire on the same event and overwrite them (both are capture-phase
         // document listeners, so stopPropagation alone wouldn't stop this one).
         if (findEmoteTarget(e.target) || e.target.closest('.hs-mc-emoji')) return
-        const userEl = e.target.closest('.hs-mc-user:not(.hs-mc-reply-user)')
+        // Reply-target @name included: right-clicking it must menu the person
+        // being replied to, not silently fall through to the row and menu the
+        // sender instead (the msg-body branch below stays sender-scoped).
+        const userEl = e.target.closest('.hs-mc-user')
         const feedDiv = e.target.closest('.hs-feed-msg')
         const msg = e.target.closest('.hs-mc-msg')
         if (!userEl && !feedDiv && !msg) return
@@ -2278,6 +2413,8 @@ function initInput() {
           msg: msg || null,
           feedDiv: feedDiv || null,
           feedMsg,
+          // row mode (row-mode.js) fires this event from the keyboard: focus goes onto the first item
+          keyboard: e.hsKeyboard === true,
         })
       },
       { capture: true, signal: mcSignal },
@@ -2351,8 +2488,8 @@ async function _ctxMod(action, channel, platform, target, msgId, durationSec, la
   // result "<action> failed: channel not found". Surface plain-send's sticky
   // not-logged-in cue instead (same check as the slash-command dispatch).
   if (platform === 'twitch') {
-    const { token } = await getTwitchAuthTokenAsync()
-    if (!token) {
+    const { loggedIn } = await getTwitchLoginAsync()
+    if (!loggedIn) {
       try {
         HsNotifs.emit('twitch-auth-required', { text: t('mc_input_not_logged_in') || 'log into twitch.tv to chat' })
       } catch (_) {}
@@ -2381,7 +2518,7 @@ async function _ctxMod(action, channel, platform, target, msgId, durationSec, la
 }
 
 function openUserCtxMenu(x, y, username, platform, ctx = {}) {
-  const { msg, feedDiv, feedMsg } = ctx
+  const { msg, feedDiv, feedMsg, keyboard } = ctx
   const rel = hsRelPeek(username, platform)?.relationship || null
   const youFollow = !!(rel?.youFollow || rel?.isFollowing)
   const youBlock =
@@ -2399,47 +2536,76 @@ function openUserCtxMenu(x, y, username, platform, ctx = {}) {
   const items = [
     {
       key: 'follow',
-      label: youFollow ? 'unfollow' : 'follow',
+      label: youFollow ? t('content_card_unfollow') : t('content_card_follow'),
       fn: () => hsFollowFromMenu(username, platform, followIds),
     },
     {
       key: 'block',
-      label: youBlock ? 'unblock' : 'block',
+      label: youBlock ? t('mc_input_unblock') : t('content_card_block'),
       danger: !youBlock,
       fn: () => hsBlockFromMenu(username, platform),
     },
-    { label: isMuted ? 'unmute' : 'mute (24h)', danger: !isMuted, fn: () => _toggleMcMute(username, platform) },
+    {
+      label: isMuted ? t('mc_settings_unmute') : t('mc_input_mute_24h'),
+      danger: !isMuted,
+      fn: () => _toggleMcMute(username, platform),
+    },
     {
       label:
         typeof isUserHiddenInTab === 'function' && isUserHiddenInTab(username, platform, currentTab)
-          ? 'unhide in tab'
-          : 'hide in tab',
+          ? t('mc_input_unhide_in_tab')
+          : t('mc_input_hide_in_tab'),
       fn: () => _tabHide(username, platform, 'toggle'),
     },
     'sep',
-    {
-      label: 'copy name',
-      fn: () => mcCopyToClipboard(username, t('mc_input_name_copied')),
-    },
   ]
+  // Row actions in the rust app's order (reply, op to feed, copy name, copy
+  // message, copy link, copy → input). Reply and copy link live ONLY here: the
+  // rows carry no hover buttons for them.
+  const replyState = rowReplyState(msg, username)
+  if (replyState) {
+    items.push({ label: t('mc_input_reply'), fn: () => setReplyState(replyState) })
+  }
+  // Op this message to the heatsync feed — posting emerges from chat, where the
+  // moment actually happens, quoting the author with @attribution.
+  if (msg && gateAtBoot('feed') !== false) {
+    items.push({ label: t('mc_input_op_to_feed'), fn: () => _quickOpToFeed(username, msg) })
+  }
+  items.push({
+    label: t('content_card_copy_name'),
+    fn: () => mcCopyToClipboard(username, t('mc_input_name_copied')),
+  })
   // Copy/quote lead the menu (right after follow/block/mute) so they're never
   // buried under mod actions or the social-action wall below — this is the
   // #1 thing right-click gets used for, it shouldn't take scrolling to find.
   if (msg) {
     items.push({
-      label: 'copy message',
+      label: t('mc_input_copy_message'),
       fn: () => mcCopyToClipboard(_extractMcMsgText(msg), t('mc_input_message_copied')),
     })
+    const link = msg.dataset?.msgId ? buildRowPermalink(msg) : null
+    if (link) {
+      items.push({
+        label: t('mc_input_copy_link'),
+        fn: () => mcCopyToClipboard(link, t('mc_input_url_copied')),
+      })
+    }
     items.push({
-      label: 'copy → input',
+      label: t('mc_input_copy_to_input'),
       fn: () => mcQuoteToInput(_extractMcMsgText(msg)),
     })
+    if (msg.dataset?.msgId) {
+      items.push({
+        label: t('mc_msg_quote_thread'),
+        fn: () => startQuoteFromRow(msg),
+      })
+    }
   }
   if (feedDiv && typeof getActiveThreadCopyText === 'function') {
     const threadTxt = getActiveThreadCopyText()
     if (threadTxt)
       items.push({
-        label: 'copy thread',
+        label: t('mc_input_copy_thread'),
         fn: () => mcCopyToClipboard(threadTxt, t('mc_input_thread_copied')),
       })
   }
@@ -2447,7 +2613,7 @@ function openUserCtxMenu(x, y, username, platform, ctx = {}) {
     const chainTxt = _extractMcChainText(msg)
     if (chainTxt)
       items.push({
-        label: 'copy thread',
+        label: t('mc_input_copy_thread'),
         fn: () => mcCopyToClipboard(chainTxt, t('mc_input_thread_copied')),
       })
   }
@@ -2477,10 +2643,10 @@ function openUserCtxMenu(x, y, username, platform, ctx = {}) {
     // login otherwise. YT actions are message-scoped (msgId), so any truthy
     // channel just satisfies the gate — the dispatch uses msgId, not the channel.
     const modCh = isYt ? msgCh || 'yt' : isKick ? entry?.kick || msgCh : entry?.twitch || msgCh
-    // currentUsername is a display name; compare against BOTH the login and the
+    // the viewer's name is a display name; compare against BOTH the login and the
     // display name so a non-Latin-named mod can't be shown self-mod actions.
-    const _selfRef = typeof currentUsername !== 'undefined' && currentUsername ? currentUsername.toLowerCase() : null
-    const notSelf = !_selfRef || (msgLogin !== _selfRef && (msg.dataset?.msgUser || '').toLowerCase() !== _selfRef)
+    const notSelf =
+      !isSelf({ user: msgLogin, platform: msgPlat }) && !isSelf({ user: msg.dataset?.msgUser, platform: msgPlat })
     const amMod = isYt
       ? typeof isYtModForSync === 'function' && isYtModForSync()
       : isKick
@@ -2491,27 +2657,31 @@ function openUserCtxMenu(x, y, username, platform, ctx = {}) {
         const mod = []
         if (msgId)
           mod.push({
-            label: 'delete msg',
+            label: t('mc_input_delete_msg'),
             danger: true,
-            fn: () => _ctxMod('delete', msgCh, msgPlat, msgLogin, msgId, 0, 'deleted'),
+            fn: () => _ctxMod('delete', msgCh, msgPlat, msgLogin, msgId, 0, t('mc_mod_label_deleted')),
           })
         mod.push(
           {
             // YouTube's timeout is a fixed-duration hide (no 10m choice).
-            label: isYt ? 'timeout' : 'timeout 10m',
-            fn: () => _ctxMod('timeout', msgCh, msgPlat, msgLogin, msgId, 600, 'timed out'),
+            label: isYt ? t('mc_input_timeout') : t('mc_input_timeout_10m'),
+            fn: () => _ctxMod('timeout', msgCh, msgPlat, msgLogin, msgId, 600, t('mc_input_timed_out')),
           },
-          { label: 'ban', danger: true, fn: () => _ctxMod('ban', msgCh, msgPlat, msgLogin, msgId, 0, 'banned') },
-          { label: 'unban', fn: () => _ctxMod('unban', msgCh, msgPlat, msgLogin, msgId, 0, 'unbanned') },
+          {
+            label: t('content_card_ban'),
+            danger: true,
+            fn: () => _ctxMod('ban', msgCh, msgPlat, msgLogin, msgId, 0, t('mc_mod_label_banned')),
+          },
+          {
+            label: t('content_card_unban'),
+            fn: () => _ctxMod('unban', msgCh, msgPlat, msgLogin, msgId, 0, t('mc_mod_label_unbanned')),
+          },
         )
-        // Bulk-select entry — twitch/kick only (YT rows carry none of the
-        // dataset bulk-select needs, same reason the hover toolbar skips YT).
-        if (!isYt && typeof startBulkSelectFrom === 'function' && typeof isBulkSelectMode === 'function') {
-          mod.push({
-            label: isBulkSelectMode() ? 'exit select mode' : 'select mode',
-            fn: () => (isBulkSelectMode() ? exitBulkSelectMode() : startBulkSelectFrom(msg)),
-          })
-        }
+        if (!isKick && !isYt)
+          mod.push({ label: t('mc_settings_mod_btn_blocked_terms'), fn: () => openBlockedTerms(modCh) })
+        if (!isYt) mod.push(modToolsItem(isKick, modCh))
+        if (!isKick && !isYt && msgLogin)
+          mod.push({ label: t('mc_input_warn'), fn: () => msWarnPrompt(modCh, msgLogin) })
         mod.push('sep')
         items.push(...mod)
       } else {
@@ -2522,34 +2692,65 @@ function openUserCtxMenu(x, y, username, platform, ctx = {}) {
       }
     }
   }
-  // Reply — only when right-clicked on a real chat message with an id (Twitch
-  // IRC msg-id or Kick msg id). The same setReplyState the reply-button uses.
-  if (msg?.dataset?.msgId) {
-    items.push({
-      label: 'reply',
-      fn: () =>
-        setReplyState({
-          msgId: msg.dataset.msgId,
-          user: msg.dataset.msgUser || username,
-          channel: msg.dataset.msgChannel || '',
-        }),
-    })
+  // Pin — its own gate: a broadcaster pins their own channel without being a mod
+  // there. Only on a row of the channel tab on screen (the pin lives on its room).
+  if (msg?.dataset?.msgId && typeof pinRoomOfRow === 'function') {
+    const pr = pinRoomOfRow(msg)
+    if (pr && pinCanAct(pr.platform, pr.channel)) {
+      items.push({
+        label: t(
+          pinState.pins.get(pr.room)?.message_id === msg.dataset.msgId ? 'mc_pin_menu_unpin' : 'mc_pin_menu_pin',
+        ),
+        fn: () => pinToggleRow(msg),
+      })
+    }
   }
-  // Op this message to the heatsync feed — posting emerges from chat, where the
-  // moment actually happens, quoting the author with @attribution.
-  if (msg) {
-    items.push({ label: 'op to feed', fn: () => _quickOpToFeed(username, msg) })
+  // Subsystem-owned rows are omitted when their switch is off — a disabled
+  // feature must not keep a menu entry that turns it straight back on. That is
+  // how `profile-cards: false` still opened a profile card and `whispers:
+  // false` still opened a whisper composer. `dm` and `mention` are named by no
+  // switch, so they always show.
+  if (gateAtBoot('whispers') !== false) {
+    items.push({ label: t('mc_input_whisper'), fn: () => _openWhisperFor(username, platform) })
   }
   items.push(
-    { label: 'whisper', fn: () => _openWhisperFor(username, platform) },
-    { label: 'dm', fn: () => _openDmFor(username, platform) },
-    { label: 'mention', fn: () => _mentionInMcInput(username) },
-    { label: 'view profile', fn: () => openProfileCard(username, platform) },
-    {
-      label: typeof hsNoteHas === 'function' && hsNoteHas(username, platform) ? 'edit note' : 'add note',
-      fn: () => hsNoteOpenEditor(username, platform, x, y),
-    },
+    { label: t('mc_input_dm'), fn: () => _openDmFor(username, platform) },
+    { label: t('content_card_mention'), fn: () => _mentionInMcInput(username) },
   )
+  if (gateAtBoot('profile-cards') !== false) {
+    items.push({ label: t('content_card_view_profile'), fn: () => openProfileCard(username, platform) })
+  }
+  items.push({
+    label:
+      typeof hsNoteHas === 'function' && hsNoteHas(username, platform)
+        ? t('mc_input_edit_note')
+        : t('mc_input_add_note'),
+    fn: () => hsNoteOpenEditor(username, platform, x, y),
+  })
+  // Feed post: upvote (not your own) + bookmark, same rows as the site's menu.
+  // Placed after the core rows — the numbered menu caps at 9 keys, and the
+  // optional rows below must not push reply/profile/note off their numbers.
+  if (feedMsg?.base36_id && hsAuthToken) {
+    if (!isOwnFeedPost(feedMsg)) {
+      const up = feedMsg.user_vote === 1
+      items.push({ label: t(up ? 'mc_feed_upvote_remove' : 'mc_feed_upvote'), fn: () => feedUpvote(feedMsg) })
+    }
+    const bm = feedBookmarks.get(feedMsg.base36_id) === true
+    items.push({
+      label: t(bm ? 'mc_feed_bookmark_remove' : 'mc_feed_bookmark'),
+      fn: () => feedBookmarkToggle(feedMsg.base36_id),
+    })
+  }
+  // Hide / show this chatter's heatsync name paint — only for a row whose name
+  // actually has one (a hidden paint stays in the cache, so "show" survives).
+  const paintUid = typeof hsPaintUidOfMsg === 'function' ? hsPaintUidOfMsg(msg?._hsMsg) : null
+  if (paintUid) {
+    const hidden = isHsPaintHiddenForUser(paintUid)
+    items.push({
+      label: t(hidden ? 'mc_paint_show' : 'mc_paint_hide', [username]),
+      fn: () => toggleHsPaintHidden(paintUid),
+    })
+  }
   // Twitch-native actions we don't reimplement (report, gift sub) — the
   // official viewer-card popout carries both. Twitch rows with a known
   // channel only; window.open keeps twitch's own auth/session context.
@@ -2557,7 +2758,7 @@ function openUserCtxMenu(x, y, username, platform, ctx = {}) {
     const vcChannel = msg?.dataset?.msgChannel || (typeof getLiveChannel === 'function' ? getLiveChannel() : null)
     if (vcChannel) {
       items.push({
-        label: 'report / gift sub',
+        label: t('mc_input_report_gift_sub'),
         fn: () => {
           const u = encodeURIComponent(String(username).toLowerCase())
           const c = encodeURIComponent(String(vcChannel).toLowerCase())
@@ -2572,7 +2773,7 @@ function openUserCtxMenu(x, y, username, platform, ctx = {}) {
   // Only on a live/channel tab (where local filtering applies) and a real row.
   if (msg && typeof isLiveSearchTab === 'function' && isLiveSearchTab(currentTab)) {
     items.push({
-      label: `filter to ${username}`,
+      label: t('mc_input_filter_to', [username]),
       fn: () => {
         const input = document.getElementById('hs-mc-search-input')
         if (!input) return
@@ -2582,20 +2783,16 @@ function openUserCtxMenu(x, y, username, platform, ctx = {}) {
       },
     })
   }
-  // Chat-log viewer — twitch + kick (yt has no relay). One entry: opens
+  // Chat-log viewer — twitch + kick + youtube. One entry: opens
   // channel-scoped when we know the channel (the viewer has its own #channel↔all
   // scope toggle), else all-channels. Was two entries doing what one + the
   // in-view toggle already covers.
-  const logPlatform = platform || 'twitch'
-  if (logPlatform === 'twitch' || logPlatform === 'kick') {
+  const logPlatform = platform === 'yt' ? 'youtube' : platform || 'twitch'
+  if (logPlatform === 'twitch' || logPlatform === 'kick' || logPlatform === 'youtube') {
     const msgChannel = msg?.dataset?.msgChannel || (typeof getLiveChannel === 'function' ? getLiveChannel() : null)
     items.push({
-      label: 'chat logs',
-      fn: () =>
-        openChatLogsView(
-          username,
-          msgChannel ? { platform: logPlatform, channel: msgChannel } : { platform: logPlatform },
-        ),
+      label: t('mc_input_chat_logs'),
+      fn: () => mcOpenChannelCell('logs', msgChannel, { username, platform: logPlatform }),
     })
   }
   if (feedMsg && typeof isOwnFeedPost === 'function' && isOwnFeedPost(feedMsg)) {
@@ -2607,23 +2804,23 @@ function openUserCtxMenu(x, y, username, platform, ctx = {}) {
       const mins = Math.floor(remaining / 60000),
         secs = Math.floor((remaining % 60000) / 1000)
       items.push({
-        label: `edit (${mins}:${String(secs).padStart(2, '0')})`,
+        label: t('mc_input_edit_timer', [`${mins}:${String(secs).padStart(2, '0')}`]),
         fn: () => {
           if (feedDiv && typeof showFeedEditUI === 'function') showFeedEditUI(feedDiv, feedMsg)
         },
       })
     } else {
-      items.push({ label: 'edit (expired)', disabled: true })
+      items.push({ label: t('mc_input_edit_expired'), disabled: true })
     }
     items.push({
-      label: 'delete',
+      label: t('mc_input_delete'),
       danger: true,
       fn: () => {
         if (typeof deleteFeedPost === 'function') deleteFeedPost(feedMsg)
       },
     })
   }
-  showHsCtxMenu(x, y, username, items)
+  showHsCtxMenu(x, y, username, items, { keyboard })
   // Async warm-up: cache miss or stale → fetch fresh and patch the menu's
   // follow/block labels in place. Survives the typical case where the user's
   // first interaction with a sender is a right-click (no hover-warmed cache).
@@ -2641,10 +2838,10 @@ function openUserCtxMenu(x, y, username, platform, ctx = {}) {
             ? isUserBlocked(username, platform)
             : blockedUsers.has(String(username).toLowerCase()))
         const followEl = menu.querySelector('[data-hs-key="follow"] .hs-mc-em-label')
-        if (followEl) followEl.textContent = yf ? 'unfollow' : 'follow'
+        if (followEl) followEl.textContent = yf ? t('content_card_unfollow') : t('content_card_follow')
         const blockEl = menu.querySelector('[data-hs-key="block"] .hs-mc-em-label')
         if (blockEl) {
-          blockEl.textContent = yb ? 'unblock' : 'block'
+          blockEl.textContent = yb ? t('mc_input_unblock') : t('content_card_block')
           blockEl.parentElement.classList.toggle('hs-mc-em-danger', !yb)
         }
       })
@@ -2931,7 +3128,6 @@ function _extractMcMsgText(msg) {
       cls?.contains('hs-mc-badge') ||
       cls?.contains('hs-mc-time') ||
       cls?.contains('hs-mc-reply-ctx') ||
-      cls?.contains('hs-mc-reply-btn') ||
       cls?.contains('hs-mod-toolbar') ||
       cls?.contains('hs-mc-stack-collapse') ||
       cls?.contains('hs-mc-stack-block-all')
@@ -3012,7 +3208,10 @@ async function _quickOpToFeed(username, msg) {
   }
   const content = truncateSafe(`@${username}: ${raw}`, 500)
   try {
-    const resp = await apiFetch('/api/messages', { method: 'POST', auth: true, body: { content } })
+    const body = { content }
+    const emoteRefs = buildFeedEmoteRefs(content)
+    if (emoteRefs) body.emote_refs = emoteRefs
+    const resp = await apiFetch('/api/messages', { method: 'POST', auth: true, body })
     showToast(resp?.ok ? t('mc_input_posted_to_feed') : t('mc_input_post_failed'), resp?.ok ? 'success' : 'error')
   } catch {
     showToast(t('mc_input_post_failed'), 'error')
@@ -3099,114 +3298,6 @@ function _mentionInMcInput(username) {
   }
 }
 
-// Generic numbered/keyboard context menu. `items` is an array of either the
-// string 'sep' or { label, fn, danger, good, disabled }. Actionable items are
-// numbered 1..9 top-down for keyboard select. Used by every right-click surface.
-function showHsCtxMenu(x, y, header, items) {
-  document.getElementById('hs-mc-msg-ctx')?.remove()
-  const menu = document.createElement('div')
-  menu.id = 'hs-mc-msg-ctx'
-  menu.className = 'hs-mc-ctx'
-  menu.tabIndex = -1
-  menu.addEventListener('contextmenu', (e) => e.preventDefault())
-
-  const kbdHandlers = {}
-  const kbdItems = [] // {el, fn} in DOM order; numbered 1..9 from the top
-  if (header) {
-    const h = document.createElement('div')
-    h.className = 'hs-mc-em-header'
-    h.textContent = header
-    menu.appendChild(h)
-  }
-  for (const spec of items) {
-    if (spec === 'sep') {
-      const s = document.createElement('div')
-      s.className = 'hs-mc-em-sep'
-      menu.appendChild(s)
-      continue
-    }
-    const it = document.createElement('div')
-    it.className =
-      'hs-mc-em-item' +
-      (spec.danger ? ' hs-mc-em-danger' : '') +
-      (spec.good ? ' hs-mc-em-good' : '') +
-      (spec.disabled ? ' hs-mc-em-disabled' : '')
-    if (spec.key) it.dataset.hsKey = spec.key
-    const lab = document.createElement('span')
-    lab.className = 'hs-mc-em-label'
-    lab.textContent = spec.label
-    it.appendChild(lab)
-    if (!spec.disabled && spec.fn) {
-      kbdItems.push({ el: it, fn: spec.fn })
-      it.addEventListener('click', () => {
-        dismiss()
-        try {
-          spec.fn()
-        } catch {}
-      })
-    }
-    menu.appendChild(it)
-  }
-  // Number top-down (key 1 is the first item, ascending downward).
-  for (let i = 0; i < kbdItems.length && i < 9; i++) {
-    const { el, fn } = kbdItems[i]
-    const n = i + 1
-    const k = document.createElement('span')
-    k.className = 'hs-mc-em-kbd'
-    k.textContent = String(n)
-    el.appendChild(k)
-    kbdHandlers[String(n)] = fn
-  }
-
-  document.body.appendChild(menu)
-  menu.style.visibility = 'hidden'
-  menu.style.left = '0px'
-  menu.style.top = '0px'
-  const mw = menu.offsetWidth,
-    mh = menu.offsetHeight
-  const vw = window.innerWidth,
-    vh = window.innerHeight
-  const flipX = x + mw + 8 > vw
-  const flipY = y + mh + 8 > vh
-  menu.style.left = `${flipX ? Math.max(4, x - mw) : Math.min(x, vw - mw - 4)}px`
-  menu.style.top = `${flipY ? Math.max(4, y - mh) : Math.min(y, vh - mh - 4)}px`
-  if (flipX) menu.classList.add('hs-mc-em-flip-x')
-  if (flipY) menu.classList.add('hs-mc-em-flip-y')
-  menu.style.visibility = ''
-  try {
-    menu.focus({ preventScroll: true })
-  } catch {}
-
-  function dismiss() {
-    menu.remove()
-    document.removeEventListener('mousedown', outside, true)
-    document.removeEventListener('keydown', keyHandler, true)
-    document.removeEventListener('contextmenu', outside, true)
-  }
-  function outside(ev) {
-    if (!menu.contains(ev.target)) dismiss()
-  }
-  function keyHandler(ev) {
-    if (ev.key === 'Escape') {
-      ev.preventDefault()
-      dismiss()
-      return
-    }
-    const fn = kbdHandlers[ev.key]
-    if (fn) {
-      ev.preventDefault()
-      dismiss()
-      try {
-        fn()
-      } catch {}
-    }
-  }
-  setTimeout(() => {
-    document.addEventListener('mousedown', outside, true)
-    document.addEventListener('keydown', keyHandler, true)
-    document.addEventListener('contextmenu', outside, true)
-  }, 0)
-}
 function applyMcMutes() {
   // No muted users → nothing to strip. Skip the full-DOM scan entirely (this runs
   // on every renderMessages — up to 500 rows × a nested querySelector each — and is
@@ -3261,12 +3352,64 @@ function stripMcMutedMessage(msg) {
   })
 }
 
+// logged-out first run: say so up front instead of "send to #x" (input stays enabled)
+// kick: null until background answers (never blocks render); youtube sends via
+// the live_chat bridge with no heatsync login, so its host can always send
+let _kickHostSession = null
+function _refreshKickHostSession() {
+  // the kick session also names you (mentions, self rows) on a twitch/youtube
+  // host — but only worth the lookup when kick is actually in play
+  if (hostPlatform !== 'kick' && !config?.channels?.some((c) => c.kick)) return
+  safeSendMessage({ type: 'kick_session_status' }).then((resp) => {
+    setSelfKickName(resp?.loggedIn ? resp.username : '')
+    const next = resp ? !!resp.loggedIn : null
+    if (next === _kickHostSession) return
+    _kickHostSession = next
+    updateInputPlaceholder()
+  })
+}
+
+function _composerNeedsLogin() {
+  const hostSession =
+    hostPlatform === 'twitch'
+      ? !!getTwitchAuthToken()
+      : hostPlatform === 'kick'
+        ? _kickHostSession
+        : hostPlatform === 'yt'
+          ? true
+          : null
+  return composerNeedsLogin({ hsAuth: hsAuthToken, hostSession })
+}
+
+// "[TKY] " before the input on a merged channel tab: which platforms a send
+// reaches. Letters come from sendTagPlatforms (resolveSendTargets underneath,
+// same as sendMessage). Channel tabs only; nothing elsewhere. DOM setters only.
+function updateSendTag() {
+  const tag = document.getElementById('hs-mc-send-tag')
+  if (!tag) return
+  const ch = quoteState ? null : config.channels.find((c) => c.id === currentTab)
+  const plats = ch
+    ? sendTagPlatforms(ch.sendTargets, { twitch: !!ch.twitch, kick: !!ch.kick, youtube: !!ch.youtube })
+    : []
+  tag.textContent = ''
+  tag.hidden = !plats.length
+  if (!plats.length) return
+  const span = (text, cls) => Object.assign(document.createElement('span'), { textContent: text, className: cls || '' })
+  tag.append('[', ...plats.map((p) => span(p[0].toUpperCase(), `hs-mc-tag-${p}`)), ']')
+  tag.title = t('mc_input_send_tag_title', [plats.join(' + ')])
+}
+
 function updateInputPlaceholder() {
+  updateSendTag()
   const input = document.getElementById('hs-mc-input')
   if (!input) return
 
   let placeholder
-  if (currentTab === 'feed') {
+  if (quoteState) {
+    // Overrides every tab's placeholder — quote mode always posts to the
+    // feed regardless of which chat tab the row was quoted from.
+    placeholder = t('mc_msg_quote_placeholder')
+  } else if (currentTab === 'feed') {
     placeholder = t('mc_input_post_heatsync')
   } else if (currentTab === 'live') {
     let channel = getLiveChannel()
@@ -3279,6 +3422,7 @@ function updateInputPlaceholder() {
         isYtVideoPage: /\/watch|\/live\/|\/live_chat/.test(location.pathname + location.search),
         autoVideoId: typeof _autoYtVideoId !== 'undefined' ? _autoYtVideoId : null,
         resolvedName: (typeof youtubeLinks !== 'undefined' && youtubeLinks.get('__live_yt_auto__')?.channelName) || '',
+        pageName: document.querySelector('ytd-watch-metadata ytd-channel-name a')?.textContent?.trim() || '',
       })
     }
     // No resolvable channel (e.g. /directory, /settings — the panel still streams
@@ -3286,6 +3430,7 @@ function updateInputPlaceholder() {
     // message..." promises a send that can't happen: Enter just flashes red. Name
     // the actual state instead.
     placeholder = channel ? t('mc_input_send_channel', [channel]) : t('mc_input_no_channel')
+    if (channel && _composerNeedsLogin()) placeholder = t('mc_social_login_first')
   } else if (currentTab === 'mentions') {
     // Mentions aggregates across channels, so sendMessage refuses every plain
     // send here — promising "send to #channel" was a lie regardless of whether
@@ -3296,7 +3441,7 @@ function updateInputPlaceholder() {
     // whisper retargets lastWhisperKey out from under it
     const targetKey = (typeof armedReplyKey !== 'undefined' && armedReplyKey) || lastWhisperKey
     const lastUser = targetKey ? whisperUsers.get(targetKey) : null
-    placeholder = lastUser ? `/r to reply to ${lastUser.displayName}` : t('mc_whisper_hint')
+    placeholder = lastUser ? t('mc_input_reply_whisper_to', [lastUser.displayName]) : whisperHint()
   } else if (currentTab === 'add') {
     placeholder = ''
   } else {
@@ -3311,7 +3456,15 @@ function updateInputPlaceholder() {
     // fallbacks empty). The no-channel copy is the honest thing to show then —
     // t() no longer leaks the raw key either way, but don't render "send to #".
     placeholder = chanName ? t('mc_input_send_channel', [chanName]) : t('mc_input_no_channel')
+    if (chanName && _composerNeedsLogin()) placeholder = t('mc_social_login_first')
   }
+
+  // shut for you here (banned / timed out / a room rule): say why, in place of the invite to type
+  const lockCh = quoteState ? '' : chatLockTabChannel()
+  const lock = lockCh ? chatLockFor(lockCh) : null
+  if (lock) placeholder = chatLockLabel(lock)
+  input.classList.toggle('hs-mc-lock-out', !!lock && !chatLockIsRule(lock))
+  input.classList.toggle('hs-mc-lock-rule', chatLockIsRule(lock))
 
   if (wysiwygEnabled) {
     input.dataset.placeholder = placeholder
@@ -3332,6 +3485,10 @@ function handleInputKeydown(e) {
   // this symptom hit live, root cause never conclusively pinned down). Never
   // let a completion-popup edge case swallow a real send.
   try {
+    // An IME composing, or committing a candidate with Enter, is not a send: the keydown is flagged
+    // isComposing, or keyCode 229 where the flag is late (the commit's Enter arrives after compositionend).
+    // Sending there posts the half-typed text and leaves the committed one to be sent again.
+    if (e.isComposing || e.keyCode === 229) return
     return handleInputKeydownInner(e, input)
   } catch (err) {
     log('handleInputKeydown error, falling back to plain send:', err?.message || err)
@@ -3430,28 +3587,13 @@ function handleInputKeydownInner(e, input) {
     }
   }
 
-  // Message history navigation (ArrowUp/ArrowDown)
+  // Message history navigation (ArrowUp/ArrowDown) — sent-history.js
   if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && !e.shiftKey && !e.ctrlKey && mcMessageHistory.length > 0) {
-    const currentText = getInputText().trim()
-    if (
-      mcHistoryIndex >= 0 ||
-      (e.key === 'ArrowUp' && currentText.length === 0) ||
-      (e.key === 'ArrowUp' && mcMessageHistory.includes(currentText))
-    ) {
+    const text = hsSentHistoryStep(e.key === 'ArrowUp' ? 1 : -1, getInputText().trim())
+    if (text !== null) {
       e.preventDefault()
-      if (e.key === 'ArrowUp') {
-        if (mcHistoryIndex < 0) mcHistoryDraft = currentText
-        mcHistoryIndex = Math.min(mcHistoryIndex + 1, mcMessageHistory.length - 1)
-      } else {
-        mcHistoryIndex--
-      }
-      const text = mcHistoryIndex < 0 ? mcHistoryDraft : mcMessageHistory[mcHistoryIndex]
-      if (wysiwygEnabled) {
-        restoreWysiwygText(input, text)
-      } else {
-        input.value = text
-      }
-      mcHistoryIndex = Math.max(mcHistoryIndex, -1)
+      if (wysiwygEnabled) restoreWysiwygText(input, text)
+      else input.value = text
       return
     }
   }
@@ -3665,9 +3807,12 @@ function handleInputKeydownInner(e, input) {
     return
   }
 
-  // Escape - cancel reply state and hide autocomplete
+  // Escape - cancel reply/quote state and hide autocomplete
   if (e.key === 'Escape') {
-    if (replyState) {
+    if (quoteState) {
+      clearQuoteState()
+      hideInputBar() // explicit cancel — ok to re-hide an empty composer
+    } else if (replyState) {
       clearReplyState()
       hideInputBar() // explicit cancel — ok to re-hide an empty composer
     } else if (!acWasActive && autoHideEligible() && !getInputText().trim()) {
@@ -3847,7 +3992,7 @@ function imagifyValidWordsInTextNode(textNode) {
     // Blocked emotes must stay plain text here — keep them out of the chip
     // builder so a blocked emote reaching a text node (paste/undo/recall/
     // unwrap) can't render as a live image and defeat the block.
-    if (typeof blockedEmoteNames !== 'undefined' && blockedEmoteNames.has(part)) {
+    if (typeof blockedEmoteNames !== 'undefined' && emoteIsBlocked(part, lookupEmoteRenderOrder(part))) {
       replacements.push(document.createTextNode(part))
       continue
     }
@@ -4170,15 +4315,17 @@ function handleInputChange(_e) {
             // Live-replace modifier path — delegate to shared lib + apply.
             const cls = hsModClassify(word, { allowPrefix: false })
             if (cls.kind === 'modifier') {
+              const wordStart = cursor - match[0].length
               let prev = node.previousSibling
               while (prev && prev.nodeType === Node.TEXT_NODE && prev.textContent.trim() === '') {
                 prev = prev.previousSibling
               }
-              const targetImg = hsModAnchorEl(prev)
+              // Only whitespace may sit between the anchor chip and the
+              // modifier — "Kappa lol w!" is three words, not a wide Kappa.
+              const targetImg = /^[\s\u00a0]*$/.test(text.slice(0, wordStart)) ? hsModAnchorEl(prev) : null
               if (targetImg) {
                 {
                   hsModApplyToImg(targetImg, cls.mods, cls.hue, cls.words)
-                  const wordStart = cursor - match[0].length
                   node.textContent = text.slice(0, wordStart) + (text.slice(cursor) || ' ')
                   const nr = document.createRange()
                   nr.setStart(node, wordStart)
@@ -4231,7 +4378,7 @@ function handleInputChange(_e) {
             // that collides with a blocked owned emote name (e.g. "emote")
             // must stay plain text, not convert to the blocked-placeholder
             // chip (1×1 gif + dashed rect that reads as a broken emote).
-            if (resolved && blockedEmoteNames.has(word)) resolved = null
+            if (resolved && emoteIsBlocked(word, resolved.emote)) resolved = null
             if (resolved) {
               const wordStart = cursor - match[0].length
               if (deflectAdjacentChip(node, wordStart)) return
@@ -4259,7 +4406,7 @@ function handleInputChange(_e) {
                     stackInputEmote(prev, img)
                     node.textContent = afterText || ' '
                     const newRange = document.createRange()
-                    newRange.setStart(node, 0)
+                    newRange.setStart(node, afterText ? 0 : node.textContent.length)
                     newRange.collapse(true)
                     sel.removeAllRanges()
                     sel.addRange(newRange)
@@ -4284,7 +4431,7 @@ function handleInputChange(_e) {
                     stackInputEmote(emojiSpan, img)
                     node.textContent = afterText || ' '
                     const newRange = document.createRange()
-                    newRange.setStart(node, 0)
+                    newRange.setStart(node, afterText ? 0 : node.textContent.length)
                     newRange.collapse(true)
                     sel.removeAllRanges()
                     sel.addRange(newRange)
@@ -4301,7 +4448,9 @@ function handleInputChange(_e) {
                 parent.insertBefore(afterNode, node)
                 parent.removeChild(node)
                 const newRange = document.createRange()
-                newRange.setStart(afterNode, 0)
+                // Caret goes AFTER the space we synthesized (Tab parity) — at 0
+                // the next typed word sat flush against the emote.
+                newRange.setStart(afterNode, afterText ? 0 : afterNode.length)
                 newRange.collapse(true)
                 sel.removeAllRanges()
                 sel.addRange(newRange)
@@ -4316,7 +4465,7 @@ function handleInputChange(_e) {
                   if (!cm) break
                   const cName = cm[1]
                   const cResolved = lookupEmoteWithOverlay(cName, { ownedOnly: true })
-                  if (!cResolved || cResolved.isOverlay || blockedEmoteNames.has(cName)) break
+                  if (!cResolved || cResolved.isOverlay || emoteIsBlocked(cName, cResolved.emote)) break
                   const cImg = createInputEmoteImg(cName)
                   if (!cImg) break
                   parent.insertBefore(document.createTextNode('\u00A0'), afterNode)
@@ -4514,13 +4663,44 @@ function tryOverlayOnZero(_input) {
   return true
 }
 
+// Platforms the next send reaches from the current tab — the same picks sendMessage makes.
+function composerLegs() {
+  let ch = null
+  if (currentTab === 'live') {
+    const lower = String(getLiveChannel() || '').toLowerCase()
+    ch = config.channels.find((c) => c.twitch?.toLowerCase() === lower || c.kick?.toLowerCase() === lower) || null
+    if (!ch) return { twitch: hostPlatform === 'twitch', kick: hostPlatform === 'kick', youtube: hostPlatform === 'yt' }
+  } else {
+    ch = config.channels.find((c) => c.id === currentTab)
+  }
+  if (!ch) return null
+  const st = resolveSendTargets(ch.sendTargets, { twitch: !!ch.twitch, kick: !!ch.kick, youtube: !!ch.youtube })
+  return { twitch: !!ch.twitch && st.twitch, kick: !!ch.kick && st.kick, youtube: !!ch.youtube && st.youtube }
+}
+
 function updateCharCount(precomputedText) {
   const input = document.getElementById('hs-mc-input')
   if (!input) return
   const text = typeof precomputedText === 'string' ? precomputedText : getInputText()
   const len = text.length
-  const over = len > 500
+  const limit = composerCharLimit(composerLegs())
+  const over = len > limit
   input.classList.toggle('over-limit', over)
+  const label = charCountLabel(text.trim().length, limit)
+  let counter = document.getElementById('hs-mc-charcount')
+  if (label) {
+    if (!counter) {
+      counter = document.createElement('span')
+      counter.id = 'hs-mc-charcount'
+      const host = document.getElementById('hs-mc-input-wrap') || input
+      host.insertAdjacentElement('afterend', counter)
+    }
+    counter.textContent = label.text
+    counter.dataset.level = label.level
+    counter.hidden = false
+  } else if (counter) {
+    counter.hidden = true
+  }
 
   // Highlight overflow chars for plain <input> using overlay div
   if (input.tagName === 'INPUT') {
@@ -4544,7 +4724,7 @@ function updateCharCount(precomputedText) {
         hl.textContent = ''
         const safeSpan = document.createElement('span')
         safeSpan.className = 'hl-safe'
-        const safeText = truncateSafe(text, 500)
+        const safeText = truncateSafe(text, limit)
         safeSpan.textContent = safeText
         const overSpan = document.createElement('span')
         overSpan.className = 'hl-over'
@@ -4810,30 +4990,35 @@ function scanAndApplyModifiersInInput(input) {
         pos = end
       }
     }
-    const remaining = []
+    // Indices to delete. Consuming a token used to be followed by collapsing
+    // EVERY whitespace run in the node, which silently rewrote spacing the user
+    // typed further along the line ("w!  two   spaces" → " two spaces"). Remove
+    // the token and ONE separator beside it; leave the rest byte-for-byte.
+    const drop = new Set()
     let consumedHere = false
     for (let i = 0; i < tokens.length; i++) {
       const tok = tokens[i]
-      if (!tok || /^\s*$/.test(tok)) {
-        remaining.push(tok)
-        continue
-      }
+      if (!tok || /^\s*$/.test(tok)) continue
       const cls = hsModClassify(tok, { allowPrefix: i === caretTokIdx })
       if (cls.kind !== 'modifier') {
-        remaining.push(tok)
+        // Real text between the emote and the token breaks the anchor — a
+        // modifier attaches to the IMMEDIATELY preceding emote.
+        prevEmote = null
         continue
       }
       const targetImg = hsModAnchorEl(prevEmote)
-      if (!targetImg) {
-        remaining.push(tok)
-        continue
-      }
+      if (!targetImg) continue
       hsModApplyToImg(targetImg, cls.mods, cls.hue, cls.words)
+      drop.add(i)
+      // Take the separator in FRONT of the token, so the gap the user typed
+      // after it reaches the next word intact.
+      if (i > 0 && /^\s+$/.test(tokens[i - 1]) && !drop.has(i - 1)) drop.add(i - 1)
+      else if (/^\s+$/.test(tokens[i + 1] || '')) drop.add(i + 1)
       appliedAny = true
       consumedHere = true
     }
     if (consumedHere) {
-      child.textContent = remaining.join('').replace(/\s+/g, ' ') || ' '
+      child.textContent = tokens.filter((_, i) => !drop.has(i)).join('') || ' '
     }
   }
   if (appliedAny && typeof pendingMessage !== 'undefined') pendingMessage = getInputText()
@@ -4860,7 +5045,7 @@ function scanAndApplyModifiersInInput(input) {
 //   4. recency for @user matches            (who just talked beats name length)
 //   5. shorter prefix-match > longer        (Kap → Kappa before KappaPride),
 //      then alpha
-function compareAcMatches(a, b, searchLower, frecency) {
+function compareAcMatches(a, b, searchLower, frecency, typed) {
   const an = a.name || '',
     bn = b.name || ''
   // Exact-name match wins over EVERYTHING — even above the local/remote split.
@@ -4873,6 +5058,13 @@ function compareAcMatches(a, b, searchLower, frecency) {
   const ae = an.toLowerCase() === searchLower ? 0 : 1
   const be = bn.toLowerCase() === searchLower ? 0 : 1
   if (ae !== be) return ae - be
+  // Two emotes that are both the typed word in different casing (kek / KEK):
+  // the channel's own is what everyone in this chat reads as that word, so it
+  // leads — a habit or a global lookalike of the same name must not outrank it.
+  // Case twins (KEKW / kekw) are two emotes and both stay candidates; the one spelled like
+  // the typed word leads (rule 5). Prefix matching stays case-insensitive.
+  if (ae === 0 && typed && (an === typed) !== (bn === typed)) return an === typed ? -1 : 1
+  if (ae === 0 && (a.tier === 0) !== (b.tier === 0)) return a.tier === 0 ? -1 : 1
   const al = a.remote ? 1 : 0,
     bl = b.remote ? 1 : 0
   if (al !== bl) return al - bl
@@ -4925,8 +5117,9 @@ function _isBlockedAnyPlat(name) {
 }
 
 // Merged autocomplete emote source: channel pools (tier 0) over the viewer's
-// set (tier 1) over globals (tier 2) — channel written LAST so a name owned AND
-// defined by the channel resolves to the channel image. findEmoteMatches runs
+// set (tier 1) over globals (tier 2) — channel written LAST so a name the channel
+// defines resolves to the channel image, except one you own under a different
+// picture (see keepOwn below: Tab shows what the sent line draws). findEmoteMatches runs
 // on EVERY debounced keystroke-word, and rebuilding this merge — allocating
 // two Maps across thousands of emotes each call — was the dominant typing-lag
 // cost on emote-heavy channels. Memoize it, keyed by a cheap signature: active
@@ -4962,15 +5155,32 @@ function _getMergedAcEmotes() {
   }
   // Off: names that exist ONLY in your inventory stop being offered. Names the
   // channel or a global pool also defines still complete — those are real words
-  // in this chat regardless of what you collected.
-  if (acInventory)
-    for (const [k, v] of viewerPersonalEmotes) {
-      acEmotes.set(k, v)
-      tierByName.set(k, 1)
-      lowerByName.set(k, k.toLowerCase())
-    }
+  // in this chat regardless of what you collected. Your twitch sub emotes share
+  // viewerPersonalEmotes but are not inventory: twitch lets you type them in any
+  // chat, so they complete with the toggle off too (as in the app).
+  for (const [k, v] of viewerPersonalEmotes) {
+    if (!acInventory && !v.subscription) continue
+    acEmotes.set(k, v)
+    tierByName.set(k, 1)
+    lowerByName.set(k, k.toLowerCase())
+  }
+  // A name you own that the channel also defines: the one the SENT LINE draws
+  // is what Tab must show. A line draws the sender's own set before the
+  // channel's (emotes.js _lookup, the ref the server vouches is that same set),
+  // so yours stays under the name and the channel's different picture does not
+  // overwrite it — it used to, and the box showed the room's YESIDOTHINKSO while
+  // the sent row drew the one in your set. The channel's copy stays reachable
+  // through the catalog (fetchRemoteEmoteMatches' twin check keeps a different
+  // picture under the same name), and sending that swaps yours out.
+  // Same picture under both: the channel entry wins as before (the tier only
+  // labels it). Inventory renders off: rows draw the channel's, so Tab does too.
+  const keepOwn = acInventory && getSetting('renderInventoryEmotes') !== false && typeof _acPicKey === 'function'
   for (const acChCache of acPools)
     for (const [k, v] of acChCache) {
+      if (keepOwn && tierByName.get(k) === 1) {
+        const own = acEmotes.get(k)
+        if (own?.url && v?.url && _acPicKey(own.url) !== _acPicKey(v.url)) continue
+      }
       acEmotes.set(k, v)
       tierByName.set(k, 0)
       lowerByName.set(k, k.toLowerCase())
@@ -4989,12 +5199,12 @@ function _getMergedAcEmotes() {
 // is unfiltered (see emotes.js _buildChannelEmoteCache).
 function _hsAcEmoteBlocked(name, emote) {
   if (!name) return false
+  if (typeof hsEmoteHiddenForViewer === 'function' && hsEmoteHiddenForViewer(emote)) return true
   if (typeof hsChannelNsfwHidden === 'function' && hsChannelNsfwHidden(emote)) return true
   if (typeof blockedEmoteNames === 'undefined') return false
-  if (blockedEmoteNames.has(name)) return true
-  if (typeof unescapeHtml === 'function' && blockedEmoteNames.has(unescapeHtml(name))) return true
-  if (typeof blockedEmoteHashes !== 'undefined' && emote?.hash && blockedEmoteHashes.has(String(emote.hash)))
-    return true
+  // this exact emote (rule 9) — a blocked 7tv W does not drop the bttv W from the cycle
+  if (emoteIsBlocked(name, emote)) return true
+  if (typeof unescapeHtml === 'function' && emoteIsBlocked(unescapeHtml(name), emote)) return true
   return false
 }
 
@@ -5054,10 +5264,9 @@ function findEmoteMatches(search) {
   // (heatsync inventory + native sub emotes), 2 = globals. Tier rides on each
   // pushed match so the sort can rank "channel > own > global" without
   // re-walking the source maps.
-  // Channel emotes are written into the merge map LAST so a name you own AND that
-  // the channel also defines (e.g. nl_kripp's BTTV "SoupTime") resolves to the
-  // CHANNEL image — that's what actually renders in this channel. Channel-first is
-  // the user-chosen order (reverses the older own-first call).
+  // Channel emotes are written into the merge map LAST so a name the channel
+  // defines resolves to the CHANNEL image — unless you own a different picture
+  // under that name, which is what your sent line draws (_getMergedAcEmotes).
   if (!isUserSearch) {
     const { acEmotes, tierByName, lowerByName } = _getMergedAcEmotes()
     for (const [name, emote] of acEmotes) {
@@ -5214,7 +5423,7 @@ function findEmoteMatches(search) {
   }
 
   const _frec = typeof loadEmoteFrecency === 'function' ? loadEmoteFrecency() : new Map()
-  matches.sort((a, b) => compareAcMatches(a, b, searchLower, _frec))
+  matches.sort((a, b) => compareAcMatches(a, b, searchLower, _frec, search))
 
   // Recent chatters (prefix, most-recent-first) lead the cycle, above all
   // emotes — see comment at recentChatters above.
@@ -5371,7 +5580,7 @@ function hsPrefetchUserColors(usernames) {
         if (_hsUserColorCache.size > 5000) _hsUserColorCache.delete(_hsUserColorCache.keys().next().value)
         if (c) {
           try {
-            setKnownColor(u, c)
+            setKnownColor(u, c, undefined, 'twitch')
           } catch {}
         }
       }
@@ -5384,8 +5593,8 @@ function hsPrefetchUserColors(usernames) {
   })
 }
 // Resolve a username's chat color, caching the result. Resolution order:
-//   1. heatsync custom color (set on heatsync.org)
-//   2. twitch chat color via unauthed GQL (no scope needed)
+//   1. twitch chat color via unauthed GQL, when the profile links a twitch account
+//   2. heatsync custom color (set on heatsync.org)
 //   3. twitch's 15 auto-assigned colors (deterministic hash of username)
 // So every user resolves to SOME color — never flat white — matching twitch.
 // Deduped via _hsUserColorInflight; persisted via _hsUserColorCache. Shared by
@@ -5411,10 +5620,12 @@ function hsResolveUserColor(lower) {
         const uid = profile?.twitch_user_id || profile?.twitch_id || null
         _hsUserIdCache.set(lower, uid ? String(uid) : null)
         if (_hsUserIdCache.size > 5000) _hsUserIdCache.delete(_hsUserIdCache.keys().next().value)
-        // 1. heatsync custom color (set on heatsync.org)
-        let c = profile?.color || profile?.user_color || profile?.userColor || null
-        // 2. fallback: fetch Twitch chat color via unauthed GQL (no scope needed)
-        if (!c && profile?.twitch_username) {
+        // 1. twitch's own chat color via unauthed GQL (no scope needed) — a
+        //    linked twitch account keeps its twitch color; the heatsync pick
+        //    must not repaint it a beat after the prefetch painted it.
+        let c = null
+        let native = false
+        if (profile?.twitch_username) {
           try {
             const gqlResp = await fetch('https://gql.twitch.tv/gql', {
               method: 'POST',
@@ -5431,9 +5642,12 @@ function hsResolveUserColor(lower) {
             if (gqlResp.ok) {
               const j = await gqlResp.json()
               c = j?.data?.user?.chatColor || null
+              native = !!c
             }
           } catch {}
         }
+        // 2. heatsync custom color (set on heatsync.org)
+        if (!c) c = profile?.color || profile?.user_color || profile?.userColor || null
         // 3. fallback: Twitch's 15 auto-assigned colors (hash of username)
         if (!c) {
           const palette = [
@@ -5460,9 +5674,10 @@ function hsResolveUserColor(lower) {
         _hsUserColorCache.set(lower, c || null)
         if (_hsUserColorCache.size > 5000) _hsUserColorCache.delete(_hsUserColorCache.keys().next().value)
         _hsPersistUserColorCache()
+        // setKnownColor refuses to overwrite a real twitch color with a pick/hash.
         if (c) {
           try {
-            setKnownColor(lower, c)
+            setKnownColor(lower, c, undefined, 'twitch', native)
           } catch {}
         }
         return c
@@ -5523,7 +5738,7 @@ function insertCompletionWysiwyg(match) {
       typeof blockedEmoteNames !== 'undefined' &&
       // synth trailing-0 overlays carry "name0" but the block set holds the
       // base name — check the stripped base too
-      (blockedEmoteNames.has(match.name) || (match._synthOverlay && blockedEmoteNames.has(match.name.slice(0, -1)))) &&
+      (emoteIsBlocked(match.name, match) || (match._synthOverlay && blockedEmoteNames.has(match.name.slice(0, -1)))) &&
       typeof markInputEmoteBlocked === 'function'
     ) {
       markInputEmoteBlocked(img, true)
@@ -5596,9 +5811,15 @@ function insertCompletionWysiwyg(match) {
           stackInputEmote(prev, existingEmote)
         }
       }
+      // hsSnapEmoteBox pinned the PREVIOUS emote's width on this chip as an
+      // inline px value (wide lift0 → 96px). Swapping src alone kept that box,
+      // so every narrower emote Tab landed on sat in the wide one's blank space.
+      // Drop the pin and let the new image snap its own once it loads.
+      existingEmote.style.removeProperty('width')
       existingEmote.src = match.url
       existingEmote.alt = match.name
       existingEmote.dataset.emoteName = match.name
+      if (typeof hsAttachInputEmoteSnap === 'function') hsAttachInputEmoteSnap(existingEmote)
       _applyInputBlock(existingEmote)
     } else if (match.type === 'emoji') {
       // Replace emote img with emoji span
@@ -5921,31 +6142,40 @@ function placeCaretAfter(node, offset = 0) {
 }
 
 // Cycle-depth + visibility readout for the current Tab match. "cat" tells you
-// WHERE in the cycle you are (channel → your set → global → 7tv search, getting
+// WHERE in the cycle you are (channel → your set → global → catalog search, getting
 // rarer as you go); "vis" tells you WHO actually sees the image if you send it:
 //   everyone   — text/unicode or native Twitch emotes, no extension needed
 //   {prov} users — bttv/ffz/7tv emote active in this channel/globally: anyone
 //                  running that provider's extension sees it (heatsync too)
-//   heatsync only — your personal set + 7tv catalog-search hits: only viewers
-//                   running heatsync render these; everyone else sees plain text
+//   heatsync only — your personal set + catalog-search hits (labelled "catalog ·
+//                   <provider>"): only viewers running heatsync render these;
+//                   everyone else sees plain text
 // Colors form a breadth gradient: green (all) → yellow (needs an ext) → orange
 // (heatsync only), so you can feel how deep / how niche the current pick is.
 function emoteCycleMeta(m) {
   if (!m) return { cat: '', vis: null }
-  if (m.type === 'user' || m.type === 'user-bare') return { cat: 'chatter', vis: { t: 'everyone', c: 'var(--hs-ok)' } }
-  if (m.type === 'emoji') return { cat: 'emoji', vis: { t: 'everyone', c: 'var(--hs-ok)' } }
-  if (m.remote) return { cat: '7tv search', vis: { t: 'heatsync only', c: 'var(--hs-brand)' } }
+  if (m.type === 'user' || m.type === 'user-bare')
+    return { cat: t('mc_input_chatter'), vis: { t: t('mc_input_everyone'), c: 'var(--hs-ok)' } }
+  if (m.type === 'emoji') return { cat: t('btn_tab_emoji'), vis: { t: t('mc_input_everyone'), c: 'var(--hs-ok)' } }
+  // Name the provider: a catalog IDK sits right after the channel's IDK in the
+  // cycle, and "which one is this" is the whole question.
+  if (m.remote)
+    return {
+      cat: t('mc_cycle_catalog', [m.source || '7tv']),
+      vis: { t: t('mc_input_heatsync_only'), c: 'var(--hs-brand)' },
+    }
   const tier = m.tier ?? 2
-  const cat = tier === 0 ? 'channel' : tier === 1 ? 'your inventory' : 'global'
-  if (m.source === 'twitch') return { cat, vis: { t: 'all twitch', c: 'var(--hs-ok)' } }
+  const cat = tier === 0 ? t('btn_tab_channel') : tier === 1 ? t('mc_input_your_inventory') : t('btn_tab_global')
+  if (m.source === 'twitch') return { cat, vis: { t: t('mc_input_all_twitch'), c: 'var(--hs-ok)' } }
   // Kick-native channel/sub emotes are platform-native too — every Kick viewer
   // sees them, no extension needed.
-  if (m.source === 'kick') return { cat, vis: { t: 'all kick', c: 'var(--hs-ok)' } }
+  if (m.source === 'kick') return { cat, vis: { t: t('mc_input_all_kick'), c: 'var(--hs-ok)' } }
   // Your personal set (tier 1) or a heatsync-hosted emote: others only see it via
   // heatsync's sender-set merge — non-heatsync viewers get plain text.
-  if (tier === 1 || m.source === 'heatsync') return { cat, vis: { t: 'heatsync only', c: 'var(--hs-brand)' } }
+  if (tier === 1 || m.source === 'heatsync')
+    return { cat, vis: { t: t('mc_input_heatsync_only'), c: 'var(--hs-brand)' } }
   // Third-party emote active in the channel/global set — provider-ext users see it.
-  return { cat, vis: { t: `${m.source || 'ext'} users`, c: 'var(--hs-gold)' } }
+  return { cat, vis: { t: t('mc_input_ext_users', [m.source || 'ext']), c: 'var(--hs-gold)' } }
 }
 
 function showCycleTooltip() {
@@ -5953,13 +6183,19 @@ function showCycleTooltip() {
   if (!tt) {
     tt = document.createElement('div')
     tt.id = 'hs-mc-cycle-tooltip'
+    tt.setAttribute('role', 'status') // tab-complete draws no list; this is how its candidate is announced
     tt.style.cssText =
       'position:absolute;bottom:100%;left:8px;background:#000;color:#fff;padding:4px 8px;font-size:13px;border-radius:0;z-index:1003;margin-bottom:4px;white-space:nowrap;'
     document.getElementById('hs-mc-inputbar')?.appendChild(tt)
   }
   const m = acState.matches[acState.index]
   if (!m) {
-    tt.style.display = 'none'
+    // nothing to cycle yet: say so while the catalog search runs / after it comes back empty,
+    // otherwise a slow 7tv looks like a dead Tab
+    if (acState.active && (acState.remotePending || acState.remoteDone)) {
+      tt.textContent = acState.remotePending ? t('mc_input_searching_7tv') : t('mc_ms_no_match')
+      tt.style.display = 'block'
+    } else tt.style.display = 'none'
     return
   }
   const meta = emoteCycleMeta(m)
@@ -5969,13 +6205,13 @@ function showCycleTooltip() {
     if (css) s.style.cssText = css
     return s
   }
-  const dot = () => mkSpan(' · ', 'color:#555;')
+  const dot = () => mkSpan(' · ', 'color:#fff;')
   tt.replaceChildren()
-  tt.appendChild(mkSpan(`${acState.index + 1}/${acState.matches.length}`, 'color:#888;'))
+  tt.appendChild(mkSpan(`${acState.index + 1}/${acState.matches.length}`, 'color:#fff;'))
   tt.appendChild(mkSpan(` ${m.type === 'emoji' ? `${m.emoji} ${m.name}` : m.name}`, 'color:#fff;'))
   if (meta.cat) {
     tt.appendChild(dot())
-    tt.appendChild(mkSpan(meta.cat, 'color:#9e9e9e;'))
+    tt.appendChild(mkSpan(meta.cat, 'color:#fff;'))
   }
   if (meta.vis) {
     tt.appendChild(dot())
@@ -5984,7 +6220,7 @@ function showCycleTooltip() {
   // Surface the live catalog fetch so you know when a 7tv search is firing.
   if (acState.remotePending) {
     tt.appendChild(dot())
-    tt.appendChild(mkSpan('searching 7tv…', 'color:var(--hs-gold);'))
+    tt.appendChild(mkSpan(t('mc_input_searching_7tv'), 'color:var(--hs-gold);'))
   }
   tt.style.display = 'block'
 }
@@ -6098,6 +6334,7 @@ function showEmojiDropdown(matches, selectedIndex) {
     dd.id = 'hs-mc-emoji-dropdown'
     document.getElementById('hs-mc-inputbar')?.appendChild(dd)
   }
+  if (hsListboxReuse(dd, matches, selectedIndex)) return
   dd.textContent = ''
   matches.forEach((entry, i) => {
     const row = document.createElement('div')
@@ -6132,6 +6369,7 @@ function showEmojiDropdown(matches, selectedIndex) {
     dd.appendChild(row)
   })
   dd.style.display = 'block'
+  hsListboxSync(dd, matches, selectedIndex)
 }
 
 function hideEmojiDropdown() {
@@ -6140,7 +6378,7 @@ function hideEmojiDropdown() {
   emojiAcState.index = 0
   emojiAcState.query = ''
   const dd = document.getElementById('hs-mc-emoji-dropdown')
-  if (dd) dd.style.display = 'none'
+  if (dd) hsListboxHide(dd)
 }
 
 // Route the pick through the exact insertion path Tab-cycle uses (chip vs
@@ -6200,6 +6438,7 @@ function showMentionDropdown(matches, selectedIndex) {
     dd.id = 'hs-mc-mention-dropdown'
     document.getElementById('hs-mc-inputbar')?.appendChild(dd)
   }
+  if (hsListboxReuse(dd, matches, selectedIndex)) return
   dd.textContent = ''
   matches.forEach((entry, i) => {
     const row = document.createElement('div')
@@ -6208,13 +6447,13 @@ function showMentionDropdown(matches, selectedIndex) {
 
     const nameSpan = document.createElement('span')
     nameSpan.className = 'hs-mc-emoji-name'
-    nameSpan.textContent = entry.name
-    // Sync-cache color only — zero per-row network fetch in the dropdown;
-    // the async color fetch (if still unknown) happens on actual insert via
-    // the same path bare-mention chips already use.
+    // Cached colour paints now; a cold entry resolves in the background
+    // (deduped, persisted — hsResolveUserColor) and repaints this very row,
+    // with the heatsync/7TV paint once the profile gives the id. The dropdown
+    // holds at most MENTION_DROPDOWN_MAX rows, so a cold one costs a few
+    // lookups once, not per keystroke.
     const lower = entry.name.replace(/^@/, '').toLowerCase()
-    const cached = (typeof knownColors !== 'undefined' && knownColors.get(lower)) || _hsUserColorCache.get(lower)
-    if (cached) nameSpan.style.color = typeof sanitizeColor === 'function' ? sanitizeColor(cached) : cached
+    hsNameApply(nameSpan, { name: entry.name, login: lower, resolve: true })
     row.appendChild(nameSpan)
 
     row.addEventListener('mousedown', (e) => {
@@ -6226,6 +6465,7 @@ function showMentionDropdown(matches, selectedIndex) {
     dd.appendChild(row)
   })
   dd.style.display = 'block'
+  hsListboxSync(dd, matches, selectedIndex)
 }
 
 function hideMentionDropdown() {
@@ -6234,7 +6474,7 @@ function hideMentionDropdown() {
   mentionAcState.index = 0
   mentionAcState.query = ''
   const dd = document.getElementById('hs-mc-mention-dropdown')
-  if (dd) dd.style.display = 'none'
+  if (dd) hsListboxHide(dd)
 }
 
 function insertMentionFromDropdown(match) {
@@ -6283,6 +6523,9 @@ function checkMentionAutocomplete() {
 
 // Reply state management
 function setReplyState(state) {
+  // Mutually exclusive with quote mode — both drive the same composer and a
+  // leftover indicator from the other would lie about what Enter is about to do.
+  if (quoteState) clearQuoteState()
   replyState = state
   showInputBar()
   const bar = document.getElementById('hs-mc-inputbar')
@@ -6293,14 +6536,12 @@ function setReplyState(state) {
   indicator.id = 'hs-mc-reply-indicator'
   const label = document.createElement('span')
   label.textContent = `\u21a9 ${t('mc_input_replying_to', [String(state.user || '').replace(/^@+/, '')])}`
-  const cancel = document.createElement('button')
-  cancel.id = 'hs-mc-reply-cancel'
-  cancel.textContent = '✕'
-  cancel.title = t('mc_input_cancel_reply')
-  cancel.addEventListener('click', () => {
+  const cancel = hsXButton('hs-x-inline', t('mc_input_cancel_reply'), () => {
     clearReplyState()
     hideInputBar() // explicit cancel — ok to re-hide an empty composer
   })
+  cancel.id = 'hs-mc-reply-cancel'
+  cancel.title = t('mc_input_cancel_reply')
   indicator.appendChild(label)
   indicator.appendChild(cancel)
   bar.insertBefore(indicator, bar.firstChild)
@@ -6314,6 +6555,65 @@ function clearReplyState() {
   // the hide nuked composer focus for auto-hide users (focus() can't reach an
   // element inside a hidden bar). The two explicit cancel paths (✕ button,
   // Escape) hide at their call sites instead.
+}
+
+// Quote state management — mirrors setReplyState/clearReplyState above. The
+// input text is never prefilled: one click publishing someone else's words
+// under your name would be a trap, so the user always types their own take
+// (or nothing — the quote alone is a valid thread) into a composer that
+// makes clear what Enter is about to do (hs-mc-quote class + placeholder).
+function setQuoteState(state) {
+  if (replyState) clearReplyState()
+  quoteState = state
+  showInputBar()
+  const bar = document.getElementById('hs-mc-inputbar')
+  if (!bar) return
+  bar.classList.add('hs-mc-quote')
+  document.getElementById('hs-mc-input')?.classList.add('hs-mc-quote')
+  document.getElementById('hs-mc-quote-indicator')?.remove()
+  const indicator = document.createElement('div')
+  indicator.id = 'hs-mc-quote-indicator'
+  const label = document.createElement('span')
+  label.textContent = `» ${String(state.user || '').replace(/^@+/, '')}: ${state.text || ''}`
+  const cancel = hsXButton('hs-x-inline', t('mc_msg_quote_cancel'), () => {
+    clearQuoteState()
+    hideInputBar() // explicit cancel — ok to re-hide an empty composer
+  })
+  cancel.id = 'hs-mc-quote-cancel'
+  cancel.title = t('mc_msg_quote_cancel')
+  indicator.appendChild(label)
+  indicator.appendChild(cancel)
+  bar.insertBefore(indicator, bar.firstChild)
+  updateInputPlaceholder()
+  document.getElementById('hs-mc-input')?.focus()
+}
+
+function clearQuoteState() {
+  quoteState = null
+  document.getElementById('hs-mc-quote-indicator')?.remove()
+  const bar = document.getElementById('hs-mc-inputbar')
+  if (bar) bar.classList.remove('hs-mc-quote')
+  document.getElementById('hs-mc-input')?.classList.remove('hs-mc-quote')
+  updateInputPlaceholder()
+}
+
+// Quote a live chat row into a new heatsync thread. permalink is the archived
+// line's receipt (see buildRowPermalink) — the composer always cites it when
+// available; a row that can never be cited (no archived platform/channel/send
+// time) falls back to a plain quoted-text state, same degradation the old
+// /op-seed flow used.
+function startQuoteFromRow(msg) {
+  if (!msg) return
+  const permalink = buildRowPermalink(msg)
+  const text = (msg.querySelector(':scope > .hs-mc-text')?.textContent || '').trim().slice(0, 240)
+  if (!permalink && !text) return
+  setQuoteState({
+    permalink,
+    user: msg.dataset.msgUser || '',
+    text,
+    channel: msg.dataset.msgChannel || '',
+    platform: msg.dataset.msgPlatform || '',
+  })
 }
 
 // Get Twitch auth token from cookie
@@ -6332,16 +6632,41 @@ function getTwitchAuthToken() {
 }
 
 // Async version — returns { token, username } for cross-platform Twitch posting
-// Tries document.cookie first, falls back to background.js cookies API
+// Tries document.cookie first, falls back to background.js cookies API.
+// ONLY for the authed chat socket (sendIrcMessage → connectAuthIrc), the one job that needs
+// the raw value in this page's WebSocket; to ask "is there a login" use getTwitchLoginAsync.
 async function getTwitchAuthTokenAsync() {
   const localToken = getTwitchAuthToken()
   if (localToken) return { token: localToken, username: null }
+  // A live socket already holds the login: reuse it, so the worker is asked
+  // only when a connect needs the value (it rate-limits the hand-out).
+  if (typeof authIrcAlive === 'function' && authIrcAlive() && authState.token && authState.nick)
+    return { token: authState.token, username: authState.nick }
   // Cross-domain: ask background.js to read Twitch cookies
   try {
     const resp = await safeSendMessage({ type: 'get_twitch_auth_token' })
     return { token: resp?.token || null, username: resp?.username || null }
   } catch {}
   return { token: null, username: null }
+}
+
+// Is there a twitch login, and whose: the background answers (it keeps the cookie value).
+async function getTwitchLoginAsync() {
+  if (getTwitchAuthToken()) return { loggedIn: true, username: null }
+  try {
+    const resp = await safeSendMessage({ type: 'twitch_auth_status' })
+    return { loggedIn: !!resp?.loggedIn, username: resp?.username || null }
+  } catch {}
+  return { loggedIn: false, username: null }
+}
+
+// A named helix call made by the background (op: self_id | whisper_subscribe); never throws.
+async function twitchHelixViaBg(op, args) {
+  const resp = await safeSendMessage({ type: 'twitch_helix', op, args: args || {} }).catch((e) => ({
+    ok: false,
+    error: e?.message || 'bridge_failed',
+  }))
+  return resp && typeof resp === 'object' ? resp : { ok: false, error: 'no_response' }
 }
 
 // Send message to current tab's channel
@@ -6386,8 +6711,35 @@ function clearInput(input) {
 // to their canonical command (insertSlashCommand inserts the real name). Without
 // this, typing a documented alias + Tab silently did nothing (only cmd names
 // matched) — reported live for /hl. Canonical matches rank first, then aliases.
+// Which of twitch/kick the composer's current tab sends to — the same
+// resolution sendMessage uses — or null when the tab has no single channel
+// (feed, whispers, …) and so nothing to judge a command against. A youtube-only
+// tab yields an empty set: every twitch/kick-bound command is dead there.
+function currentTabPlatforms() {
+  let ch = null
+  let host = null
+  if (currentTab === 'live') {
+    const live = getLiveChannel()
+    const lower = live ? live.toLowerCase() : ''
+    ch = lower
+      ? config.channels.find((c) => c.twitch?.toLowerCase() === lower || c.kick?.toLowerCase() === lower)
+      : null
+    if (!ch) host = hostPlatform
+  } else {
+    ch = config.channels.find((c) => c.id === currentTab) || null
+    if (!ch) return null
+  }
+  const out = new Set()
+  if (ch?.twitch) out.add('twitch')
+  if (ch?.kick) out.add('kick')
+  if (host === 'twitch' || host === 'kick') out.add(host)
+  return out
+}
+
 function matchSlashCommands(q) {
-  const byCmd = SLASH_COMMANDS.filter((c) => c.cmd.startsWith(q))
+  const tabPlatforms = currentTabPlatforms()
+  const avail = (c) => slashAvailableOn(c, tabPlatforms)
+  const byCmd = SLASH_COMMANDS.filter((c) => c.cmd.startsWith(q) && avail(c))
   if (!q) return byCmd
   const seen = new Set(byCmd.map((c) => c.cmd))
   const viaAlias = []
@@ -6395,7 +6747,7 @@ function matchSlashCommands(q) {
     if (typeof target !== 'string') continue // null = explicit pass-through
     if (!alias.startsWith(q) || seen.has(target)) continue
     const c = SLASH_COMMANDS.find((x) => x.cmd === target)
-    if (c) {
+    if (c && avail(c)) {
       viaAlias.push(c)
       seen.add(target)
     }
@@ -6432,6 +6784,7 @@ function showSlashDropdown(matches, idx) {
     dd.id = 'hs-mc-slash-dropdown'
     document.getElementById('hs-mc-inputbar')?.appendChild(dd)
   }
+  if (hsListboxReuse(dd, matches, idx)) return
   dd.textContent = ''
   matches.forEach((c, i) => {
     const row = document.createElement('div')
@@ -6445,7 +6798,7 @@ function showSlashDropdown(matches, idx) {
     args.textContent = c.args ? ` ${c.args}` : ''
     const desc = document.createElement('span')
     desc.className = 'hs-mc-slash-desc'
-    desc.textContent = c.desc
+    desc.textContent = slashDesc(c)
     row.appendChild(name)
     row.appendChild(args)
     row.appendChild(desc)
@@ -6456,6 +6809,14 @@ function showSlashDropdown(matches, idx) {
     dd.appendChild(row)
   })
   dd.style.display = 'block'
+  hsListboxSync(dd, matches, idx)
+}
+
+// localized /command description; falls back to the registry text (t returns the key when missing)
+function slashDesc(c) {
+  const k = `slash_desc_${c.cmd}`
+  const v = t(k)
+  return v && v !== k ? v : c.desc
 }
 
 function hideSlashDropdown() {
@@ -6463,7 +6824,7 @@ function hideSlashDropdown() {
   slashAcState.matches = []
   slashAcState.index = 0
   const dd = document.getElementById('hs-mc-slash-dropdown')
-  if (dd) dd.style.display = 'none'
+  if (dd) hsListboxHide(dd)
 }
 
 function insertSlashCommand(c) {
@@ -6500,51 +6861,56 @@ function insertSlashCommand(c) {
 //   true     -> consumed, do nothing else
 //   string   -> rewrite the outgoing text to this and continue normal send
 //   anything else -> not a slash command we handle, pass through unchanged
-const SLASH_ALIASES = {
-  post: 'op',
-  whisper: 'w',
-  re: 'r',
-  reply: 'r',
-  // /ban /unban /timeout /to /b /untimeout /delete — handled below via GQL,
-  // not passthrough. Twitch deprecated these as IRC chat commands in Feb 2023;
-  // sending them as text now silently no-ops, which is what caused multichat's
-  // pre-fix /unban to do nothing. Aliases map all common shorthands to the
-  // canonical command.
-  hl: 'highlight',
-  b: 'ban',
-  to: 'timeout',
-  untimeout: 'unban',
-  unto: 'unban',
-  del: 'delete',
-  lc: 'lclear',
-  '?': 'help',
-  pred: 'prediction',
-  predict: 'prediction',
-  // chat-mode aliases → canonical mode command (see CHAT_MODES)
-  followersonly: 'followers',
-  followeronly: 'followers',
-  slowmode: 'slow',
-  emote: 'emoteonly',
-  emoteonlymode: 'emoteonly',
-  subonly: 'subscribers',
-  subsonly: 'subscribers',
-  subscribersonly: 'subscribers',
-  subs: 'subscribers',
-  uniquechat: 'unique',
-  r9k: 'unique',
-  r9kbeta: 'unique',
-}
+const SLASH_ALIASES = slashAliasMap('ext')
 
 // Twitch chat modes — set via Helix /chat/settings (setTwitchChatMode). Each maps
 // to the Helix boolean field; `dur` modes also take a duration arg. follower
 // duration is MINUTES (0–129600), slow is SECONDS (3–120). Kick has no chat-mode
 // write API wired yet, so these are twitch-only (clear message below).
 const CHAT_MODES = {
-  followers: { field: 'follower_mode', dur: 'follower_mode_duration', unit: 'min', label: 'followers-only' },
-  slow: { field: 'slow_mode', dur: 'slow_mode_wait_time', unit: 'sec', label: 'slow mode' },
-  emoteonly: { field: 'emote_mode', label: 'emote-only' },
-  subscribers: { field: 'subscriber_mode', label: 'subscribers-only' },
-  unique: { field: 'unique_chat_mode', label: 'unique-chat' },
+  followers: {
+    field: 'follower_mode',
+    dur: 'follower_mode_duration',
+    unit: 'min',
+    get label() {
+      return t('mc_cm_follower')
+    },
+  },
+  slow: {
+    field: 'slow_mode',
+    dur: 'slow_mode_wait_time',
+    unit: 'sec',
+    get label() {
+      return t('mc_cm_slow')
+    },
+  },
+  emoteonly: {
+    field: 'emote_mode',
+    get label() {
+      return t('mc_cm_emote')
+    },
+  },
+  subscribers: {
+    field: 'subscriber_mode',
+    get label() {
+      return t('mc_input_mode_subscribers')
+    },
+  },
+  unique: {
+    field: 'unique_chat_mode',
+    get label() {
+      return t('mc_cm_unique')
+    },
+  },
+}
+
+// The retired `<mode>off` spellings, each the same command as `/<mode> off`.
+const CHAT_MODE_OFF_FORMS = {
+  emoteonlyoff: 'emoteonly',
+  subscribersoff: 'subscribers',
+  uniquechatoff: 'unique',
+  slowoff: 'slow',
+  followersoff: 'followers',
 }
 
 // Kick supports four of the five (no unique-chat/r9k equivalent).
@@ -6571,17 +6937,165 @@ function _parseModeDuration(arg, unit) {
   return Math.min(129600, Math.max(0, n))
 }
 
-async function handleSlashCommand(text, input) {
-  const parts = text.match(/^\/(\w+|\?)\s*(.*)$/)
-  if (!parts) return false
+// ═══ Inline command receipts ═══
+// "Anything I send should show up inline as a confirmation — every command
+// typed starting with /." One place, not ~50 handler edits: every
+// side-effecting command gets an inline row (the text as typed, pending,
+// then ✓ or ✗ + why); handlers keep reporting failure exactly how
+// they already do (showToast(..., 'error'), or an explicit {ok:false}) and
+// the wrapper below derives the receipt from that instead of each handler
+// building its own.
+//
+// Scope decides where the row lives:
+//   'echo'    — already has a richer inline echo of its own (/w /dm /r via
+//               sendWhisperMessage's outgoing echo) — no 'cmd' receipt, that
+//               would double it.
+//   'none'    — view-only; the visible effect (a panel, a sent chat line, a
+//               tab switch) IS the confirmation.
+//   'global'  — account-level action, not tied to one channel — receipt
+//               persists into every chat tab's buffer, like a real inline
+//               notif (injectInlineNotif with no onlyTab).
+//   'channel' — acts on the channel this command was sent from — receipt is
+//               scoped to THAT tab only (injectInlineNotif onlyTab); showing
+//               a /ban in another channel's tab would read as a ban there.
+//
+// This is the single allow/deny list — see command-receipt-scope.test.js,
+// which parses handleSlashCommand's actual `cmd === '…'` branches (+
+// CHAT_MODES' keys) out of the shipped source and fails if either side has
+// an entry the other doesn't. Add a command, add it here, or the test fails.
+const COMMAND_RECEIPT_SCOPE = {
+  // already echoed elsewhere
+  w: 'echo',
+  dm: 'echo',
+  r: 'echo',
+  // view-only — the effect already IS the confirmation
+  help: 'none',
+  status: 'none',
+  modes: 'none',
+  tab: 'none',
+  sharelayout: 'none', // toast is the confirmation
+  layout: 'none',
+  testnotices: 'none',
+  blocked: 'none', // opens a panel — the panel is the confirmation
+  modtools: 'none', // opens a panel
+  kickmod: 'none', // opens a panel
+  unbanrequests: 'none', // opens a panel
+  shield: 'channel',
+  warn: 'channel',
+  shoutout: 'channel',
+  lclear: 'none',
+  shrug: 'none',
+  tableflip: 'none',
+  unflip: 'none',
+  // account-level — every chat tab
+  op: 'global',
+  re: 'global',
+  follow: 'global',
+  unfollow: 'global',
+  color: 'global', // your twitch chat color follows you into every tab
+  mute: 'global',
+  unmute: 'global',
+  block: 'global',
+  hide: 'global',
+  unhide: 'global',
+  note: 'global',
+  user: 'none', // opens the profile card — the card is the confirmation
+  delnote: 'global',
+  set: 'global',
+  // channel-bound — the tab it was sent from only
+  ban: 'channel',
+  timeout: 'channel',
+  unban: 'channel',
+  delete: 'channel',
+  nuke: 'channel',
+  announce: 'channel',
+  announceblue: 'channel',
+  announcegreen: 'channel',
+  announceorange: 'channel',
+  announcepurple: 'channel',
+  poll: 'channel',
+  endpoll: 'channel',
+  vote: 'channel',
+  prediction: 'channel',
+  bet: 'channel',
+  lockpred: 'channel',
+  resolvepred: 'channel',
+  cancelpred: 'channel',
+  vip: 'channel',
+  unvip: 'channel',
+  mod: 'channel',
+  unmod: 'channel',
+  highlight: 'channel',
+  slow: 'channel',
+  followers: 'channel',
+  emoteonly: 'channel',
+  subscribers: 'channel',
+  unique: 'channel',
+}
+
+// Runs a slash command's handler with the inline-receipt lifecycle wrapped
+// around it. `execute` is the actual dispatch (handleSlashCommand(text,
+// input)) — this never re-implements a handler, only observes it:
+//   - an 'error' toast fired anywhere during the await (showToast routes
+//     through the capture stack in tooltips.js) marks the receipt failed
+//     with that toast's text
+//   - a thrown error marks it failed with the error's message and rethrows
+//     (the existing catch in sendMessage still owns surfacing that)
+//   - an explicit `{ ok: false, error }' return marks it failed too, for any
+//     handler that reports failure by return value instead of a toast
+//   - otherwise it succeeded when the handler settles
+async function runSlashCommandWithReceipt(text, execute) {
+  const resolved = resolveSlashCmd(text)
+  const scope = resolved && COMMAND_RECEIPT_SCOPE[resolved.cmd]
+  if (scope !== 'global' && scope !== 'channel') return execute()
+
+  const receipt = beginCmdReceipt(text, scope === 'channel' ? currentTab : undefined)
+  const frame = { reason: '' }
+  _cmdReceiptStack.push(frame)
+  let result
+  try {
+    result = await execute()
+  } catch (e) {
+    const idx = _cmdReceiptStack.lastIndexOf(frame)
+    if (idx !== -1) _cmdReceiptStack.splice(idx, 1)
+    settleCmdReceipt(receipt, false, e?.message || String(e))
+    throw e
+  }
+  const idx = _cmdReceiptStack.lastIndexOf(frame)
+  if (idx !== -1) _cmdReceiptStack.splice(idx, 1)
+  const explicitFail = result && typeof result === 'object' && result.ok === false
+  const failed = !!frame.reason || explicitFail
+  settleCmdReceipt(receipt, !failed, explicitFail ? result.error || '' : frame.reason)
+  return result
+}
+
+// Shared parse: canonical command name (aliases resolved) + the rest of the
+// text. Pulled out of handleSlashCommand so the receipt wrapper below can
+// classify a command WITHOUT re-implementing alias resolution — a second
+// parser drifting from this one is exactly how a receipt ends up keyed to
+// the wrong scope. Returns null for non-commands and explicit pass-through.
+function resolveSlashCmd(text) {
+  // [\s\S], not `.`: a pasted multi-line post is one command, not an orphan slash.
+  const parts = text.match(/^\/(\w+|\?)\s*([\s\S]*)$/)
+  if (!parts) return null
   let [, cmd, rest] = parts
   cmd = cmd.toLowerCase()
-  if (SLASH_ALIASES[cmd] === null) return false // explicit pass-through
+  // /emoteonlyoff, /subscribersoff, /uniquechatoff, /slowoff, /followersoff —
+  // twitch's old spelling of "<mode> off"
+  if (CHAT_MODE_OFF_FORMS[cmd]) return { cmd: CHAT_MODE_OFF_FORMS[cmd], rest: 'off' }
+  if (SLASH_ALIASES[cmd] === null) return null // explicit pass-through
   if (typeof SLASH_ALIASES[cmd] === 'string') cmd = SLASH_ALIASES[cmd]
+  return { cmd, rest }
+}
+
+async function handleSlashCommand(text, input) {
+  const resolved = resolveSlashCmd(text)
+  if (!resolved) return false
+  const { cmd, rest } = resolved
 
   if (cmd === 'op') {
     if (!rest.trim()) {
-      showToast(t('mc_input_usage_op'))
+      showToast(t('mc_input_usage_op'), 'error')
       return true
     }
     if (!hsAuthToken) {
@@ -6596,13 +7110,33 @@ async function handleSlashCommand(text, input) {
     return true
   }
 
-  // /opr <text> — reply to the last feed [OP] that appeared inline in chat.
-  // Deliberately NOT wired to /re: that is an alias of /r, which sends a
-  // WHISPER. Repointing it would turn a mistyped private reply into a public
-  // post, and that is not a direction this should ever fail in.
-  if (cmd === 'opr') {
+  // /color <name|#hex> — your twitch chat color, set through twitch itself and
+  // confirmed by reading it back (setTwitchChatColor).
+  if (cmd === 'color') {
+    const arg = rest.trim()
+    if (!arg) {
+      showToast(t('mc_input_usage_color'), 'error')
+      return true
+    }
+    const res = await setTwitchChatColor(arg, currentUsername)
+    if (!res.ok) {
+      showToast(t('mc_input_color_failed', [res.error]), 'error')
+      return true
+    }
+    // the panel learns it right away instead of waiting for your next message
+    try {
+      setKnownColor(String(currentUsername).toLowerCase(), res.hex, undefined, 'twitch', true)
+    } catch {}
+    showToast(t('mc_input_color_set', [res.hex.toLowerCase()]), 'success')
+    clearInput(input)
+    return true
+  }
+
+  // /re <text> — reply to the last feed [OP] that appeared inline in chat.
+  // (/r is the whisper reply; /opr and /reply are aliases of this.)
+  if (cmd === 're') {
     if (!rest.trim()) {
-      showToast('usage: /opr <text>')
+      showToast(t('mc_input_usage_re'), 'error')
       return true
     }
     if (!hsAuthToken) {
@@ -6610,7 +7144,7 @@ async function handleSlashCommand(text, input) {
       return true
     }
     if (!lastInlineFeedOpId) {
-      showToast('no post in chat to reply to yet', 'error')
+      showToast(t('mc_input_re_no_post'), 'error')
       return true
     }
     const ok = await postFeedMessage(rest.trim(), { replyTo: lastInlineFeedOpId })
@@ -6631,7 +7165,7 @@ async function handleSlashCommand(text, input) {
       await openWhisperConversation('twitch', bare, input)
       return true
     }
-    showToast(t('mc_input_usage_w'))
+    showToast(t('mc_input_usage_w'), 'error')
     return true
   }
 
@@ -6647,13 +7181,13 @@ async function handleSlashCommand(text, input) {
       await openWhisperConversation('heatsync', bare, input)
       return true
     }
-    showToast(t('mc_input_usage_dm'))
+    showToast(t('mc_input_usage_dm'), 'error')
     return true
   }
 
   if (cmd === 'r') {
     if (!rest.trim()) {
-      showToast(t('mc_input_usage_r'))
+      showToast(t('mc_input_usage_r'), 'error')
       return true
     }
     // armed (↩-clicked) target takes priority and survives incoming whispers
@@ -6680,7 +7214,7 @@ async function handleSlashCommand(text, input) {
   if (cmd === 'follow' || cmd === 'unfollow') {
     const u = rest.trim().replace(/^@/, '').toLowerCase()
     if (!u) {
-      showToast(t('mc_input_usage_follow', [cmd]))
+      showToast(t('mc_input_usage_follow', [cmd]), 'error')
       return true
     }
     if (typeof resolveIdentity !== 'function') {
@@ -6706,15 +7240,17 @@ async function handleSlashCommand(text, input) {
     const yf = !!(p.relationship?.youFollow || p.relationship?.isFollowing)
     const wantFollow = cmd === 'follow'
     if (wantFollow && yf) {
-      showToast(t('mc_input_already_following', [u]))
+      showToast(t('mc_input_already_following', [u]), 'error')
       return true
     }
     if (!wantFollow && !yf) {
-      showToast(t('mc_input_not_following', [u]))
+      showToast(t('mc_input_not_following', [u]), 'error')
       return true
     }
-    // pcToggleFollow flips the current state — pass `yf` as currentlyFollowing
-    pcToggleFollow(id, u, yf)
+    // pcToggleFollow flips the current state — pass `yf` as currentlyFollowing.
+    // Awaited: it toasts the failure itself, and the receipt wrapper can only
+    // read that toast while the command is still running.
+    await pcToggleFollow(id, u, yf)
     return true
   }
 
@@ -6741,7 +7277,7 @@ async function handleSlashCommand(text, input) {
   if (cmd === 'mute') {
     const u = rest.trim().replace(/^@/, '').toLowerCase()
     if (!u) {
-      showToast(t('mc_input_usage_mute'))
+      showToast(t('mc_input_usage_mute'), 'error')
       return true
     }
     // platform unknown from slash command — expandUserAliasKeys does both the
@@ -6751,7 +7287,7 @@ async function handleSlashCommand(text, input) {
     const aliasKeys = typeof expandUserAliasKeys === 'function' ? await expandUserAliasKeys(u, null) : [u]
     const already = _muteKeyForms(u, aliasKeys).some((k) => mutedUsers.has(k))
     if (already) {
-      showToast(t('mc_input_already_muted', [u]))
+      showToast(t('mc_input_already_muted', [u]), 'error')
       return true
     }
     for (const k of aliasKeys) mutedUsers.add(k)
@@ -6767,7 +7303,7 @@ async function handleSlashCommand(text, input) {
   if (cmd === 'unmute') {
     const u = rest.trim().replace(/^@/, '').toLowerCase()
     if (!u) {
-      showToast(t('mc_input_usage_unmute'))
+      showToast(t('mc_input_usage_unmute'), 'error')
       return true
     }
     // Same async fan-out as /mute and right-click mute — covers server-linked
@@ -6776,7 +7312,7 @@ async function handleSlashCommand(text, input) {
     const forms = _muteKeyForms(u, aliasKeys)
     const wasMuted = forms.some((k) => mutedUsers.has(k))
     if (!wasMuted) {
-      showToast(t('mc_input_not_muted', [u]))
+      showToast(t('mc_input_not_muted', [u]), 'error')
       return true
     }
     for (const k of forms) mutedUsers.delete(k)
@@ -6816,7 +7352,7 @@ async function handleSlashCommand(text, input) {
   }
 
   if (cmd === 'help') {
-    showSlashHelp()
+    switchTab('settings', 'help')
     clearInput(input)
     return true
   }
@@ -6826,18 +7362,14 @@ async function handleSlashCommand(text, input) {
   // delay) light up automatically when the viewer mods the channel.
   if (cmd === 'status' || cmd === 'modes') {
     const arg = rest.trim().toLowerCase().replace(/^#/, '')
-    const ch =
-      arg && /^[a-z0-9_]{2,40}$/.test(arg)
-        ? arg
-        : typeof currentTab === 'string' && /^[a-z0-9_]{2,40}$/.test(currentTab)
-          ? currentTab
-          : null
+    const own = String(mcSubCells(currentTab).length ? subChannelOf(currentTab) : '').toLowerCase()
+    const ch = arg && /^[a-z0-9_-]{2,40}$/.test(arg) ? arg : /^[a-z0-9_-]{2,40}$/.test(own) ? own : null
     if (!ch) {
       showToast(t('mc_input_status_needs_channel'), 'error')
       return true
     }
     clearInput(input)
-    showChatStatusPanel(ch)
+    mcOpenChannelCell('status', ch)
     return true
   }
 
@@ -6846,10 +7378,18 @@ async function handleSlashCommand(text, input) {
   // so a mod can sanction a user everywhere with one command.
   // currentTab = channel login when on a per-channel tab; on aggregate tabs we
   // can't pick a single channel, so refuse with a useful toast.
-  const modChannel = typeof currentTab === 'string' && /^[a-z0-9_]{2,40}$/i.test(currentTab) ? currentTab : null
-  const _modCh = modChannel ? config.channels.find((c) => c.id === modChannel) : null
-  const _twitchModName = _modCh?.twitch || (modChannel && !_modCh ? modChannel : null)
-  const _kickModSlug = _modCh?.kick || null
+  const _mc = resolveTypedModChannel(
+    currentTab,
+    hostPlatform,
+    typeof getLiveChannel === 'function' ? getLiveChannel() : null,
+    config.channels,
+    MC_TABS.map((x) => x.id),
+  )
+  const modChannel = _mc.channel
+  const _modCh = _mc.entry
+  const _twitchModName = _mc.twitch
+  const _kickModSlug = _mc.kick
+  const _modPlat = _mc.platform // 'kick' for a kick page with no saved tab; else the entry decides
   // Dual-platform dispatch + per-platform notice injection + combined toast all
   // live in the shared backbone (main.js dispatchModAction / showModResultToast).
 
@@ -6911,21 +7451,26 @@ async function handleSlashCommand(text, input) {
   // side's error then surfaces in the combined toast).
   const _twitchModAuthOk = async () => {
     if (!_twitchModName || _kickModSlug) return true
-    // Hard ceiling: getTwitchAuthTokenAsync's background-SW fallback
+    // Hard ceiling: getTwitchLoginAsync's background-SW fallback
     // (chrome.runtime.sendMessage) has no built-in timeout — if the SW
     // exists but its handler never calls sendResponse, this hangs forever
     // and every mod command downstream reads to the user as "Enter does
     // nothing" with zero feedback (2026-07-20 live incident). Race it.
-    const { token } = await Promise.race([
-      getTwitchAuthTokenAsync(),
-      new Promise((resolve) => setTimeout(() => resolve({ token: null }), 5000)),
+    const { loggedIn } = await Promise.race([
+      getTwitchLoginAsync(),
+      new Promise((resolve) => setTimeout(() => resolve({ loggedIn: false }), 5000)),
     ])
-    if (token) return true
+    if (loggedIn) return true
     try {
       HsNotifs.emit('twitch-auth-required', { text: t('mc_input_not_logged_in') || 'log into twitch.tv to chat' })
     } catch (_) {}
     return false
   }
+  // Handler results the receipt wrapper marks ✗ with a reason. `return true`
+  // on these paths read as ✓ for a command that did nothing: a ban whose
+  // confirm was cancelled, a mod command typed while logged out.
+  const _notLoggedIn = () => ({ ok: false, error: t('mc_input_not_logged_in') || 'not logged in' })
+  const _cancelled = () => ({ ok: false, error: 'cancelled' })
 
   if (cmd === 'ban' || cmd === 'timeout' || cmd === 'unban') {
     if (!modChannel) {
@@ -6937,7 +7482,7 @@ async function handleSlashCommand(text, input) {
       showToast(t('mc_input_mod_needs_platform_channel', [cmd]), 'error')
       return true
     }
-    if (_hasTk && !(await _twitchModAuthOk())) return true
+    if (_hasTk && !(await _twitchModAuthOk())) return _notLoggedIn()
     if (cmd === 'ban') {
       const m = rest.match(/^@?(\S+)(?:\s+(.+))?$/)
       if (!m) {
@@ -6946,10 +7491,17 @@ async function handleSlashCommand(text, input) {
       }
       const [, target, reason] = m
       const r = _hasTk
-        ? await dispatchModAction({ channel: modChannel, action: 'ban', target, reason, fanout: true })
+        ? await dispatchModAction({
+            channel: modChannel,
+            platform: _modPlat,
+            action: 'ban',
+            target,
+            reason,
+            fanout: true,
+          })
         : null
       if (r) showModResultToast(t('mc_mod_label_banned'), target, r)
-      if (r?.cancelled) return true
+      if (r?.cancelled) return _cancelled()
       const y = await _ytModLeg('ban', target, t('mc_mod_label_banned'), !!r)
       if (r?.anyOk || y?.anyOk) clearInput(input)
       return true
@@ -6965,6 +7517,7 @@ async function handleSlashCommand(text, input) {
       const r = _hasTk
         ? await dispatchModAction({
             channel: modChannel,
+            platform: _modPlat,
             action: 'timeout',
             target,
             durationSec: sec,
@@ -6983,7 +7536,9 @@ async function handleSlashCommand(text, input) {
         showToast(t('mc_input_usage_unban'), 'error')
         return true
       }
-      const r = _hasTk ? await dispatchModAction({ channel: modChannel, action: 'unban', target, fanout: true }) : null
+      const r = _hasTk
+        ? await dispatchModAction({ channel: modChannel, platform: _modPlat, action: 'unban', target, fanout: true })
+        : null
       if (r) showModResultToast(t('mc_mod_label_unbanned'), target, r)
       const y = await _ytModLeg('unban', target, t('mc_mod_label_unbanned'), !!r)
       if (r?.anyOk || y?.anyOk) clearInput(input)
@@ -7122,7 +7677,7 @@ async function handleSlashCommand(text, input) {
       un('bitsbadgetier', 'bits badge tier notification', { bitsTier: 1000 }),
       un('watchstreak', 'testuser watched 5 consecutive streams and sparked a watch streak!', { streakCount: 5 }),
       un('viewermilestone', 'testuser reached a viewer milestone!'),
-      un('mod-anniversary', 'testuser is celebrating 6 months as a mod!'),
+      un('modiversary', 'testuser is celebrating 6 months as a mod!'),
       un('charitydonation', 'testuser donated $5 to Save the Kripps!'),
       un('ritual', 'testuser is new here — say hello!'),
       un('resub', 'shared-chat resub from the partner channel', {
@@ -7173,10 +7728,8 @@ async function handleSlashCommand(text, input) {
     // getActiveTwitchChannel wrapper, which itself calls getLiveChannel on
     // live/feed/aggregate tabs) throws a ReferenceError that silently kills
     // this async handler → "no toast, no send".
-    let twitchLogin = _modCh?.twitch || null
-    if (!twitchLogin && currentTab === 'live' && typeof getLiveChannel === 'function') twitchLogin = getLiveChannel()
-    // Twitch-only channel tab: the tab id itself is the twitch login.
-    if (!twitchLogin && modChannel && modChannel !== 'live' && !_modCh) twitchLogin = modChannel
+    // twitch-only command: the tab's twitch leg, or the page itself on twitch (never a kick/yt name)
+    const twitchLogin = _twitchModName
     if (!twitchLogin) {
       showToast(t('mc_input_highlight_needs_twitch') || '/highlight needs a twitch channel tab', 'error')
       return true
@@ -7200,7 +7753,7 @@ async function handleSlashCommand(text, input) {
       )
       return true
     }
-    const replyParentId = replyState?.msgId || null
+    const replyParentId = !replyState?.platform || replyState.platform === 'twitch' ? replyState?.msgId || null : null
     const r = await sendHighlightedTwitchMessage(channelId, message, null, replyParentId)
     if (r?.ok) {
       clearInput(input)
@@ -7225,7 +7778,8 @@ async function handleSlashCommand(text, input) {
       settleComposerAfterSend(input)
     } else {
       showToast(
-        t('mc_input_highlight_failed', [r?.error || 'unknown']) || `highlight failed: ${r?.error || 'unknown'}`,
+        t('mc_input_highlight_failed', [r?.error || t('mc_common_unknown')]) ||
+          `highlight failed: ${r?.error || t('mc_common_unknown')}`,
         'error',
       )
     }
@@ -7239,10 +7793,7 @@ async function handleSlashCommand(text, input) {
   // twitch-only. modChannel/_modCh/currentTab are resolved above (see /highlight).
   if (['poll', 'prediction', 'vote', 'bet', 'endpoll', 'lockpred', 'cancelpred', 'resolvepred'].includes(cmd)) {
     const _ppLogin = () => {
-      let login = _modCh?.twitch || null
-      if (!login && currentTab === 'live' && typeof getLiveChannel === 'function') login = getLiveChannel()
-      if (!login && modChannel && modChannel !== 'live' && !_modCh) login = modChannel
-      return login
+      return _twitchModName
     }
     // Resolve the twitch channel + require login; toast + null on failure.
     const _ppGate = () => {
@@ -7324,7 +7875,26 @@ async function handleSlashCommand(text, input) {
         )
         clearInput(input)
       } else {
-        showToast(`${isPoll ? 'poll' : 'prediction'} failed: ${r?.error || 'unknown'} (broadcaster only)`, 'error')
+        // Don't append "(broadcaster only)" unconditionally — it turned an
+        // extension-side block ("mutation not allowed", the op missing from the
+        // MAIN-world allowlist) into what read as a permissions problem, and
+        // sent the user looking at their own twitch role instead of the bug.
+        // Only say it when twitch actually refused on authorization.
+        const _ppErr = String(r?.error || t('mc_common_unknown'))
+        const _ppDenied = /forbidden|unauthorized|permission|not.?allowed.*channel|broadcaster/i.test(_ppErr)
+        showToast(
+          t(
+            isPoll
+              ? _ppDenied
+                ? 'mc_input_poll_failed_bc'
+                : 'mc_input_poll_failed'
+              : _ppDenied
+                ? 'mc_input_prediction_failed_bc'
+                : 'mc_input_prediction_failed',
+            [_ppErr],
+          ),
+          'error',
+        )
       }
       return true
     }
@@ -7341,7 +7911,7 @@ async function handleSlashCommand(text, input) {
       showToast(
         r?.ok
           ? t('mc_input_poll_ended') || 'poll ended'
-          : `end poll failed: ${r?.error || 'unknown'} (broadcaster only)`,
+          : t('mc_input_endpoll_failed_bc', [r?.error || t('mc_common_unknown')]),
         r?.ok ? 'success' : 'error',
       )
       if (r?.ok) clearInput(input)
@@ -7367,7 +7937,7 @@ async function handleSlashCommand(text, input) {
       showToast(
         r?.ok
           ? t('mc_input_voted', [choice.title]) || `voted: ${choice.title}`
-          : `vote failed: ${r?.error || 'unknown'}`,
+          : t('mc_input_vote_failed', [r?.error || t('mc_common_unknown')]),
         r?.ok ? 'success' : 'error',
       )
       if (r?.ok) clearInput(input)
@@ -7395,7 +7965,7 @@ async function handleSlashCommand(text, input) {
       showToast(
         r?.ok
           ? t('mc_input_bet_placed', [String(points), outcome.title]) || `bet ${points} on ${outcome.title}`
-          : `bet failed: ${r?.error || 'unknown'}`,
+          : t('mc_input_bet_failed', [r?.error || t('mc_common_unknown')]),
         r?.ok ? 'success' : 'error',
       )
       if (r?.ok) clearInput(input)
@@ -7429,7 +7999,10 @@ async function handleSlashCommand(text, input) {
         r = await resolvePrediction(pred.id, outcome.id)
         okMsg = t('mc_input_pred_resolved', [outcome.title]) || `resolved: ${outcome.title}`
       }
-      showToast(r?.ok ? okMsg : `failed: ${r?.error || 'unknown'} (broadcaster only)`, r?.ok ? 'success' : 'error')
+      showToast(
+        r?.ok ? okMsg : t('mc_input_failed_bc', [r?.error || t('mc_common_unknown')]),
+        r?.ok ? 'success' : 'error',
+      )
       if (r?.ok) clearInput(input)
       return true
     }
@@ -7493,11 +8066,23 @@ async function handleSlashCommand(text, input) {
     return true
   }
 
+  // ── /user — open the profile card for the current host platform ─────────
+  if (cmd === 'user') {
+    const user = rest.trim().replace(/^@/, '')
+    if (!user || /\s/.test(user)) {
+      showToast(t('mc_input_usage_user'), 'error')
+      return true
+    }
+    await openProfileCard(user, hostPlatform || 'twitch', { anchorEl: input })
+    clearInput(input)
+    return true
+  }
+
   // ── /hide, /unhide — per-tab, ephemeral (see _tabHide) ──────────────────
   if (cmd === 'hide' || cmd === 'unhide') {
     const user = rest.trim().replace(/^@/, '')
     if (!user || /\s/.test(user)) {
-      showToast(`/${cmd} <user> — ${cmd === 'hide' ? 'hides' : 'unhides'} in this tab`, 'error')
+      showToast(t(cmd === 'hide' ? 'mc_input_usage_hide' : 'mc_input_usage_unhide'), 'error')
       return true
     }
     await _tabHide(user, hostPlatform || 'twitch', cmd)
@@ -7551,6 +8136,33 @@ async function handleSlashCommand(text, input) {
     return true
   }
 
+  // ── /sharelayout, /layout — heatsync.org/m/<layout> share links ──────────
+  if (cmd === 'sharelayout') {
+    const link = mcLayoutLink(config.channels)
+    clearInput(input)
+    if (!link) {
+      showToast(t('mc_layout_none'), 'error')
+      return true
+    }
+    mcCopyToClipboard(link, t('mc_layout_copied'))
+    return true
+  }
+
+  if (cmd === 'layout') {
+    const tabs = mcLayoutParse(rest)
+    if (!tabs.length) {
+      showToast(t('mc_layout_usage'), 'error')
+      return true
+    }
+    const added = addChannelsBulk(
+      tabs.map((x) => ({ twitch: x.twitch, kick: x.kick, youtube: x.youtube ? mcLayoutYtUrl(x.youtube) : '' })),
+    )
+    clearInput(input)
+    if (added) switchTab(config.channels[config.channels.length - 1].id)
+    showToast(added ? t('mc_layout_added', [String(added)]) : t('mc_layout_have_all'), added ? 'success' : undefined)
+    return true
+  }
+
   // ── /tab — switch tab from the composer ─────────────────────────────────
   // Only ever switches to a real special tab or a configured channel (matched
   // by id or any platform login), never a bare switchTab(id) that could blank
@@ -7561,9 +8173,8 @@ async function handleSlashCommand(text, input) {
       showToast(t('mc_input_usage_tab') || '/tab <live|feed|mentions|whispers|settings|channel>', 'error')
       return true
     }
-    const SPECIAL = ['live', 'feed', 'mentions', 'whispers', 'discover', 'pinned', 'modlog', 'add', 'settings']
     let target = null
-    if (SPECIAL.includes(q)) {
+    if (mcIsReservedTab(q)) {
       target = q
     } else if (typeof config !== 'undefined' && config.channels) {
       const ch = config.channels.find(
@@ -7580,7 +8191,8 @@ async function handleSlashCommand(text, input) {
       showToast(t('mc_input_tab_unavailable') || 'tabs unavailable', 'error')
       return true
     }
-    switchTab(target)
+    const addr = mcCellAddress(target)
+    switchTab(addr.tab, addr.sub)
     clearInput(input)
     return true
   }
@@ -7603,9 +8215,7 @@ async function handleSlashCommand(text, input) {
       showToast(t(usageKey) || `/${cmd} <user>`, 'error')
       return true
     }
-    let twitchLogin = _modCh?.twitch || null
-    if (!twitchLogin && currentTab === 'live' && typeof getLiveChannel === 'function') twitchLogin = getLiveChannel()
-    if (!twitchLogin && modChannel && modChannel !== 'live' && !_modCh) twitchLogin = modChannel
+    const twitchLogin = _twitchModName // twitch-only: see /highlight
     if (!twitchLogin) {
       showToast(t('mc_input_pp_needs_twitch') || 'this needs a twitch channel tab', 'error')
       return true
@@ -7636,7 +8246,7 @@ async function handleSlashCommand(text, input) {
       showToast(t(doneKey, [user]) || `${cmd}: ${user}`, 'success')
       clearInput(input)
     } else {
-      showToast(`${cmd} failed: ${r?.error || 'unknown'} (broadcaster only)`, 'error')
+      showToast(t('mc_input_cmd_failed_bc', [cmd, r?.error || t('mc_common_unknown')]), 'error')
     }
     return true
   }
@@ -7656,7 +8266,7 @@ async function handleSlashCommand(text, input) {
       showToast(t('mc_input_announce_twitch_only') || '/announce is twitch-only', 'error')
       return true
     }
-    if (!(await _twitchModAuthOk())) return true
+    if (!(await _twitchModAuthOk())) return _notLoggedIn()
     const message = rest.trim()
     if (!message) {
       showToast(t('mc_input_usage_announce') || '/announce <message>', 'error')
@@ -7667,7 +8277,7 @@ async function handleSlashCommand(text, input) {
     if (r?.ok) {
       clearInput(input)
     } else {
-      showToast(`announce failed: ${r?.error || 'unknown error'}`, 'error')
+      showToast(t('mc_input_announce_failed', [r?.error || t('mc_common_unknown')]), 'error')
     }
     return true
   }
@@ -7686,9 +8296,9 @@ async function handleSlashCommand(text, input) {
       showToast(t('mc_input_delete_needs_platform_channel'), 'error')
       return true
     }
-    if (!(await _twitchModAuthOk())) return true
+    if (!(await _twitchModAuthOk())) return _notLoggedIn()
     // Raw id → platform unknown; dispatcher tries Twitch first, then Kick.
-    const r = await dispatchModAction({ channel: modChannel, action: 'delete', msgId: messageID })
+    const r = await dispatchModAction({ channel: modChannel, platform: _modPlat, action: 'delete', msgId: messageID })
     const err = (r?.tResp || r?.kResp)?.error || t('mc_common_unknown')
     showToast(r?.anyOk ? t('mc_mod_label_deleted') : t('mc_input_delete_failed', [err]), r?.anyOk ? 'success' : 'error')
     if (r?.anyOk) clearInput(input)
@@ -7709,7 +8319,7 @@ async function handleSlashCommand(text, input) {
       showToast(t('mc_input_nuke_needs_platform_channel'), 'error')
       return true
     }
-    if (!(await _twitchModAuthOk())) return true
+    if (!(await _twitchModAuthOk())) return _notLoggedIn()
     const NUKE_MAX = 100 // never delete more than this in one invocation
     const NUKE_MAX_WINDOW = 300 // seconds — furthest lookback allowed
     const nm = rest.trim().match(/^(.+?)(?:\s+(\d+))?$/)
@@ -7751,15 +8361,106 @@ async function handleSlashCommand(text, input) {
       `nuke ${batch.length}${capped ? `+ (capped from ${targets.length})` : ''} message${batch.length === 1 ? '' : 's'} matching "${term}" in #${modChannel}?`,
       'nuke',
     )
-    if (!ok) return true
+    if (!ok) return _cancelled()
     const results = await Promise.allSettled(
       batch.map((t) =>
-        dispatchModAction({ channel: modChannel, platform: t.platform, action: 'delete', msgId: t.msgId }),
+        dispatchModAction({ channel: modChannel, platform: _modPlat || t.platform, action: 'delete', msgId: t.msgId }),
       ),
     )
     const okCount = results.filter((r) => r.status === 'fulfilled' && r.value?.anyOk).length
     showToast(t('mc_input_nuke_done', [String(okCount), String(batch.length), term]), okCount ? 'success' : 'error')
     if (okCount) clearInput(input)
+    return true
+  }
+
+  // /blocked — the twitch channel's blocked terms, in a panel. Helix is the
+  // real mod check (a 403 reads "not a moderator" inside the panel); this one
+  // only keeps the panel from opening on a channel the user plainly doesn't mod.
+  if (cmd === 'blocked') {
+    if (!_twitchModName) {
+      showToast(t('mc_bt_no_channel'), 'error')
+      return true
+    }
+    if (!(await _twitchModAuthOk())) return _notLoggedIn()
+    const login = _twitchModName.toLowerCase()
+    const own = login === (await automodSelfLogin())
+    if (!own && !(await isModFor(login))) {
+      showToast(t('mc_bt_not_mod_slash'), 'error')
+      return { ok: false, error: t('mc_bt_not_mod_slash') }
+    }
+    if (!(await openBlockedTerms(login))) return { ok: false, error: t('mc_bt_err') }
+    clearInput(input)
+    return true
+  }
+
+  if (cmd === 'kickmod') return kickModCommand(_kickModSlug, input) // kick-mod-suite.js
+  // ─── Mod suite (mod) ─── /modtools /shield /warn /shoutout /unbanrequests.
+  // Thin calls to heatsync.org's /api/mod/* (mod-suite-calls.js); the server is
+  // the helix caller and the real mod check, this one only keeps the command off
+  // a channel the user plainly doesn't mod; resolves the login or a toasted failure.
+  const _msGate = async () => {
+    // twitch-only: the tab's twitch leg, or the page itself on twitch — same as /highlight above.
+    const _msChannel = _twitchModName
+    if (!_msChannel) {
+      showToast(t('mc_ms_no_channel'), 'error')
+      return { ok: false, error: t('mc_ms_no_channel') }
+    }
+    if (!(await _twitchModAuthOk())) return _notLoggedIn()
+    const login = String(_msChannel).toLowerCase()
+    if (login !== (await automodSelfLogin()) && !(await isModFor(login, { fresh: true }))) {
+      showToast(t('mc_ms_not_mod'), 'error')
+      return { ok: false, error: t('mc_ms_not_mod') }
+    }
+    return login
+  }
+  if (cmd === 'modtools' || cmd === 'unbanrequests') {
+    const login = await _msGate()
+    if (typeof login !== 'string') return login
+    if (!(await openModSuite(login, cmd === 'modtools' ? 'shield' : 'unban')))
+      return { ok: false, error: t('mc_ms_err') }
+    clearInput(input)
+    return true
+  }
+  if (cmd === 'shield') {
+    const word = rest.trim().toLowerCase()
+    if (word && word !== 'on' && word !== 'off') {
+      showToast(t('mc_ms_usage_shield'), 'error')
+      return { ok: false, error: t('mc_ms_usage_shield') }
+    }
+    const login = await _msGate()
+    if (typeof login !== 'string') return login
+    let on = word === 'on'
+    if (!word) {
+      const cur = await msCall(login, 'shield_get')
+      if (!cur.ok) {
+        msToastFail(cur, login)
+        return { ok: false, error: msWords(cur) }
+      }
+      on = !cur.data.is_active
+    }
+    const res = await msCall(login, 'shield_set', { active: on })
+    if (!res.ok) {
+      msToastFail(res, login)
+      return { ok: false, error: msWords(res) }
+    }
+    showToast(t(on ? 'mc_ms_shield_now_on' : 'mc_ms_shield_now_off'), 'success')
+    clearInput(input)
+    return true
+  }
+  if (cmd === 'warn' || cmd === 'shoutout') {
+    const isWarn = cmd === 'warn'
+    const m = isWarn ? rest.match(/^@?(\S+)\s+([\s\S]*\S)\s*$/) : rest.match(/^@?(\S+)\s*$/)
+    const usage = t(isWarn ? 'mc_ms_usage_warn' : 'mc_ms_usage_shoutout')
+    if (!m) {
+      showToast(usage, 'error')
+      return { ok: false, error: usage }
+    }
+    const channel = await _msGate()
+    if (typeof channel !== 'string') return channel
+    const who = m[1].toLowerCase()
+    const res = isWarn ? await msWarn(channel, who, m[2].trim().slice(0, 500)) : await msShoutout(channel, who)
+    if (!res.ok) return { ok: false, error: msWords(res) }
+    clearInput(input)
     return true
   }
 
@@ -7814,10 +8515,21 @@ async function handleSlashCommand(text, input) {
       kickTarget && typeof setKickChatMode === 'function' && KICK_MODE_CMDS.has(cmd)
         ? setKickChatMode(kickTarget, cmd, value)
         : Promise.resolve(null)
-    const [resp, kickResp] = await Promise.all([
-      twitchTarget ? setTwitchChatMode(twitchTarget, cmd, value) : Promise.resolve(null),
-      kickPromise,
-    ])
+    // Twitch leg: heatsync.org's helix route sets every mode (twitch retired the
+    // IRC commands). A viewer who isn't linked for it (401) falls back to the
+    // GQL path, which only does slow + followers — the other three then say
+    // plainly what to link instead of failing silently.
+    const twitchLeg = async () => {
+      if (!twitchTarget) return null
+      const site = await cmSet(twitchTarget, cmd, value)
+      if (site.ok) return { ok: true }
+      if (!cmNeedsLink(site)) {
+        return { ok: false, error: site.error === 'not_moderator' ? t('mc_bt_not_mod_slash') : site.error }
+      }
+      const gql = await setTwitchChatMode(twitchTarget, cmd, value)
+      return gql?.unsupported ? { ok: false, unsupported: true, error: t('mc_cm_link') } : gql
+    }
+    const [resp, kickResp] = await Promise.all([twitchLeg(), kickPromise])
     // Twitch can't do the boolean modes (see TWITCH_CHAT_MODE_SPEC). If kick
     // handled it, that's a real success — don't surface twitch's refusal.
     if (resp?.unsupported && kickResp?.ok) {
@@ -7826,7 +8538,7 @@ async function handleSlashCommand(text, input) {
       return true
     }
     if (resp?.unsupported && !kickResp?.ok) {
-      showToast(t('mc_input_mode_twitch_unsupported', [cmd]), 'error')
+      showToast(t('mc_cm_link'), 'error')
       return true
     }
     if (kickResp && !kickResp.ok && !resp?.ok) {
@@ -7868,97 +8580,6 @@ async function handleSlashCommand(text, input) {
   }
 
   return false
-}
-
-const SLASH_HELP_LINES = [
-  '/op <text>             — post to home',
-  '/opr <text>            — reply to last [OP] in chat',
-  '/w <user> <msg>        — twitch whisper',
-  '/dm <user> <msg>       — heatsync DM',
-  '/r <msg>               — reply to last whisper',
-  '/mute <user>           — local mute (24h)',
-  '/unmute <user>         — local unmute',
-  '/shrug [text]          — append ¯\\_(ツ)_/¯',
-  '/tableflip [text]      — append (╯°□°)╯︵ ┻━┻',
-  '/unflip [text]         — append ┬─┬ノ( ゜-゜ノ)',
-  '/lclear                — clear current tab locally',
-  '/status [channel]      — show chat modes + stream info',
-  '/help                  — this list',
-  '',
-  'mod (need a channel tab — fires both twitch+kick if linked):',
-  '/ban <user> [reason]   — perma ban',
-  '/timeout <user> [s] [r]— timeout, default 600s',
-  '/unban <user>          — unban or end timeout',
-  '/delete <msg-id>       — delete one message',
-  '/nuke <term> [secs]    — delete recent msgs matching term (default 30s)',
-  '/vip <user>            — VIP a user (twitch broadcaster)',
-  '/unvip <user>          — remove a user VIP (twitch broadcaster)',
-  '/mod <user>            — mod a user (twitch broadcaster)',
-  '/unmod <user>          — unmod a user (twitch broadcaster)',
-  '',
-  'chat modes (twitch, mod):',
-  '/followers [mins]      — followers-only ("/followers off")',
-  '/slow [secs]           — slow mode, default 30s ("/slow off")',
-  '/emoteonly             — emote-only ("/emoteonly off")',
-  '/subscribers           — subs-only ("/subscribers off")',
-  '/unique                — unique-chat/r9k ("/unique off")',
-  '',
-  '/announce <msg>        — announcement (blue/green/orange/purple variants)',
-  '/highlight <msg>       — highlight your message (twitch bits power-up, /hl)',
-  '/testnotices           — render every event type locally (dev)',
-  '',
-  '/me and chat pass through to twitch & kick.',
-  '/clear /color /raid /commercial /marker not wired —',
-  'twitch dropped them from chat. use its own mod tools.',
-]
-
-function showSlashHelp() {
-  // Reuse toast for short feedback — but the help list is multi-line, so build a
-  // lightweight inline overlay instead.
-  let panel = document.getElementById('hs-mc-slash-help')
-  if (panel) {
-    panel.remove()
-    return
-  }
-  panel = document.createElement('div')
-  panel.id = 'hs-mc-slash-help'
-  panel.style.cssText =
-    "position:fixed;bottom:60px;right:20px;z-index:99999;background:#000;border:2px solid #fff;padding:10px 14px;font:13px/1.4 'CozetteVector','Courier New',monospace;color:#fff;white-space:pre;max-width:420px;box-shadow:0 0 12px rgba(255,255,255,0.3)"
-  panel.textContent = SLASH_HELP_LINES.join('\n')
-  panel.addEventListener('click', () => panel.remove())
-  document.body.appendChild(panel)
-  setTimeout(() => panel?.remove(), 12000)
-}
-
-// Mounts the status panel built by buildChatStatusPanel into a fixed
-// overlay anchored bottom-right (matches /help). Click panel or wait 20s
-// to dismiss. Re-invoking /status replaces the existing panel.
-async function showChatStatusPanel(channel) {
-  document.getElementById('hs-mc-status-overlay')?.remove()
-  const wrap = document.createElement('div')
-  wrap.id = 'hs-mc-status-overlay'
-  wrap.className = 'hs-mc-status-overlay'
-  const loading = document.createElement('div')
-  loading.className = 'hs-mc-status-loading'
-  loading.textContent = `fetching #${channel}…`
-  wrap.appendChild(loading)
-  wrap.addEventListener('click', () => wrap.remove())
-  document.body.appendChild(wrap)
-  let panel
-  try {
-    panel = await buildChatStatusPanel(channel)
-  } catch (_) {
-    panel = null
-  }
-  if (!document.body.contains(wrap)) return
-  if (!panel) {
-    loading.textContent = `could not fetch #${channel} (offline or not on twitch?)`
-    setTimeout(() => wrap?.remove(), 5000)
-    return
-  }
-  loading.remove()
-  wrap.appendChild(panel)
-  setTimeout(() => wrap?.remove(), 20000)
 }
 
 // Resolve a username → whisper key, registering the user in whisperUsers so the
@@ -8053,16 +8674,38 @@ async function openWhisperConversation(platform, username, input) {
 // becomes yours and renders next time, instead of going out as bare text. Only
 // names tracked in recentRemoteCompletions qualify, so channel/global/owned
 // emotes (which already render) never burn slots. Fire-and-forget.
+// Resolves to the names actually added (null when nothing was attempted).
+//
+// Many emotes share a name (the channel's IDK, another IDK from the catalog). What
+// is skipped is decided by PICTURE, not name: the very emote you already own, a
+// blocked name, a global name (the server refuses a second emote under one). A
+// catalog variant of a name the channel has is simply added. A catalog variant of a
+// name you already own with a DIFFERENT emote swaps: the server keeps one emote per
+// name, so the old one is removed first (swapEmoteInInventory). Only a deliberate
+// catalog pick swaps — tabbing onto the channel's own IDK never replaces yours.
 function autoAddInputEmotes(text) {
-  if (!text || !recentRemoteCompletions.size) return
+  if (!text || !recentRemoteCompletions.size) return null
+  const adds = []
   const seen = new Set()
   for (const word of text.split(/\s+/)) {
     if (!word || seen.has(word)) continue
     seen.add(word)
     const rec = recentRemoteCompletions.get(word)
     if (!rec) continue
-    if (typeof blockedEmoteNames !== 'undefined' && blockedEmoteNames.has(word)) continue
-    if (typeof inventoryEmotes !== 'undefined' && inventoryEmotes.has(word)) continue
+    if (
+      typeof blockedEmoteNames !== 'undefined' &&
+      (typeof emoteIsBlocked === 'function' ? emoteIsBlocked(word, rec) : blockedEmoteNames.has(word))
+    )
+      continue
+    let swap = false
+    if (typeof inventoryEmotes !== 'undefined' && inventoryEmotes.has(word)) {
+      const mine = typeof viewerPersonalEmotes !== 'undefined' ? viewerPersonalEmotes.get(word) : null
+      // not a deliberate catalog pick, the very emote you own, or yours can't be
+      // read (never swap blind): nothing to do
+      if (!rec.variant || !mine?.url || _acPicKey(mine.url) === _acPicKey(rec.url)) continue
+      if (typeof swapEmoteInInventory !== 'function') continue
+      swap = true
+    }
     if (pendingEmoteOps?.has(word)) continue
     // Skip heatsync curated globals — server rejects with "global emotes cannot
     // be added to personal inventory" and they already render for everyone, so
@@ -8076,7 +8719,7 @@ function autoAddInputEmotes(text) {
     // before the server add resolves) renders the emote image instead of raw
     // text — text has no wrapper, so a late add can't retro-fix it. Mirrors the
     // picker's optimistic add (emotes.js). addEmoteToInventory then persists it.
-    if (typeof viewerPersonalEmotes !== 'undefined' && !viewerPersonalEmotes.has(word)) {
+    if (typeof viewerPersonalEmotes !== 'undefined' && !swap && !viewerPersonalEmotes.has(word)) {
       viewerPersonalEmotes.set(word, {
         url: rec.url,
         source: rec.source,
@@ -8085,7 +8728,7 @@ function autoAddInputEmotes(text) {
         addedAt: Date.now(),
       })
     }
-    if (typeof addEmoteToInventory === 'function') {
+    if (swap || typeof addEmoteToInventory === 'function') {
       // Roll back the optimistic own-set entry if the server add fails (offline,
       // logged out, 4xx). Without this, a never-owned emote stays phantom-"owned"
       // for the whole tab session — picker, tab-complete and the own-echo all
@@ -8102,13 +8745,55 @@ function autoAddInputEmotes(text) {
           viewerPersonalEmotes.delete(_rollbackWord)
         }
       }
-      Promise.resolve(addEmoteToInventory(word, rec.url, rec.source, undefined, !!rec.zeroWidth, /* silent */ true))
-        .then((ok) => {
-          if (!ok) _rollback()
-        })
-        .catch(_rollback)
+      // swap seeds its own optimistic entry (the removal clears the old one first)
+      const done = swap
+        ? swapEmoteInInventory(word, rec.url, rec.source, !!rec.zeroWidth)
+        : addEmoteToInventory(word, rec.url, rec.source, undefined, !!rec.zeroWidth, /* silent */ true)
+      adds.push(
+        Promise.resolve(done)
+          .then((ok) => {
+            if (!ok) _rollback()
+            return ok ? word : null
+          })
+          .catch(() => {
+            _rollback()
+            return null
+          }),
+      )
     }
   }
+  return adds.length ? Promise.all(adds).then((r) => r.filter(Boolean)) : null
+}
+
+// Own-set emotes in the outgoing text that render only through the heatsync
+// account — not a channel or global emote that shows for everyone anyway.
+// Inventory is kept out of emoteCache, so emoteCache.has means global.
+function ownOnlyEmotesIn(text) {
+  const pools = typeof activeTabEmotePools === 'function' ? activeTabEmotePools() : []
+  const out = new Set()
+  for (const w of text.split(/\s+/)) {
+    if (!w || !inventoryEmotes.has(w) || emoteCache.has(w) || pools.some((p) => p?.has?.(w))) continue
+    out.add(w)
+  }
+  return [...out]
+}
+
+// Your emotes live on the signed-in heatsync account, but a chat row renders
+// against its SENDER's account. When the send goes out as a chat account that
+// heatsync account isn't linked to, they show as text there — say so (once per
+// emote and chat account per session) instead of the send looking broken.
+// Waits for the send's auto-add so a just-added emote counts too.
+const _unlinkedWarned = new Set()
+function warnUnlinkedOwnEmotes(text, autoAdded, platforms) {
+  const unlinked = unlinkedSendAccounts(platforms.filter(Boolean))
+  if (!unlinked.length) return
+  const chat = unlinked.map((u) => `${u.platform} ${u.name}`.trim()).join(', ')
+  Promise.resolve(autoAdded).then(() => {
+    const fresh = ownOnlyEmotesIn(text).filter((n) => !_unlinkedWarned.has(`${chat}|${n}`))
+    if (!fresh.length) return
+    for (const n of fresh) _unlinkedWarned.add(`${chat}|${n}`)
+    showToast(t('mc_emote_unlinked', [fresh.join(' '), selfHsAccount, chat]), 'info')
+  })
 }
 
 // Sticky-focus window after a send (ms). Inside it the composer reasserts focus
@@ -8168,15 +8853,72 @@ function settleComposerAfterSend(input) {
   armComposerStickyFocus(input)
 }
 
-async function sendMessage() {
+// Post the active quote as a new top-level thread. Mirrors the /op handler's
+// auth/result handling exactly (same login gate, same "server already
+// toasted the reason" contract on failure) — quote mode is /op with a UI.
+// On success the public thread link is copied to the clipboard so the flow
+// hands the user something to paste, not just a "posted" confirmation.
+async function sendQuoteThread(words) {
+  const state = quoteState
+  if (!state) return
+  if (!hsAuthToken) {
+    showToast(t('mc_input_login_first_op'), 'error')
+    return
+  }
+  // sendMessage's auto-add runs after the quote branch, so a quote post would
+  // vouch a remote pick (postFeedMessage below) without ever adding it.
+  autoAddInputEmotes(words)
+  const content = buildQuoteContent(state, words)
+  if (!content) {
+    // Nothing left to cite (should not happen — startQuoteFromRow refuses
+    // this state) — bail out of quote mode rather than post nothing.
+    clearQuoteState()
+    hideInputBar()
+    return
+  }
+  const posted = await postFeedMessage(content, { topLevel: true })
+  // postFeedMessage already surfaced the specific failure (401/429/409) —
+  // keep quote mode alive so Enter retries without re-quoting the line.
+  if (!posted) return
+  // Clear AFTER posting, not before: postFeedMessage's own hideInputBar()
+  // call ran while quoteState was still set (the "don't hide mid-quote"
+  // guard in main.js applies to every hide attempt, including its own), so
+  // settle the composer explicitly now that quote mode is actually over.
+  clearQuoteState()
+  settleComposerAfterSend(document.getElementById('hs-mc-input'))
+  const id = posted === true ? null : posted.base36_id
+  const link = id ? buildPostPermalink(id) : null
+  let copied = false
+  if (link) {
+    try {
+      await navigator.clipboard.writeText(link)
+      copied = true
+    } catch {}
+  }
+  showToast(copied ? t('mc_msg_quote_posted_copied') : t('mc_msg_quote_posted'), 'success')
+}
+
+// retry: { only, sendId } from a retry — the legs to send again ('twitch' | 'kick' | 'yt') under the
+// send they belong to, so a late leg folds into the row of the one that landed. Anything else (the
+// send button hands in its click event) is a plain send to every leg.
+async function sendMessage(retry) {
+  const only = retry?.only instanceof Set && retry.only.size ? retry.only : null
   const input = document.getElementById('hs-mc-input')
   if (!input) return
+
+  // Quote mode posts to the feed, not this tab's chat, and unlike a normal
+  // send an EMPTY composer is valid here — the quote alone is a complete
+  // thread — so this branches before the empty-text bailout below.
+  if (quoteState) {
+    await sendQuoteThread(convertEmojiShortcodes(getInputText().trim()))
+    return
+  }
 
   let text = convertEmojiShortcodes(getInputText().trim())
   if (!text) return
 
   // Remote-searched emotes in the outgoing message get added to the set on send.
-  autoAddInputEmotes(text)
+  const autoAdded = autoAddInputEmotes(text)
 
   // Resub-share mode — typed text becomes the celebration BODY via Twitch's
   // Chat_ShareResub_UseResubToken GQL mutation. consume() fires that mutation
@@ -8212,7 +8954,7 @@ async function sendMessage() {
     // platform as literal text would be worse.
     let result
     try {
-      result = await handleSlashCommand(text, input)
+      result = await runSlashCommandWithReceipt(text, () => handleSlashCommand(text, input))
     } catch (e) {
       console.error('[hs] slash command threw:', e?.message || e)
       showToast(
@@ -8221,8 +8963,23 @@ async function sendMessage() {
       )
       return
     }
-    if (result === true) return
+    // An object result ({ ok: false, … }) is a handled command too — falling
+    // through here would send "/ban x" as chat text after a cancelled confirm.
+    if (result === true || (result && typeof result === 'object')) return
     if (typeof result === 'string') text = result
+    else if (/^\/[a-zA-Z]/.test(text) && !/^\/me\b/i.test(text)) {
+      // Nothing here owns this command. No platform parses one out of a
+      // chat message any more (twitch stopped in Feb 2023; kick and youtube
+      // never did), so passing it through only ever posted the literal text
+      // — or, on twitch, bought a NOTICE from the server. Refuse it here,
+      // with the same inline row every other command gets, on every
+      // platform. /me keeps its wire form below; a lone "/" or "//x" is text.
+      const reason = `${t('mc_input_unknown_command') || 'unknown command'} — /help`
+      settleCmdReceipt(beginCmdReceipt(text), false, reason)
+      showToast(reason, 'error')
+      flashInputError(input)
+      return
+    }
   }
 
   // Feed tab: plain text + media paste posts directly to home feed.
@@ -8240,7 +8997,7 @@ async function sendMessage() {
     // mentions span channels so there's no single destination. The bare flash
     // never said which, so it read as "the send broke".
     flashInputError(input)
-    showToast(currentTab === 'mentions' ? t('mc_input_mentions_readonly') : t('mc_whisper_hint'), 'error')
+    showToast(currentTab === 'mentions' ? t('mc_input_mentions_readonly') : whisperHint(), 'error')
     return
   }
 
@@ -8290,19 +9047,21 @@ async function sendMessage() {
   const kickSlug = ch?.kick
   const twitchName = ch?.twitch
   const anonLive = currentTab === 'live' && !ch
-
-  // Orphan slash command: starts with /word but nothing here consumed it
-  // (handleSlashCommand returned false / explicit pass-through) and it isn't
-  // /me. Twitch parses slash commands server-side so passing it through is
-  // correct there, but Kick/YouTube sends are plain REST posts — "/announce
-  // hi" would land as literal chat text. Gate those platforms off; /me is
-  // exempt (each platform gets its wire form below).
-  const orphanSlash = /^\/[a-zA-Z]/.test(text) && !/^\/me\b/i.test(text)
+  // Chatting from the temp tab is the clearest ask to keep it (site parity).
+  // Runs only from a leg that really delivered, never on a failed send; the
+  // send targets above are untouched — promotion happens after the fact.
+  const fromTempTab = currentTab === 'live'
+  const keepTempTabAfterSend = () => {
+    if (!fromTempTab) return
+    try {
+      keepLiveTab().catch(() => {})
+    } catch (_) {}
+  }
 
   const ytUrl = ch?.youtube
   const isLiveYt = currentTab === 'live' && hostPlatform === 'yt'
 
-  // Per-channel sendTargets override (composer chips). Only applies to
+  // Per-channel sendTargets override (edit-channel form toggles). Only applies to
   // configured channels — anonLive has no persisted config to read, so it
   // keeps the unconditional host-platform-only behavior above untouched.
   // Absent ch.sendTargets resolves every linked platform ON, so an
@@ -8312,9 +9071,14 @@ async function sendMessage() {
     : null
 
   const sendToKick =
-    (!!kickSlug || (anonLive && hostPlatform === 'kick')) && !orphanSlash && (!sendTargets || sendTargets.kick)
-  const sendToTwitch = (!!twitchName || (anonLive && hostPlatform === 'twitch')) && (!sendTargets || sendTargets.twitch)
-  const ytWanted = (!!ytUrl || isLiveYt) && !orphanSlash && (!sendTargets || sendTargets.youtube)
+    (!!kickSlug || (anonLive && hostPlatform === 'kick')) &&
+    (!sendTargets || sendTargets.kick) &&
+    (!only || only.has('kick'))
+  const sendToTwitch =
+    (!!twitchName || (anonLive && hostPlatform === 'twitch')) &&
+    (!sendTargets || sendTargets.twitch) &&
+    (!only || only.has('twitch'))
+  const ytWanted = (!!ytUrl || isLiveYt) && (!sendTargets || sendTargets.youtube) && (!only || only.has('yt'))
   // Exact stream video id (or '' if not concretely known) — lets background
   // auto-open a login-inheriting live_chat bridge tab when no YT tab is open.
   const ytVideoId = ytWanted ? currentYoutubeVideoId(ytUrl) : ''
@@ -8326,15 +9090,32 @@ async function sendMessage() {
   // host page's chat (the "my message leaked into another tab's host chat"
   // bug). Drop the youtube leg entirely; twitch/kick still go through.
   const sendToYoutube = ytWanted && (isLiveYt || !!ytVideoId)
-  const isDualSend = sendToKick && sendToTwitch
-
-  // Orphan slash with no twitch leg = nothing left to send (kick/yt-only
-  // target). Fail loud and keep the input so the text isn't lost.
-  if (orphanSlash && !sendToTwitch) {
-    showToast(t('mc_input_unknown_command'), 'error')
+  warnUnlinkedOwnEmotes(text, autoAdded, [sendToTwitch && 'twitch', sendToKick && 'kick', sendToYoutube && 'youtube'])
+  // youtube was the ONLY wanted leg and it can't be targeted yet: bail before
+  // anything is registered or cleared. Falling through ran the twitch-only
+  // send — "log into twitch.tv" for a youtube-only user, or an IRC send to a
+  // ghost channel. Text stays in the box.
+  if (ytWanted && !sendToYoutube && !sendToKick && !sendToTwitch) {
     flashInputError(input)
+    showToast(t('mc_yt_send_open_stream'), 'error')
     return
   }
+  // a retry whose legs are no longer linked has nothing to send; never the twitch path by default
+  if (only && !sendToKick && !sendToTwitch && !sendToYoutube) {
+    flashInputError(input)
+    showToast(t('mc_input_no_channel'), 'error')
+    return
+  }
+  // twitch is the only leg and the room has you locked out: hold the send, keep the words
+  if (sendToTwitch && !sendToKick && !sendToYoutube && twitchName) {
+    const lock = chatLockFor(twitchName)
+    if (chatLockHoldsSend(lock)) {
+      flashInputError(input)
+      showToast(chatLockLabel(lock), 'error')
+      return
+    }
+  }
+  const isDualSend = sendToKick && sendToTwitch
 
   // /me action — give each platform the right wire form for an action message.
   // Twitch IRC carries actions as a CTCP ACTION (\x01ACTION text\x01) — the same
@@ -8364,13 +9145,14 @@ async function sendMessage() {
   // so the pending tracker and peekSentHost/isSentEcho must key on the body or
   // the echo never matches — firing a false "did not confirm" warning and
   // losing badge attribution + dual-send dedup. Identical to text when not /me.
+  const _sendId = (only && retry.sendId) || hsNewSendId()
   const _synthId = registerPendingSend({
+    sendId: _sendId,
     text: restText,
     channel: targetChannel,
     platforms: _pendingPlatforms,
     replyParentId: replyState?.msgId || null,
     replyUser: replyState?.user || null,
-    noEcho: isNonEchoingCommand(text),
   })
 
   // Track every send (not just dual-send). The host platform stored on each
@@ -8400,34 +9182,52 @@ async function sendMessage() {
               : sendToYoutube
                 ? 'yt'
                 : hostPlatform
-  trackSentMessage(restText, _echoHost, _synthId, _echoCount || 1, !!replyState?.msgId)
+  trackSentMessage(restText, _echoHost, _synthId, _echoCount || 1, !!replyState?.msgId, _sendId)
 
-  // Push to message history (dedup consecutive, cap at max)
-  if (mcMessageHistory[0] !== text) {
-    mcMessageHistory.unshift(text)
-    if (mcMessageHistory.length > MC_HISTORY_MAX) mcMessageHistory.length = MC_HISTORY_MAX
-  }
-  mcHistoryIndex = -1
+  hsSentHistoryRecord(text)
 
   const replyParentId = replyState?.msgId || null
+  // A parent id belongs to the platform its row came from: twitch and kick each only
+  // thread a reply to their OWN message, so the other legs get a plain send ('' =
+  // an older caller that never named the platform: keep the old both-legs behaviour).
+  const _replyPlat = replyState?.platform || ''
+  const twitchReplyId = replyParentId && (!_replyPlat || _replyPlat === 'twitch') ? replyParentId : null
+  const kickReplyId = replyParentId && (!_replyPlat || _replyPlat === 'kick') ? replyParentId : null
   // YouTube has no reply-threading API — the @mention prepend is the only way
   // a reply's context survives on that leg. Capture the author BEFORE
   // clearReplyState() wipes replyState below; Twitch/Kick keep carrying the
   // real replyParentId and never see this text.
   const replyAuthor = replyState?.user || null
   // Stash the parent context for the own-echo reply bar (see peekOwnReply).
-  // Resolve parent text/userId from the twitch buffer best-effort — a miss
-  // still yields a correct bar from the author name alone. Must run BEFORE
-  // clearReplyState() wipes replyState.
-  if (replyParentId && sendToTwitch) {
+  // Resolve parent text/userId from whichever buffer holds the parent —
+  // best-effort, a miss still yields a correct bar from the author name alone.
+  // Must run BEFORE clearReplyState() wipes replyState.
+  //
+  // NOT gated on the twitch leg. It used to be, and that was the whole reason a
+  // reply sent on kick or youtube came back with no bar on your own message:
+  // kick's echo of our own send carries no reply payload and youtube has no
+  // reply threading at all, so those legs have NOTHING to render the bar from
+  // except what we remember here. Whether we replied is a fact about the send,
+  // not about which chat it went to.
+  //
+  // Keyed on restText, not twitchText: `/me` wraps twitchText in CTCP ACTION,
+  // which no echo ever carries back (irc.js unwraps it, kick/youtube never had
+  // it) — so a /me reply missed its own bar on every leg including twitch.
+  if (replyParentId) {
     let _parent = null
     try {
-      _parent = irc?.channels
-        ?.get((twitchName || '').toLowerCase())
-        ?.getAll?.()
-        .find((m) => m?.id === replyParentId)
+      _parent =
+        irc?.channels
+          ?.get((twitchName || '').toLowerCase())
+          ?.getAll?.()
+          .find((m) => m?.id === replyParentId) ||
+        kickChat?.channels
+          ?.get(kickSlug || targetChannel)
+          ?.getAll?.()
+          .find((m) => m?.id === replyParentId) ||
+        null
     } catch (_) {}
-    rememberOwnReply(twitchText, {
+    rememberOwnReply(restText, {
       user: replyAuthor || _parent?.user || '',
       text: _parent?.text || '',
       id: replyParentId,
@@ -8452,6 +9252,11 @@ async function sendMessage() {
   // cursor on the visible composer.
   settleComposerAfterSend(input)
 
+  // The composer is already clear and settled; only the platform legs wait for a
+  // pending emote add (bounded), so Enter again can't resend this line.
+  const addHold = emoteAddHold(autoAdded)
+  if (addHold) await addHold
+
   // --- Kick send path (single, dual, or triple including YT) ---
   if (sendToKick) {
     const slug = kickSlug || targetChannel
@@ -8460,11 +9265,11 @@ async function sendMessage() {
     // (scrolled out of buffer) or sender id degrades to a flat send exactly as
     // before, never a failure.
     let kickReply = null
-    if (replyParentId && kickChat?.channels?.get(slug)) {
+    if (kickReplyId && kickChat?.channels?.get(slug)) {
       const parent = kickChat.channels
         .get(slug)
         .getAll()
-        .find((m) => m?.id === replyParentId)
+        .find((m) => m?.id === kickReplyId)
       if (parent?.id) {
         kickReply = {
           id: parent.id,
@@ -8480,7 +9285,7 @@ async function sendMessage() {
     const kickPromise = sendKickMessage(slug, kickifyEmoteText(restText), kickReply)
     const twitchPromise = sendToTwitch
       ? getTwitchAuthTokenAsync().then(({ token: tok, username: twitchNick }) =>
-          sendIrcMessage(twitchName, twitchText, tok, replyParentId, twitchNick),
+          sendIrcMessage(twitchName, twitchText, tok, twitchReplyId, twitchNick),
         )
       : Promise.resolve(null)
 
@@ -8511,6 +9316,7 @@ async function sendMessage() {
         // silently (no red border, no retry notif, just a no_echo warning
         // 20s later).
         const twitchSent = twitchResult === true
+        if (twitchSent) hsTagTwitchSend(restText, twitchName, _sendId)
         const twitchOk = twitchSent || twitchResult === null
         // 'queued' = IRC was offline, message stuffed in send-queue for next
         // reconnect (could be never). Treat as a visible yellow cue, not silent
@@ -8534,6 +9340,7 @@ async function sendMessage() {
         }
 
         if (kickOk || twitchSent) {
+          keepTempTabAfterSend()
           // Dual-send partial success: at least one platform delivered. Drain
           // the failed platform from the pending tracker's awaiting set so the
           // no_echo toast doesn't fire 20s later for the side that locally
@@ -8591,9 +9398,12 @@ async function sendMessage() {
 
   // --- YouTube-only send path (no Twitch, no Kick) ---
   if (sendToYoutube && !sendToKick && !sendToTwitch) {
+    showYtSendingRow(_synthId, restText)
     sendYoutubeMessage(ytText, ytVideoId)
       .then((result) => {
+        if (result !== true) clearYtSendingRow(_synthId)
         if (result === true) {
+          keepTempTabAfterSend()
           // YT echoes don't loop back through our IRC handlers, so the timer
           // would always fire "no_echo" for pure-YT sends. Confirm here, with
           // explicit 'yt' platform so the per-platform awaiting set drains.
@@ -8609,25 +9419,42 @@ async function sendMessage() {
       })
       .catch((err) => {
         log(`yt-only send rejected: ${err?.message || err}`)
+        clearYtSendingRow(_synthId)
         markPendingFailed(_synthId, 'send_failed')
       })
     return
   }
   // Twitch + YouTube (and no Kick) — fire YouTube as best-effort alongside Twitch send below
+  // The promise resolves to the yt result so a missing twitch session below can
+  // tell "youtube delivered" (success) from "nothing went out" (failure).
+  let ytLeg = null
   if (sendToYoutube && sendToTwitch && !sendToKick) {
-    sendYoutubeMessage(ytText, ytVideoId)
+    ytLeg = sendYoutubeMessage(ytText, ytVideoId)
       .then((result) => {
         if (result !== true && result !== 'no_youtube_tab') {
           showToast(youtubeSendErrorMessage(result), 'error')
         }
+        return result
       })
-      .catch(() => showToast(t('mc_yt_send_failed'), 'error'))
+      .catch(() => {
+        showToast(t('mc_yt_send_failed'), 'error')
+        return null
+      })
     // fall through to Twitch path
   }
 
   // --- Twitch-only send path (existing behavior) ---
   const { token, username: twitchNick } = await getTwitchAuthTokenAsync()
   if (!token) {
+    // Twitch+YouTube with no twitch session: a delivered youtube leg is a
+    // success, same as twitch+kick partial success — drain the twitch wait and
+    // leave a quiet note for the skipped leg instead of a failed send.
+    if (ytLeg && (await ytLeg) === true) {
+      keepTempTabAfterSend()
+      confirmPending(_synthId, 'twitch')
+      showToast(t('mc_send_twitch_skipped'), 'info')
+      return
+    }
     markPendingFailed(_synthId, 'auth_failed')
     try {
       HsNotifs.emit('twitch-auth-required', { text: t('mc_input_not_logged_in') || 'log into twitch.tv to chat' })
@@ -8637,9 +9464,11 @@ async function sendMessage() {
 
   const wsState = authState.ws ? ['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED'][authState.ws.readyState] : 'null'
   log(`IRC SEND → #${targetChannel} ws=${wsState} ready=${authState.ready} queue=${authState.sendQueue.length}`)
-  sendIrcMessage(targetChannel, twitchText, token, replyParentId, twitchNick)
+  sendIrcMessage(targetChannel, twitchText, token, twitchReplyId, twitchNick)
     .then((result) => {
       if (result === true) {
+        hsTagTwitchSend(restText, targetChannel, _sendId)
+        keepTempTabAfterSend()
         if (wsState !== 'OPEN') {
           input.style.borderColor = 'var(--hs-warn)'
           setTimeout(() => {
@@ -8670,6 +9499,30 @@ async function sendMessage() {
       }, 1500)
       markPendingFailed(_synthId, 'send_failed')
     })
+}
+
+// The server stamps each chat line with the sender's emotes as they stand when it
+// fans the line out, and that stamp beats everything, for every viewer, for good.
+// A line sent before its own add/swap lands carries the OLD emote of that name. So
+// the platform legs wait for the add, bounded: a slow or failed add still sends the
+// text. A later line queues behind the wait, so it neither overtakes the line
+// before it nor beats that same still-pending add out the door. No add in flight =
+// no wait.
+const EMOTE_ADD_SEND_WAIT_MS = 1500
+let _emoteAddHold = null
+function emoteAddHold(autoAdded) {
+  if (autoAdded) {
+    const own = Promise.race([
+      Promise.resolve(autoAdded).catch(() => null),
+      new Promise((r) => setTimeout(r, EMOTE_ADD_SEND_WAIT_MS)),
+    ])
+    const hold = Promise.all([_emoteAddHold, own])
+    _emoteAddHold = hold
+    hold.then(() => {
+      if (_emoteAddHold === hold) _emoteAddHold = null
+    })
+  }
+  return _emoteAddHold
 }
 
 // The exact live video id for the stream currently being composed to, from the
@@ -8712,10 +9565,26 @@ async function sendYoutubeMessage(text, videoId) {
 // ============================================
 
 const MC_UPLOAD_MAX_IMG = 5 * 1024 * 1024 // 5MB
-const MC_UPLOAD_MAX_VID = 50 * 1024 * 1024 // 50MB
+// 45MB, not 50: the file crosses to the background as a base64 dataUrl, which
+// runs ~4/3 the raw size — 50MB would be ~67MB, over chrome.runtime.sendMessage's
+// ~64MiB structured-clone cap (JSON only; a Blob/ArrayBuffer can't ride this
+// bridge), so the message itself would fail to send. 45MB inflates to ~60MiB,
+// leaving headroom for the envelope (name/mime/type fields).
+const MC_UPLOAD_MAX_VID = 45 * 1024 * 1024
 let _mcUploading = false
 
-function showUploadStatus(msg, isError) {
+// One status line, one timer. The auto-clear lives here rather than at each
+// call site because the upload path chains messages — "upload done" can be
+// replaced by a warning about what the upload cost you — and two call sites each
+// holding their own setTimeout meant the FIRST one's timer wiped the SECOND
+// one's message a moment after it appeared.
+let _mcStatusTimer = null
+function showUploadStatus(msg, isError, clearAfterMs) {
+  if (_mcStatusTimer) {
+    clearTimeout(_mcStatusTimer)
+    _mcStatusTimer = null
+  }
+  if (clearAfterMs) _mcStatusTimer = setTimeout(() => showUploadStatus(null), clearAfterMs)
   const bar = document.getElementById('hs-mc-upload-status')
   if (msg) {
     if (bar) {
@@ -8728,7 +9597,7 @@ function showUploadStatus(msg, isError) {
     if (!inputbar) return
     const el = document.createElement('div')
     el.id = 'hs-mc-upload-status'
-    el.style.cssText = 'padding:2px 8px;font-size:13px;color:#fff;background:#000;border-top:1px solid #808080;'
+    el.style.cssText = 'padding:2px 8px;font-size:13px;color:#fff;background:#000;border-top:1px solid #ffffff;'
     el.textContent = msg
     inputbar.insertBefore(el, inputbar.firstChild)
   } else if (bar) {
@@ -8738,21 +9607,19 @@ function showUploadStatus(msg, isError) {
 
 async function uploadMediaFile(file) {
   if (_mcUploading) {
-    showUploadStatus('upload in progress...', true)
+    showUploadStatus(t('mc_input_upload_busy'), true)
     return null
   }
   if (!file) return null
   const isImage = file.type.startsWith('image/')
   const isVideo = file.type.startsWith('video/')
   if (!isImage && !isVideo) {
-    showUploadStatus('only images/videos allowed', true)
-    setTimeout(() => showUploadStatus(null), 2500)
+    showUploadStatus(t('mc_input_upload_media_only'), true, 2500)
     return null
   }
   const maxSize = isImage ? MC_UPLOAD_MAX_IMG : MC_UPLOAD_MAX_VID
   if (file.size > maxSize) {
-    showUploadStatus(`file too large (max ${maxSize / 1048576}MB)`, true)
-    setTimeout(() => showUploadStatus(null), 2500)
+    showUploadStatus(t('mc_input_upload_too_large', [String(maxSize / 1048576)]), true, 2500)
     return null
   }
   _mcUploading = true
@@ -8771,7 +9638,7 @@ async function uploadMediaFile(file) {
   // host_permissions and carries the stored auth token. Messaging can't stream
   // progress back, and an honest "uploading..." beats a percentage on a
   // request that never left the page.
-  showUploadStatus('uploading...')
+  showUploadStatus(t('mc_input_uploading'))
   try {
     // FileReader, not btoa over a Uint8Array: building the binary string a
     // char at a time overflows the stack somewhere in the low megabytes, and
@@ -8788,43 +9655,116 @@ async function uploadMediaFile(file) {
       mime: file.type,
       dataUrl,
     })
-    if (!resp?.ok || !resp.url) throw new Error(resp?.error || 'upload failed')
+    if (!resp?.ok || !resp.url) throw new Error(resp?.error || t('mc_input_upload_failed'))
     const url = resp.url
-    showUploadStatus('upload done')
-    setTimeout(() => showUploadStatus(null), 1500)
+    showUploadStatus(t('mc_input_upload_done'), false, 1500)
     return url
   } catch (e) {
-    showUploadStatus(`upload failed: ${e.message}`, true)
-    setTimeout(() => showUploadStatus(null), 3500)
+    showUploadStatus(t('mc_input_upload_failed_why', [e.message]), true, 3500)
     return null
   } finally {
     _mcUploading = false
   }
 }
 
-async function handleMediaUpload(file) {
-  const url = await uploadMediaFile(file)
-  if (!url) return
+function clipboardImageSourceUrl(dt) {
+  try {
+    const html = dt?.getData?.('text/html')
+    if (!html) return ''
+    const imgs = new DOMParser().parseFromString(html, 'text/html').querySelectorAll('img[src]')
+    if (imgs.length !== 1) return ''
+    // Resolved against a sentinel base so a relative src — unusable, we have no
+    // idea what page it came from — lands on the sentinel host and is dropped.
+    const u = new URL(imgs[0].getAttribute('src') || '', 'https://relative.invalid')
+    if (u.protocol !== 'https:' || u.hostname === 'relative.invalid') return ''
+    return u.toString()
+  } catch {
+    return ''
+  }
+}
+
+// Ask the server for its own stored copy of a remote image. Returns '' on any
+// failure — the caller falls back to uploading the clipboard bitmap, so the
+// worst case is the old behaviour, never a lost paste.
+async function storeRemoteMedia(srcUrl) {
+  if (_mcUploading) return ''
+  _mcUploading = true
+  showUploadStatus(t('mc_input_uploading'))
+  try {
+    const resp = await safeSendMessage({ type: 'api_store_remote', url: srcUrl })
+    if (!resp?.ok || !resp.url) return ''
+    showUploadStatus(t('mc_input_upload_done'), false, 1500)
+    return resp.url
+  } catch {
+    return ''
+  } finally {
+    _mcUploading = false
+  }
+}
+
+// Insert plain text at the end of the composer, focusing/revealing it first.
+// Shared by media-url insertion and the uri-list-only drop path below.
+function insertComposerText(text) {
   const input = document.getElementById('hs-mc-input')
   if (!input) return
   showInputBar()
   input.focus()
   if (input.isContentEditable) {
-    if (!document.execCommand('insertText', false, `${url} `)) {
-      input.textContent = `${(input.textContent || '') + url} `
+    if (!document.execCommand('insertText', false, `${text} `)) {
+      input.textContent = `${(input.textContent || '') + text} `
     }
   } else {
-    input.value = `${(input.value || '') + url} `
+    input.value = `${(input.value || '') + text} `
     input.dispatchEvent(new Event('input', { bubbles: true }))
   }
+}
+
+// fileOrFiles is a single File (the common case: attach button, one pasted/
+// dropped item) or an array of them (multi-file paste/drop) — normalized to
+// an array so both shapes share one upload+insert path. sourceUrl (the
+// clipboard/drag html flavor's original <img src>, for gif recovery) only
+// ever applies to a single file — with several files there is no way to
+// know which one it belonged to, so it's ignored past the first.
+async function handleMediaUpload(fileOrFiles, sourceUrl) {
+  const files = Array.isArray(fileOrFiles) ? fileOrFiles : [fileOrFiles]
+  if (!files.length) return
+  const urls = []
+  let lostAnimation = false
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i]
+    if (!file) continue
+    // The source url is used ONLY when it looks animated, never for stills.
+    // Resolving it means handing our server a url the user never meant to share —
+    // they meant to share the picture — and for a still there is nothing to gain:
+    // Chromium's clipboard bitmap is lossless PNG, so the upload is already an
+    // exact copy. Animation is the one thing the clipboard destroys, so animation
+    // is the only thing worth spending a url on.
+    const src = files.length === 1 ? sourceUrl : ''
+    const maybeAnimated = /\.(gif|webp|avif)(\?|#|$)/i.test(src || '')
+    let url = maybeAnimated ? await storeRemoteMedia(src) : ''
+    if (maybeAnimated && !url) lostAnimation = true
+    if (!url) url = await uploadMediaFile(file)
+    if (url) urls.push(url)
+  }
+  if (!urls.length) return
+  // Say it out loud. The fallback posts a picture either way, so the failure is
+  // invisible — you'd just be left wondering why your gif came out frozen.
+  if (lostAnimation) {
+    showUploadStatus(t('mc_input_upload_still_frame'), true, 4000)
+  }
+  insertComposerText(urls.join(' '))
 }
 
 let _mcDropHandlersInstalled = false
 function setupMediaDropHandlers() {
   if (_mcDropHandlersInstalled) return
-  _mcDropHandlersInstalled = true
   const overlay = document.getElementById('hs-mc-overlay')
+  // Only latch once the overlay actually exists and listeners are attached —
+  // setting the flag before this lookup meant a call that ran before the
+  // overlay mounted (page still loading) latched anyway, and no later call
+  // ever retried, so drop silently never worked for that page load.
   if (!overlay) return
+  _mcDropHandlersInstalled = true
 
   let dragCounter = 0
   const showDropZone = () => {
@@ -8833,8 +9773,8 @@ function setupMediaDropHandlers() {
       dz = document.createElement('div')
       dz.id = 'hs-mc-drop-zone'
       dz.style.cssText =
-        'position:absolute;inset:0;background:rgba(255,255,255,0.1);border:2px dashed #fff;display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px;z-index:99998;pointer-events:none;'
-      dz.textContent = 'drop image/video to upload'
+        'position:absolute;inset:0;background:#000000;border:2px dashed #fff;display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px;z-index:99998;pointer-events:none;'
+      dz.textContent = t('mc_input_drop_zone')
       overlay.appendChild(dz)
     }
   }
@@ -8842,11 +9782,14 @@ function setupMediaDropHandlers() {
     document.getElementById('hs-mc-drop-zone')?.remove()
     dragCounter = 0
   }
+  // A dragged web image/link carries no 'Files' entry — only text/uri-list —
+  // so gating solely on 'Files' never showed the zone or allowed the drop.
+  const isDraggableMedia = (dt) => !!dt?.types && (dt.types.includes('Files') || dt.types.includes('text/uri-list'))
 
   overlay.addEventListener(
     'dragenter',
     (e) => {
-      if (!e.dataTransfer?.types?.includes('Files')) return
+      if (!isDraggableMedia(e.dataTransfer)) return
       e.preventDefault()
       dragCounter++
       showDropZone()
@@ -8856,7 +9799,7 @@ function setupMediaDropHandlers() {
   overlay.addEventListener(
     'dragover',
     (e) => {
-      if (!e.dataTransfer?.types?.includes('Files')) return
+      if (!isDraggableMedia(e.dataTransfer)) return
       e.preventDefault()
       e.dataTransfer.dropEffect = 'copy'
     },
@@ -8865,7 +9808,7 @@ function setupMediaDropHandlers() {
   overlay.addEventListener(
     'dragleave',
     (e) => {
-      if (!e.dataTransfer?.types?.includes('Files')) return
+      if (!isDraggableMedia(e.dataTransfer)) return
       dragCounter--
       if (dragCounter <= 0) hideDropZone()
     },
@@ -8874,11 +9817,25 @@ function setupMediaDropHandlers() {
   overlay.addEventListener(
     'drop',
     (e) => {
-      if (!e.dataTransfer?.files?.length) return
+      if (!isDraggableMedia(e.dataTransfer)) return
       e.preventDefault()
       hideDropZone()
-      const file = e.dataTransfer.files[0]
-      handleMediaUpload(file)
+      const files = e.dataTransfer.files
+      if (files?.length) {
+        // A drag out of a web page carries the same html flavor as a copy, so a
+        // dragged gif gets the same route back to its frames.
+        handleMediaUpload(Array.from(files), clipboardImageSourceUrl(e.dataTransfer))
+        return
+      }
+      // No file, just a link (e.g. dragging an <a> or an image with no
+      // fetchable bytes attached) — drop the url in as text instead of
+      // silently doing nothing.
+      const uriList = e.dataTransfer.getData('text/uri-list') || ''
+      const url = uriList
+        .split('\n')
+        .map((s) => s.trim())
+        .find((s) => s && !s.startsWith('#'))
+      if (url) insertComposerText(url)
     },
     { signal: mcSignal },
   )

@@ -76,11 +76,41 @@ export async function tabCompleteCheck() {
     const id = sw.url().match(/chrome-extension:\/\/([a-p]+)\//)?.[1]
     if (!id) fail('could not resolve the extension id for the tab-complete check')
 
+    // A fresh profile runs two one-time wipes of the channel sets at worker start (the install
+    // reset and the v1.5.4 cache migration). Both are async; on a loaded box they land after the seed
+    // and erase it (the CI flake: sw map=empty, then a failed refetch saved an empty set). Wait for
+    // the migration's done-flag, and for any fetch already in flight, then seed.
+    // The background refetches a channel on every join and writes its answer over its saved copy. With every
+    // provider refused above, that answer is an empty set, which erases zorpChannel whenever the
+    // fetch lands after the seed (6/6 on a loaded box). A real background already holds a channel it
+    // fetched a moment ago (it restores the sets at start), and answers a join from that copy without
+    // refetching — so seed that copy too, rather than let the harness race the fetch.
+    await sw.evaluate(
+      async ([key, emotes]: [string, unknown[]]) => {
+        // @ts-ignore — service worker globals
+        const wait = () => new Promise((r) => setTimeout(r, 50))
+        // @ts-ignore
+        for (let i = 0; i < 300 && !(await chrome.storage.local.get('migrated_emote_cache_v154')).migrated_emote_cache_v154; i++) await wait()
+        // @ts-ignore
+        for (let i = 0; i < 300 && channelEmotesMap[key] === 'loading'; i++) await wait()
+        // @ts-ignore
+        channelEmotesMap[key] = emotes
+        // @ts-ignore
+        channelEmotesFetchedAt[key] = Date.now()
+        // @ts-ignore — and into its IndexedDB, which is where a woken worker restores them from
+        return bgPersistChannelEmotes(key)
+      },
+      ['twitch/probechan', [
+        { name: 'zorpChannel', url: E('zorpChannel'), source: '7tv' },
+        { name: 'opGrab', url: E('opGrab'), source: '7tv' },
+      ]] as [string, unknown[]],
+    )
     const seed = await c.newPage()
     await seed.goto(`chrome-extension://${id}/popup.html`, { waitUntil: 'load' })
     await seed.evaluate(async (urls: Record<string, string>) => {
       // Written the way the background writes it after a real fetch — three
-      // separate keys feeding three separate tiers, which is the whole point.
+      // separate tiers (global, own, channel), which is the whole point. The channel tier is
+      // seeded below, in the background's own memory + IndexedDB (storage.local never holds it).
       // @ts-ignore — extension page
       await chrome.storage.local.set({
         heatsync_multichat: { channels: [{ id: 'probechan', twitch: 'probechan', kick: '', youtube: '' }] },
@@ -90,12 +120,6 @@ export async function tabCompleteCheck() {
           { name: 'Kappa', url: urls.Kappa, source: 'twitch' },
         ],
         emote_inventory: [{ name: 'zorpOwn', url: urls.zorpOwn, source: 'heatsync' }],
-        channel_emotes_map: {
-          'twitch/probechan': [
-            { name: 'zorpChannel', url: urls.zorpChannel, source: '7tv' },
-            { name: 'opGrab', url: urls.opGrab, source: '7tv' },
-          ],
-        },
       })
     }, {
       zorpGlobal: E('zorpGlobal'),
@@ -104,23 +128,6 @@ export async function tabCompleteCheck() {
       opGrab: E('opGrab'),
       Kappa: E('Kappa'),
     })
-    // The background refetches a channel on every join and writes its answer over storage. With every
-    // provider refused above, that answer is an empty set, which erases zorpChannel whenever the
-    // fetch lands after the seed (6/6 on a loaded box). A real background already holds a channel it
-    // fetched a moment ago (it restores the map at start), and answers a join from that copy without
-    // refetching — so seed that copy too, rather than let the harness race the fetch.
-    await sw.evaluate(
-      ([key, emotes]: [string, unknown[]]) => {
-        // @ts-ignore — service worker globals
-        channelEmotesMap[key] = emotes
-        // @ts-ignore
-        channelEmotesFetchedAt[key] = Date.now()
-      },
-      ['twitch/probechan', [
-        { name: 'zorpChannel', url: E('zorpChannel'), source: '7tv' },
-        { name: 'opGrab', url: E('opGrab'), source: '7tv' },
-      ]] as [string, unknown[]],
-    )
     await seed.close()
 
     const p = await c.newPage()
@@ -199,7 +206,29 @@ export async function tabCompleteCheck() {
       () => p.evaluate(() => !!document.querySelector('#hs-mc-messages img[alt="zorpChannel"]')),
       { every: 1500, ms: 20_000 },
     )
-    if (!rendered) fail('the channel emote set never reached the overlay: a line naming zorpChannel stayed plain text')
+    if (!rendered) {
+      // Say where the set went missing, so the next red names its own cause instead of a guess.
+      const live = c.serviceWorkers()[0]
+      const state = live
+        ? await live
+            .evaluate(async () => {
+              const key = 'twitch/probechan'
+              // @ts-ignore — service worker globals
+              const mem = channelEmotesMap[key]
+              // @ts-ignore
+              const at = channelEmotesFetchedAt[key]
+              // @ts-ignore — the copy a woken worker restores from
+              const kept = await bgIdbGet(BG_IDB_EMOTES, key).catch(() => null)
+              const names = (v: unknown) => (Array.isArray(v) ? v.map((e: any) => e?.name).join(',') || 'empty' : String(v))
+              return `sw map=${names(mem)} age=${at ? Date.now() - at : 'none'}ms · saved map=${names(kept?.emotes)} at=${kept?.at ? 'set' : 'none'}`
+            })
+            .catch((e: unknown) => `sw unreadable: ${String(e).slice(0, 120)}`)
+        : 'no service worker'
+      fail(
+        `the channel emote set never reached the overlay: a line naming zorpChannel stayed plain text (${state}; ` +
+          `${live === sw ? 'same' : 'restarted'} service worker)`,
+      )
+    }
     await resetInput()
     await p.keyboard.type('zorp')
     await p.keyboard.press('Tab')

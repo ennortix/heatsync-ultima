@@ -2826,7 +2826,6 @@
         'emote_inventory',
         'blocked_emotes',
         'local_blocked_emotes',
-        'channel_emotes_map',
         'blocked_users',
         'local_blocked_emote_names',
       ])
@@ -2848,10 +2847,18 @@
         // Load only THIS channel's emotes from the per-channel map
         const myChannel = getPageChannel()
         const myPlatform = window.location.hostname.includes('kick.com') ? 'kick' : 'twitch'
-        const myEmotes =
-          myChannel && stored.channel_emotes_map
-            ? stored.channel_emotes_map[`${myPlatform}/${myChannel}`] || stored.channel_emotes_map[myChannel] || []
-            : []
+        // The background keeps channel sets in IndexedDB; ask it for this page's one set.
+        let myEmotes = []
+        if (myChannel) {
+          try {
+            const resp = await safeSendMessage({
+              type: 'get_channel_emotes_map',
+              channel: myChannel,
+              platform: myPlatform,
+            })
+            myEmotes = resp?.map?.[`${myPlatform}/${myChannel}`] || []
+          } catch {}
+        }
         channelEmotes = myEmotes.map((e) => ({
           ...e,
           url: normalizeEmoteUrl(e.url),
@@ -4186,10 +4193,30 @@
   // Backfill chat history from robotty recent-messages API
   // Fires once per channel join, fetches ~500 recent messages, deduplicates against
   // native Twitch messages, and inserts missing ones at the top of the chat container.
+  let _backfillWait = null
   async function backfillChatHistory() {
     const chatContainer = findChatContainer()
     if (!chatContainer) return
     if (chatContainer.dataset.heatsyncBackfilled) return
+    // Backfilled rows are for someone reading twitch's own chat. Under the
+    // overlay nobody sees them, yet ~500 rows per tab would sit in the page
+    // for as long as it stays open. Wait until the native chat is shown.
+    const coveredBy = chatContainer.closest('.hs-native-hidden')
+    if (coveredBy) {
+      if (_backfillWait?.el === coveredBy) return
+      _backfillWait?.obs.disconnect()
+      const obs = cleanup.trackObserver(
+        new MutationObserver(() => {
+          if (coveredBy.classList.contains('hs-native-hidden')) return
+          obs.disconnect()
+          _backfillWait = null
+          backfillChatHistory()
+        }),
+      )
+      obs.observe(coveredBy, { attributes: true, attributeFilter: ['class'] })
+      _backfillWait = { el: coveredBy, obs }
+      return
+    }
     chatContainer.dataset.heatsyncBackfilled = 'true'
 
     // Extract channel name from URL

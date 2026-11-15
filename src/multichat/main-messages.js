@@ -570,12 +570,9 @@ function buildMessageDiv(m, tabId) {
       })
       .join('')
   } else {
-    // m.badgePlatform preserves the ORIGINAL chat origin (twitch IRC vs
-    // Kick WS) when peekSentHost retags m.platform to the user's send-host
-    // ('kick' on own msg from kick.com). Badge URL lookup must use the
-    // origin platform — mod/sub badges on a Twitch IRC msg always belong
-    // to the Twitch badge namespace, regardless of [K]/[T] indicator.
-    badges = renderBadges(m.badges, m.channel, m.badgePlatform || m.platform)
+    // m.platform is always the chat the row came from (an own echo typed on another host
+    // only sets m.sentHost, the tag), so badge URLs resolve in the right namespace.
+    badges = renderBadges(m.badges, m.channel, m.platform)
   }
   // YT messages don't carry a Twitch ID — resolve via heatsync profile
   // lookup keyed by the YT @handle. If cached, hoist into m.userId so the
@@ -638,12 +635,14 @@ function buildMessageDiv(m, tabId) {
     if (mcCosmeticsNeedLookup(uidTwitch)) queueMcCosmeticsLookup(uidTwitch)
   }
   // twitch chat rows carry no platform (convention); anything else unknown renders [?]
-  const mark = platformMark(m.platform || 'twitch')
+  const mark = platformMark(m.platform || 'twitch') // origin: drives identity, not the tag
   // sent through heatsync (by message id, any viewer's): [H] whatever platform echoed it
-  const markPlat = hsOriginStamp(m) ? 'heatsync' : m.platform || 'twitch'
+  const markPlat = hsOriginStamp(m) ? 'heatsync' : m.sentHost || m.platform || 'twitch'
   const plat = mark.cls
-  // after the chatterino badge, before the name: sub flair, 🔥, heat bar (twitch rows only)
-  const marksHtml = plat === 'twitch' ? hsMarksRowHtml(m, String(uidTwitch || '')) : ''
+  // after the chatterino badge, before the name: sub flair, 🔥, heat bar. twitch rows, and your own
+  // line on any chat (the first echo of a multi-chat send is the one kept, often the kick or youtube copy)
+  const marksHtml =
+    plat === 'twitch' ? hsMarksRowHtml(m, String(uidTwitch || '')) : isSelf(m) ? hsMarksSelfRowHtml(uidTwitch) : ''
   const platformBadge = platformMarkHtml(markPlat, { enabled: platformBadgesEnabled, host: hostPlatform })
   const safeScColor = sanitizeColor(m.scColor || '#ffff00')
   const scBadge =
@@ -2067,7 +2066,7 @@ function fairMerge(sources) {
     // returned array in place. IRC/Kick getMessages/getTail already copy,
     // but YT sources are the raw channelYtMessages arrays; returning one by
     // ref let the splice permanently insert "X went live" events into that
-    // buffer, which persistYt then serialized as fake chat history.
+    // buffer.
     return s.length <= limit ? s.slice() : s.slice(-limit)
   }
 

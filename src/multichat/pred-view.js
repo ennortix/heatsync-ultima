@@ -40,7 +40,13 @@ function closePredView() {
   activePredView = null
   hsTakeoverSync()
   showInputBar()
-  if (typeof renderMessages === 'function') renderMessages(currentTab, { bypassScrollPause: true })
+  paneReturn()
+}
+
+// A tab switch tears the view down without touching the pane: the switch repaints it for the
+// new tab itself (and puts the composer back where that tab has one).
+function predViewDrop() {
+  activePredView = null
 }
 
 function predViewOpen() {
@@ -52,6 +58,8 @@ function predViewOpen() {
 // every pubsub update — one hook rather than a second polling loop.
 function refreshPredViewIfOpen() {
   if (!activePredView) return
+  // a card, a confirm or a picture opened over this view has the pane: its close repaints this
+  if (hsPanePanelOpen() || (typeof activeProfileCard !== 'undefined' && activeProfileCard) || imgViewOpen()) return
   renderPredView()
 }
 
@@ -71,7 +79,7 @@ async function refreshPredViewData() {
 function renderPredView() {
   const msgsEl = document.getElementById('hs-mc-messages')
   if (!msgsEl || !activePredView) return
-  msgsEl.textContent = ''
+  takePane(msgsEl)
 
   const wrap = document.createElement('div')
   wrap.className = 'hs-pv-wrap'

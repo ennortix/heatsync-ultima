@@ -345,10 +345,10 @@
     "message": "觀看中"
   },
   "mc_tab_temp_title": {
-    "message": "temporary tab: watching another stream takes its slot · right-click to keep"
+    "message": "暫時分頁：觀看其他直播會佔用它的位置 · 右鍵保留"
   },
   "mc_tab_keep": {
-    "message": "keep tab"
+    "message": "保留分頁"
   },
   "mc_tab_pinned": {
     "message": "已儲存"
@@ -741,7 +741,7 @@
     "message": "發到 heatsync..."
   },
   "mc_input_send_tag_title": {
-    "message": "sends to $TARGETS$",
+    "message": "傳送到 $TARGETS$",
     "placeholders": {
       "targets": {
         "content": "$1"
@@ -1023,6 +1023,12 @@
   "mc_settings_chat_position_desc": {
     "message": "聊天面板停靠在播放器哪一側 — 隱藏則收起（按 \\ 鍵切換）"
   },
+  "mc_settings_start_hidden": {
+    "message": "啟動時隱藏"
+  },
+  "mc_settings_start_hidden_desc": {
+    "message": "每個分頁開啟時聊天都是隱藏的。\\ 在該分頁顯示它。在此之前頁面維持原樣"
+  },
   "mc_settings_yt_suggestions": {
     "message": "youtube：推薦欄"
   },
@@ -1103,6 +1109,12 @@
   },
   "mc_settings_suggest_inventory_emotes_desc": {
     "message": "在 tab 補全和輸入建議中提供你的庫存。關閉則只保留頻道和全域 emote"
+  },
+  "mc_settings_tab_list": {
+    "message": "tab 開啟候選清單"
+  },
+  "mc_settings_tab_list_desc": {
+    "message": "在單字上按 tab 會在輸入框上方的清單中顯示相符的表情。方向鍵選擇，tab 或 enter 插入，esc 關閉。關閉時直接在文字中補全"
   },
   "mc_settings_show_pronouns": {
     "message": "代名詞"
@@ -2173,6 +2185,9 @@
   "mc_main_celebration_share_failed": {
     "message": "分享慶祝失敗 — 正在把你的訊息傳到聊天"
   },
+  "mc_main_cw_signin": {
+    "message": "登入 heatsync 後才能變更"
+  },
   "mc_main_cw_save_failed": {
     "message": "儲存 $NOUN$ 失敗 — 請重試",
     "placeholders": {
@@ -2197,9 +2212,6 @@
   },
   "mc_main_config_save_failed": {
     "message": "頻道未儲存 — 儲存空間出錯"
-  },
-  "mc_main_mute_save_failed": {
-    "message": "靜音清單未儲存 — 儲存空間出錯"
   },
   "mc_main_no_share_token": {
     "message": "沒有分享權杖 — 慶祝已送出但不含文字，你的訊息會傳到聊天"
@@ -2411,6 +2423,14 @@
   },
   "mc_settingsui_import_ok": {
     "message": "設定已匯入 — 正在重新載入…"
+  },
+  "mc_settingsui_import_partial": {
+    "message": "設定已匯入，已略過 $COUNT$ 個無效值 — 正在重新載入…",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
   },
   "mc_settingsui_invalid_expression": {
     "message": "運算式無效"
@@ -3191,6 +3211,9 @@
   },
   "mc_mr_cancel": {
     "message": "取消"
+  },
+  "mc_ch_reset": {
+    "message": "重設"
   },
   "mc_mr_pattern_ph": {
     "message": "比對模式..."

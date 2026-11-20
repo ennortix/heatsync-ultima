@@ -345,10 +345,10 @@
     "message": "visionnage"
   },
   "mc_tab_temp_title": {
-    "message": "temporary tab: watching another stream takes its slot · right-click to keep"
+    "message": "onglet temporaire : un autre stream prend sa place · clic droit pour le garder"
   },
   "mc_tab_keep": {
-    "message": "keep tab"
+    "message": "garder l'onglet"
   },
   "mc_tab_pinned": {
     "message": "enregistrés"
@@ -741,7 +741,7 @@
     "message": "publier sur heatsync..."
   },
   "mc_input_send_tag_title": {
-    "message": "sends to $TARGETS$",
+    "message": "envoie vers $TARGETS$",
     "placeholders": {
       "targets": {
         "content": "$1"
@@ -1023,6 +1023,12 @@
   "mc_settings_chat_position_desc": {
     "message": "le côté du lecteur où se fixe le panneau de chat — hidden le range (touche \\ pour basculer)"
   },
+  "mc_settings_start_hidden": {
+    "message": "démarrer masqué"
+  },
+  "mc_settings_start_hidden_desc": {
+    "message": "chaque onglet s'ouvre avec le chat masqué. \\ l'affiche dans cet onglet. d'ici là la page reste telle quelle"
+  },
   "mc_settings_yt_suggestions": {
     "message": "youtube : bandeau de suggestions"
   },
@@ -1103,6 +1109,12 @@
   },
   "mc_settings_suggest_inventory_emotes_desc": {
     "message": "propose ton inventaire dans la complétion par tab et les suggestions de saisie. désactivé, il ne reste que les emotes de chaîne et globaux"
+  },
+  "mc_settings_tab_list": {
+    "message": "tab ouvre une liste"
+  },
+  "mc_settings_tab_list_desc": {
+    "message": "tab sur un mot affiche les emotes correspondants dans une liste au-dessus du champ. les flèches choisissent, tab ou entrée insère, échap ferme. désactivé complète directement dans le texte"
   },
   "mc_settings_show_pronouns": {
     "message": "pronoms"
@@ -2173,6 +2185,9 @@
   "mc_main_celebration_share_failed": {
     "message": "partage de la célébration échoué — ton message part dans le chat"
   },
+  "mc_main_cw_signin": {
+    "message": "connecte-toi à heatsync pour changer ceci"
+  },
   "mc_main_cw_save_failed": {
     "message": "échec de l'enregistrement de $NOUN$ — réessaie",
     "placeholders": {
@@ -2197,9 +2212,6 @@
   },
   "mc_main_config_save_failed": {
     "message": "chaîne non enregistrée — erreur de stockage"
-  },
-  "mc_main_mute_save_failed": {
-    "message": "liste de sourdine non enregistrée — erreur de stockage"
   },
   "mc_main_no_share_token": {
     "message": "pas de jeton de partage — célébration envoyée sans texte, ton message part dans le chat"
@@ -2411,6 +2423,14 @@
   },
   "mc_settingsui_import_ok": {
     "message": "réglages importés — rechargement…"
+  },
+  "mc_settingsui_import_partial": {
+    "message": "réglages importés, $COUNT$ valeurs non valides ignorées — rechargement…",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
   },
   "mc_settingsui_invalid_expression": {
     "message": "expression invalide"
@@ -3191,6 +3211,9 @@
   },
   "mc_mr_cancel": {
     "message": "annuler"
+  },
+  "mc_ch_reset": {
+    "message": "réinitialiser"
   },
   "mc_mr_pattern_ph": {
     "message": "motif..."

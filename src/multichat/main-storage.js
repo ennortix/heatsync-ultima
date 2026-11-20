@@ -21,7 +21,7 @@ async function _adoptSeedLegs(entry) {
     saveConfig()
     if (added.includes('twitch') && isEnabled('irc-twitch')) {
       irc?.join(entry.twitch)
-      safeSendMessage({ type: 'join_channel', platform: 'twitch', channel: entry.twitch })
+      joinExtraChannel('twitch', entry.twitch)
     }
     if (added.includes('kick') && isEnabled('chat-kick')) kickChat?.join(entry.kick)
   } catch (_) {}
@@ -31,6 +31,7 @@ async function loadConfig() {
   try {
     const s = await browser.storage.local.get([STORAGE_KEY])
     const _raw = s[STORAGE_KEY]
+    _rememberPersisted(_raw?.channels)
     config = { channels: [], enabled: true, ...(_raw && typeof _raw === 'object' ? _raw : {}) }
     // Guard: a persisted null channels field (corrupted storage) would propagate
     // through the spread and cause config.channels.some() to throw below.
@@ -95,11 +96,37 @@ async function loadConfig() {
   } catch (_) {}
 }
 
-let _skipNextConfigSync = false
-// Snapshot of what we last wrote, so the cross-tab union below can tell
-// "another tab added this" from "we deliberately removed this".
+// Our own write coming back through storage.onChanged is recognised by its
+// content, not by a "skip the next one" flag: chrome fires nothing for a write
+// that changes nothing, so the flag outlived a no-op save and swallowed the
+// next tab's real change (a channel removed elsewhere stayed here, then this
+// tab's next save put it back), 11-17.
+let _lastWrittenConfig = ''
+function _isOwnConfigEcho(newValue) {
+  try {
+    return !!newValue && JSON.stringify(newValue) === _lastWrittenConfig
+  } catch {
+    return false
+  }
+}
+// What this tab last knew storage to hold — loaded, written, or another tab's
+// write — so the cross-tab union below can tell "another tab added this" from
+// "we deliberately removed this". Known since load, not only since our first
+// write: a tab that had never saved re-adopted every channel it removed (the
+// removal undone by its own write, 11-17, e2e s16).
 let _lastPersistedChannelKeys = null
 let _lastPersistedLegs = null
+const _cfgChannelKey = (c) =>
+  typeof c === 'string'
+    ? `twitch:${c.toLowerCase()}`
+    : `${c?.platform || 'twitch'}:${(c?.id || c?.twitch || c?.name || '').toLowerCase()}`
+function _rememberPersisted(channels) {
+  const list = Array.isArray(channels) ? channels : []
+  _lastPersistedLegs = new Map(
+    list.map((c) => [_cfgChannelKey(c), { twitch: c?.twitch || '', kick: c?.kick || '', youtube: c?.youtube || '' }]),
+  )
+  _lastPersistedChannelKeys = new Set(list.map(_cfgChannelKey))
+}
 // Serializes saveConfig bodies — two rapid saves must not interleave their
 // read-then-write halves (the same lost-update the union above prevents
 // cross-tab, but within one tab). Mirrors the ui_settings write mutex.
@@ -118,7 +145,6 @@ function saveConfig() {
 
 async function _saveConfigNow() {
   try {
-    _skipNextConfigSync = true
     const persistable = { ...config, channels: config.channels || [] }
     // Union the channel list with what's in storage before writing. A blind
     // full-object set makes two tabs (twitch + kick, the normal setup) race:
@@ -129,7 +155,7 @@ async function _saveConfigNow() {
       const stored = (await browser.storage.local.get(STORAGE_KEY))?.[STORAGE_KEY]
       const theirs = Array.isArray(stored?.channels) ? stored.channels : null
       if (theirs?.length) {
-        const key = (c) => `${c?.platform || 'twitch'}:${(c?.id || c?.twitch || c?.name || '').toLowerCase()}`
+        const key = _cfgChannelKey
         const mine = new Set(persistable.channels.map(key))
         // A channel we deliberately removed this session must stay removed —
         // only adopt entries that appeared after our last known snapshot.
@@ -147,17 +173,8 @@ async function _saveConfigNow() {
         }
       }
     } catch {}
-    _lastPersistedLegs = new Map(
-      persistable.channels.map((c) => [
-        `${c?.platform || 'twitch'}:${(c?.id || c?.twitch || c?.name || '').toLowerCase()}`,
-        { twitch: c?.twitch || '', kick: c?.kick || '', youtube: c?.youtube || '' },
-      ]),
-    )
-    _lastPersistedChannelKeys = new Set(
-      persistable.channels.map(
-        (c) => `${c?.platform || 'twitch'}:${(c?.id || c?.twitch || c?.name || '').toLowerCase()}`,
-      ),
-    )
+    _rememberPersisted(persistable.channels)
+    _lastWrittenConfig = JSON.stringify(persistable)
     await browser.storage.local.set({ [STORAGE_KEY]: persistable })
     // Sync to server for cross-device sync
     safeSendMessage({
@@ -194,6 +211,13 @@ let _savedYtNative = false
 // 'whispers' belongs here too — it's a real, restorable tab; leaving it out
 // silently bounced you to 'live' every reload if that's where you were.
 const BUILTIN_TABS = mcRestorableTabs()
+
+/** Another tab or device rewrote the saved channels: is the tab on screen one it removed?
+ *  A built-in tab (settings, the + form, discover, pinned…) is never a saved channel: it stays,
+ *  with whatever the reader has typed into it. */
+function tabRemovedBySync(tab, newIds) {
+  return !mcChromeTabIds().includes(tab) && !newIds.has(tab)
+}
 /** The channel a twitch/kick popout window is locked to, from its path. */
 function popoutUrlChannel() {
   return location.pathname.match(/^\/(?:popout|embed)\/([a-zA-Z0-9_-]+)/)?.[1] || null
@@ -705,8 +729,8 @@ function listenForSettingsChanges() {
       mutedUsers.clear()
       renderMessages(currentTab, { bypassScrollPause: true })
     }
-    // Cross-surface block sync (content.js, other tabs). Full re-render so blocked
-    // users drop out / reappear (buildMessageDiv filters them).
+    // Cross-surface block sync (content.js, other tabs). Re-render: the render pass
+    // drops blocked people's rows and draws them back (isMsgUserDropped).
     if (msg.type === 'user_blocked') {
       const u = msg.username?.toLowerCase()
       if (u && !blockedUsers.has(u)) {
@@ -1108,15 +1132,7 @@ function listenForSettingsChanges() {
     }
     if (changes.chat_filter_rules) {
       const v = changes.chat_filter_rules.newValue
-      if (typeof v === 'string') {
-        let rules = []
-        try {
-          rules = JSON.parse(v)
-        } catch {}
-        compileFilterRules(Array.isArray(rules) ? rules : [])
-        renderMessages(currentTab)
-        if (currentTab === 'settings') renderSettingsTab()
-      }
+      if (typeof v === 'string' || v === undefined) useFilterRules(v)
     }
 
     // Identity switch — compare the fields render decisions actually read, so
@@ -1158,7 +1174,7 @@ function listenForSettingsChanges() {
             // visible-row swap when scrolled up. non-cold emote edits render
             // now (only when at/near bottom, to not yank a scrolled-up reader).
             if (_emoteColdLoad(pending)) reloadEmotesInPlace(!isScrolledUp)
-            else if (!isScrolledUp) renderMessages(currentTab)
+            else if (!isScrolledUp && !_skipHiddenRender()) renderMessages(currentTab)
           })
           .catch((e) => log('[heatsync-mc] loadEmotes error:', e))
       }, 300)
@@ -1166,9 +1182,7 @@ function listenForSettingsChanges() {
 
     // Multichat config sync (cross-tab + cross-device)
     if (changes.heatsync_multichat) {
-      if (_skipNextConfigSync) {
-        _skipNextConfigSync = false
-      } else {
+      if (!_isOwnConfigEcho(changes.heatsync_multichat.newValue)) {
         const newConfig = changes.heatsync_multichat.newValue || { channels: [], enabled: true }
         const oldChannels = config.channels || []
         const newChannels = newConfig.channels || []
@@ -1181,12 +1195,9 @@ function listenForSettingsChanges() {
         for (const ch of oldChannels) {
           const id = ch.id
           if (!newIds.has(id)) {
-            // another tab (or the page itself) can still show the same name
-            const twitchName = ch.twitch
-            const page = hostPlatform === 'twitch' ? [getLiveChannel()] : []
-            if (twitchName && !mcTwitchStillShown(twitchName, newChannels, page)) irc?.part(twitchName)
-            const kickName = ch.kick
-            if (kickName) kickChat?.part(kickName)
+            // another tab (or the page's stream) can still show the same name
+            mcLeaveUnshown('twitch', ch.twitch, newChannels)
+            mcLeaveUnshown('kick', ch.kick, newChannels)
             if (ch.youtube) {
               const link = youtubeLinks.get(id)
               chrome.runtime
@@ -1211,7 +1222,7 @@ function listenForSettingsChanges() {
             const twitchName = ch.twitch
             if (twitchName && isEnabled('irc-twitch')) {
               irc?.join(twitchName)
-              safeSendMessage({ type: 'join_channel', platform: 'twitch', channel: twitchName })
+              joinExtraChannel('twitch', twitchName)
             }
             const kickName = ch.kick
             if (kickName && isEnabled('chat-kick')) kickChat?.join(kickName)
@@ -1233,26 +1244,19 @@ function listenForSettingsChanges() {
           if (!was) continue
           if (ch.twitch && !was.twitch && isEnabled('irc-twitch')) {
             irc?.join(ch.twitch)
-            safeSendMessage({ type: 'join_channel', platform: 'twitch', channel: ch.twitch })
+            joinExtraChannel('twitch', ch.twitch)
           }
           if (ch.kick && !was.kick && isEnabled('chat-kick')) kickChat?.join(ch.kick)
         }
 
         // Update config and UI
         config.channels = newChannels
+        _rememberPersisted(newChannels)
         _channelLookup = null
         config.enabled = newConfig.enabled !== undefined ? newConfig.enabled : config.enabled
         updateTabBar()
         // If current tab was removed, fall back (temp tab or a saved one covering it)
-        if (
-          currentTab !== 'live' &&
-          currentTab !== 'feed' &&
-          currentTab !== 'mentions' &&
-          currentTab !== 'whispers' &&
-          !newIds.has(currentTab)
-        ) {
-          switchTab(liveTarget())
-        }
+        if (tabRemovedBySync(currentTab, newIds)) switchTab(liveTarget())
         log('Config synced from another tab/device:', newChannels.length, 'channels')
       }
     }
@@ -1335,7 +1339,7 @@ function detectOfflineState() {
   if (isKick) {
     let kickLiveFound = false
     function checkKickLive() {
-      const isLive = !!document.querySelector('video')
+      const isLive = !!shownVideo()
       const liveTab = tabBarElement?.querySelector('[data-tab="live"]')
       if (liveTab) liveTab.dataset.live = String(isLive)
       const curCh = getCurrentChannel()?.toLowerCase()
@@ -1421,7 +1425,19 @@ function detectOfflineState() {
       // flips this off). Show immediately, no wait. Two more signals keep it
       // honest: chat actively flowing (server only relays for live) and the
       // non-live opt-in.
-      const liveChatFramePresent = !!frameEl && !isReplayChat
+      // An EMPTY src is not proof of live, though: youtube also stamps the
+      // frame for a past stream's chat replay and, in a background tab, never
+      // fills its iframe src — the next playlist video autoplaying behind
+      // another tab mounted a src-less frame, the first visible tick read it
+      // as live, dropped hs-offline and the sidebar sweep took the playlist
+      // with it. A resolved src decides on its own; an empty one counts only
+      // while the player itself says live: its time display carries ytp-live
+      // on a livestream and not on a past stream or a VOD (checked on real
+      // pages 11-15; #movie_player itself never gets that class). Flowing
+      // messages below still show the panel on a live stream if that class
+      // ever goes missing.
+      const ytPlayerLive = !!document.querySelector('#movie_player .ytp-time-display.ytp-live')
+      const liveChatFramePresent = !!frameEl && !isReplayChat && (!!chatSrc || ytPlayerLive)
       const ytAutoLiveMsgs = _ytFlowing
       const ownsChat = ytOwnsChat()
       document.body.classList.toggle('hs-yt-owns-chat', ownsChat)
@@ -1431,10 +1447,13 @@ function detectOfflineState() {
         delete frameEl.dataset.hsHidden
         delete frameEl.dataset.hsPrevDisplay
       }
+      // Hidden with \ (or startChatHidden): youtube is left as it is without us, no reserve, no
+      // forced dark theme, and its own chat stays up, same as a page we never show the panel on.
       const showYtChat =
         !isYtReplayPopout &&
         (isYtPopout ||
           (!ownsChat &&
+            chatPosition !== 'hidden' &&
             (liveChatFramePresent || ytAutoLiveMsgs > 0 || document.body.classList.contains('hs-yt-nonlive-chat'))))
       // YT sizes its grids/columns from a width measured once per resize —
       // the panel's reserve appearing/vanishing without one strands a
@@ -1534,8 +1553,12 @@ function detectOfflineState() {
       // Symmetric restore — if the panel goes away (opt-out flip, stream
       // ends, or the page resolved to a VOD) and WE hid/collapsed native
       // chat, give it back.
-      if (!showYtChat && frameEl && _hsHidNativeYt && frameEl.style.display === 'none') {
-        frameEl.style.removeProperty('display')
+      // data-hs-hidden: a frame the panel's mount hid, which this flag never knew about
+      if (!showYtChat && frameEl && (_hsHidNativeYt || frameEl.dataset.hsHidden) && frameEl.style.display === 'none') {
+        if (frameEl.dataset.hsPrevDisplay) frameEl.style.display = frameEl.dataset.hsPrevDisplay
+        else frameEl.style.removeProperty('display')
+        delete frameEl.dataset.hsHidden
+        delete frameEl.dataset.hsPrevDisplay
         _hsHidNativeYt = false
       }
       if (!showYtChat && frameEl && _hsCollapsedNativeYt && frameEl.hasAttribute('collapsed')) {
@@ -1547,6 +1570,8 @@ function detectOfflineState() {
       }
     }
     checkYtLive()
+    // \ flips the panel: settle youtube's layout now, not on the next poll tick
+    cleanup.addEventListener(document, 'hs-chat-hidden-change', checkYtLive)
     // 1.5s steady poll (was 4s): catches live→offline transitions + (only
     // while visible) keeps the panel state honest.
     cleanup.setIntervalIfVisible(checkYtLive, 1500)

@@ -159,57 +159,69 @@ function saveUiSetting(key, value) {
   _pendingSettings[key] = value
   if (_LAYOUT_MIRROR_KEYS.has(key)) _mirrorLayoutToLS(key, value)
   if (_settingsSaveTimer) cleanup.clearTimeout(_settingsSaveTimer)
-  _settingsSaveTimer = cleanup.setTimeout(() => {
-    const pending = _pendingSettings
-    _pendingSettings = null
-    _settingsSaveTimer = null
+  _settingsSaveTimer = cleanup.setTimeout(flushUiSettings, 100)
+}
 
-    // Split: blocklist keys go to chrome.storage.local (no quota cap).
-    // Everything else goes to chrome.storage.sync. The ws fanout patch is
-    // a third, overlapping view: syncPatch keys PLUS any blocklist key
-    // that's a real cross-device preference (not DEVICE_LOCAL_KEYS) and
-    // fits under LARGE_KEY_SYNC_MAX — chatFilterRules
-    // ride the server channel this way even though they never touch
-    // chrome.storage.sync directly (8KB ceiling).
-    const localPatch = {}
-    const syncPatch = {}
-    const wsPatch = {}
-    for (const k in pending) {
-      const v = pending[k]
-      if (UI_SYNC_BLOCKLIST.has(k)) {
-        const mirrorKey = OVERFLOW_MIRROR_KEYS[k]
-        if (mirrorKey) localPatch[mirrorKey] = v
-        if (isLargeKeySyncEligible(k, v)) {
-          // large free-text keys ride a SLOWER debounce (below) — the 100ms
-          // flush is tuned for toggles; a keystroke-by-keystroke textarea
-          // edit would otherwise fan a fresh up-to-32KB patch to every
-          // device several times per edit session
-          _pendingLargeWsPatch[k] = v
-        } else if (!DEVICE_LOCAL_KEYS.has(k)) {
-          warn(
-            'settings sync: skipping',
-            k,
-            '—',
-            estimateSettingSize(v),
-            'bytes exceeds',
-            LARGE_KEY_SYNC_MAX,
-            'cap, staying device-local',
-          )
-        }
-      } else {
-        syncPatch[k] = v
-        wsPatch[k] = v
+// What saveUiSetting collected, written out. `leaving` is the page going away (bootstrap.js,
+// pagehide): the teardown there clears every pending timer, so a setting changed in the last
+// 100ms was never saved, and a big text setting (filter rules) changed in the last 1.2s never
+// reached the other devices, whose older copy then came back over it. On the way out everything
+// pending is sent at once, with nothing awaited first.
+function flushUiSettings(leaving = false) {
+  if (_settingsSaveTimer) cleanup.clearTimeout(_settingsSaveTimer)
+  _settingsSaveTimer = null
+  const pending = _pendingSettings || {}
+  _pendingSettings = null
+
+  // Split: blocklist keys go to chrome.storage.local (no quota cap).
+  // Everything else goes to chrome.storage.sync. The ws fanout patch is
+  // a third, overlapping view: syncPatch keys PLUS any blocklist key
+  // that's a real cross-device preference (not DEVICE_LOCAL_KEYS) and
+  // fits under LARGE_KEY_SYNC_MAX — chatFilterRules
+  // ride the server channel this way even though they never touch
+  // chrome.storage.sync directly (8KB ceiling).
+  const localPatch = {}
+  const syncPatch = {}
+  const wsPatch = {}
+  for (const k in pending) {
+    const v = pending[k]
+    if (UI_SYNC_BLOCKLIST.has(k)) {
+      const mirrorKey = OVERFLOW_MIRROR_KEYS[k]
+      if (mirrorKey) localPatch[mirrorKey] = v
+      if (isLargeKeySyncEligible(k, v)) {
+        // large free-text keys ride a SLOWER debounce (below) — the 100ms
+        // flush is tuned for toggles; a keystroke-by-keystroke textarea
+        // edit would otherwise fan a fresh up-to-32KB patch to every
+        // device several times per edit session
+        _pendingLargeWsPatch[k] = v
+      } else if (!DEVICE_LOCAL_KEYS.has(k)) {
+        warn(
+          'settings sync: skipping',
+          k,
+          '—',
+          estimateSettingSize(v),
+          'bytes exceeds',
+          LARGE_KEY_SYNC_MAX,
+          'cap, staying device-local',
+        )
       }
+    } else {
+      syncPatch[k] = v
+      wsPatch[k] = v
     }
+  }
 
-    if (Object.keys(localPatch).length) {
-      invalidateUiOverflowCache()
-      browser.storage.local.set(localPatch).catch(() => {})
-    }
+  if (Object.keys(localPatch).length) {
+    invalidateUiOverflowCache()
+    browser.storage.local.set(localPatch).catch(() => {})
+  }
 
-    if (Object.keys(syncPatch).length) {
-      invalidateUiSettingsCache()
-      ;(async () => {
+  if (Object.keys(syncPatch).length) {
+    invalidateUiSettingsCache()
+    // leaving: the write goes out in this same turn. Anything behind an await may never run.
+    if (leaving) writeUiSettings(syncPatch)
+    else
+      (async () => {
         // Quota guard: chrome.storage.sync caps each key at 8192 bytes.
         // Check usage before writing — warn + toast if near the ceiling.
         try {
@@ -226,34 +238,36 @@ function saveUiSetting(key, value) {
           showToast(t('mc_main_settings_save_failed'), 'error')
         }
       })()
-    }
+  }
 
-    if (Object.keys(wsPatch).length) {
-      // Cross-surface insta-sync: server merges + fans out to every other
-      // client of this user (other tabs, ext on Twitch/Kick/YT, heatsync.org).
-      // chrome.storage.sync only syncs Chrome → Chrome with same Google
-      // account; server-backed covers Firefox + heatsync.org + signed-out
-      // Chrome profiles using the same heatsync login. Only DEVICE_LOCAL_KEYS
-      // (platformFilters) are omitted — genuinely per-device, not a pref.
+  if (Object.keys(wsPatch).length) {
+    // Cross-surface insta-sync: server merges + fans out to every other
+    // client of this user (other tabs, ext on Twitch/Kick/YT, heatsync.org).
+    // chrome.storage.sync only syncs Chrome → Chrome with same Google
+    // account; server-backed covers Firefox + heatsync.org + signed-out
+    // Chrome profiles using the same heatsync login. Only DEVICE_LOCAL_KEYS
+    // (platformFilters) are omitted — genuinely per-device, not a pref.
+    safeSendMessage({
+      type: 'ws_send',
+      data: { type: 'ui-state:sync', patch: wsPatch },
+    })
+  }
+
+  if (Object.keys(_pendingLargeWsPatch).length) {
+    if (_largeWsPatchTimer) cleanup.clearTimeout(_largeWsPatchTimer)
+    _largeWsPatchTimer = null
+    const sendLarge = () => {
+      _largeWsPatchTimer = null
+      const patch = _pendingLargeWsPatch
+      _pendingLargeWsPatch = {}
       safeSendMessage({
         type: 'ws_send',
-        data: { type: 'ui-state:sync', patch: wsPatch },
+        data: { type: 'ui-state:sync', patch },
       })
     }
-
-    if (Object.keys(_pendingLargeWsPatch).length) {
-      if (_largeWsPatchTimer) cleanup.clearTimeout(_largeWsPatchTimer)
-      _largeWsPatchTimer = cleanup.setTimeout(() => {
-        _largeWsPatchTimer = null
-        const patch = _pendingLargeWsPatch
-        _pendingLargeWsPatch = {}
-        safeSendMessage({
-          type: 'ws_send',
-          data: { type: 'ui-state:sync', patch },
-        })
-      }, 1200)
-    }
-  }, 100)
+    if (leaving) sendLarge()
+    else _largeWsPatchTimer = cleanup.setTimeout(sendLarge, 1200)
+  }
 }
 
 // large-key ws fanout buffer — see saveUiSetting's slow-debounce comment
@@ -443,7 +457,11 @@ const _RUNTIME_BRIDGE = {
   },
   chatPosition: {
     get: () => chatPosition,
+    // The stored value is where chat sits when it shows. A tab hidden with \ keeps its own
+    // 'hidden': settings load lands after loadChatPosition and used to write the stored side
+    // over it, so a hidden tab came back on every reload. The applier owns a pick made here.
     set: (v) => {
+      if (chatHiddenLocal && v !== 'hidden') return
       chatPosition = v
     },
   },
@@ -537,6 +555,14 @@ const _APPLIERS = {
     try {
       applyPlatformPositionOverrides()
     } catch (_) {}
+  },
+  startChatHidden: (v) => {
+    // early-layout.js reads this at document_start to skip the prepaint in a tab that starts hidden
+    try {
+      localStorage.setItem('hs_layout_startChatHidden', v ? '1' : '0')
+    } catch (_) {}
+    // on: the \ key is the only way back, so the edge pill goes; off: it returns
+    if (chatPosition === 'hidden') ensureChatRestorePill(true)
   },
   ytNonLiveChat: (v) => {
     // YT-only, default ON: show the panel on every YT page (home/VOD/search),
@@ -635,6 +661,7 @@ const _APPLIERS = {
       // Explicit position pick in THIS tab (settings dropdown / C rotate)
       // overrides the tab-local hide.
       chatHiddenLocal = false
+      chatPosition = v
       _saveChatHiddenLocal()
     }
     applyChatPosition()
@@ -715,6 +742,13 @@ async function _cwPatch(def, v, retried) {
   }
   if (resp?.ok) {
     safeSendMessage({ type: 'refresh_all' }).catch(() => {})
+    return
+  }
+  // signed out: these live on the account, so there is nothing to save to and
+  // "try again" never works — say what does
+  if (resp?.status === 401) {
+    _cwRollback(def, v, true)
+    showToast(t('mc_main_cw_signin'), 'error')
     return
   }
   if (!retried && v === true && resp?.code === 'AGE_REQUIRED') {
@@ -1053,7 +1087,7 @@ async function retireSettings() {
 
 // Registry-derived reset — every entry returns to its default through the
 // normal setSetting path (storage write + bridge + applier). noReset
-// entries (server-coupled content-warning prefs) are left untouched.
+// entries (session state, lists the user built) are left untouched.
 // Sync writes coalesce into one debounced ui_settings patch.
 // Optional `cat` scopes the reset to one settings page (per-page default
 // button); no arg = everything (system page's all-settings button).
@@ -1443,6 +1477,40 @@ async function restoreInlineNotifs() {
   } catch {
     return 0
   }
+}
+
+// A post its author deleted. Its row in chat was a copy nothing reached: it stayed readable in
+// every channel tab, and the saved copy drew it again on each reload for a week. Every copy is
+// emptied where it stands (a row in chat never moves) and the saved one is dropped.
+function dropInlinePost(id) {
+  if (!id) return
+  const gone = t('mc_profile_deleted_message')
+  const empty = (m) => {
+    if (m?.type !== 'feed-post' || m.base36_id !== id) return
+    m.gone = true
+    m.text = ''
+    m.emote_refs = m.mediaTag = m.mediaSrc = m.mediaCats = null
+  }
+  for (const buf of [...(irc?.channels?.values() || []), ...(kickChat?.channels?.values() || [])])
+    buf.getAll().forEach(empty)
+  for (const list of channelYtMessages.values()) list.forEach(empty)
+  // a tab drawn earlier and kept aside is rebuilt from the buffers; the one on screen is fixed here
+  _dropAllTabCaches()
+  for (const row of document.querySelectorAll('.hs-mc-feed-inline')) {
+    if (row.dataset.msgId !== id) continue
+    const body = row.querySelector('.hs-feed-body')
+    if (body) body.textContent = gone
+    row.querySelector('.hs-feed-media-tag')?.remove()
+  }
+  saveQueue = saveQueue.then(async () => {
+    try {
+      const data = await api.storage.local.get(INLINE_NOTIF_KEY)
+      const rows = Array.isArray(data[INLINE_NOTIF_KEY]) ? data[INLINE_NOTIF_KEY] : []
+      const kept = rows.filter((r) => r?.msg?.base36_id !== id)
+      if (kept.length < rows.length) await api.storage.local.set({ [INLINE_NOTIF_KEY]: kept })
+    } catch {}
+  })
+  return saveQueue
 }
 
 // Dedup: track recent server-sourced YouTube messages to skip content-script duplicates

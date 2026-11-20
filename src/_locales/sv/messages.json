@@ -345,10 +345,10 @@
     "message": "tittar"
   },
   "mc_tab_temp_title": {
-    "message": "temporary tab: watching another stream takes its slot · right-click to keep"
+    "message": "tillfällig flik: en annan stream tar dess plats · högerklicka för att behålla"
   },
   "mc_tab_keep": {
-    "message": "keep tab"
+    "message": "behåll fliken"
   },
   "mc_tab_pinned": {
     "message": "sparade"
@@ -741,7 +741,7 @@
     "message": "posta på heatsync..."
   },
   "mc_input_send_tag_title": {
-    "message": "sends to $TARGETS$",
+    "message": "skickar till $TARGETS$",
     "placeholders": {
       "targets": {
         "content": "$1"
@@ -1023,6 +1023,12 @@
   "mc_settings_chat_position_desc": {
     "message": "vilken sida om spelaren chattpanelen dockar mot — hidden gömmer den (tangenten \\ växlar)"
   },
+  "mc_settings_start_hidden": {
+    "message": "starta dold"
+  },
+  "mc_settings_start_hidden_desc": {
+    "message": "varje flik öppnas med chatten dold. \\ visar den i den fliken. tills dess förblir sidan som den är"
+  },
   "mc_settings_yt_suggestions": {
     "message": "youtube: förslagsremsa"
   },
@@ -1103,6 +1109,12 @@
   },
   "mc_settings_suggest_inventory_emotes_desc": {
     "message": "erbjud ditt inventarie vid tab-komplettering och skrivförslag. av lämnar bara kanal- och globala emotes"
+  },
+  "mc_settings_tab_list": {
+    "message": "tab öppnar en lista"
+  },
+  "mc_settings_tab_list_desc": {
+    "message": "tab på ett ord visar matchande emotes i en lista ovanför inmatningsfältet. pilarna väljer, tab eller enter infogar, esc stänger. av fyller i direkt i texten"
   },
   "mc_settings_show_pronouns": {
     "message": "pronomen"
@@ -2173,6 +2185,9 @@
   "mc_main_celebration_share_failed": {
     "message": "det gick inte att dela firandet — skickar ditt meddelande till chatten"
   },
+  "mc_main_cw_signin": {
+    "message": "logga in på heatsync för att ändra detta"
+  },
   "mc_main_cw_save_failed": {
     "message": "kunde inte spara $NOUN$ — försök igen",
     "placeholders": {
@@ -2197,9 +2212,6 @@
   },
   "mc_main_config_save_failed": {
     "message": "kanalen sparades inte — lagringsfel"
-  },
-  "mc_main_mute_save_failed": {
-    "message": "tystlistan sparades inte — lagringsfel"
   },
   "mc_main_no_share_token": {
     "message": "ingen delningstoken — firandet skickades utan text, ditt meddelande går till chatten"
@@ -2411,6 +2423,14 @@
   },
   "mc_settingsui_import_ok": {
     "message": "inställningar importerade — laddar om…"
+  },
+  "mc_settingsui_import_partial": {
+    "message": "inställningar importerade, $COUNT$ ogiltiga värden utelämnade — laddar om…",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
   },
   "mc_settingsui_invalid_expression": {
     "message": "ogiltigt uttryck"
@@ -3191,6 +3211,9 @@
   },
   "mc_mr_cancel": {
     "message": "avbryt"
+  },
+  "mc_ch_reset": {
+    "message": "återställ"
   },
   "mc_mr_pattern_ph": {
     "message": "mönster..."

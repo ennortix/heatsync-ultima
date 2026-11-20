@@ -345,10 +345,10 @@
     "message": "menonton"
   },
   "mc_tab_temp_title": {
-    "message": "temporary tab: watching another stream takes its slot · right-click to keep"
+    "message": "tab sementara: menonton strim lain mengambil tempatnya · klik kanan untuk simpan"
   },
   "mc_tab_keep": {
-    "message": "keep tab"
+    "message": "simpan tab"
   },
   "mc_tab_pinned": {
     "message": "disimpan"
@@ -741,7 +741,7 @@
     "message": "siar di heatsync..."
   },
   "mc_input_send_tag_title": {
-    "message": "sends to $TARGETS$",
+    "message": "hantar ke $TARGETS$",
     "placeholders": {
       "targets": {
         "content": "$1"
@@ -1023,6 +1023,12 @@
   "mc_settings_chat_position_desc": {
     "message": "sebelah mana pemain panel sembang dilekatkan — hidden menyorokkannya (kekunci \\ togol)"
   },
+  "mc_settings_start_hidden": {
+    "message": "mula tersembunyi"
+  },
+  "mc_settings_start_hidden_desc": {
+    "message": "setiap tab dibuka dengan chat tersembunyi. \\ menunjukkannya dalam tab itu. sehingga itu halaman kekal seperti asal"
+  },
   "mc_settings_yt_suggestions": {
     "message": "youtube: jalur cadangan"
   },
@@ -1103,6 +1109,12 @@
   },
   "mc_settings_suggest_inventory_emotes_desc": {
     "message": "tawarkan inventori kau dalam tab-complete dan cadangan menaip. mati tinggalkan emote saluran dan global sahaja"
+  },
+  "mc_settings_tab_list": {
+    "message": "tab membuka senarai"
+  },
+  "mc_settings_tab_list_desc": {
+    "message": "tab pada satu perkataan menunjukkan emote yang sepadan dalam senarai di atas ruang input. anak panah memilih, tab atau enter memasukkan, esc menutup. mati melengkapkan terus dalam teks"
   },
   "mc_settings_show_pronouns": {
     "message": "kata ganti nama"
@@ -2173,6 +2185,9 @@
   "mc_main_celebration_share_failed": {
     "message": "kongsi perayaan gagal — menghantar mesej kau ke sembang"
   },
+  "mc_main_cw_signin": {
+    "message": "log masuk ke heatsync untuk menukar ini"
+  },
   "mc_main_cw_save_failed": {
     "message": "gagal simpan $NOUN$ — cuba lagi",
     "placeholders": {
@@ -2197,9 +2212,6 @@
   },
   "mc_main_config_save_failed": {
     "message": "saluran tak disimpan — ralat storan"
-  },
-  "mc_main_mute_save_failed": {
-    "message": "senarai senyap tak disimpan — ralat storan"
   },
   "mc_main_no_share_token": {
     "message": "tiada token kongsi — perayaan dihantar tanpa teks, mesej kau ke sembang"
@@ -2411,6 +2423,14 @@
   },
   "mc_settingsui_import_ok": {
     "message": "tetapan diimport — memuat semula…"
+  },
+  "mc_settingsui_import_partial": {
+    "message": "tetapan diimport, $COUNT$ nilai tidak sah ditinggalkan — memuat semula…",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
   },
   "mc_settingsui_invalid_expression": {
     "message": "ungkapan tak sah"
@@ -3191,6 +3211,9 @@
   },
   "mc_mr_cancel": {
     "message": "batal"
+  },
+  "mc_ch_reset": {
+    "message": "set semula"
   },
   "mc_mr_pattern_ph": {
     "message": "corak..."

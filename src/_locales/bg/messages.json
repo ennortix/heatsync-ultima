@@ -345,10 +345,10 @@
     "message": "гледане"
   },
   "mc_tab_temp_title": {
-    "message": "temporary tab: watching another stream takes its slot · right-click to keep"
+    "message": "временен таб: друг стрийм заема мястото му · десен клик, за да го запазиш"
   },
   "mc_tab_keep": {
-    "message": "keep tab"
+    "message": "запази таба"
   },
   "mc_tab_pinned": {
     "message": "запазени"
@@ -741,7 +741,7 @@
     "message": "публикувай в heatsync..."
   },
   "mc_input_send_tag_title": {
-    "message": "sends to $TARGETS$",
+    "message": "изпраща до $TARGETS$",
     "placeholders": {
       "targets": {
         "content": "$1"
@@ -1023,6 +1023,12 @@
   "mc_settings_chat_position_desc": {
     "message": "към коя страна на плейъра се закача панелът на чата — hidden го скрива (клавишът \\ превключва)"
   },
+  "mc_settings_start_hidden": {
+    "message": "старт скрит"
+  },
+  "mc_settings_start_hidden_desc": {
+    "message": "всеки таб се отваря със скрит чат. \\ го показва в този таб. дотогава страницата остава както си е"
+  },
   "mc_settings_yt_suggestions": {
     "message": "youtube: лента с предложения"
   },
@@ -1103,6 +1109,12 @@
   },
   "mc_settings_suggest_inventory_emotes_desc": {
     "message": "предлага инвентара ти при tab допълване и предложения докато пишеш. изключено оставя само канални и глобални emotes"
+  },
+  "mc_settings_tab_list": {
+    "message": "tab отваря списък"
+  },
+  "mc_settings_tab_list_desc": {
+    "message": "tab върху дума показва подходящите emotes в списък над полето за писане. стрелките избират, tab или enter вмъква, esc затваря. изключено допълва направо в текста"
   },
   "mc_settings_show_pronouns": {
     "message": "местоимения"
@@ -2173,6 +2185,9 @@
   "mc_main_celebration_share_failed": {
     "message": "споделянето на празненството не успя — пращам съобщението ти в чата"
   },
+  "mc_main_cw_signin": {
+    "message": "влезте в heatsync, за да промените това"
+  },
   "mc_main_cw_save_failed": {
     "message": "не успях да запазя $NOUN$ — опитай пак",
     "placeholders": {
@@ -2197,9 +2212,6 @@
   },
   "mc_main_config_save_failed": {
     "message": "каналът не е запазен — грешка в хранилището"
-  },
-  "mc_main_mute_save_failed": {
-    "message": "списъкът със заглушени не е запазен — грешка в хранилището"
   },
   "mc_main_no_share_token": {
     "message": "няма токен за споделяне — празненството е изпратено без текст, съобщението ти отива в чата"
@@ -2411,6 +2423,14 @@
   },
   "mc_settingsui_import_ok": {
     "message": "настройките са импортирани — презареждам…"
+  },
+  "mc_settingsui_import_partial": {
+    "message": "настройките са импортирани, $COUNT$ невалидни стойности са пропуснати — презареждам…",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
   },
   "mc_settingsui_invalid_expression": {
     "message": "невалиден израз"
@@ -3191,6 +3211,9 @@
   },
   "mc_mr_cancel": {
     "message": "отказ"
+  },
+  "mc_ch_reset": {
+    "message": "нулирай"
   },
   "mc_mr_pattern_ph": {
     "message": "шаблон..."

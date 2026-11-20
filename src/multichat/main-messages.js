@@ -8,21 +8,40 @@ function hsNameMarksHtml(since, badgeId) {
   return (since ? renderPlusTenureToken(since) : '') + renderHsBadgeToken(badgeId)
 }
 
+// A blocked person, or one hidden in this tab (/hide, per tab only), is never
+// drawn. m.actor covers stream-events whose sender rides in actor, not user:
+// channel-point redeems and 7TV emote-change banners; online/offline/raid/hype/
+// sub events leave actor null, so their banners still render. The render pass
+// filters on this too, so a row already on screen leaves when the block lands
+// (an existing row is reused, never rebuilt) and comes back on unblock.
+function isMsgUserDropped(m, tabId) {
+  const p = m.platform || 'twitch' // twitch chat carries no platform; the keys are twitch:<name>
+  if (m.user && (isUserBlocked(m.user, p) || isUserHiddenInTab(m.user, p, tabId))) return true
+  return !!(m.actor && (isUserBlocked(m.actor, p) || isUserHiddenInTab(m.actor, p, tabId)))
+}
+
+// /lclear: what the tab showed up to the clear stays hidden, history that
+// arrives later for that span included, while the rooms' buffers stay whole
+// for every other tab. The live tab's mark is per stream, so the next stream
+// it follows starts with its own history.
+const _lclearCut = new Map()
+function _lclearKey(tabId) {
+  return tabId === 'live' ? `live:${getLiveChannel() || ''}` : tabId
+}
+function lclearTab(tabId) {
+  let newest = 0
+  for (const src of mergedTabSources(tabId, SCROLLBACK_MAX, false))
+    for (const m of src) if (m?.time > newest) newest = m.time
+  _lclearCut.set(_lclearKey(tabId), newest || Date.now())
+  return newest > 0
+}
+// the cut for this tab, 0 when it was never cleared
+function lclearCutFor(tabId) {
+  return _lclearCut.size ? _lclearCut.get(_lclearKey(tabId)) || 0 : 0
+}
+
 function buildMessageDiv(m, tabId) {
-  // Blocked user — fully hide (skip render entirely). Both the append and the
-  // full-rebuild path go through buildMessageDiv, so returning null here hides
-  // the message everywhere. Unblock + renderMessages brings them back.
-  // m.actor covers stream-events whose sender is carried in actor, not user —
-  // channel-point redeems (redeemer, set ~13343) and 7TV emote-change banners
-  // (set ~12245). Those have no m.user so the first check misses them. Hiding a
-  // blocked user's emote-add banner is desirable too. online/offline/raid/hype/
-  // sub events leave actor null, so their banners still render.
-  if (m.user && isUserBlocked(m.user, m.platform)) return null
-  if (m.actor && isUserBlocked(m.actor, m.platform)) return null
-  // Per-tab hide (/hide) — fully drop this user's rows, but only when building
-  // for the tab they were hidden in (tabId), never globally.
-  if (m.user && isUserHiddenInTab(m.user, m.platform, tabId)) return null
-  if (m.actor && isUserHiddenInTab(m.actor, m.platform, tabId)) return null
+  if (isMsgUserDropped(m, tabId)) return null
   // Per-tab platform filter (right-click the tab) — hides every row from a muted platform.
   if (isPlatformHiddenInTab(m, tabId)) return null
   // Stream event — render as magenta inline notification.
@@ -183,7 +202,7 @@ function buildMessageDiv(m, tabId) {
       if (feedSince === undefined) queuePlusTenureLookup(feedUid)
       else feedPlusHtml = hsNameMarksHtml(feedSince, getHsBadgeId(feedUid))
     }
-    const content = renderFeedContent(m.text, m.emote_refs)
+    const content = m.gone ? escapeHtml(t('mc_profile_deleted_message')) : renderFeedContent(m.text, m.emote_refs)
     // Canonical heat: formatHeat + ° suffix (≥10) + tier color/glow/breathe via heatSpanHtml. Hidden at the baseline 1 — every fresh post starts there and this row never updates, so "name 1:" read as noise.
     const heatHtml = (m.heat || 0) > 1 ? ` ${heatSpanHtml(m.heat)}` : ''
     // All values sanitized — safe innerHTML (heat is numeric, emoji/color are hardcoded)
@@ -758,6 +777,7 @@ function buildMessageDiv(m, tabId) {
   // Skip text-less rows (system/usernotice with only a systemMsg) — they
   // render via ${systemLine}, never ${processedText}, so computing would just
   // cache a spurious '' (and pointlessly queue a sender-emote fetch).
+  const keptHtml = m._renderedHtml != null // drawn before: its html predates what has been learned since
   const processedText = m.text ? computeMessageText(m) : ''
 
   // Sticker for super stickers
@@ -834,8 +854,8 @@ function buildMessageDiv(m, tabId) {
     div.classList.add('hs-mc-msg-cleared')
     if (m.clearedReason) div.dataset.clearedReason = m.clearedReason
   }
-  // Filter rule highlight — per-rule color accent (hide is handled before buffer insert)
-  const _frHL = evaluateFilterRules(m, tabId)
+  // Filter rule highlight — per-rule color accent (a hide never gets this far: ruleHides)
+  const _frHL = evaluateFilterRules(m, ruleScopeOf(m, tabId))
   if (_frHL.highlight) {
     div.classList.add('hs-mc-rule-highlight')
     div.style.setProperty('--hs-rule-hl', _frHL.highlight)
@@ -847,7 +867,8 @@ function buildMessageDiv(m, tabId) {
   // paint as their own messages. Twitch carries reply-parent-user-id; Kick
   // (no parent id) falls back to the name→uid map. data-uid lets
   // updateCosmeticsInPlace repaint it once the cosmetic batch lands.
-  const replyUid = (m.replyTo && (m.replyTo.userId || knownUserIds.get(userKey(replyLower, m.platform)))) || ''
+  const replyUid =
+    (m.replyTo && (m.replyTo.userId || knownUserIds.get(userKey(replyLower, m.platform || 'twitch')))) || ''
   // HeatSync paint wins over 7TV here too — same precedence rule as the
   // sender username above.
   const replyHsPaint = replyUid ? hsPaintRender(replyUid, `@${m.replyTo?.user || ''}`) : null
@@ -872,7 +893,10 @@ function buildMessageDiv(m, tabId) {
   // A blocked user's name + message snippet must not leak through a reply
   // context bar when someone else replies to them. Show a neutral marker
   // with no name, no text, no profile link.
-  const replyBlocked = m.replyTo?.user && isUserBlocked(m.replyTo.user, m.platform)
+  const replyBlocked = m.replyTo?.user && isUserBlocked(m.replyTo.user, m.platform || 'twitch')
+  // The quoted line is plain text, and kick sends its emotes as [emote:<id>:<name>]: by name,
+  // like every other emote in a quoted line (the raw token showed, real kick e2e s25, 11-17).
+  const replyText = _unkickEmotes(m.replyTo?.text || '')
   const replyBar = replyBlocked
     ? `<span class="hs-mc-reply-ctx hs-reply-ctx">&#8618;${t('mc_reply_blocked')}</span> `
     : m.replyTo?.user
@@ -882,7 +906,7 @@ function buildMessageDiv(m, tabId) {
         // already knew. The trailing caret is the affordance, aria-expanded is
         // the state, and both the universal hover invert and keyboard
         // activation come free once it is a button.
-        `<span class="hs-mc-reply-ctx hs-reply-ctx" role="button" tabindex="0" aria-expanded="false" title="${escapeHtml(m.replyTo.user)}: ${escapeHtml(m.replyTo.text || '')}">&#8618;<a href="https://heatsync.org/user/${encodeURIComponent(m.replyTo.user)}" target="_blank" rel="noopener noreferrer" class="${replyUserCls}" data-username="${escapeHtml(replyLower)}" data-platform="${escapeHtml(m.platform || 'twitch')}"${replyUidAttr}${replyUserSplitAttr} style="${escapeHtml(replyStyle)}">${replyUserHtml}</a>${replyPlusHtml}${m.replyTo.text ? `<span class="hs-mc-reply-snippet">: ${escapeHtml(m.replyTo.text)}</span>` : ''}</span> `
+        `<span class="hs-mc-reply-ctx hs-reply-ctx" role="button" tabindex="0" aria-expanded="false" title="${escapeHtml(m.replyTo.user)}: ${escapeHtml(replyText)}">&#8618;<a href="https://heatsync.org/user/${encodeURIComponent(m.replyTo.user)}" target="_blank" rel="noopener noreferrer" class="${replyUserCls}" data-username="${escapeHtml(replyLower)}" data-platform="${escapeHtml(m.platform || 'twitch')}"${replyUidAttr}${replyUserSplitAttr} style="${escapeHtml(replyStyle)}">${replyUserHtml}</a>${replyPlusHtml}${replyText ? `<span class="hs-mc-reply-snippet">: ${escapeHtml(replyText)}</span>` : ''}</span> `
       : ''
   // Redeem label — look up reward title from Hermes cache
   let redeemLabel = ''
@@ -939,6 +963,7 @@ function buildMessageDiv(m, tabId) {
           ? `${tsHtml}${systemLine}${platformBadge}${scBadge}${bitsBadge}${badges}${marksHtml}${avatarHtml}${filledRow ? `<span class="hs-name-cut">${userLink}</span>` : userLink}${hsPlusHtml}${channelSpan} <span class="hs-mc-text" style="color:${sanitizeColor(m.color || '#fff')}">${processedText}</span>${stickerHtml}`
           : `${tsHtml}${systemLine}${platformBadge}${scBadge}${bitsBadge}${badges}${marksHtml}${avatarHtml}${filledRow ? `<span class="hs-name-cut">${userLink}</span>` : userLink}${hsPlusHtml}${channelSpan}: <span class="hs-mc-text">${processedText}</span>${stickerHtml}`
   div.innerHTML = `${replyBar}${msgBody}`
+  if (keptHtml && processedText.includes('hs-mc-emote-wrapper')) hsReserveEmoteBoxes(div)
   // Correct emote states based on current inventory + blocked (cached HTML
   // may have stale states). String-includes gate skips the querySelectorAll
   // walk on the >95% of msgs that don't contain heatsync emotes — the gate
@@ -1422,11 +1447,17 @@ function highlightThreadRefsInHtml(html) {
 }
 
 // Scroll helper — reused by both renderMessages and appendMessage
+let _pinRanAt = 0 // last time a pin put the view on the tail (unpinnedCheck)
 function scrollMsgsToBottom(msgsEl) {
+  // A paused reader is not pinned, and the pill with its count is how they get back. This used
+  // to hide the pill and zero the count first and only then see the pause: any pin asked for
+  // while paused (a tour card closing, a badge landing, the pin bar, a resize) left a list
+  // that stood still with nothing saying so until the next line came (e2e s20, 11-18).
+  if (isScrolledUp) return
   const newBtn = document.getElementById('hs-mc-new-msgs')
   newMessageCount = 0
   if (newBtn) newBtn.style.display = 'none'
-  if (isScrolledUp) return
+  _pinRanAt = Date.now()
   // Single sync write — reading scrollHeight forces layout flush so the
   // new content's height is reflected before we set scrollTop. The +rAF
   // catches the rare case where layout settles a frame later (e.g. font
@@ -1573,8 +1604,28 @@ function scheduleScrollPin(msgsEl) {
 // Check if a tab has multiple platform sources active (needs fair merge)
 let _multiPlatformRenderTimer = null
 let _multiPlatformRenderAt = 0
+// A pane nobody can see draws nothing: buffers keep every message and the
+// visibilitychange catch-up (main-state.js) renders once on return.
+// hasFocus() and the BG-oracle wedge flag override a stuck 'hidden': if the
+// visibility flip got lost (popout/wayland occlusion) but the window is
+// focused or the BG proved it on-screen, the user IS looking. A popout chat
+// window exists to be read: its visibility flag lies often enough (wayland
+// occlusion, tiled windows) that skipping froze the pane until a full
+// repaint. Only a tab shares the screen with other work.
+function _paneHidden() {
+  return document.hidden && !document.hasFocus() && !_visWedged && !document.body.classList.contains('hs-popout')
+}
+function _skipHiddenRender() {
+  if (!_paneHidden()) return false
+  _hiddenSkippedAppend = true
+  return true
+}
+
 // Ask for the real render on the next frame (one request at a time).
 function scheduleMergedRender() {
+  // Hidden: the 500ms fallback below would otherwise rebuild the whole pane
+  // twice a second in every background tab showing a merged channel (11-16)
+  if (_skipHiddenRender()) return
   // The pending handle is only trusted for 500ms: a window the browser
   // calls hidden never runs its rAF, and a handle that never clears would
   // swallow every later message here (frozen pane until a full repaint).
@@ -1586,7 +1637,7 @@ function scheduleMergedRender() {
       if (ran) return
       ran = true
       _multiPlatformRenderTimer = null
-      renderMessages(currentTab)
+      if (!_skipHiddenRender()) renderMessages(currentTab)
     }
     _multiPlatformRenderTimer = rafOrTimeout(run)
     cleanup.setTimeout(run, 500)
@@ -1646,6 +1697,15 @@ function _filterFlags() {
     dim: dimTimeouts,
   }
 }
+/** A line the list will not draw as things stand: hidden, filtered, taken out by a rule, a
+ *  mute or a block, behind /lclear, or a repeat of the last row with "hide repeats" on. */
+function lineNeverDraws(m, tabId, msgsEl) {
+  const ff = _filterFlags()
+  if (m?.hidden || isMsgFiltered(m, ff) || ruleHides(m, tabId) || isMsgUserDropped(m, tabId)) return true
+  const cut = lclearCutFor(tabId)
+  if (cut && m.time <= cut) return true
+  return !!ff.dups && typeof m.text === 'string' && lastDrawnText(msgsEl) === m.text
+}
 // The live-DOM half of the same decision, for rows already on screen when a
 // mod acts. The render filter above is the durable answer; this makes it
 // immediate instead of "next time anyone says anything".
@@ -1653,11 +1713,28 @@ function markClearedRow(row, title) {
   if (!row) return
   if (!dimTimeouts) {
     // Exactly what the next render pass would do — isMsgFiltered drops it.
-    row.remove()
+    removeRow(row)
     return
   }
   row.classList.add('hs-mc-msg-cleared')
   if (title) row.dataset.clearedReason = title
+}
+// The saved channel whose rules judge a message: the one it came from, else
+// the tab it is drawn in. One reading for arrival and for every redraw.
+function ruleScopeOf(m, tabId) {
+  const look = getChannelLookup()
+  const from =
+    (m.platform !== 'kick' && look.twitch.get(m.channel)) || (m.platform !== 'twitch' && look.kick.get(m.channel))
+  return from?.id || (look.byId.has(tabId) ? tabId : null)
+}
+// A hide rule holds on every draw, not only on arrival. The arrival handlers
+// skip the append, but the line is already in its buffer (and in the worker's,
+// which is where a reload reads history from) — so any full redraw, the first
+// paint after a reload, and a rule written after the line all need the same answer here.
+function ruleHides(m, tabId) {
+  if (!filterRulesOn() || !m || m.type === 'stream-event' || m.type === 'automod-hold' || m.inlineNotifType)
+    return false
+  return !isSelf(m) && evaluateFilterRules(m, ruleScopeOf(m, tabId)).hide
 }
 function isMsgFiltered(m, f) {
   if (m?.type === 'notice' && m.resolved) return true // a held send that has since posted
@@ -1678,7 +1755,19 @@ function isMsgFiltered(m, f) {
   if (f.cmds && m.text.charCodeAt(0) === 33) return true
   return false
 }
-const _lastMsgTextByTab = new Map()
+// "hide repeats": a line is a repeat when it says what the last line DRAWN says, the same rule
+// the full render applies to its list. Read off the rows themselves. A separate note of the
+// last appended text went stale every time the list was redrawn from the buffers (a tab
+// switch, a resume, a trim): the next line was then judged against a line no longer last, so
+// a repeat was drawn and taken away by the following redraw, or a new line was held back
+// until one.
+function lastDrawnText(msgsEl) {
+  for (let row = msgsEl?.lastElementChild; row; row = row.previousElementSibling) {
+    const txt = row._hsMsg?.text
+    if (typeof txt === 'string') return txt
+  }
+  return null
+}
 
 // Cached emote imgs are already `complete` when a row mounts, so their `load`
 // event never fires and the msgsEl load listener never snaps them — meaning
@@ -1826,10 +1915,21 @@ function appendMessage(msg, tabId) {
 
   // Content filters — hidden at render, buffers keep the message
   const _ff = _filterFlags()
-  if (isMsgFiltered(msg, _ff)) return true
-  if (typeof msg.text === 'string' && _ff.dups) {
-    if (_lastMsgTextByTab.get(tabId) === msg.text) return true
-    _lastMsgTextByTab.set(tabId, msg.text)
+  if (isMsgFiltered(msg, _ff) || ruleHides(msg, tabId)) return true
+  const _cut = lclearCutFor(tabId)
+  if (_cut && msg.time <= _cut) return true
+  if (_ff.dups && typeof msg.text === 'string') {
+    if (lastDrawnText(document.getElementById('hs-mc-messages')) === msg.text) return true
+  }
+
+  // A live filter is up: the render decides what is on screen, and counts the matches. A line
+  // the filter hides draws nothing; one it keeps goes to the render, a frame's worth at a time.
+  // Only merged tabs used to ask: on a single channel every arriving line was drawn under the
+  // filter, and a search for one name filled with everybody's rows (real twitch, 11-17).
+  const _liveQ = liveSearchQuery(tabId)
+  if (_liveQ) {
+    if (liveSearchMatcherFor(_liveQ).test(msg)) scheduleMergedRender()
+    return true
   }
 
   // Merged tabs: a plain live line is appended below like on any tab, but
@@ -1847,20 +1947,8 @@ function appendMessage(msg, tabId) {
     return true // tell caller we handled it
   }
 
-  // Hidden tab: skip ALL DOM work (build/append/trim/pin) — buffers keep the
-  // message and the visibilitychange handler rebuilds once on return. The
-  // multi-platform path above pauses for free (rAF never fires while hidden).
-  // hasFocus() and the BG-oracle wedge flag override a stuck 'hidden': if
-  // the visibility flip got lost (popout/wayland occlusion) but the window
-  // is focused or the BG proved it on-screen, the user IS looking — keep
-  // appending instead of freezing the pane.
-  // A popout chat window exists to be read: its visibility flag lies often
-  // enough (wayland occlusion, tiled windows) that skipping here froze the
-  // pane until a full repaint. Only a tab shares the screen with other work.
-  if (document.hidden && !document.hasFocus() && !_visWedged && !document.body.classList.contains('hs-popout')) {
-    _hiddenSkippedAppend = true
-    return true
-  }
+  // Hidden tab: skip ALL DOM work (build/append/trim/pin)
+  if (_skipHiddenRender()) return true
 
   const msgsEl = document.getElementById('hs-mc-messages')
   if (!msgsEl) return false
@@ -1906,7 +1994,7 @@ function appendMessage(msg, tabId) {
   // through isUserMuted so a kick chatter whose linked twitch handle was
   // muted (or vice-versa) gets stripped on either platform.
   const username = msg.user ? String(msg.user).toLowerCase() : ''
-  if (username && isUserMuted(username, msg.platform)) {
+  if (username && isUserMuted(username, msg.platform || 'twitch')) {
     stripMcMutedMessage(div)
   }
 
@@ -2050,14 +2138,16 @@ function fairCoLive(newestOrds) {
   return hi - Math.min(...newestOrds) < 10 * 60 * 1000 && hi > Date.now() - 60 * 60 * 1000
 }
 
-function fairMerge(sources) {
+// `limit`: how many rows the pane may hold. The live tail's cap unless the reader has scrolled
+// to the top and asked for older rows (renderRowCap). It was fixed at the live cap, so the render
+// never saw a row past it and scrolling to the top loaded nothing (real twitch + kick, 11-17).
+function fairMerge(sources, limit = DOM_RENDER_CAP) {
   sources = sources.map(_ordSortedRun)
   if (MC_DEBUG)
     log(
       'fairMerge sources:',
       sources.map((s) => s.length),
     )
-  const limit = DOM_RENDER_CAP
   const active = sources.filter((s) => s.length > 0)
   if (active.length === 0) return []
   if (active.length === 1) {
@@ -2180,10 +2270,9 @@ function stampZebra(div, m, prevDiv) {
     div.classList.toggle('hs-zebra', stripe) // the shared stripe marker (styles/21-brand-rows.css)
   }
 }
-// Re-derive every stripe from `from` onward. A row inserted mid-list (a kick
-// line landing between twitch lines by timestamp) used to leave everything
-// after it a beat out of phase — two grey rows or two black ones in a row —
-// because each stripe was only computed against the row above at insert time.
+// Re-derive every stripe from `from` onward, each against the row above. It
+// moves the newest rows' stripes, so the render pass settles with the upward
+// twin below; this is left for that pass's rare never-striped-row case.
 function zebraRepaint(msgsEl, from) {
   let prev = from ? from.previousElementSibling : null
   // the row to alternate against is the last counted one: not the player, not a notice
@@ -2210,7 +2299,7 @@ function zebraRepaint(msgsEl, from) {
 // Re-derive stripes UPWARD from `anchor`, the first row below a gap a removed
 // row left (null = the bottom). The anchor and everything under it keep their
 // stripes, since the newest rows are the ones being read; the older rows above
-// realign to them. zebraRepaint is the downward twin, for a row inserted mid-list.
+// realign to them. It also settles rows inserted mid-list (history weaving in).
 // A merged tab drops a fast platform's old rows from anywhere in the list on
 // every render, which used to leave two same-coloured rows touching.
 function zebraRepaintUp(msgsEl, anchor) {
@@ -2239,6 +2328,33 @@ function zebraRepaintUp(msgsEl, anchor) {
     // else the lowest row, or one above a never-striped row: any stripe is in phase, keep it
     next = el
   }
+}
+// Settle stripes after rows landed mid-list, `top` and `low` the first and last
+// of them. One side of an insert has to flip, so flip the side showing fewer
+// rows: history weaving in above the screen realigns rows nobody sees (flipping
+// the rows under it flickered the whole screen on every odd backfill batch),
+// and a merged tab's late line landing just over the newest rows flips the few
+// under it, not the screen of rows above.
+function zebraSettleMid(msgsEl, top, low) {
+  if (zebraRowsShown(msgsEl, low, true) > zebraRowsShown(msgsEl, top, false)) {
+    zebraRepaint(msgsEl, top)
+    zebraRepaintUp(msgsEl, top) // rows above an in-place rebuild settle too
+  } else zebraRepaintUp(msgsEl, null)
+}
+// how many rows past `el` (above it when `up`) are on screen
+function zebraRowsShown(msgsEl, el, up) {
+  const view = msgsEl.getBoundingClientRect()
+  let n = 0
+  for (
+    let r = up ? el.previousElementSibling : el.nextElementSibling;
+    r;
+    r = up ? r.previousElementSibling : r.nextElementSibling
+  ) {
+    const b = r.getBoundingClientRect()
+    if (up ? b.bottom <= view.top : b.top >= view.bottom) break
+    if (up ? b.top < view.bottom : b.bottom > view.top) n++
+  }
+  return n
 }
 function zebraOfInsert(m, prevDiv) {
   // the video player sits in the list but is not a row — stripe off the row before it
@@ -2272,9 +2388,13 @@ async function loadMultistreamDismissed() {
   }
   return _multistreamDismissed
 }
-function persistMultistreamDismissed() {
+// Added into what storage holds now: writing this tab's set (read once at boot)
+// dropped dismissals another open tab saved since, so those banners came back.
+async function persistMultistreamDismissed() {
   try {
-    chrome.storage.local.set({ hs_multistream_dismissed: [..._multistreamDismissed] })
+    const stored = (await browser.storage.local.get('hs_multistream_dismissed')).hs_multistream_dismissed
+    for (const k of Array.isArray(stored) ? stored : []) _multistreamDismissed.add(k)
+    await browser.storage.local.set({ hs_multistream_dismissed: [..._multistreamDismissed] })
   } catch {}
 }
 function hideMultistreamBanner() {
@@ -2460,6 +2580,7 @@ function cycleLiveSearchMatch(dir) {
 // render window and re-running the SAME diff renderer — so indexing, zebra,
 // mutes, cosmetics and epoch-keying all stay correct by construction. Anchors
 // scroll so the viewport doesn't jump when rows prepend above it.
+let _olderMissAt = 0
 function loadOlderScrollback() {
   if (!isScrolledUp) return // only while the user is paused (scrolled up)
   if (
@@ -2471,6 +2592,8 @@ function loadOlderScrollback() {
   )
     return
   if (_scrollbackWindow >= SCROLLBACK_MAX - DOM_RENDER_CAP) return // at the depth ceiling
+  // Nothing older a moment ago: a wheel held at the top asks on every tick, each a full render
+  if (Date.now() - _olderMissAt < 1000) return
   const msgsEl = document.getElementById('hs-mc-messages')
   if (!msgsEl) return
   // Try to grow the window, then check whether older rows actually appeared.
@@ -2479,6 +2602,8 @@ function loadOlderScrollback() {
   // short. Instead: bump, render, and revert if nothing older was available.
   const before = msgsEl.children.length
   const prevWindow = _scrollbackWindow
+  // the first step pins the window to what is on screen now (main-state.js)
+  if (_scrollbackAsOf === null) _scrollbackAsOf = newestOrdOnScreen(msgsEl)
   const oldH = msgsEl.scrollHeight
   const oldTop = msgsEl.scrollTop
   _scrollbackWindow = Math.min(_scrollbackWindow + SCROLLBACK_STEP, SCROLLBACK_MAX - DOM_RENDER_CAP)
@@ -2492,6 +2617,8 @@ function loadOlderScrollback() {
     msgsEl.scrollTop = oldTop + (msgsEl.scrollHeight - oldH)
   } else {
     _scrollbackWindow = prevWindow // buffer exhausted — don't inflate uselessly
+    if (!prevWindow) _scrollbackAsOf = null
+    _olderMissAt = Date.now()
   }
   cleanup.raf(() => {
     isProgrammaticScroll = false
@@ -2552,12 +2679,17 @@ let _desyncLoggedAt = 0
 // without unindexing) makes appendMessage and the diff skip that message as
 // "already shown" forever — chat freezes while buffers keep filling. The DOM
 // is the truth: rebuild the index from it and repaint.
+// Rows a cache restore holds back to mount in chunks (holdOlderRows) are this
+// tab's rows too, indexed already: a check between two chunks read them as
+// strays, logged index_desync and dropped their keys (11-16, dom 200 / idx 428).
 function _reconcileMsgKeyIndex(msgsEl) {
   const dom = new Set()
-  for (const el of msgsEl.children) {
-    const k = el.dataset?.msgKey
-    if (k) dom.add(k)
-  }
+  const held = _heldOlder?.id === currentTab ? _heldOlder.frag.children : []
+  for (const rows of [held, msgsEl.children])
+    for (const el of rows) {
+      const k = el.dataset?.msgKey
+      if (k) dom.add(k)
+    }
   let drift = dom.size !== _msgKeyIndex.size
   if (!drift)
     for (const k of _msgKeyIndex)
@@ -2578,8 +2710,13 @@ function _reconcileMsgKeyIndex(msgsEl) {
     } catch (_) {}
   }
   if (_noHeal()) return
+  // The three indices describe the same rows, so they are rebuilt together, from the rows.
+  // Rebuilding the keys alone left the uid and mention indices holding rows long gone and
+  // missing rows on screen: a paint or a mod action after a heal skipped those.
   _msgKeyIndex.clear()
-  for (const k of dom) _msgKeyIndex.add(k)
+  _uidIndex.clear()
+  _mentionIndex.clear()
+  for (const rows of [held, msgsEl.children]) for (const el of rows) _indexMessageDiv(el, el.dataset?.msgKey)
   scheduleRenderMessages()
 }
 function renderStallCheck() {
@@ -2592,6 +2729,11 @@ function renderStallCheck() {
   if (!m || m.isHistory || Date.now() - (m.time || 0) < 4000) return
   if (Date.now() - (m.time || 0) > 120000) return // quiet channel, nothing newer to show
   if (_msgKeyIndex.has(msgKeyOf(m))) return
+  // Not on screen because it is not meant to be: a line a hide rule, a mute or a filter takes
+  // out, or one a search does not match. On a slow chat that line stays the newest for a while,
+  // and each check read it as a stall: a false report in the ring and a full redraw every 2.5s
+  // (real kick with a hide rule, e2e s25, 11-18).
+  if (liveSearchQuery(currentTab) || lineNeverDraws(m, currentTab, msgsEl)) return
   const blockers = {
     editing: !!editingChannel,
     panel: !!hsPanePanelOpen(),
@@ -2628,6 +2770,8 @@ function renderStallCheck() {
 // layout) — keep the worst one per 20s in the diag ring.
 let _loafLoggedAt = 0
 function watchLongFrames() {
+  // chromium only: firefox warns on every page that it ignores the entry type
+  if (!globalThis.PerformanceObserver?.supportedEntryTypes?.includes('long-animation-frame')) return
   try {
     const po = new PerformanceObserver((list) => {
       for (const e of list.getEntries()) {
@@ -2710,9 +2854,71 @@ let _thrashEl = null
 let _thrashCount = 0
 let _thrashTail = null
 let _thrashStreak = 0
+let _thrashEpoch = 0 // the render epoch the last check saw
 let _thrashLoggedAt = 0
 let _unpinnedStreak = 0
 let _unpinLoggedAt = 0
+// One observer batch: stripe flips the reader could see, and rows inserted above
+// another row. Not a flicker: a row striped in the same task it was inserted in
+// (never painted with the old stripe), or a row off screen (an older row realigning
+// above a row that became filled, say). `inView(row)` says whether a row is showing.
+function zebraFlickerTally(ms, msgsEl, inView) {
+  const added = new Set()
+  let mid = 0
+  for (const m of ms) {
+    if (m.type !== 'childList') continue
+    for (const n of m.addedNodes) {
+      added.add(n)
+      if (n.nextSibling) mid++
+    }
+  }
+  let flips = 0
+  for (const m of ms) {
+    if (m.type !== 'attributes' || m.target.parentElement !== msgsEl || added.has(m.target)) continue
+    const was = (m.oldValue || '').includes('hs-mc-zebra')
+    if (was !== m.target.classList.contains('hs-mc-zebra') && inView(m.target)) flips++
+  }
+  return { flips, mid }
+}
+// Whether a row shows in the list's viewport. Read only for a row that flipped.
+function rowInView(msgsEl) {
+  let view = null
+  return (row) => {
+    view ||= msgsEl.getBoundingClientRect()
+    const r = row.getBoundingClientRect()
+    return r.bottom > view.top && r.top < view.bottom
+  }
+}
+// Rows land but the view sits above the tail: the pin never ran (a pending
+// pin handle that never settles skips every later one). The user sees a
+// frozen pane while rows append off-screen below. A pane whose pins keep
+// running is following, a frame behind a busy chat's newest rows: sampled
+// mid-flight twice in a row, that read as stuck (s10 on a slow runner, 11-16).
+function unpinnedCheck(msgsEl) {
+  const gap = msgsEl.scrollHeight - msgsEl.scrollTop - msgsEl.clientHeight
+  const following = Date.now() - _pinRanAt < 2500
+  if (isScrolledUp || following || gap <= 40 || currentTab === 'settings' || !msgsEl.children.length) {
+    _unpinnedStreak = 0
+    return
+  }
+  if (++_unpinnedStreak < 2) return
+  const now = Date.now()
+  if (now - _unpinLoggedAt > 20000) {
+    _unpinLoggedAt = now
+    hsDiagLog('unpinned', {
+      tab: String(currentTab).slice(0, 24),
+      gap: Math.round(gap),
+      pinPending: !!_scrollPinRaf,
+      prog: !!isProgrammaticScroll,
+      domN: msgsEl.children.length,
+    })
+  }
+  _unpinnedStreak = 0
+  if (_noHeal()) return
+  _scrollPinRaf = null
+  isProgrammaticScroll = false
+  scrollMsgsToBottom(msgsEl)
+}
 function domThrashCheck() {
   const msgsEl = document.getElementById('hs-mc-messages')
   if (!msgsEl || (document.hidden && !document.body.classList.contains('hs-popout'))) return
@@ -2729,15 +2935,9 @@ function domThrashCheck() {
     // inserts so a flicker report says which one is driving it.
     _zebraObs?.disconnect()
     _zebraObs = new MutationObserver((ms) => {
-      for (const m of ms) {
-        if (m.type === 'attributes') {
-          if (m.target.parentElement !== msgsEl) continue
-          const was = (m.oldValue || '').includes('hs-mc-zebra')
-          if (was !== m.target.classList.contains('hs-mc-zebra')) _zebraFlips++
-        } else {
-          for (const n of m.addedNodes) if (n.nextSibling) _midInserts++
-        }
-      }
+      const t = zebraFlickerTally(ms, msgsEl, rowInView(msgsEl))
+      _zebraFlips += t.flips
+      _midInserts += t.mid
     })
     _zebraObs.observe(msgsEl, {
       attributes: true,
@@ -2748,30 +2948,7 @@ function domThrashCheck() {
     })
     return
   }
-  // Rows land but the view sits above the tail: the pin never ran (a pending
-  // pin handle that never settles skips every later one). The user sees a
-  // frozen pane while rows append off-screen below.
-  const gap = msgsEl.scrollHeight - msgsEl.scrollTop - msgsEl.clientHeight
-  if (!isScrolledUp && gap > 40 && currentTab !== 'settings' && msgsEl.children.length) {
-    if (++_unpinnedStreak >= 2) {
-      const now = Date.now()
-      if (now - _unpinLoggedAt > 20000) {
-        _unpinLoggedAt = now
-        hsDiagLog('unpinned', {
-          tab: String(currentTab).slice(0, 24),
-          gap: Math.round(gap),
-          pinPending: !!_scrollPinRaf,
-          prog: !!isProgrammaticScroll,
-          domN: msgsEl.children.length,
-        })
-      }
-      _unpinnedStreak = 0
-      if (_noHeal()) return
-      _scrollPinRaf = null
-      isProgrammaticScroll = false
-      scrollMsgsToBottom(msgsEl)
-    }
-  } else _unpinnedStreak = 0
+  unpinnedCheck(msgsEl)
   // Busy channel, silent pane: say which side went quiet. A fresh buffer with
   // a still DOM is the render path; a stale buffer is delivery.
   const nowQ = Date.now()
@@ -2813,7 +2990,12 @@ function domThrashCheck() {
   const tail = msgsEl.lastElementChild?.dataset?.msgKey || ''
   const churn = _thrashCount
   _thrashCount = 0
-  if (churn >= 4 && tail && tail === _thrashTail) _thrashStreak++
+  // a setting that changes how rows look redraws every row on purpose (bumpRenderEpoch): on a
+  // quiet chat that churn with the newest row unchanged is the thrash signature, and the heal
+  // below blanked the pane of someone flipping display settings (e2e s13, youtube, 11-16)
+  const repainted = _thrashEpoch !== _renderEpoch
+  _thrashEpoch = _renderEpoch
+  if (churn >= 4 && tail && tail === _thrashTail && !repainted) _thrashStreak++
   else _thrashStreak = 0
   _thrashTail = tail
   if (_thrashStreak < 3) return
@@ -2834,11 +3016,18 @@ function domThrashCheck() {
     } catch (_) {}
   }
   if (_noHeal()) return
+  // a chat pane only, and only one nothing else is drawn over: renderMessages paints those
+  // instead of the rows, and a cleared pane would stay blank under them
+  if (currentTab !== 'live' && !getChannelById(currentTab)) return
+  if (editingChannel || hsPanePanelOpen() || (typeof activeProfileCard !== 'undefined' && activeProfileCard)) return
+  if ((typeof predViewOpen === 'function' && predViewOpen()) || (typeof imgViewOpen === 'function' && imgViewOpen()))
+    return
   try {
     _dropAllTabCaches()
     msgsEl.textContent = ''
     _clearMessageIndices()
-    scheduleRenderMessages()
+    // rebuilt in the same task: a render left to the scheduler painted an empty pane first
+    renderMessages(currentTab)
   } catch (_) {}
 }
 
@@ -2898,7 +3087,9 @@ function scheduleRenderMessages() {
   const wait = Math.min(80, Math.max(16, 400 - (now - _renderCollapseFirstAt)))
   _renderCollapseTimer = cleanup.setTimeout(() => {
     _renderCollapseTimer = null
-    if (currentTab === 'live' || getChannelById(currentTab)) renderMessages(currentTab)
+    // a chat pane only; a settings or feed pane is never redrawn behind the reader's back
+    if (currentTab !== 'live' && !getChannelById(currentTab)) return
+    if (!_skipHiddenRender()) renderMessages(currentTab)
   }, wait)
 }
 

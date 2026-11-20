@@ -345,10 +345,10 @@
     "message": "смотрю"
   },
   "mc_tab_temp_title": {
-    "message": "temporary tab: watching another stream takes its slot · right-click to keep"
+    "message": "временная вкладка: другой стрим займёт её место · правый клик, чтобы оставить"
   },
   "mc_tab_keep": {
-    "message": "keep tab"
+    "message": "оставить вкладку"
   },
   "mc_tab_pinned": {
     "message": "сохранённые"
@@ -741,7 +741,7 @@
     "message": "постнуть в heatsync..."
   },
   "mc_input_send_tag_title": {
-    "message": "sends to $TARGETS$",
+    "message": "отправляет в $TARGETS$",
     "placeholders": {
       "targets": {
         "content": "$1"
@@ -1023,6 +1023,12 @@
   "mc_settings_chat_position_desc": {
     "message": "с какой стороны от плеера крепится панель чата — hidden прячет её (клавиша \\ переключает)"
   },
+  "mc_settings_start_hidden": {
+    "message": "запускать скрытым"
+  },
+  "mc_settings_start_hidden_desc": {
+    "message": "каждая вкладка открывается со скрытым чатом. \\ показывает его в этой вкладке. до тех пор страница остаётся как есть"
+  },
   "mc_settings_yt_suggestions": {
     "message": "youtube: полоса рекомендаций"
   },
@@ -1103,6 +1109,12 @@
   },
   "mc_settings_suggest_inventory_emotes_desc": {
     "message": "предлагать твой инвентарь в tab-дополнении и подсказках при вводе. выкл оставляет только emotes канала и глобальные"
+  },
+  "mc_settings_tab_list": {
+    "message": "tab открывает список"
+  },
+  "mc_settings_tab_list_desc": {
+    "message": "tab на слове показывает подходящие эмоуты в списке над полем ввода. стрелки выбирают, tab или enter вставляет, esc закрывает. выключено — дополняет прямо в тексте"
   },
   "mc_settings_show_pronouns": {
     "message": "местоимения"
@@ -2173,6 +2185,9 @@
   "mc_main_celebration_share_failed": {
     "message": "не удалось поделиться праздником — отправляю твоё сообщение в чат"
   },
+  "mc_main_cw_signin": {
+    "message": "войдите в heatsync, чтобы изменить это"
+  },
   "mc_main_cw_save_failed": {
     "message": "не удалось сохранить $NOUN$ — попробуй ещё раз",
     "placeholders": {
@@ -2197,9 +2212,6 @@
   },
   "mc_main_config_save_failed": {
     "message": "канал не сохранён — ошибка хранилища"
-  },
-  "mc_main_mute_save_failed": {
-    "message": "список мутов не сохранён — ошибка хранилища"
   },
   "mc_main_no_share_token": {
     "message": "нет токена для шаринга — праздник ушёл без текста, твоё сообщение идёт в чат"
@@ -2411,6 +2423,14 @@
   },
   "mc_settingsui_import_ok": {
     "message": "настройки импортированы — перезагружаю…"
+  },
+  "mc_settingsui_import_partial": {
+    "message": "настройки импортированы, пропущено недопустимых значений: $COUNT$ — перезагружаю…",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
   },
   "mc_settingsui_invalid_expression": {
     "message": "неверное выражение"
@@ -3191,6 +3211,9 @@
   },
   "mc_mr_cancel": {
     "message": "отмена"
+  },
+  "mc_ch_reset": {
+    "message": "сбросить"
   },
   "mc_mr_pattern_ph": {
     "message": "шаблон..."

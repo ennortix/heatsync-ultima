@@ -345,10 +345,10 @@
     "message": "시청 중"
   },
   "mc_tab_temp_title": {
-    "message": "temporary tab: watching another stream takes its slot · right-click to keep"
+    "message": "임시 탭: 다른 방송을 보면 이 자리가 바뀌어 · 우클릭으로 유지"
   },
   "mc_tab_keep": {
-    "message": "keep tab"
+    "message": "탭 유지"
   },
   "mc_tab_pinned": {
     "message": "저장됨"
@@ -741,7 +741,7 @@
     "message": "heatsync에 포스트..."
   },
   "mc_input_send_tag_title": {
-    "message": "sends to $TARGETS$",
+    "message": "보내는 곳: $TARGETS$",
     "placeholders": {
       "targets": {
         "content": "$1"
@@ -1023,6 +1023,12 @@
   "mc_settings_chat_position_desc": {
     "message": "채팅 패널을 플레이어 어느 쪽에 붙일지 — hidden은 숨김 (\\ 키로 토글)"
   },
+  "mc_settings_start_hidden": {
+    "message": "숨긴 채로 시작"
+  },
+  "mc_settings_start_hidden_desc": {
+    "message": "모든 탭이 채팅을 숨긴 채로 열려요. \\ 를 누르면 그 탭에서 보여요. 그 전까지 페이지는 그대로예요"
+  },
   "mc_settings_yt_suggestions": {
     "message": "youtube: 추천 영상 줄"
   },
@@ -1103,6 +1109,12 @@
   },
   "mc_settings_suggest_inventory_emotes_desc": {
     "message": "tab 완성과 입력 중 추천에 내 인벤토리를 노출. 끄면 채널 emote와 글로벌 emote만"
+  },
+  "mc_settings_tab_list": {
+    "message": "tab으로 목록 열기"
+  },
+  "mc_settings_tab_list_desc": {
+    "message": "단어에서 tab을 누르면 일치하는 이모트를 입력창 위 목록으로 보여줘요. 화살표로 고르고, tab이나 enter로 넣고, esc로 닫아요. 끄면 그 자리에서 바로 완성해요"
   },
   "mc_settings_show_pronouns": {
     "message": "대명사"
@@ -2173,6 +2185,9 @@
   "mc_main_celebration_share_failed": {
     "message": "축하 공유 실패 — 메시지를 채팅으로 보내는 중"
   },
+  "mc_main_cw_signin": {
+    "message": "변경하려면 heatsync에 로그인하세요"
+  },
   "mc_main_cw_save_failed": {
     "message": "$NOUN$ 저장 실패 — 다시 시도해",
     "placeholders": {
@@ -2197,9 +2212,6 @@
   },
   "mc_main_config_save_failed": {
     "message": "채널이 저장되지 않음 — 저장소 오류"
-  },
-  "mc_main_mute_save_failed": {
-    "message": "뮤트 목록이 저장되지 않음 — 저장소 오류"
   },
   "mc_main_no_share_token": {
     "message": "공유 토큰 없음 — 축하는 텍스트 없이 전송, 메시지는 채팅으로"
@@ -2411,6 +2423,14 @@
   },
   "mc_settingsui_import_ok": {
     "message": "설정 가져옴 — 새로고침 중…"
+  },
+  "mc_settingsui_import_partial": {
+    "message": "설정 가져옴, 잘못된 값 $COUNT$개 제외 — 새로고침 중…",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
   },
   "mc_settingsui_invalid_expression": {
     "message": "잘못된 식"
@@ -3191,6 +3211,9 @@
   },
   "mc_mr_cancel": {
     "message": "취소"
+  },
+  "mc_ch_reset": {
+    "message": "초기화"
   },
   "mc_mr_pattern_ph": {
     "message": "패턴..."

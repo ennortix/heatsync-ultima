@@ -124,6 +124,10 @@ mcSignal.addEventListener('abort', () => {
 // page is instead evicted from bfcache, it's destroyed wholesale — nothing
 // leaks. Non-persisted pagehide (real navigation/unload) aborts as before.
 window.addEventListener('pagehide', (ev) => {
+  // before the teardown clears its timer: a setting changed a moment ago is still only in memory
+  try {
+    if (typeof flushUiSettings === 'function') flushUiSettings(true)
+  } catch (_) {}
   if (!ev.persisted) lifecycle.abort()
 })
 // On bfcache restore, the panel survived the freeze but BG SW state may have
@@ -216,6 +220,15 @@ function _hsBuildDbg() {
         : 'no config.channels',
     kickResolved: kickResolvedSample,
     kickPendingLookups: kickPending,
+    // where the reader is in the list: the e2e scroll scenario reads the state, not just the pill
+    reader: {
+      paused: typeof isScrolledUp !== 'undefined' && isScrolledUp,
+      hover: typeof hoverHeld !== 'undefined' && hoverHeld,
+      older: typeof _scrollbackWindow !== 'undefined' ? _scrollbackWindow : null,
+      asOf: typeof _scrollbackAsOf !== 'undefined' ? _scrollbackAsOf : null,
+      kept: typeof _paneKept !== 'undefined' ? _paneKept : null,
+      taken: typeof hsPaneTaken === 'function' && hsPaneTaken(),
+    },
   }
 }
 // hs-dbg-* diagnostics — DEV BUILDS ONLY. These CustomEvent listeners are

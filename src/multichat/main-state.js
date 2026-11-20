@@ -409,24 +409,9 @@ function reportStorageWriteFailure(what, err, toastKey) {
 }
 
 // Muted users (right-click to hide) — hydrated at boot from the
-// background-synced `muted_users` key (see PHASE 2), NOT from the
-// heatsync_mc_muted write below, which nothing reads. Do not "fix" that by
-// reading it back: unmutes routed straight to background (settings-ui.js)
-// never update it, so a stale entry would silently resurrect a mute.
+// background-synced `muted_users` key (see PHASE 2). Every change goes to the
+// background (mute_user / unmute_user), which owns the stored list.
 const mutedUsers = new Set()
-// Single persist path for the mute list — every toggle site routes here so
-// a storage failure (quota, mid-reload context death) surfaces as a toast
-// instead of dying in the MC_DEBUG-gated logger after the success toast
-// already fired. Mirrors the ui_settings save path's fail-loud convention.
-function persistMcMuted() {
-  try {
-    chrome.storage.local
-      .set({ heatsync_mc_muted: [...mutedUsers] })
-      .catch((e) => reportStorageWriteFailure('mute list', e, 'mc_main_mute_save_failed'))
-  } catch (e) {
-    reportStorageWriteFailure('mute list', e, 'mc_main_mute_save_failed')
-  }
-}
 // Blocked users (right-click → block) — fully hidden, not just stripped like mute.
 // Synced with background's block_user/unblock_user (shared with content.js).
 const blockedUsers = new Set()
@@ -602,8 +587,94 @@ const DOM_RENDER_CAP = 500
 // already buffered). Reset to 0 on tab switch / channel nav / jump-to-bottom
 // so the DOM never stays bloated past the live tail.
 let _scrollbackWindow = 0
+// While older rows are loaded: the ord of the newest row the reader had when they first asked.
+// The window is counted back from there, not from the live tail. Counted from the tail, every
+// line that arrived since the pause pushed it forward: on a fast chat "load older" drew the new
+// lines at the bottom, added nothing above, and past ~250 new lines took the very rows on
+// screen away (real kick, e2e s20, 11-17). The new lines stay held behind the "N new" pill.
+let _scrollbackAsOf = null
+/** Back to the live tail: no older rows, no pinned window. */
+function resetScrollback() {
+  _scrollbackWindow = 0
+  _scrollbackAsOf = null
+  _paneKept = null
+}
+/** Each source without the lines newer than what the reader had (no cut while none are loaded). */
+function cutSourcesAsOf(srcs, asOf) {
+  return asOf == null ? srcs : srcs.map((s) => s.filter((m) => ordOf(m) <= asOf))
+}
+/** The newest ord a render may draw, or null for the live tail. With older rows loaded: the pin
+ *  set when the first ones were. Otherwise, while the reader is paused, the newest row they
+ *  have: a redraw then (a mute, a block, a closed confirm) redrew the live tail, and the rows
+ *  being read slid away by however many lines had arrived since the pause. */
+function renderAsOf(msgsEl) {
+  if (_scrollbackWindow > 0 && _scrollbackAsOf !== null) return _scrollbackAsOf
+  if (!isScrolledUp) return null
+  // no row on screen: a view had the pane and is handing it back (paneReturn)
+  return newestOrdOnScreen(msgsEl) ?? (_paneBack?.tab === currentTab ? _paneBack.asOf : null)
+}
+// How far back a render reads: `take` rows of each buffer, `keep` merged rows before
+// the filters. A plain tail needs only the newest. A paused reader needs all of it,
+// to count back from where they are. So does a filter: on a fast chat the newest
+// screenful is a few seconds long, and the name being looked for is older than that.
+function renderWindow(asOf, searching) {
+  const all = Number.POSITIVE_INFINITY
+  return { take: asOf === null && !searching ? SCROLLBACK_MAX : all, keep: searching ? all : renderRowCap() }
+}
+/** The newest ord among the rows on screen, or null when no row carries a message. */
+function newestOrdOnScreen(msgsEl) {
+  return ordSpanOnScreen(msgsEl)?.[1] ?? null
+}
+/** The oldest and newest of them, as [oldest, newest]. */
+function ordSpanOnScreen(msgsEl) {
+  let min = null
+  let max = null
+  for (const row of msgsEl.children) {
+    const o = row._hsMsg ? ordOf(row._hsMsg) : 0
+    if (!o) continue
+    if (max === null || o > max) max = o
+    if (min === null || o < min) min = o
+  }
+  return max === null ? null : [min, max]
+}
+// A live line that reached the list a beat late (the kick copy of a conversation, a relay
+// catching up) sits within the weave window of the newest row on screen, and goes under the
+// last row so nothing shown moves. Further back than that it is not late, it is OLD: a row
+// the list is being given back (older rows loaded at the top, a cold list filling in steps,
+// a closed card, a lifted hide rule or mute), and it goes to its own place. Without the
+// second half every such row carrying an ord landed at the bottom: scroll to the top on a
+// tab open for a few minutes and the 250 older lines appeared under the newest one; close a
+// card and the list read newest hundred first, the older four hundred after (real twitch,
+// e2e s20, 11-17). Twice the window, since a render can trail the arrival by a moment.
+// And never a line older than every row shown: that one is above them all, given back, however
+// short a time the screen spans (a first paint of 100 rows is two seconds of a very fast chat,
+// and the next hundred handed in above it sit inside the window).
+function isLateLiveLine(m, shownSpan) {
+  return m.ord != null && shownSpan !== null && m.ord > shownSpan[0] && shownSpan[1] - m.ord <= 2 * LIVE_WEAVE_SKEW_MS
+}
+/** Where a row not on screen yet goes: [the row it follows, the row it lands before]. After the
+ *  lowest row placed so far (the top of the list when none is), unless it is a late live line
+ *  that would land above a row already shown: that one goes under the last row. */
+function newRowSlot(msgsEl, prevNode, settledEnd, shownSpan, m) {
+  let after
+  if (prevNode) after = prevNode.nextSibling
+  else {
+    after = msgsEl.firstElementChild
+    if (after?.id === 'hs-mc-embed-player') after = after.nextElementSibling // the player is not a row
+  }
+  if (
+    settledEnd &&
+    isLateLiveLine(m, shownSpan) &&
+    after &&
+    (after === settledEnd || after.compareDocumentPosition(settledEnd) & Node.DOCUMENT_POSITION_FOLLOWING)
+  )
+    return [settledEnd, settledEnd.nextSibling]
+  return [prevNode, after]
+}
 const SCROLLBACK_STEP = 250
 const SCROLLBACK_MAX = 1500 // hard ceiling on rendered rows (3x the live cap)
+/** Rows the pane may hold right now: the live tail, plus what scrolling to the top has added. */
+const renderRowCap = () => Math.min(DOM_RENDER_CAP + _scrollbackWindow, SCROLLBACK_MAX)
 
 // First paint of a cold list: the newest FIRST_PAINT_ROWS now, the older rows in chunks right after, so
 // the chat is on screen and live in one short task instead of one 500-row build. _paintFor names the tab
@@ -623,10 +694,12 @@ function growFirstPaint(id) {
     const h0 = el.scrollHeight
     const top0 = el.scrollTop
     _paintCap += FIRST_PAINT_STEP
-    renderMessages(id)
+    // the list's own older rows, not new chat: a reader who scrolled up while it filled got no
+    // more of them, and a "N new" count for lines that were never new
+    renderMessages(id, { bypassScrollPause: true })
     // overflow-anchor is off on the list: older rows landing above a scrolled-up viewer would move it
     if (isScrolledUp) el.scrollTop = top0 + (el.scrollHeight - h0)
-    if (_paintCap >= Math.min(DOM_RENDER_CAP + _scrollbackWindow, SCROLLBACK_MAX)) _paintFor = null
+    if (_paintCap >= renderRowCap()) _paintFor = null
     else growFirstPaint(id)
   }, 0)
 }
@@ -635,7 +708,7 @@ function finishFirstPaint() {
   if (_paintFor === null) return
   const id = _paintFor
   _paintCap = SCROLLBACK_MAX
-  if (currentTab === id) renderMessages(id)
+  if (currentTab === id) renderMessages(id, { bypassScrollPause: true })
   _paintFor = null
 }
 
@@ -844,11 +917,125 @@ function _unindexMessageDiv(div) {
   }
 }
 
+// The one way a single row leaves the pane: what indexes it goes with it. Five removals took the
+// row and left its key behind (a deleted or cleared row with dimming off, a resolved or dismissed
+// held message, a share notice its real twin replaced, the rows an unmute rebuilds). A stray key
+// says "already on screen": the index watchdog found it within seconds, logged index_desync and
+// repainted the whole pane, once for every such removal.
+function removeRow(row) {
+  if (!row) return
+  _unindexMessageDiv(row)
+  row.remove()
+}
+
 function _clearMessageIndices() {
   _heldOlder = null // held rows are indexed by the maps being cleared
   _msgKeyIndex.clear()
   _uidIndex.clear()
   _mentionIndex.clear()
+}
+
+// A view that takes the whole pane (profile card, prediction, picture) drops the rows and what
+// indexes them in one step. Wiping the rows alone left every key behind: the index watchdog read
+// that as drift (index_desync, dom 0 / idx 400), "healed" it with a render, and that render
+// redrew the open card under the reader. The view's close repaints the tab from its buffers.
+function takePane(msgsEl) {
+  // rows on screen = a view is opening over the chat (one redrawing itself finds none, and what
+  // was kept at its opening stands)
+  if (newestOrdOnScreen(msgsEl) !== null) _paneKept = isScrolledUp && !hoverHeld ? readPanePlace(msgsEl) : null
+  _clearMessageIndices()
+  msgsEl.textContent = ''
+}
+
+// A reader who had scrolled up and then opened a card, a prediction or a picture gets their
+// place back when it closes. The view takes the whole pane, so the rows being read are gone
+// while it is open; the close redrew the live tail and left the list wherever it fell, still
+// paused, under a "N new" count (real kick and twitch, e2e s23, 11-17). Kept: the first row in
+// view, how far under the top edge it sat, and the newest row the reader had (renderAsOf).
+// Not paused = nothing kept, and the close draws the live tail as before.
+let _paneKept = null
+let _paneBack = null // the kept place, for the one redraw that puts it back
+function readPanePlace(msgsEl) {
+  const top = msgsEl.getBoundingClientRect().top
+  const asOf = newestOrdOnScreen(msgsEl)
+  for (const row of msgsEl.children) {
+    if (!row._hsMsg || !row.dataset?.msgKey) continue
+    const b = row.getBoundingClientRect()
+    if (b.bottom > top) return { tab: currentTab, key: row.dataset.msgKey, dy: b.top - top, asOf }
+  }
+  return null
+}
+/** A closed view hands the pane back: the tab is redrawn, and a paused reader is put back. */
+function paneReturn() {
+  const kept = _paneKept
+  _paneKept = null
+  _paneBack = kept
+  try {
+    renderMessages(currentTab, { bypassScrollPause: true })
+    // a cold list fills in steps (growFirstPaint); the row being read is past the first one
+    if (kept) finishFirstPaint()
+  } finally {
+    _paneBack = null
+  }
+  const msgsEl = document.getElementById('hs-mc-messages')
+  if (!kept || !msgsEl || !isScrolledUp || kept.tab !== currentTab) return
+  for (const row of msgsEl.children) {
+    if (row.dataset?.msgKey !== kept.key) continue
+    isProgrammaticScroll = true
+    msgsEl.scrollTop += row.getBoundingClientRect().top - msgsEl.getBoundingClientRect().top - kept.dy
+    cleanup.raf(() => {
+      isProgrammaticScroll = false
+    })
+    _paneHold = { row, dy: kept.dy, top: msgsEl.scrollTop }
+    return
+  }
+}
+
+// The rows above a reader who scrolled up go on settling: a picture whose width was not known
+// yet wraps its line, a badge lands. The list has no scroll anchoring of its own (overflow-anchor
+// is off), so each one pushed the row being read further down: 154px after a card closed on a
+// kick channel, a line at a time for a reader who had only paused (e2e s20, 11-18). The row is
+// put back each time a picture in the list lands, for as long as the reader stays where they
+// stopped. Their own scroll ends it, and where that scroll stops is held next (armPaneHold).
+let _paneHold = null // { row, dy, top: the scroll position this left the list at }
+let _paneHoldFrame = null
+/** a scroll came to rest: a paused reader's first row in view is the one to keep */
+function armPaneHold(msgsEl) {
+  // the hold's own scroll coming to rest: the row it holds stays the one, wherever the rows
+  // above have pushed it since (taking it as the new place kept a row 396px low, e2e s20 11-18)
+  if (_paneHold && Math.abs(msgsEl.scrollTop - _paneHold.top) <= 1) return holdPanePlace(msgsEl)
+  _paneHold = null
+  if (!isScrolledUp || hoverHeld) return
+  const top = msgsEl.getBoundingClientRect().top
+  for (const row of msgsEl.children) {
+    if (!row._hsMsg) continue
+    const b = row.getBoundingClientRect()
+    if (b.bottom <= top) continue
+    _paneHold = { row, dy: b.top - top, top: msgsEl.scrollTop }
+    return
+  }
+}
+function holdPanePlace(msgsEl) {
+  const h = _paneHold
+  if (!h) return
+  if (!isScrolledUp || !h.row.isConnected) {
+    _paneHold = null
+    return
+  }
+  if (_paneHoldFrame) return
+  // one read and one write a frame, before it is painted: the shift is never seen
+  _paneHoldFrame = rafOrTimeout(() => {
+    _paneHoldFrame = null
+    if (_paneHold !== h || !isScrolledUp || !h.row.isConnected) return
+    const d = h.row.getBoundingClientRect().top - msgsEl.getBoundingClientRect().top - h.dy
+    if (Math.abs(d) < 1) return
+    msgsEl.scrollTop += d
+    h.top = msgsEl.scrollTop
+  })
+}
+/** the list scrolled: to where the hold put it, or the reader moved it and the hold is over */
+function paneHoldScrolled(msgsEl) {
+  if (_paneHold && Math.abs(msgsEl.scrollTop - _paneHold.top) > 1) _paneHold = null
 }
 
 // Trim variant that maintains the indices. Use anywhere we trim
@@ -992,6 +1179,27 @@ let _cacheJustRestored = false
 // Where a cache-restore render spent its time; read by switchTab's slow-switch
 // diag line so a laggy tab says which step it was, not just that it was slow.
 let _restoreParts = null
+
+// A restored fragment was cut while its tab was away. A row whose line the render now leaves
+// out on purpose (a block, a /hide, /lclear, a content filter: in the tab's lines, not in the
+// render) goes; a row the merge merely no longer picks is not among those lines and stays, so
+// nothing reshuffles. Trusting the fragment whole kept a hidden chatter's rows on screen when
+// the hide's render was the first after a restore (e2e s18, 11-17).
+function dropRestoredFiltered(msgsEl, lines, desiredSet) {
+  let gone = null
+  for (const m of lines) {
+    const k = msgKeyOf(m)
+    if (!desiredSet.has(k)) (gone ||= new Set()).add(k)
+  }
+  if (!gone) return
+  // the tab's older rows are still detached in _heldOlder and mount right after this render:
+  // left unchecked, a hidden chatter's older rows came back above the ones just dropped
+  const rows = _heldOlder ? [..._heldOlder.frag.children, ...msgsEl.children] : [...msgsEl.children]
+  for (const row of rows) {
+    if (!gone.has(row.dataset?.msgKey)) continue
+    removeRow(row)
+  }
+}
 
 function restoreTabState(tabId) {
   _msgKeyIndex.clear()

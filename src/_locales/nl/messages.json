@@ -345,10 +345,10 @@
     "message": "kijken"
   },
   "mc_tab_temp_title": {
-    "message": "temporary tab: watching another stream takes its slot · right-click to keep"
+    "message": "tijdelijke tab: een andere stream neemt de plek over · rechtsklik om te houden"
   },
   "mc_tab_keep": {
-    "message": "keep tab"
+    "message": "tab houden"
   },
   "mc_tab_pinned": {
     "message": "opgeslagen"
@@ -741,7 +741,7 @@
     "message": "plaats op heatsync..."
   },
   "mc_input_send_tag_title": {
-    "message": "sends to $TARGETS$",
+    "message": "stuurt naar $TARGETS$",
     "placeholders": {
       "targets": {
         "content": "$1"
@@ -1023,6 +1023,12 @@
   "mc_settings_chat_position_desc": {
     "message": "aan welke kant van de speler het chatpaneel vastzit — verborgen stopt het weg (\\ -toets wisselt)"
   },
+  "mc_settings_start_hidden": {
+    "message": "verborgen starten"
+  },
+  "mc_settings_start_hidden_desc": {
+    "message": "elk tabblad opent met de chat verborgen. \\ toont hem in dat tabblad. tot dan blijft de pagina zoals hij is"
+  },
   "mc_settings_yt_suggestions": {
     "message": "youtube: suggestiestrook"
   },
@@ -1103,6 +1109,12 @@
   },
   "mc_settings_suggest_inventory_emotes_desc": {
     "message": "bied je inventaris aan bij tab-aanvullen en typsuggesties. uit laat alleen kanaal- en globale emotes over"
+  },
+  "mc_settings_tab_list": {
+    "message": "tab opent een lijst"
+  },
+  "mc_settings_tab_list_desc": {
+    "message": "tab op een woord toont passende emotes in een lijst boven het invoerveld. pijltjes kiezen, tab of enter voegt in, esc sluit. uit vult direct in de tekst aan"
   },
   "mc_settings_show_pronouns": {
     "message": "voornaamwoorden"
@@ -2173,6 +2185,9 @@
   "mc_main_celebration_share_failed": {
     "message": "vieringdelen mislukt — je bericht gaat naar de chat"
   },
+  "mc_main_cw_signin": {
+    "message": "log in bij heatsync om dit te wijzigen"
+  },
   "mc_main_cw_save_failed": {
     "message": "$NOUN$ opslaan mislukt — probeer opnieuw",
     "placeholders": {
@@ -2197,9 +2212,6 @@
   },
   "mc_main_config_save_failed": {
     "message": "kanaal niet opgeslagen — opslagfout"
-  },
-  "mc_main_mute_save_failed": {
-    "message": "demplijst niet opgeslagen — opslagfout"
   },
   "mc_main_no_share_token": {
     "message": "geen deeltoken — viering zonder tekst verstuurd, je bericht gaat naar de chat"
@@ -2411,6 +2423,14 @@
   },
   "mc_settingsui_import_ok": {
     "message": "instellingen geïmporteerd — herladen…"
+  },
+  "mc_settingsui_import_partial": {
+    "message": "instellingen geïmporteerd, $COUNT$ ongeldige waarden overgeslagen — herladen…",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
   },
   "mc_settingsui_invalid_expression": {
     "message": "ongeldige expressie"
@@ -3191,6 +3211,9 @@
   },
   "mc_mr_cancel": {
     "message": "annuleren"
+  },
+  "mc_ch_reset": {
+    "message": "resetten"
   },
   "mc_mr_pattern_ph": {
     "message": "patroon..."

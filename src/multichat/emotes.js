@@ -286,12 +286,12 @@ async function mcSearchFfzApi(q, signal, opts) {
 async function mcSearchHsApi(q, signal, opts) {
   const page = opts && Number.isFinite(opts.page) ? opts.page : 1
   if (page > 1) return [] // no server-side pagination — tail after page 1
-  const r = await fetch(`https://heatsync.org/api/emote-search?q=${encodeURIComponent(q)}&p=hs`, {
-    signal,
-    credentials: 'omit',
-  })
-  if (!r.ok) throw new Error(`hs ${r.status}`)
-  const data = await r.json()
+  // through the background: heatsync.org sends no CORS allowance for twitch,
+  // kick or youtube, so a fetch from this page was refused every time
+  const r = await apiFetch(`/api/emote-search?q=${encodeURIComponent(q)}&p=hs`, { auth: false })
+  if (signal?.aborted) throw new DOMException('aborted', 'AbortError')
+  if (!r?.ok) throw new Error(`hs ${r?.status || r?.error || 'failed'}`)
+  const data = r.data?.results ? r.data : r
   const items = (data?.results && Array.isArray(data.results.hs) && data.results.hs) || []
   return items.map((e) => ({
     name: e.name,
@@ -881,10 +881,7 @@ function recordRecentEmote(name) {
   try {
     localStorage.setItem(RECENT_KEY, JSON.stringify(list))
   } catch (_) {}
-  bumpEmoteFrecency(name)
-  // The cache key doesn't track the MRU list, so force a rebuild on next
-  // open (idle prebuild repopulates before reopen → still instant).
-  markPickerDirty()
+  bumpEmoteFrecency(name) // the picker's cache key carries the list: next open rebuilds
 }
 
 // Frecency — per-emote use count with recency decay, feeding tab-complete
@@ -1295,7 +1292,12 @@ function pickerCacheKey() {
   // _blockedRev: a cross-device block/unblock (applyBlockedHashDelta) changes
   // no size here — without it a rebuild triggered by an unrelated key change
   // would be the only thing correcting a stale cached picker DOM.
-  return `${ch}|${emoteSize}|${emoteCache.size}|${chSize}|${_blockedRev}`
+  // the recents row too: another tab on this site writes the same list
+  let recent = ''
+  try {
+    recent = localStorage.getItem(RECENT_KEY) || ''
+  } catch (_) {}
+  return `${ch}|${emoteSize}|${emoteCache.size}|${chSize}|${_blockedRev}|${recent}`
 }
 
 function markPickerDirty() {
@@ -1487,19 +1489,30 @@ function showEmotePicker(tab = null) {
   // Search functionality (debounced). When external chips are on the query
   // fires the provider APIs (7TV v4 / BTTV / FFZ) in parallel. Local-only
   // mode keeps the original instant filter behaviour.
+  // Local matches (your set, the channel, globals) need no network, so they
+  // paint on the next frame — the 200ms wait used to sit in front of them too,
+  // and every keystroke showed the previous query's grid for that long. Only
+  // the provider requests keep the debounce, so a typed word is one request
+  // per provider, not one per letter. mcCurrentQuery moves with the keystroke:
+  // a provider page for an older query is dropped on arrival (its .then
+  // compares against it), and mcRerenderSearch only folds in provider
+  // results recorded for exactly this query.
   let _searchTimer = null
+  let _searchFrame = 0
   const searchInput = document.getElementById('hs-mc-emote-search')
   searchInput?.addEventListener('input', (e) => {
+    const query = e.target.value.toLowerCase().trim()
+    mcCurrentQuery = query
+    if (!_searchFrame) {
+      _searchFrame = requestAnimationFrame(() => {
+        _searchFrame = 0
+        rerenderSearch(mcCurrentQuery)
+      })
+    }
     cleanup.clearTimeout(_searchTimer)
     _searchTimer = cleanup.setTimeout(() => {
-      const query = e.target.value.toLowerCase().trim()
-      mcCurrentQuery = query
-      if (query && mcHasExternalSource()) {
-        mcTriggerProviderSearches(query)
-      } else {
-        mcTriggerProviderSearches('')
-      }
-      rerenderSearch(query)
+      if (mcCurrentQuery !== query) return
+      mcTriggerProviderSearches(query && mcHasExternalSource() ? query : '')
     }, 200)
   })
 
@@ -3699,12 +3712,7 @@ function _buildChannelEmoteCache(ch, emotes, platform) {
       if (sm.size === 0) sreg.delete((ch || '').toLowerCase())
     }
   } catch (_) {}
-  const keys = Object.keys(channelEmoteCaches)
-  if (keys.length > 20) {
-    for (const old of keys.slice(0, keys.length - 20)) {
-      if (old !== ch) delete channelEmoteCaches[old]
-    }
-  }
+  evictChannelEmoteCaches(ch)
 }
 
 let _channelMapSeeded = false // loadEmotes pulled the background's channel sets once
@@ -3958,13 +3966,7 @@ function scanDomForEmotes() {
 
   // Ensure channel cache exists
   if (!channelEmoteCaches[ch]) channelEmoteCaches[ch] = new Map()
-  // Evict oldest if exceeds 20
-  const chKeys = Object.keys(channelEmoteCaches)
-  if (chKeys.length > 20) {
-    // never evict the active channel — deleting it then reading cache.size below throws
-    const old = chKeys[0]
-    if (old !== ch) delete channelEmoteCaches[old]
-  }
+  evictChannelEmoteCaches(ch) // never the active channel: reading cache.size below would throw
   const cache = channelEmoteCaches[ch]
 
   // Cap per-channel to prevent unbounded growth. 2300 = the authoritative
@@ -4132,6 +4134,25 @@ async function hydrateEmoteBoxWidths() {
         _hsEmoteBoxW.set(url, w)
     }
   } catch (_) {}
+}
+
+// A row's text html is kept from its first render, so an old line keeps the emotes it was
+// sent with. An emote that had never loaded at that moment (its first sighting) has no box
+// width in that html: the row redrawn from it later (a closed card, older rows loaded, a
+// cold tab) was laid out with the emote at width 0, then re-wrapped a beat later when the
+// picture landed, and a reader scrolled up watched their place slide down by a line for
+// every such row above it (real twitch: 184px, e2e s20, 11-17). The widths learned since
+// go on here, by the same rule a fresh render follows: a plain wrapper only (a stack sizes
+// itself from its members, a modifier and a kick crop carry their own box).
+function hsReserveEmoteBoxes(root) {
+  if (!_hsEmoteBoxW.size) return
+  for (const w of root.querySelectorAll('.hs-mc-emote-wrapper[data-emote-url]')) {
+    if (w.style.width || w.dataset.hsModSx) continue
+    if (w.classList.contains('hs-kick-crop') || w.classList.contains('hs-mc-emote-cw')) continue
+    if (w.closest('.hs-mc-emote-stack')) continue
+    const px = _hsEmoteBoxW.get(w.dataset.emoteUrl)
+    if (px) w.style.width = `${px}px`
+  }
 }
 
 // Kick serves every emote on a square canvas, so a wide one (…KEKWIDE) arrives

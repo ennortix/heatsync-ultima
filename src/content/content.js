@@ -651,6 +651,10 @@
       nativeRules.repaint()
     }
     if (changes.hs_dim_timeouts) dimTimeoutsEnabled = changes.hs_dim_timeouts.newValue !== false
+    // an emote name blocked or unblocked in another tab shows here at once
+    if (areaName === 'local' && changes.local_blocked_emote_names) {
+      applyBlockedEmoteNames(changes.local_blocked_emote_names.newValue)
+    }
   }
   chrome.storage.onChanged.addListener(_onStorageChanged)
 
@@ -2583,6 +2587,25 @@
   // Names blocked locally — covers emotes we never wrap (native Twitch sub/follower/bits).
   // Right-click any img[alt] in chat to toggle. Persisted in chrome.storage.local.
   let localBlockedEmoteNames = new Set()
+  const NATIVE_EMOTE_IMG = 'img[src*="static-cdn.jtvnw.net/emoticons"], img[src*="files.kick.com/emotes/"]'
+  /** The stored list with one name blocked or not. Always built on what storage holds now:
+   *  a tab's own copy is as old as its load, and writing that back dropped every name another
+   *  tab had blocked since. */
+  function blockedNamesWith(stored, name, blocked) {
+    const next = new Set(Array.isArray(stored) ? stored.filter((n) => typeof n === 'string' && n) : [])
+    if (blocked) next.add(name)
+    else next.delete(name)
+    return [...next]
+  }
+  /** Take a list of blocked names (this tab's toggle, or another tab's write) and mark the
+   *  emotes on screen to match. */
+  function applyBlockedEmoteNames(list) {
+    localBlockedEmoteNames = new Set(Array.isArray(list) ? list : [])
+    for (const im of document.querySelectorAll(NATIVE_EMOTE_IMG)) {
+      if (im.alt && localBlockedEmoteNames.has(im.alt)) im.setAttribute('data-hs-name-blocked', '1')
+      else im.removeAttribute('data-hs-name-blocked')
+    }
+  }
   // Tracks user-initiated block/unblock per hash so a late `emote_blocked` /
   // `emote_unblocked` broadcast (from server WS echo of the previous action)
   // can't reverse a fresh local toggle. Symptom this fixes: scrolled-to-bottom
@@ -4195,6 +4218,12 @@
   // native Twitch messages, and inserts missing ones at the top of the chat container.
   let _backfillWait = null
   async function backfillChatHistory() {
+    // The history is twitch's, and so is the shape of the rows. A kick pop-out's address matches
+    // the pop-out pattern below, so the twitch channel of the same name was fetched and its lines
+    // put into kick's own list: another channel's chat for anyone reading kick's chat, and on a
+    // slow line they landed before kick's React had hydrated the list (React #418, the page
+    // redrawn client-side). restoreMsgCache has refused kick for the same reason all along.
+    if (isKick) return
     const chatContainer = findChatContainer()
     if (!chatContainer) return
     if (chatContainer.dataset.heatsyncBackfilled) return
@@ -4962,9 +4991,12 @@
   function colorUsernameMentions(messageElement, preQueriedFragments, emotes) {
     if (!knownChatters.size) return
     // Use pre-queried fragments when available (avoids redundant DOM query from processMessage)
-    const textFragments =
-      preQueriedFragments ||
-      messageElement.querySelectorAll('.text-fragment, [data-a-target="chat-message-text"], span.font-normal')
+    // On kick the words live in our own spans (site-nodes.js): a name is coloured there, and the
+    // site's own text node is never swapped for ours.
+    const textFragments = isKick
+      ? messageElement.querySelectorAll('.hs-textfrag')
+      : preQueriedFragments ||
+        messageElement.querySelectorAll('.text-fragment, [data-a-target="chat-message-text"], span.font-normal')
 
     for (const fragment of textFragments) {
       // Skip if already has our colored spans (check for our marker class)
@@ -5415,16 +5447,19 @@
   // hs-textfrag spans from the first pass and re-runs the machinery on the
   // still-unresolved ones — spans that already hold a wrapper are skipped
   // (same guard the pure-leaf path uses), so nothing double-wraps.
+  const siteText = createSiteText({
+    MutationObserver,
+    track: (o) => cleanup.trackObserver(o),
+    // drawn again from the site's words on the next pass, if it is still a message
+    onRedrawn: (leaf) => leaf.closest('[data-index]')?.removeAttribute('data-heatsync-generation'),
+  })
   function replaceEmotesPreservingImgs(leaf, allEmotes) {
-    // Snapshot — replaceWith mutates the live childNodes list mid-iteration.
+    // Snapshot — parking a node adds a span to the live childNodes list mid-iteration.
     for (const node of Array.from(leaf.childNodes)) {
       if (node.nodeType === 3) {
         if (!node.nodeValue?.trim()) continue
-        const span = document.createElement('span')
-        span.className = 'hs-textfrag'
-        span.textContent = node.nodeValue
-        node.replaceWith(span)
-        replaceEmotesWithStacking(span, allEmotes)
+        // the site's node stays where it is (site-nodes.js): swapped out, kick's chat died on a delete
+        replaceEmotesWithStacking(siteText.park(node), allEmotes)
       } else if (node.nodeType === 1 && node.classList.contains('hs-textfrag')) {
         // Retro-upgrade: text was wrapped on a prior pass but its emotes
         // hadn't resolved yet (kick sender sets arrive after first render).
@@ -5458,6 +5493,11 @@
         }
       }
     }
+
+    // Before the "no text" way out below: a line that is only emotes has no text element, and a
+    // blocked emote in one drew unblocked in every row that came after the block (real twitch,
+    // e2e s24, 11-18).
+    markBlockedNativeEmotes(messageElement)
 
     const textElements = messageElement.querySelectorAll('.text-fragment, span.font-normal')
     if (textElements.length === 0) return
@@ -5659,7 +5699,9 @@
       // Mixed leaf (native platform emote <img> inline with text, e.g. Kick) —
       // replace per text-node so native <img> survive. Pure-text leaves take the
       // fast path. querySelector('img') is the cheap discriminator.
-      if (textElement.querySelector('img')) {
+      // Every kick leaf goes this way, pictures or not: the other path swaps the site's own text
+      // node out, and kick's renderer comes back for it.
+      if (isKick || textElement.querySelector('img')) {
         replaceEmotesPreservingImgs(textElement, allEmotes)
       } else {
         replaceEmotesWithStacking(textElement, allEmotes)
@@ -5679,17 +5721,13 @@
     // Color all @username mentions (Chatterino-style) - AFTER emote replacement
     // so replaceChildren() doesn't wipe out the colored spans
     colorUsernameMentions(messageElement, textElements, allEmotes)
+  }
 
-    // Apply local name-blocks to native Twitch/Kick emotes in this message
-    if (localBlockedEmoteNames.size > 0) {
-      const imgs = messageElement.querySelectorAll(
-        'img[src*="static-cdn.jtvnw.net/emoticons"], img[src*="files.kick.com/emotes/"]',
-      )
-      for (const im of imgs) {
-        if (im.alt && localBlockedEmoteNames.has(im.alt)) {
-          im.setAttribute('data-hs-name-blocked', '1')
-        }
-      }
+  /** the site's own emotes in this row that the viewer blocked by name */
+  function markBlockedNativeEmotes(messageElement) {
+    if (localBlockedEmoteNames.size === 0) return
+    for (const im of messageElement.querySelectorAll(NATIVE_EMOTE_IMG)) {
+      if (im.alt && localBlockedEmoteNames.has(im.alt)) im.setAttribute('data-hs-name-blocked', '1')
     }
   }
 
@@ -5803,6 +5841,7 @@
       // Wrap current element if it's a native emote (not already a heatsync wrapper)
       let currentWrapper = currentElement
       if (!currentElement.classList.contains('heatsync-emote-wrapper')) {
+        if (isKick) continue // wrapping moves it, and it is kick's node (site-nodes.js)
         currentWrapper = document.createElement('span')
         // Native emotes get emote-overlay-global (gray) since they're platform emotes
         currentWrapper.className = 'heatsync-emote-wrapper heatsync-overlay emote-overlay-global'
@@ -5844,6 +5883,7 @@
         // Wrap base element if it's a native emote
         let baseWrapper = baseElement
         if (!baseElement.classList.contains('heatsync-emote-wrapper')) {
+          if (isKick) continue // the same: kick's own emote stays where kick drew it
           baseWrapper = document.createElement('span')
           // Native emotes get emote-overlay-global (gray) since they're platform emotes
           baseWrapper.className = 'heatsync-emote-wrapper emote-overlay-global'
@@ -5917,8 +5957,9 @@
       }
     }
 
-    // Clean up empty containers left by emote replacement (only heatsync-created ones)
-    const emptyContainers = messageElement.querySelectorAll('.text-fragment:empty, span.font-normal:empty')
+    // Clean up empty containers left by emote replacement. Never on kick: the span is kick's own
+    // node, and one holding only a parked (emptied) text node counts as :empty (site-nodes.js).
+    const emptyContainers = isKick ? [] : messageElement.querySelectorAll('.text-fragment:empty')
     emptyContainers.forEach((el) => {
       if (!el.closest('.heatsync-emote-stack') && !el.classList.contains('heatsync-emote-stack')) {
         el.remove()
@@ -6829,13 +6870,7 @@
         if (img.closest('.heatsync-emote-wrapper')) return
         if (img.closest('.heatsync-emote-stack')) return
 
-        const src = img.src || ''
-        const nativeCdnFrag = src.includes('static-cdn.jtvnw.net/emoticons')
-          ? 'static-cdn.jtvnw.net/emoticons'
-          : src.includes('files.kick.com/emotes/')
-            ? 'files.kick.com/emotes/'
-            : null
-        if (!nativeCdnFrag) return
+        if (!img.matches(NATIVE_EMOTE_IMG)) return
 
         const name = img.alt
         if (!name) return
@@ -6843,18 +6878,16 @@
         e.preventDefault()
         e.stopPropagation()
 
-        const escName = window.CSS && CSS.escape ? CSS.escape(name) : name.replace(/"/g, '\\"')
-        const sel = `img[alt="${escName}"][src*="${nativeCdnFrag}"]`
-        if (localBlockedEmoteNames.has(name)) {
-          localBlockedEmoteNames.delete(name)
-          document.querySelectorAll(sel).forEach((el) => el.removeAttribute('data-hs-name-blocked'))
-        } else {
-          localBlockedEmoteNames.add(name)
-          document.querySelectorAll(sel).forEach((el) => el.setAttribute('data-hs-name-blocked', '1'))
-        }
+        const blocking = !localBlockedEmoteNames.has(name)
         try {
-          chrome.storage.local.set({ local_blocked_emote_names: Array.from(localBlockedEmoteNames) })
-        } catch {}
+          const { local_blocked_emote_names: stored } = await browser.storage.local.get('local_blocked_emote_names')
+          const next = blockedNamesWith(stored, name, blocking)
+          applyBlockedEmoteNames(next)
+          await browser.storage.local.set({ local_blocked_emote_names: next })
+        } catch {
+          // storage is gone (the add-on reloaded under this page): the toggle still shows here
+          applyBlockedEmoteNames(blockedNamesWith([...localBlockedEmoteNames], name, blocking))
+        }
       },
       { capture: true },
       // Capture on purpose — preempts the page's own context menu.
@@ -7597,22 +7630,26 @@
       const alreadyReplaced = textElement.querySelector(`img[data-emote-hash="${emoteData.hash}"]`)
       if (alreadyReplaced) return
 
-      // Get text-only content (avoid matching alt text in existing imgs)
-      const textContent = Array.from(textElement.childNodes)
-        .filter((node) => node.nodeType === Node.TEXT_NODE)
-        .map((node) => node.textContent)
-        .join('')
-
+      // On kick the words sit in our own spans and kick's text nodes are never swapped out
+      // (site-nodes.js). A kick row not drawn yet has none: processMessage draws it with this
+      // broadcast in hand.
+      const hosts = isKick ? Array.from(textElement.querySelectorAll('.hs-textfrag')) : [textElement]
       const regex = createEmoteRegex(emoteName)
-
-      if (textContent.match(regex)) {
+      for (const host of hosts) {
+        // Get text-only content (avoid matching alt text in existing imgs)
+        const textContent = Array.from(host.childNodes)
+          .filter((node) => node.nodeType === Node.TEXT_NODE)
+          .map((node) => node.textContent)
+          .join('')
+        regex.lastIndex = 0
+        if (!textContent.match(regex)) continue
         log(' ✅ RETROACTIVE REPLACE:', {
           username,
           emoteName,
           messageText: textElement.textContent.substring(0, 50),
         })
 
-        replaceEmoteInText(textElement, {
+        replaceEmoteInText(host, {
           name: emoteName,
           url: emoteData.url.startsWith('http') ? emoteData.url : `${API_URL}${emoteData.url}`,
           hash: emoteData.hash,

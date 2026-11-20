@@ -22,10 +22,17 @@
  * Hovering is checked live via :hover rather than tracked with enter/leave
  * bookkeeping that can desync when the panel re-renders under the cursor.
  *
- * Everything else mirrors the site's contract deliberately, including the
- * `defaultPrevented` guard: this runs in the BUBBLE phase, so a capture-phase
- * handler that already claimed the key (vi's i/a) would otherwise ALSO get it
- * typed as a literal character.
+ * WHERE IT LISTENS
+ *
+ * On the root element (<html>), in the capture phase. That one spot is after
+ * every capture listener on window and document, which is where our own
+ * single-key handlers live (vi's i/a, `\`, row mode): one of them claiming the
+ * key shows as `defaultPrevented`, and we stand down. And it is before every
+ * listener on the way back up, which is where the host's player shortcuts
+ * live. It used to listen on document in the bubble phase, behind the host:
+ * on twitch and kick, `k` with the pointer over chat paused the stream, and
+ * on twitch the letter was not even typed (e2e s22, 11-17). Taking the key
+ * here and stopping it is what keeps the player from hearing it.
  */
 
 /** The composer, if one is actually usable right now. */
@@ -76,14 +83,36 @@ function insertChar(el, ch) {
 }
 
 export function initTypeToFocus(signal) {
-  document.addEventListener(
+  // type it, and end it here: the host does not ALSO act on the key we just consumed
+  const type = (input, e) => {
+    input.focus()
+    insertChar(input, e.key)
+    e.preventDefault()
+  }
+  // A control of ours has the focus (a tour switch, the pin's ask, a reply pill) and handles
+  // keys itself, below us on the event's path. It keeps the first refusal it had when this
+  // listened on document: the key goes down to it, and is picked up again on the panel on the
+  // way back. Claimed there, nothing is typed; not claimed, it is typed as any other. Either
+  // way it stops at the panel, still ahead of the host's listeners on body, document and
+  // window. Without this, space on a focused tour switch typed a space and flipped nothing
+  // (render check, 11-18).
+  let handedDown = null
+  const wired = new WeakSet()
+  const onPanelKey = (e) => {
+    if (e !== handedDown) return
+    handedDown = null
+    const input = e.defaultPrevented ? null : findComposer()
+    if (input) type(input, e)
+    e.stopPropagation()
+  }
+  document.documentElement.addEventListener(
     'keydown',
     (e) => {
       // printable single character only — no shortcuts, no navigation keys
       if (e.ctrlKey || e.metaKey || e.altKey) return
       if (!e.key || e.key.length !== 1) return
-      // A key another handler already claimed must not ALSO be typed. Bubble
-      // phase means preventDefault upstream does not stop us; the flag does.
+      // A key one of our own capture handlers already claimed must not ALSO be
+      // typed. preventDefault upstream does not stop us; the flag does.
       if (e.defaultPrevented) return
       // never steal from something already accepting text — ours or the host's
       const a = document.activeElement
@@ -93,11 +122,19 @@ export function initTypeToFocus(signal) {
       const input = findComposer()
       if (!input) return
 
-      input.focus()
-      insertChar(input, e.key)
-      // Claim it, so the host does not ALSO act on the key we just consumed.
-      e.preventDefault()
+      const panel = document.getElementById('hs-mc-container')
+      if (panel && a && a !== panel && panel.contains(a)) {
+        if (!wired.has(panel)) {
+          wired.add(panel)
+          panel.addEventListener('keydown', onPanelKey, { signal })
+        }
+        handedDown = e
+        return
+      }
+      // Claim it and end it here (the host's listeners are all still ahead on the event's path).
+      type(input, e)
+      e.stopImmediatePropagation()
     },
-    { signal },
+    { signal, capture: true },
   )
 }

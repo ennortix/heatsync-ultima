@@ -345,10 +345,10 @@
     "message": "menonton"
   },
   "mc_tab_temp_title": {
-    "message": "temporary tab: watching another stream takes its slot · right-click to keep"
+    "message": "tab sementara: menonton stream lain mengambil tempatnya · klik kanan untuk menyimpan"
   },
   "mc_tab_keep": {
-    "message": "keep tab"
+    "message": "simpan tab"
   },
   "mc_tab_pinned": {
     "message": "tersimpan"
@@ -741,7 +741,7 @@
     "message": "post ke heatsync..."
   },
   "mc_input_send_tag_title": {
-    "message": "sends to $TARGETS$",
+    "message": "mengirim ke $TARGETS$",
     "placeholders": {
       "targets": {
         "content": "$1"
@@ -1023,6 +1023,12 @@
   "mc_settings_chat_position_desc": {
     "message": "sisi player tempat panel chat menempel — hidden menyembunyikannya (tombol \\ untuk toggle)"
   },
+  "mc_settings_start_hidden": {
+    "message": "mulai tersembunyi"
+  },
+  "mc_settings_start_hidden_desc": {
+    "message": "setiap tab dibuka dengan chat tersembunyi. \\ menampilkannya di tab itu. sampai saat itu halaman tetap seperti aslinya"
+  },
   "mc_settings_yt_suggestions": {
     "message": "youtube: strip saran"
   },
@@ -1103,6 +1109,12 @@
   },
   "mc_settings_suggest_inventory_emotes_desc": {
     "message": "tawarkan inventarismu di tab-complete dan saran saat mengetik. kalau mati, hanya emote channel dan global"
+  },
+  "mc_settings_tab_list": {
+    "message": "tab membuka daftar"
+  },
+  "mc_settings_tab_list_desc": {
+    "message": "tab pada sebuah kata menampilkan emote yang cocok dalam daftar di atas kolom input. panah memilih, tab atau enter menyisipkan, esc menutup. mati melengkapi langsung di teks"
   },
   "mc_settings_show_pronouns": {
     "message": "kata ganti"
@@ -2173,6 +2185,9 @@
   "mc_main_celebration_share_failed": {
     "message": "gagal membagikan perayaan — mengirim pesanmu ke chat"
   },
+  "mc_main_cw_signin": {
+    "message": "masuk ke heatsync untuk mengubah ini"
+  },
   "mc_main_cw_save_failed": {
     "message": "gagal menyimpan $NOUN$ — coba lagi",
     "placeholders": {
@@ -2197,9 +2212,6 @@
   },
   "mc_main_config_save_failed": {
     "message": "channel tidak tersimpan — error penyimpanan"
-  },
-  "mc_main_mute_save_failed": {
-    "message": "daftar bisu tidak tersimpan — error penyimpanan"
   },
   "mc_main_no_share_token": {
     "message": "tidak ada token bagikan — perayaan terkirim tanpa teks, pesanmu masuk ke chat"
@@ -2411,6 +2423,14 @@
   },
   "mc_settingsui_import_ok": {
     "message": "pengaturan diimpor — memuat ulang…"
+  },
+  "mc_settingsui_import_partial": {
+    "message": "pengaturan diimpor, $COUNT$ nilai tidak valid dilewati — memuat ulang…",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
   },
   "mc_settingsui_invalid_expression": {
     "message": "ekspresi tidak valid"
@@ -3191,6 +3211,9 @@
   },
   "mc_mr_cancel": {
     "message": "batal"
+  },
+  "mc_ch_reset": {
+    "message": "reset"
   },
   "mc_mr_pattern_ph": {
     "message": "pola..."

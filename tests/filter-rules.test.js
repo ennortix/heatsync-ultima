@@ -88,6 +88,42 @@ test('keyword: case-sensitive when set', () => {
   expect(res.highlight).toBe(null)
 })
 
+// a hide rule for "here" let "I was here🥹" through on real youtube (e2e s25, 11-17): only a
+// space and a few marks counted as the edge of a word
+test('keyword: a word ends where letters and digits end, whatever comes next', () => {
+  compileFilterRules([rule({ match: { type: 'keyword', value: 'here' } })])
+  const hit = (text) => evaluateFilterRules(makeMsg({ text }), null).highlight === '#ff0000'
+  for (const text of [
+    'I was here🥹',
+    '🥹here',
+    '(here)',
+    'here-ish',
+    'here/there',
+    '«here»',
+    'here…',
+    'HERE!!',
+    'here',
+  ])
+    expect([text, hit(text)]).toEqual([text, true])
+  for (const text of ['there', 'hereby', 'here2', 'here_now', 'whereabouts', 'herè', 'ここhereです'])
+    expect([text, hit(text)]).toEqual([text, false])
+})
+
+test('keyword: a keyword that starts or ends with a mark or an emoji needs no edge on that side', () => {
+  const hit = (value, text) => {
+    compileFilterRules([rule({ match: { type: 'keyword', value } })])
+    return evaluateFilterRules(makeMsg({ text }), null).highlight === '#ff0000'
+  }
+  expect(hit('🥹', 'here🥹🥹')).toBe(true)
+  expect(hit('!drop', 'type!drop now')).toBe(true)
+  expect(hit('!drop', '!dropped')).toBe(false) // the far end is a letter: it still has to end there
+  expect(hit('c++', 'c++ is fine')).toBe(true)
+  expect(hit('c++', 'abc++')).toBe(false)
+  expect(hit('привет', 'ну привет!')).toBe(true)
+  expect(hit('привет', 'приветик')).toBe(false)
+  expect(hit('a.b', 'axb')).toBe(false) // the keyword is text, never a pattern
+})
+
 test('keyword: no match on unrelated text', () => {
   compileFilterRules([rule({ match: { type: 'keyword', value: 'goodbye' } })])
   const res = evaluateFilterRules(makeMsg({ text: 'hello world' }), null)
@@ -474,4 +510,96 @@ test('badge rule matches youtube list badges (owner / moderator / mod alias)', (
   compileFilterRules([rule({ match: { type: 'badge', value: 'owner' } })])
   expect(evaluateFilterRules(yt([{ type: 'moderator' }]), null).highlight).toBeNull()
   expect(evaluateFilterRules(yt([{ type: 'owner' }]), null).highlight).toBe('#ff0000')
+})
+
+// ── the whole line is read ──────────────────────────────────────────────────
+
+// Rules read the first 256 characters only. A word late in a long line, the pasted spam a hide
+// rule is written for, got past it: 13 times "pon cocoteo en la radio" with no gap, where the
+// only whole word "radio" is the last one, stayed on screen under a hide rule for "radio"
+// (kick), and a twitch line with the emote name at character 280 did too (e2e s25 + s26, 11-18).
+const SPAM = 'pon cocoteo en la radio'.repeat(13)
+
+test('keyword: a word past character 256 of a long line is still found', () => {
+  expect(SPAM.length).toBeGreaterThan(256)
+  expect(SPAM.lastIndexOf('radio')).toBeGreaterThan(256)
+  compileFilterRules([rule({ match: { type: 'keyword', value: 'radio' }, action: 'hide' })])
+  expect(evaluateFilterRules(makeMsg({ text: SPAM })).hide).toBe(true)
+  // the glued ones are another word and stay one
+  expect(evaluateFilterRules(makeMsg({ text: SPAM.slice(0, -5) })).hide).toBe(false)
+  const late = `${'заводи бурмалду '.repeat(30)}honeymad`
+  compileFilterRules([rule({ match: { type: 'keyword', value: 'honeymad' }, action: 'highlight' })])
+  expect(evaluateFilterRules(makeMsg({ text: late })).highlight).toBe('#ff0000')
+})
+
+// The clock a long line's regex is timed on: `step` ms pass between two reads of it.
+function withClock(step, fn) {
+  const real = performance.now
+  let t = 0
+  performance.now = () => (t += step)
+  try {
+    return fn()
+  } finally {
+    performance.now = real
+  }
+}
+
+test('regex: a full-length message is read to its end (500 characters on twitch and kick)', () => {
+  const text = `${'x '.repeat(247)}badone`
+  expect(text.length).toBe(500)
+  compileFilterRules([rule({ match: { type: 'regex', value: 'bad(one|two)$' }, action: 'hide' })])
+  expect(withClock(0, () => evaluateFilterRules(makeMsg({ text })).hide)).toBe(true)
+})
+
+test('regex: text longer than any real message is cut where the cap says, a keyword reads on', () => {
+  const text = `${'x '.repeat(400)}badone`
+  compileFilterRules([rule({ match: { type: 'regex', value: 'badone' }, action: 'hide' })])
+  expect(withClock(0, () => evaluateFilterRules(makeMsg({ text })).hide)).toBe(false)
+  compileFilterRules([rule({ match: { type: 'keyword', value: 'badone' }, action: 'hide' })])
+  expect(evaluateFilterRules(makeMsg({ text })).hide).toBe(true)
+})
+
+test('expr: contains and regex read the whole line too', () => {
+  const text = `${'x '.repeat(200)}late word`
+  expect(text.indexOf('late')).toBeGreaterThan(256)
+  expect(hides('contains:"late word"', makeMsg({ text }))).toBe(true)
+  expect(withClock(0, () => hides('regex:"late.word"', makeMsg({ text })))).toBe(true)
+})
+
+// A regex cannot be stopped once it runs. Reading 512 characters where 256 were read made a
+// pattern with three loops over the same characters 8-16 times slower on a line built for it
+// (0.1-0.25s to 2-4s, measured), so a long line is tried on its first 256 first.
+test('regex: a pattern that is slow on the first 256 characters is answered from those, and is not run on the rest', () => {
+  const late = `${'x '.repeat(200)}late word`
+  // slow: the answer is the first 256's
+  compileFilterRules([rule({ match: { type: 'regex', value: 'late.word' }, action: 'hide' })])
+  expect(withClock(5, () => evaluateFilterRules(makeMsg({ text: late })).hide)).toBe(false)
+  compileFilterRules([rule({ match: { type: 'regex', value: '^x x' }, action: 'hide' })])
+  expect(withClock(5, () => evaluateFilterRules(makeMsg({ text: late })).hide)).toBe(true)
+  expect(withClock(5, () => hides('regex:"late.word"', makeMsg({ text: late })))).toBe(false)
+  // a short line is not timed at all
+  compileFilterRules([rule({ match: { type: 'regex', value: 'late.word' }, action: 'hide' })])
+  expect(withClock(5, () => evaluateFilterRules(makeMsg({ text: late.slice(-200) })).hide)).toBe(true)
+})
+
+test('regex: three loops over the same characters, on the real clock: the line built for it costs what it always did', () => {
+  // gets past the compile guard (it is not exponential): 28 characters of it are quick
+  compileFilterRules([rule({ match: { type: 'regex', value: 'a*a*a*b' }, action: 'hide' })])
+  const text = 'a'.repeat(500)
+  const ran = []
+  const real = RegExp.prototype.test
+  RegExp.prototype.test = function (s) {
+    if (this.source === 'a*a*a*b') ran.push(String(s).length)
+    return real.call(this, s)
+  }
+  let hide
+  try {
+    hide = evaluateFilterRules(makeMsg({ text })).hide
+  } finally {
+    RegExp.prototype.test = real
+  }
+  expect(hide).toBe(false)
+  expect(ran).toEqual([256])
+  // and a line it matches at once is read whole
+  expect(evaluateFilterRules(makeMsg({ text: `${'x'.repeat(300)}aab` })).hide).toBe(true)
 })

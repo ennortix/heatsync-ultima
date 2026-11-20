@@ -345,10 +345,10 @@
     "message": "katselu"
   },
   "mc_tab_temp_title": {
-    "message": "temporary tab: watching another stream takes its slot · right-click to keep"
+    "message": "väliaikainen välilehti: toinen stream vie sen paikan · oikea klikkaus säilyttää"
   },
   "mc_tab_keep": {
-    "message": "keep tab"
+    "message": "säilytä välilehti"
   },
   "mc_tab_pinned": {
     "message": "tallennetut"
@@ -741,7 +741,7 @@
     "message": "julkaise heatsynciin..."
   },
   "mc_input_send_tag_title": {
-    "message": "sends to $TARGETS$",
+    "message": "lähettää: $TARGETS$",
     "placeholders": {
       "targets": {
         "content": "$1"
@@ -1023,6 +1023,12 @@
   "mc_settings_chat_position_desc": {
     "message": "kummalle puolelle soitinta chat-paneeli kiinnittyy — hidden piilottaa sen (\\-näppäin vaihtaa)"
   },
+  "mc_settings_start_hidden": {
+    "message": "aloita piilotettuna"
+  },
+  "mc_settings_start_hidden_desc": {
+    "message": "jokainen välilehti avautuu chat piilotettuna. \\ näyttää sen siinä välilehdessä. siihen asti sivu pysyy ennallaan"
+  },
   "mc_settings_yt_suggestions": {
     "message": "youtube: ehdotuskaista"
   },
@@ -1103,6 +1109,12 @@
   },
   "mc_settings_suggest_inventory_emotes_desc": {
     "message": "tarjoa reppusi tab-täydennyksessä ja kirjoitusehdotuksissa. pois päältä jäävät vain kanavan ja globaalit emotet"
+  },
+  "mc_settings_tab_list": {
+    "message": "tab avaa listan"
+  },
+  "mc_settings_tab_list_desc": {
+    "message": "tab sanan kohdalla näyttää sopivat emotet listassa kirjoituskentän yläpuolella. nuolet valitsevat, tab tai enter lisää, esc sulkee. pois päältä täydentää suoraan tekstiin"
   },
   "mc_settings_show_pronouns": {
     "message": "pronominit"
@@ -2173,6 +2185,9 @@
   "mc_main_celebration_share_failed": {
     "message": "juhlinnan jako epäonnistui — viestisi lähetetään chattiin"
   },
+  "mc_main_cw_signin": {
+    "message": "kirjaudu heatsynciin muuttaaksesi tätä"
+  },
   "mc_main_cw_save_failed": {
     "message": "kohteen $NOUN$ tallennus epäonnistui — yritä uudelleen",
     "placeholders": {
@@ -2197,9 +2212,6 @@
   },
   "mc_main_config_save_failed": {
     "message": "kanavaa ei tallennettu — tallennusvirhe"
-  },
-  "mc_main_mute_save_failed": {
-    "message": "mykistyslistaa ei tallennettu — tallennusvirhe"
   },
   "mc_main_no_share_token": {
     "message": "ei jakotokenia — juhlinta lähetettiin ilman tekstiä, viestisi menee chattiin"
@@ -2411,6 +2423,14 @@
   },
   "mc_settingsui_import_ok": {
     "message": "asetukset tuotu — ladataan uudelleen…"
+  },
+  "mc_settingsui_import_partial": {
+    "message": "asetukset tuotu, $COUNT$ virheellistä arvoa jätettiin pois — ladataan uudelleen…",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
   },
   "mc_settingsui_invalid_expression": {
     "message": "virheellinen lauseke"
@@ -3191,6 +3211,9 @@
   },
   "mc_mr_cancel": {
     "message": "peruuta"
+  },
+  "mc_ch_reset": {
+    "message": "nollaa"
   },
   "mc_mr_pattern_ph": {
     "message": "kuvio..."

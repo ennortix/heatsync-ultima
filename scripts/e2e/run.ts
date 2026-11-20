@@ -1,0 +1,121 @@
+/**
+ * Real-site end-to-end hunt. Loads the built extension (dist/chrome, or E2E_EXT) into
+ * chromium against live twitch, kick and youtube and runs scenarios built from the bug
+ * classes that have shipped. Read-only on the platforms: no login, no sends.
+ *
+ *   bun run build.js chrome            # a plain (non-minified) build keeps the debug probes
+ *   bun scripts/e2e/run.ts             # every scenario (s8 runs an hour: E2E_S8_MIN)
+ *   bun scripts/e2e/run.ts --only s2   # one family: s2-twitch, s2-youtube, s2-kick
+ *
+ * Exit 1 on any finding. Artifacts (report.json, screenshots) go to E2E_OUT.
+ */
+import { findings, OUT, passes, writeReport } from './lib'
+import { s1Tabs } from './s1-tabs'
+import { s2Kick, s2Twitch, s2Youtube } from './s2-spa'
+import { s3Sw } from './s3-sw'
+import { s4Caps } from './s4-caps'
+import { s5Outage } from './s5-outage'
+import { s6Settings } from './s6-settings'
+import { s7Host } from './s7-host'
+import { s8Soak } from './s8-soak'
+import { s9Firefox } from './s9-firefox'
+import { s10Merged } from './s10-merged'
+import { s11FirefoxTabs } from './s11-firefox-tabs'
+import { s12Popout } from './s12-popout'
+import { s13SettingsSweep } from './s13-settings-sweep'
+import { s14FirefoxSettings } from './s14-firefox-settings'
+import { s15SettingsUi } from './s15-settings-ui'
+import { s16Channels } from './s16-channels'
+import { s17MuteBlock } from './s17-mute-block'
+import { s18Kick, s18Twitch, s18Youtube } from './s18-composer'
+import { s19FirstRun } from './s19-first-run'
+import { s20Scroll } from './s20-scroll'
+import { s21Hide } from './s21-hide'
+import { s22Keys } from './s22-keys'
+import { s23RowMenu } from './s23-row-menu'
+import { s24Native } from './s24-native'
+import { s25Rows } from './s25-rows'
+import { s26Upgrade } from './s26-upgrade'
+import { s27Locale } from './s27-locale'
+import { s28SettingsRest } from './s28-settings-rest'
+import { s29Network } from './s29-network'
+import { s30FirefoxPanel } from './s30-firefox-panel'
+
+const SCENARIOS: [string, () => Promise<unknown>][] = [
+  ['s1-tabs', s1Tabs],
+  ['s2-twitch', s2Twitch],
+  ['s2-youtube', s2Youtube],
+  ['s2-kick', s2Kick],
+  ['s3-sw', s3Sw],
+  ['s4-caps', s4Caps],
+  ['s5-outage', s5Outage],
+  ['s6-settings', s6Settings],
+  ['s7-host', s7Host],
+  ['s8-soak', s8Soak],
+  ['s9-firefox', s9Firefox],
+  ['s10-merged', s10Merged],
+  ['s11-firefox-tabs', s11FirefoxTabs],
+  ['s12-popout', s12Popout],
+  ['s13-settings-sweep', s13SettingsSweep],
+  ['s14-firefox-settings', s14FirefoxSettings],
+  ['s15-settings-ui', s15SettingsUi],
+  ['s16-channels', s16Channels],
+  ['s17-mute-block', s17MuteBlock],
+  ['s18-twitch', s18Twitch],
+  ['s18-kick', s18Kick],
+  ['s18-youtube', s18Youtube],
+  ['s19-first-run', s19FirstRun],
+  ['s20-scroll', s20Scroll],
+  ['s21-hide', s21Hide],
+  ['s22-keys', s22Keys],
+  ['s23-row-menu', s23RowMenu],
+  ['s24-native', s24Native],
+  ['s25-rows', s25Rows],
+  ['s26-upgrade', s26Upgrade],
+  ['s27-locale', s27Locale],
+  ['s28-settings-rest', s28SettingsRest],
+  ['s29-network', s29Network],
+  ['s30-firefox-panel', s30FirefoxPanel],
+]
+
+const args = process.argv.slice(2)
+const only = args.includes('--only') ? args[args.indexOf('--only') + 1] : ''
+// a family by its number: s2 is s2-twitch, s2-youtube and s2-kick; s1 is s1-tabs, never s10 or s11
+const picked = SCENARIOS.filter(([id]) => !only || only.split(',').some((o) => id === o || id.startsWith(`${o}-`)))
+if (!picked.length) {
+  console.error(`no scenario matches "${only}" — have: ${SCENARIOS.map(([id]) => id).join(', ')}`)
+  process.exit(2)
+}
+
+const ceiling = setTimeout(
+  () => {
+    console.error('✗ e2e run exceeded its ceiling — aborting')
+    writeReport({ aborted: true })
+    process.exit(1)
+  },
+  Number(process.env.E2E_CEILING_MIN || 120) * 60_000,
+)
+
+// A network interface coming or going on the machine (a container network, a vpn) fails every
+// request in flight with ERR_NETWORK_CHANGED. That is the machine, not the page: the scenario
+// is run once more.
+const netChanged = (e: unknown) => /ERR_NETWORK_CHANGED|ERR_INTERNET_DISCONNECTED/.test(String((e as Error)?.message || e))
+for (const [id, run] of picked) {
+  try {
+    await run().catch(async (e: unknown) => {
+      if (!netChanged(e)) throw e
+      console.log(`    · ${id}: the machine's network changed mid-run, running it once more`)
+      await run()
+    })
+  } catch (e) {
+    findings.push({ scenario: id, what: `scenario crashed: ${String((e as Error)?.message || e).slice(0, 300)}` })
+    console.log(`  ✗ ${id} crashed: ${String((e as Error)?.message || e).slice(0, 300)}`)
+  }
+}
+clearTimeout(ceiling)
+writeReport()
+console.log(
+  `\n${findings.length ? '✗' : '✓'} e2e: ${passes.length} checks passed, ${findings.length} findings — ${OUT}`,
+)
+for (const f of findings) console.log(`  ✗ [${f.scenario}] ${f.what}`)
+process.exit(findings.length ? 1 : 0)

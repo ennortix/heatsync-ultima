@@ -61,7 +61,8 @@ import { namePaintsOn } from './utils.js'
 //   displayScale  range only: UI shows value × scale (storage stays raw)
 //   tweak      true → twitch-ui-noise CSS-hide flag; content.js
 //              applyUiSettings() owns the actual hide rules
-//   noReset    excluded from resetSettingsToDefaults (server-coupled prefs)
+//   noReset    excluded from resetSettingsToDefaults: session state and lists the
+//              user built (open tabs, hide/highlight rules), not preferences
 //   reloadApply  value fully applies only after a page reload — renderer
 //              shows a [reload] chip when current differs from boot
 //   hosts      ['twitch'|'kick'|'youtube'] — the sites the row affects; the
@@ -462,6 +463,22 @@ const SETTINGS = [
     ],
   },
   {
+    // every tab opens with chat hidden; \ shows it in that tab (tab-local, like the \ hide itself)
+    key: 'startChatHidden',
+    type: 'bool',
+    default: false,
+    scope: 'sync',
+    category: 'display',
+    section: 'layout',
+    sectionKey: 'lib_sec_layout',
+    labelKey: 'mc_settings_start_hidden',
+    tipKey: 'mc_settings_start_hidden_desc',
+    control: 'pill',
+    apply: 'startChatHidden',
+    applyOnLoad: true,
+    alias: 'hide hidden backslash start collapsed off',
+  },
+  {
     key: 'ytShowSuggestions',
     hosts: ['youtube'],
     type: 'bool',
@@ -747,6 +764,23 @@ const SETTINGS = [
     tipKey: 'mc_settings_suggest_inventory_emotes_desc',
     control: 'pill',
     alias: 'personal inventory emotes tab complete autocomplete',
+  },
+  {
+    // Tab on a word opens the ranked suggestion list above the composer (the
+    // same list ":kek" pops) instead of completing in place. Arrows move, Tab
+    // or Enter takes the highlighted emote, Esc closes. Off keeps the classic
+    // in-place Tab cycle. Read per keypress in input.js, so no applier.
+    key: 'tabOpensEmoteList',
+    type: 'bool',
+    default: false,
+    scope: 'sync',
+    category: 'chat',
+    section: 'input',
+    sectionKey: 'btn_settings_input',
+    labelKey: 'mc_settings_tab_list',
+    tipKey: 'mc_settings_tab_list_desc',
+    control: 'pill',
+    alias: 'tab complete autocomplete dropdown list suggestions popup',
   },
   {
     key: 'wysiwygEnabled',
@@ -1168,10 +1202,10 @@ const SETTINGS = [
     // the first four are the built-in presets (SFX_PRESETS in multichat/sounds.js,
     // pinned by tests/chat-sounds.test.js); 'custom' plays the file picked on this device
     options: [
-      { value: 'ping', label: 'ping' },
-      { value: 'blip', label: 'blip' },
-      { value: 'knock', label: 'knock' },
-      { value: 'chime', label: 'chime' },
+      { value: 'ping', label: 'ping', labelKey: 'mc_set_snd_ping' },
+      { value: 'blip', label: 'blip', labelKey: 'mc_set_snd_blip' },
+      { value: 'knock', label: 'knock', labelKey: 'mc_set_snd_knock' },
+      { value: 'chime', label: 'chime', labelKey: 'mc_set_snd_chime' },
       { value: 'custom', label: 'my file', labelKey: 'mc_sfx_opt_file' },
     ],
   },
@@ -1472,6 +1506,8 @@ const SETTINGS = [
     apply: 'filterRules',
     applyOnLoad: true,
     maxLen: 524288,
+    // a list the user built, like mutes and blocks: "reset to defaults" keeps it
+    noReset: true,
   },
 
   {

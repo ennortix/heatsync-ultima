@@ -15,7 +15,7 @@ function openImgView(src) {
   if (inputBar) inputBar.classList.add('hs-hidden')
   inputBarVisible = false
   activeImgView = { src }
-  msgsEl.textContent = ''
+  takePane(msgsEl)
   const wrap = document.createElement('div')
   wrap.className = 'hs-iv-wrap'
   const im = document.createElement('img')
@@ -37,7 +37,7 @@ function closeImgView() {
   activeImgView = null
   hsTakeoverSync()
   showInputBar()
-  if (typeof renderMessages === 'function') renderMessages(currentTab, { bypassScrollPause: true })
+  paneReturn()
 }
 
 document.addEventListener(

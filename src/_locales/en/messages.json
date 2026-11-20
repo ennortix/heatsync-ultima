@@ -1024,6 +1024,12 @@
   "mc_settings_chat_position_desc": {
     "message": "which side of the player the chat panel docks to — hidden tucks it away (\\ key toggles)"
   },
+  "mc_settings_start_hidden": {
+    "message": "start hidden"
+  },
+  "mc_settings_start_hidden_desc": {
+    "message": "every tab opens with chat hidden. \\ shows it in that tab. the page keeps its own layout until then"
+  },
   "mc_settings_yt_suggestions": {
     "message": "youtube: suggestions strip"
   },
@@ -1104,6 +1110,12 @@
   },
   "mc_settings_suggest_inventory_emotes_desc": {
     "message": "offer your inventory in tab-complete and typing suggestions. off leaves only channel and global emotes"
+  },
+  "mc_settings_tab_list": {
+    "message": "tab opens a list"
+  },
+  "mc_settings_tab_list_desc": {
+    "message": "tab on a word shows matching emotes in a list above the input. arrows pick, tab or enter inserts, esc closes. off completes in place"
   },
   "mc_settings_show_pronouns": {
     "message": "pronouns"
@@ -2174,6 +2186,9 @@
   "mc_main_celebration_share_failed": {
     "message": "celebration share failed — sending your message to chat"
   },
+  "mc_main_cw_signin": {
+    "message": "sign in to heatsync to change this"
+  },
   "mc_main_cw_save_failed": {
     "message": "failed to save $NOUN$ — try again",
     "placeholders": {
@@ -2198,9 +2213,6 @@
   },
   "mc_main_config_save_failed": {
     "message": "channel not saved — storage error"
-  },
-  "mc_main_mute_save_failed": {
-    "message": "mute list not saved — storage error"
   },
   "mc_main_no_share_token": {
     "message": "no share token — celebration sent without text, your message goes to chat"
@@ -2412,6 +2424,14 @@
   },
   "mc_settingsui_import_ok": {
     "message": "settings imported — reloading…"
+  },
+  "mc_settingsui_import_partial": {
+    "message": "settings imported, $COUNT$ values that did not fit were left out — reloading…",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
   },
   "mc_settingsui_invalid_expression": {
     "message": "invalid expression"
@@ -3194,6 +3214,9 @@
   },
   "mc_mr_cancel": {
     "message": "cancel"
+  },
+  "mc_ch_reset": {
+    "message": "reset"
   },
   "mc_mr_pattern_ph": {
     "message": "pattern..."

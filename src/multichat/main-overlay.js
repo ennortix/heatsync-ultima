@@ -56,6 +56,37 @@ function findChatRoomComponent() {
 }
 
 // ============================================
+// THE CHAT LIST'S SCROLL KEYS
+// ============================================
+
+/** What a key does to the chat list: 'tail', 'top', a number of pixels (up is negative), or null. */
+function listKeyMove(key, pageHeight) {
+  if (key === 'End') return 'tail'
+  if (key === 'Home') return 'top'
+  const page = Math.max(40, Math.round(pageHeight * 0.9))
+  if (key === 'PageUp') return -page
+  if (key === 'PageDown') return page
+  if (key === 'ArrowUp') return -60
+  if (key === 'ArrowDown') return 60
+  return null
+}
+
+/** Is a scroll key meant for the chat list? Focus inside the list always is. Otherwise the pointer
+ *  has to be on the list and focus on nothing (a click on a row leaves it on the page body) or on
+ *  some other part of our panel: a focused player or field of the host keeps its own keys.
+ *  Our own composer shares: the page keys never move its caret, and End and Home have no caret
+ *  to move while it is empty. Its arrows stay its own (they walk the sent messages). */
+function listKeyWanted(active, listEl, panelEl, hovered, key, composerEmpty) {
+  if (active?.id === 'hs-mc-input') {
+    return key === 'PageUp' || key === 'PageDown' || (!!composerEmpty && (key === 'End' || key === 'Home'))
+  }
+  if (active && (active.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(active.tagName))) return false
+  if (active && listEl.contains(active)) return true
+  if (!hovered) return false
+  return !active || active.tagName === 'BODY' || active.tagName === 'HTML' || !!panelEl?.contains(active)
+}
+
+// ============================================
 // UI CREATION (React-compatible elements)
 // ============================================
 
@@ -997,6 +1028,17 @@ function hideInputBar() {
   _updateMcLayout?.()
 }
 
+// An emote picture that failed with no other address left draws as its name, the way a host's
+// own chat shows a picture it cannot load: a word, never the browser's broken-picture icon
+// (a 3.7 MB kick gif the mirror refused sat as that icon on every row and card, 11-18).
+// The row's kept html still holds the picture, so the next redraw tries it again.
+function hsEmoteAsName(img) {
+  const wrap = img.closest('.hs-mc-emote-wrapper')
+  const name = wrap?.dataset.emoteName || img.alt
+  if (!name) return
+  ;(wrap || img).replaceWith(document.createTextNode(name))
+}
+
 function createOverlay() {
   const overlay = document.createElement('div')
   overlay.id = 'hs-mc-overlay'
@@ -1032,6 +1074,8 @@ function createOverlay() {
     const newBtn = document.getElementById('hs-mc-new-msgs')
     if (!msgsEl || !newBtn) return
     wireModToolbarHover(msgsEl)
+    watchPaneTaken(msgsEl)
+    watchFillTouch(msgsEl)
 
     // Retry broken emote imgs — 7TV/BTTV/FFZ CDNs occasionally 503 and
     // surface as broken (naturalWidth=0). Capture phase since 'error' doesn't
@@ -1066,6 +1110,11 @@ function createOverlay() {
       currentTab === 'pinned' ||
       currentTab === 'modlog'
 
+    // The list holds the chat's own rows: not a top-anchored tab, and not a card, a prediction
+    // or a picture over the pane. Scrolling inside one of those says nothing about the chat
+    // under it: a wheel-up in a card paused the chat, and its close left a stale "N new".
+    const listIsChat = () => !isStaticTab() && !hsPaneTaken()
+
     // Bulletproof scroll-pause: ANY upward movement pauses chat sticky.
     // Resumes ONLY when user lands within 2px of true bottom OR clicks "new" button.
     // Prior 50px slop let small wheels/drags re-trigger auto-scroll, breaking pause.
@@ -1096,6 +1145,22 @@ function createOverlay() {
       }
     }
 
+    // A list with nothing to scroll has no "up" to read. One wheel notch on a new tab's five
+    // lines paused it, and every line after that waited behind the pill.
+    const pauseByScroll = (el) => {
+      if (el.scrollHeight > el.clientHeight) setPaused(true)
+    }
+
+    // Already at the bottom of the rows drawn, a wheel down moves nothing and no scroll event
+    // follows it. A paused reader gets there when the rows under them shrink (a mod clears
+    // someone): they wheeled down and stayed paused, the pill counting up (e2e s20, 11-18). A
+    // feed held by the pointer sits at the bottom on purpose and stays held.
+    const tailByWheel = (e) => {
+      if (!(e.deltaY > 0 && !e.ctrlKey && isScrolledUp && !hoverHeld && checkAtBottom())) return false
+      jumpToTail()
+      return true
+    }
+
     // BULLETPROOF AUTO-SCROLL RULE:
     // isScrolledUp is set TRUE only by explicit user input — wheel-up,
     // touchmove going up, PageUp/Home/ArrowUp keys, mousedown on scrollbar
@@ -1124,7 +1189,7 @@ function createOverlay() {
     // isScrolledUp=true mid-build, then yellow "N new" accumulates without
     // ever auto-scrolling.
     const onScrollMaybeResume = () => {
-      if (isProgrammaticScroll) return
+      if (isProgrammaticScroll || hsPaneTaken()) return
       if (!_userInputScroll) return
       if (!isScrolledUp) return
       if (checkAtBottom()) {
@@ -1132,7 +1197,7 @@ function createOverlay() {
         isScrolledUp = false
         newMessageCount = 0
         newBtn.style.display = 'none'
-        _scrollbackWindow = 0 // back at the live tail — drop scrollback DOM
+        resetScrollback() // back at the live tail — drop scrollback DOM
       }
     }
 
@@ -1142,7 +1207,7 @@ function createOverlay() {
       if (isProgrammaticScroll) return
       if (!_userInputScroll) return
       if (!isScrolledUp) return
-      if (isStaticTab()) return
+      if (!listIsChat()) return
       if (msgsEl.scrollTop > SCROLLBACK_TRIGGER_PX) return
       loadOlderScrollback()
     }
@@ -1150,6 +1215,7 @@ function createOverlay() {
     msgsEl.addEventListener(
       'scroll',
       () => {
+        paneHoldScrolled(msgsEl)
         if (_scrollFrame) return
         _scrollFrame = requestAnimationFrame(() => {
           _scrollFrame = null
@@ -1168,9 +1234,15 @@ function createOverlay() {
           _scrollFrame = null
         }
         onScrollMaybeResume()
+        // The frame cancelled above was also the one that asks for older rows. A scroll that
+        // reached the top and ended inside one frame never asked, and at the top no further
+        // scroll event comes: the list sat there with a full buffer above it (e2e s20, 11-17).
+        maybeLoadOlder()
         // touch-end / wheel-coast finished — clear input flag so subsequent
         // passive scroll events don't accidentally count as user-driven.
         _userInputScroll = false
+        // where a paused reader stopped is where they are kept while the rows above settle
+        if (listIsChat()) armPaneHold(msgsEl)
       },
       { signal: mcSignal },
     )
@@ -1179,9 +1251,15 @@ function createOverlay() {
     msgsEl.addEventListener(
       'wheel',
       (e) => {
-        if (isStaticTab()) return
+        if (!listIsChat()) return
         _userInputScroll = true
-        if (e.deltaY < 0) setPaused(true)
+        if (e.deltaY >= 0) {
+          tailByWheel(e)
+          return
+        }
+        pauseByScroll(msgsEl)
+        // Already at the top, this wheel moves nothing and no scroll event follows it: ask here.
+        if (msgsEl.scrollTop <= SCROLLBACK_TRIGGER_PX) maybeLoadOlder()
       },
       { passive: true, signal: mcSignal },
     )
@@ -1201,27 +1279,43 @@ function createOverlay() {
     msgsEl.addEventListener(
       'touchmove',
       (e) => {
-        if (isStaticTab()) return
+        if (!listIsChat()) return
         const y = e.touches[0]?.clientY || 0
-        if (y > _touchStartY + 4) setPaused(true)
+        if (y > _touchStartY + 4) pauseByScroll(msgsEl)
         _touchStartY = y
       },
       { passive: true, signal: mcSignal },
     )
 
-    // Keys that scroll up — pause.
-    msgsEl.addEventListener(
+    // Keys that scroll: End, Home, the page keys and the arrows. The list is not focusable and
+    // a click on a row focuses nothing, so a listener on the list never heard them, and the
+    // browser scrolled whatever it took for the scroller: End did not return to the tail on any
+    // site (e2e s20, 11-17). Heard on the root element instead (after our own capture handlers,
+    // which may claim the key; before the host's), and the list is moved here, not left to luck.
+    document.documentElement.addEventListener(
       'keydown',
       (e) => {
-        if (isStaticTab()) return
-        if (e.key === 'PageUp' || e.key === 'Home' || e.key === 'ArrowUp') {
-          _userInputScroll = true
-          setPaused(true)
-        } else if (e.key === 'PageDown' || e.key === 'End' || e.key === 'ArrowDown' || e.key === ' ') {
-          _userInputScroll = true
+        if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return
+        const move = listKeyMove(e.key, msgsEl.clientHeight)
+        if (move === null || !listIsChat()) return
+        const panel = document.getElementById('hs-mc-container')
+        const composerEmpty = typeof getInputText === 'function' && !getInputText().trim()
+        if (!listKeyWanted(document.activeElement, msgsEl, panel, msgsEl.matches(':hover'), e.key, composerEmpty))
+          return
+        e.preventDefault()
+        e.stopImmediatePropagation()
+        if (move === 'tail') {
+          if (isScrolledUp || !checkAtBottom()) jumpToTail()
+          return
         }
+        const max = msgsEl.scrollHeight - msgsEl.clientHeight
+        const to = move === 'top' ? 0 : Math.max(0, Math.min(max, msgsEl.scrollTop + move))
+        if (to === msgsEl.scrollTop) return // already there: no scroll event will come to clear the flag
+        _userInputScroll = true
+        if (to < msgsEl.scrollTop) setPaused(true)
+        msgsEl.scrollTop = to
       },
-      { signal: mcSignal },
+      { signal: mcSignal, capture: true },
     )
 
     // Mousedown on scrollbar thumb (target === msgsEl, click outside content)
@@ -1234,35 +1328,35 @@ function createOverlay() {
       { passive: true, signal: mcSignal },
     )
 
-    newBtn.addEventListener(
-      'click',
-      () => {
-        hoverHeld = false
-        isScrolledUp = false
-        newMessageCount = 0
-        newBtn.style.display = 'none'
-        _scrollbackWindow = 0 // jumping to live tail — drop scrollback DOM
-        if (isStaticTab()) {
-          // Static tabs: re-render then scroll to top (newest content)
-          renderMessages(currentTab)
-          msgsEl.scrollTop = 0
-        } else {
-          // Chat tabs: re-render then teleport to bottom. The new render
-          // diff only auto-pins if user was AT bottom; here the user was
-          // scrolled UP and clicked to come back, so force the scroll.
-          renderMessages(currentTab)
-          scrollMsgsToBottom(msgsEl)
-        }
-      },
-      { signal: mcSignal },
-    )
+    // Back to the newest rows: the "N new" pill's click, and the End key.
+    const jumpToTail = () => {
+      hoverHeld = false
+      isScrolledUp = false
+      newMessageCount = 0
+      newBtn.style.display = 'none'
+      resetScrollback() // jumping to live tail — drop scrollback DOM
+      if (isStaticTab()) {
+        // Static tabs: re-render then scroll to top (newest content)
+        renderMessages(currentTab)
+        msgsEl.scrollTop = 0
+      } else {
+        // Chat tabs: re-render then teleport to bottom. The new render
+        // diff only auto-pins if user was AT bottom; here the user was
+        // scrolled UP and clicked to come back, so force the scroll.
+        renderMessages(currentTab)
+        scrollMsgsToBottom(msgsEl)
+      }
+    }
+    newBtn.addEventListener('click', jumpToTail, { signal: mcSignal })
 
-    // Hover hold: while the pointer rests on an emote, name or badge the feed
-    // stops sliding, so the thing under the cursor stays under it (a new
+    // Hover hold: while the pointer rests on an emote, name, badge or link the
+    // feed stops sliding, so the thing under the cursor stays under it (a new
     // message every second moved it away and the cursor fell back to an
     // arrow) and its tooltip stays on what you are pointing at. Messages keep
     // arriving into the buffer and show up the moment the pointer leaves.
-    const holdTarget = (el) => el.closest('.hs-mc-emote-wrapper, .hs-mc-user, .hs-mc-badge-img')
+    // A link is the one of these a reader means to click: in a fast kick chat it
+    // slid off the pointer before its tooltip could show (e2e s23, 11-18).
+    const holdTarget = (el) => el.closest('.hs-mc-emote-wrapper, .hs-mc-user, .hs-mc-badge-img, .hs-mc-link')
     const releaseHold = () => {
       _hoverRelease = null
       if (!hoverHeld) return
@@ -1270,11 +1364,15 @@ function createOverlay() {
       isScrolledUp = false
       newMessageCount = 0
       newBtn.style.display = 'none'
-      if (isStaticTab()) return
+      // a card took the pane while the pointer held: nothing of the chat to pin, its close draws the tail
+      if (!listIsChat()) return
       const missed = _holdMissedRender
       _holdMissedRender = false
-      if (!missed) return
-      renderMessages(currentTab)
+      if (missed) renderMessages(currentTab)
+      // Pinned even when no line was missed. Every re-pin is skipped under a hold, so a list whose
+      // box changed meanwhile (the composer coming back after a card or the logs, a late picture)
+      // sat one composer short of its end: not paused, no "new" pill, and never caught up (real
+      // twitch and kick, e2e s23, 11-18).
       scrollMsgsToBottom(msgsEl)
     }
     msgsEl.addEventListener(
@@ -1291,6 +1389,27 @@ function createOverlay() {
           cleanup.clearTimeout(_hoverRelease)
           _hoverRelease = null
         }
+      },
+      { passive: true, signal: mcSignal },
+    )
+    // Only a pointer that MOVES onto the thing holds the feed. A resting pointer gets a mouseover
+    // too whenever a row slides an emote or name under it, and so does one the window gets back
+    // (switching back to the browser's workspace): holding on those froze the feed on old rows,
+    // with no "new messages" to say so, until the mouse happened to move (11-16).
+    let _ptrX = Number.NaN
+    let _ptrY = Number.NaN
+    const forgetPointer = () => {
+      _ptrX = Number.NaN
+      _ptrY = Number.NaN
+    }
+    msgsEl.addEventListener(
+      'mousemove',
+      (e) => {
+        const moved = e.clientX !== _ptrX || e.clientY !== _ptrY
+        const arrived = Number.isNaN(_ptrX)
+        _ptrX = e.clientX
+        _ptrY = e.clientY
+        if (arrived || !moved || !(e.target instanceof Element) || !holdTarget(e.target)) return
         if (hoverHeld && !isScrolledUp) hoverHeld = false // resumed by other means
         if (hoverHeld || isScrolledUp || isStaticTab()) return
         hoverHeld = true
@@ -1299,8 +1418,12 @@ function createOverlay() {
       },
       { passive: true, signal: mcSignal },
     )
-    msgsEl.addEventListener('mouseleave', releaseHold, { passive: true, signal: mcSignal })
-    window.addEventListener('blur', releaseHold, { passive: true, signal: mcSignal })
+    const leave = () => {
+      forgetPointer()
+      releaseHold()
+    }
+    msgsEl.addEventListener('mouseleave', leave, { passive: true, signal: mcSignal })
+    window.addEventListener('blur', leave, { passive: true, signal: mcSignal })
 
     // Bulletproof sticky-bottom: any change to msgsEl's box (panel resize,
     // window resize, tab/input bar height shift, font-size change) re-pins
@@ -1327,11 +1450,13 @@ function createOverlay() {
     // Coalescing lives in scheduleScrollPin (shared with every other pin
     // trigger) so a 100-image burst still does one layout per frame.
     const onImgLoadOrError = (e) => {
+      holdPanePlace(msgsEl) // a reader who scrolled up keeps their row while pictures land
       // A cosmetic badge img failed (e.g. 7TV CDN QUIC drop under request
       // burst). The URL is valid, so retry before giving up — only hide after
       // 2 failed retries — so we never render a permanent broken-image icon.
       if (e?.type === 'error') {
         const t = e.target
+        const src0 = t instanceof HTMLImageElement ? t.src : ''
         if (t instanceof HTMLImageElement && t.classList.contains('hs-mc-badge-img')) retryOrHideBadgeImg(t)
         if (t instanceof HTMLImageElement && t.classList.contains('hs-mc-avatar')) t.style.display = 'none'
         // static-emote proxy failure (heatsync.org unreachable / 429) —
@@ -1374,6 +1499,19 @@ function createOverlay() {
           t.dataset.hsAvifFell = '1'
           t.src = t.src.replace(/\.avif$/, '.webp')
         }
+        // no other address left to try; a line the server drew (a card's history) only ever had one
+        if (
+          t instanceof HTMLImageElement &&
+          t.src === src0 &&
+          (t.classList.contains('hs-mc-emote') || t.closest('.hs-card-log-body'))
+        ) {
+          // the animated twin failed under a hover: the still that was showing comes back
+          const still = t.dataset.hsStaticSrc
+          if (still && still !== src0) {
+            delete t.dataset.hsStaticSrc
+            t.src = still
+          } else hsEmoteAsName(t)
+        }
       }
       // Snap the emote box to an integer width so the text after it stays on
       // the pixel grid (see hsSnapEmoteBox — fixes blurry post-emote text).
@@ -1391,6 +1529,10 @@ function createOverlay() {
     }
     msgsEl.addEventListener('load', onImgLoadOrError, { capture: true, passive: true, signal: mcSignal })
     msgsEl.addEventListener('error', onImgLoadOrError, { capture: true, passive: true, signal: mcSignal })
+    // rows that take their height with no picture event: a video when its metadata lands, a
+    // link card when its placeholder is filled in (feed-embed.js)
+    msgsEl.addEventListener('loadedmetadata', onImgLoadOrError, { capture: true, passive: true, signal: mcSignal })
+    msgsEl.addEventListener('hs-row-settled', onImgLoadOrError, { passive: true, signal: mcSignal })
 
     // Hover-to-animate (animateEmotes: 'hover') — rows render static srcs;
     // pointing at a message swaps all its emotes to the original animated
@@ -1574,7 +1716,9 @@ function createOverlay() {
       if (!liveMsgsEl) return
       ev.preventDefault()
       _userInputScroll = true
-      if (ev.deltaY < 0) setPaused(true)
+      if (ev.deltaY < 0) pauseByScroll(liveMsgsEl)
+      // the same wheel, over a reply stack drawn on top of the list
+      else if (listIsChat() && tailByWheel(ev)) return
       // scrollBy honors deltaMode (lines/pages/pixels) so high-DPI mice and
       // line-mode wheels feel native. The += assignment treated everything
       // as pixels.
@@ -2084,6 +2228,7 @@ function createOverlay() {
 }
 
 function renderSearchResults(msgsEl, results, query) {
+  if (hsPaneTaken()) return // a card opened while the search was in flight keeps the pane
   _clearMessageIndices()
   msgsEl.textContent = ''
   if (!results.length) {
@@ -2282,17 +2427,7 @@ document.addEventListener(
   },
   { signal: mcSignal },
 )
-document.addEventListener(
-  'keydown',
-  (e) => {
-    if (e.key !== 'n' && e.key !== 'N') return
-    if (e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented) return
-    const t = e.target
-    if (t && (t.isContentEditable || ['INPUT', 'TEXTAREA'].includes(t.tagName))) return
-    if (cycleLiveSearch(e.key === 'n' ? 1 : -1)) e.preventDefault()
-  },
-  { signal: mcSignal },
-)
+initSearchWalkKeys(mcSignal, cycleLiveSearch)
 
 // alt+1..9 jump to the Nth content tab, alt+] / alt+[ cycle next/prev, alt+r
 // is row mode (row-mode.js) — the way in for people who don't run vi mode, whose

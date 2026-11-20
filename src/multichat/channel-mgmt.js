@@ -34,16 +34,51 @@ function makeMcBtn(text, primary) {
  * list all have to agree about what a duplicate is; a guard enforced at only
  * one of three entry points is not a guard.
  */
-function channelAddError(twitchVal, kickVal, ytVal) {
+function channelAddError(twitchVal, kickVal, ytVal, self = null) {
   const id = twitchVal || kickVal || ''
-  if (id && mcIsReservedTab(id)) return 'mc_reserved_name'
-  if (id && config.channels.some((c) => c.id === id)) return 'mc_channel_exists'
-  if (twitchVal && config.channels.some((c) => c.twitch === twitchVal)) return 'mc_twitch_exists'
-  if (kickVal && config.channels.some((c) => c.kick === kickVal)) return 'mc_kick_exists'
+  // the edit form checks its own tab against everyone else's
+  const others = self ? config.channels.filter((c) => c !== self) : config.channels
+  if (id && id !== self?.id && mcIsReservedTab(id)) return 'mc_reserved_name'
+  if (id && others.some((c) => c.id === id)) return 'mc_channel_exists'
+  if (twitchVal && others.some((c) => c.twitch === twitchVal)) return 'mc_twitch_exists'
+  if (kickVal && others.some((c) => c.kick === kickVal)) return 'mc_kick_exists'
   // youtube's generated yt-<ts> id is unique every time, so the id check above
   // can never catch a repeat — it needs its own.
-  if (ytVal && config.channels.some((c) => c.youtube === ytVal)) return 'mc_channel_exists'
+  if (ytVal && others.some((c) => c.youtube === ytVal)) return 'mc_channel_exists'
   return null
+}
+
+// A name outside the platform's charset can never be a real channel (twitch
+// [a-z0-9_], kick adds '-'): a typo or a half-parsed URL would be a silent dead tab.
+const MC_TWITCH_LOGIN = /^[a-z0-9_]{1,25}$/
+const MC_KICK_SLUG = /^[a-z0-9_-]{1,25}$/
+// Site pages that sit where a channel's name does: a pasted twitch.tv/directory or
+// kick.com/browse link reads as a channel called "directory". The site's own list
+// (client/utils/stream-link.js RESERVED), plus the link prefixes the parsers step over.
+const MC_SITE_PATHS = new Set(
+  (
+    'directory settings p downloads jobs turbo subscriptions inventory wallet drops friends messages search ' +
+    'videos video clip clips categories category browse dashboard terms privacy community-guidelines ' +
+    'popout embed moderator u'
+  ).split(' '),
+)
+const mcTwitchNameOk = (v) => MC_TWITCH_LOGIN.test(v) && !MC_SITE_PATHS.has(v)
+const mcKickNameOk = (v) => MC_KICK_SLUG.test(v) && !MC_SITE_PATHS.has(v)
+
+/**
+ * What the add and edit forms save: each field reduced to a clean name (a pasted
+ * twitch.tv/kick.com link or an @name works), or the locale key saying why not.
+ * @returns {{twitchVal: string, kickVal: string, ytVal: string, err: string|null}}
+ */
+function mcChannelInputs(twitchRaw, kickRaw, ytRaw, self = null) {
+  const twitchVal = parseTwitchLoginValue(twitchRaw)
+  const kickVal = parseKickSlugValue(kickRaw)
+  const ytVal = (ytRaw || '').trim() ? normalizeYtUrl(ytRaw.trim()) : ''
+  let err = null
+  if (!twitchVal && !kickVal && !ytVal) err = 'mc_enter_platform'
+  else if ((twitchVal && !mcTwitchNameOk(twitchVal)) || (kickVal && !mcKickNameOk(kickVal))) err = 'mc_invalid_name'
+  else err = channelAddError(twitchVal, kickVal, ytVal, self)
+  return { twitchVal, kickVal, ytVal, err }
 }
 
 /**
@@ -73,7 +108,7 @@ function addChannelsBulk(entries) {
 
     if (twitchVal) {
       irc?.join(twitchVal)
-      safeSendMessage({ type: 'join_channel', platform: 'twitch', channel: twitchVal })
+      joinExtraChannel('twitch', twitchVal)
     }
     if (kickVal) kickChat?.join(kickVal)
     if (ytVal) {
@@ -107,6 +142,8 @@ function makeAddViewShell(msgsEl, titleText, descText) {
   _clearMessageIndices()
   msgsEl.textContent = ''
   const wrapper = document.createElement('div')
+  // the render pass reads this class: a view already up is left alone (main-live.js)
+  wrapper.className = 'hs-mc-add-pane'
   wrapper.style.cssText =
     'display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:12px;color:#ffffff;font-size:13px;padding:20px;box-sizing:border-box;'
   const title = document.createElement('div')
@@ -290,7 +327,7 @@ async function renderFollowImportPicker(msgsEl) {
   btnRow.style.cssText = 'display:flex;gap:8px;margin-top:4px;'
   const addBtn = makeMcBtn(t('mc_add_selected'), true)
   const allLiveBtn = makeMcBtn(t('mc_select_all_live'), false)
-  const cancelBtn = makeMcBtn('cancel', false)
+  const cancelBtn = makeMcBtn(t('mc_mr_cancel'), false)
   btnRow.appendChild(addBtn)
   btnRow.appendChild(allLiveBtn)
   btnRow.appendChild(cancelBtn)
@@ -353,8 +390,8 @@ function renderPasteListForm(msgsEl) {
 
   const btnRow = document.createElement('div')
   btnRow.style.cssText = 'display:flex;gap:8px;margin-top:4px;'
-  const addBtn = makeMcBtn('add', true)
-  const cancelBtn = makeMcBtn('cancel', false)
+  const addBtn = makeMcBtn(t('mc_bt_add'), true)
+  const cancelBtn = makeMcBtn(t('mc_mr_cancel'), false)
   btnRow.appendChild(addBtn)
   btnRow.appendChild(cancelBtn)
   wrapper.appendChild(btnRow)
@@ -382,12 +419,12 @@ function renderPasteListForm(msgsEl) {
     const entries = []
     for (const raw of splitLines(twitchTa.value)) {
       const v = parseTwitchLoginValue(raw)
-      if (!/^[a-z0-9_]{1,25}$/.test(v)) bad.push(raw)
+      if (!mcTwitchNameOk(v)) bad.push(raw)
       else entries.push({ twitch: v })
     }
     for (const raw of splitLines(kickTa.value)) {
       const v = parseKickSlugValue(raw)
-      if (!/^[a-z0-9_-]{1,25}$/.test(v)) bad.push(raw)
+      if (!mcKickNameOk(v)) bad.push(raw)
       else entries.push({ kick: v })
     }
     for (const raw of splitLines(ytTa.value)) {
@@ -417,17 +454,33 @@ function renderPasteListForm(msgsEl) {
 
 // Module-scope copies of the two parsers the add form defines inline, so the
 // paste list and the picker can reuse them without reaching into a closure.
+// A link gives the name in it. The links people have are not all the channel page: a
+// popped-out chat (twitch.tv/popout/name/chat, kick.com/popout/name/chat), an embed, the
+// mod view, the dashboard (dashboard.twitch.tv/u/name/...), the bare player
+// (player.twitch.tv/?channel=name). The word before the name is stepped over; kick's
+// popout link used to save a channel called "popout".
 function parseTwitchLoginValue(raw) {
   let v = (raw || '').trim().replace(/^@/, '')
-  const m = v.match(/twitch\.tv\/(?:popout\/|moderator\/)?([^/?#\s]+)/i)
+  const m =
+    v.match(/player\.twitch\.tv\/?\?(?:[^#\s]*&)?channel=([^&#\s]+)/i) ||
+    v.match(/twitch\.tv\/(?:(?:popout|embed|moderator|u)\/)?([^/?#\s]+)/i)
   if (m) v = m[1]
   return v.toLowerCase()
 }
 function parseKickSlugValue(raw) {
   let v = (raw || '').trim().replace(/^@/, '')
-  const m = v.match(/kick\.com\/([^/?#\s]+)/i)
+  const m = v.match(/kick\.com\/(?:(?:popout|embed)\/)?([^/?#\s]+)/i)
   if (m) v = m[1]
   return v.toLowerCase()
+}
+
+/** The caret goes to a form's first field one frame after the form is drawn, unless the reader
+ *  is already in the form. A frame can be long (a busy page, a tab in the background): by then
+ *  they may be typing in another field, and what they type next must not land in this one. */
+function cmgFocusFirst(wrapper, input) {
+  cleanup.raf(() => {
+    if (!wrapper.contains(document.activeElement)) input.focus()
+  })
 }
 
 // One "<platform> [username]" row of the add / edit channel forms.
@@ -455,21 +508,7 @@ function cmgPlatformRow(label, placeholder, value) {
 }
 
 function renderAddChannelForm(msgsEl) {
-  _clearMessageIndices()
-  msgsEl.textContent = ''
-  const wrapper = document.createElement('div')
-  wrapper.style.cssText =
-    'display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:12px;color:#ffffff;font-size:13px;padding:20px;box-sizing:border-box;'
-
-  const title = document.createElement('div')
-  title.textContent = t('mc_add_channel')
-  title.style.cssText = 'font-size:17px;font-weight:700;color:#ffffff;letter-spacing:.5px;'
-  wrapper.appendChild(title)
-
-  const desc = document.createElement('div')
-  desc.textContent = t('mc_enter_platform')
-  desc.style.cssText = 'font-size:13px;color:#ffffff;margin-bottom:2px;'
-  wrapper.appendChild(desc)
+  const wrapper = makeAddViewShell(msgsEl, t('mc_add_channel'), t('mc_enter_platform'))
 
   const twitch = cmgPlatformRow('twitch', t('mc_username_placeholder'))
   const kick = cmgPlatformRow('kick', t('mc_username_placeholder'))
@@ -488,8 +527,8 @@ function renderAddChannelForm(msgsEl) {
   const btnRow = document.createElement('div')
   btnRow.style.cssText = 'display:flex;gap:8px;margin-top:4px;'
 
-  const addBtn = makeMcBtn('add', true)
-  const cancelBtn = makeMcBtn('cancel', false)
+  const addBtn = makeMcBtn(t('mc_bt_add'), true)
+  const cancelBtn = makeMcBtn(t('mc_mr_cancel'), false)
 
   btnRow.appendChild(addBtn)
   btnRow.appendChild(cancelBtn)
@@ -508,8 +547,6 @@ function renderAddChannelForm(msgsEl) {
   bulkRow.appendChild(pasteLink)
   wrapper.appendChild(bulkRow)
 
-  msgsEl.appendChild(wrapper)
-
   cancelBtn.addEventListener('click', () => switchTab(liveTarget()))
 
   const showErr = (msg) => {
@@ -517,65 +554,24 @@ function renderAddChannelForm(msgsEl) {
     errEl.style.display = 'block'
   }
 
-  // Parse a typed/pasted value into a clean platform slug: strip a leading
-  // @, and if the user pasted a platform URL (twitch.tv/xqc, kick.com/xqc,
-  // popout/mod links) reduce it to just the slug. Without this, pasting a URL
-  // or a name with trailing junk created a permanent dead tab that forever
-  // showed nothing (Bug #9). A malformed remainder is rejected by the charset
-  // check below — a name with spaces/slashes can never be a real channel.
-  const parseTwitchLogin = (raw) => {
-    let v = (raw || '').trim().replace(/^@/, '')
-    const m = v.match(/twitch\.tv\/(?:popout\/|moderator\/)?([^/?#\s]+)/i)
-    if (m) v = m[1]
-    return v.toLowerCase()
-  }
-  const parseKickSlug = (raw) => {
-    let v = (raw || '').trim().replace(/^@/, '')
-    const m = v.match(/kick\.com\/([^/?#\s]+)/i)
-    if (m) v = m[1]
-    return v.toLowerCase()
-  }
-
+  // One rule set for the add and edit forms (mcChannelInputs): a pasted link
+  // reduces to its name, a name no platform allows is refused (Bug #9), and
+  // reserved ids / duplicates come from channelAddError.
   const doAdd = () => {
     errEl.style.display = 'none'
-    const twitchVal = parseTwitchLogin(twitch.input.value)
-    const kickVal = parseKickSlug(kick.input.value)
-    const ytVal = yt.input.value.trim() ? normalizeYtUrl(yt.input.value.trim()) : ''
-
-    if (!twitchVal && !kickVal && !ytVal) {
-      showErr(t('mc_enter_platform'))
+    const { twitchVal, kickVal, ytVal, err } = mcChannelInputs(twitch.input.value, kick.input.value, yt.input.value)
+    if (err) {
+      showErr(t(err))
       return
     }
-
-    // Charset gate — a slug outside the platform's allowed character set can
-    // never resolve to a real channel (twitch [a-z0-9_], kick adds '-'), so a
-    // typo with spaces or a half-parsed URL is rejected here instead of
-    // becoming a silent dead tab. Real channel names always pass.
-    if (twitchVal && !/^[a-z0-9_]{1,25}$/.test(twitchVal)) {
-      showErr(t('mc_invalid_name'))
-      return
-    }
-    if (kickVal && !/^[a-z0-9_-]{1,25}$/.test(kickVal)) {
-      showErr(t('mc_invalid_name'))
-      return
-    }
-
     const id = twitchVal || kickVal || `yt-${Date.now()}`
-    // Reserved-id / duplicate rules live in channelAddError so this form, the
-    // follow-import picker and the paste list can never disagree about them.
-    const addErr = channelAddError(twitchVal, kickVal, ytVal)
-    if (addErr) {
-      showErr(t(addErr))
-      return
-    }
-
     const channel = { id, twitch: twitchVal, kick: kickVal, youtube: ytVal }
     config.channels.push(channel)
     saveConfig()
 
     if (twitchVal) {
       irc?.join(twitchVal)
-      safeSendMessage({ type: 'join_channel', platform: 'twitch', channel: twitchVal })
+      joinExtraChannel('twitch', twitchVal)
     }
     if (kickVal) {
       kickChat?.join(kickVal)
@@ -675,7 +671,7 @@ function renderAddChannelForm(msgsEl) {
   })
 
   // Auto-focus twitch input
-  cleanup.raf(() => twitch.input.focus())
+  cmgFocusFirst(wrapper, twitch.input)
 }
 
 /**
@@ -727,6 +723,27 @@ function channelMoveOptions(tabId, { vertical = false, rtl = false } = {}) {
   return out
 }
 
+/**
+ * Leave a twitch or kick room no tab names any more. Kept while another tab in `channels`
+ * still names it, or the stream on this page reads it: removing (or re-pointing) the saved
+ * tab of the stream being watched parted the live tab's own chat, which then sat empty
+ * until a rejoin (kick: never by itself; twitch: up to the 15s tick), 11-17.
+ * @param {'twitch'|'kick'} platform
+ * @param {string} name
+ * @param {object[]} channels the tabs that stay
+ */
+function mcLeaveUnshown(platform, name, channels) {
+  if (!name) return
+  // the live tab reads its page's channel plus the linked legs (same name, or the identity)
+  const live = getLivePlatformNames()
+  const page = hostPlatform === platform ? getLiveChannel() : ''
+  if (platform === 'twitch') {
+    if (mcTwitchStillShown(name, channels, [live.twitch, page])) return
+    irc?.part(name)
+    leaveExtraChannel('twitch', name)
+  } else if (!mcKickStillShown(name, channels, [live.kick, page])) kickChat?.part(name)
+}
+
 function removeChannel(tabId) {
   const ch = getChannelById(tabId)
   config.channels = config.channels.filter((c) => c.id !== tabId)
@@ -737,10 +754,9 @@ function removeChannel(tabId) {
   dropTabActivity(tabId)
 
   const twitchName = ch?.twitch
-  if (twitchName) irc?.part(twitchName)
-
   const kickName = ch?.kick
-  if (kickName) kickChat?.part(kickName)
+  mcLeaveUnshown('twitch', twitchName, config.channels)
+  mcLeaveUnshown('kick', kickName, config.channels)
 
   // Clean up per-channel sub tenure data to prevent stale map growth
   if (twitchName) subTenureMap.delete(twitchName.toLowerCase())
@@ -816,12 +832,17 @@ function renderLivePlatformsPane(pane) {
   wrapper.appendChild(kick.row)
   wrapper.appendChild(yt.row)
 
+  const errEl = document.createElement('div')
+  errEl.style.cssText = 'font-size:13px;color:var(--hs-danger);display:none;'
+  errEl.setAttribute('role', 'alert')
+  wrapper.appendChild(errEl)
+
   const btnRow = document.createElement('div')
   btnRow.style.cssText = 'display:flex;gap:8px;margin-top:4px;'
 
-  const saveBtn = makeMcBtn('save', true)
-  const cancelBtn = makeMcBtn('cancel', false)
-  const resetBtn = makeMcBtn('reset', false)
+  const saveBtn = makeMcBtn(t('mc_mr_save'), true)
+  const cancelBtn = makeMcBtn(t('mc_mr_cancel'), false)
+  const resetBtn = makeMcBtn(t('mc_ch_reset'), false)
   btnRow.appendChild(saveBtn)
   btnRow.appendChild(cancelBtn)
   btnRow.appendChild(resetBtn)
@@ -832,18 +853,28 @@ function renderLivePlatformsPane(pane) {
 
   resetBtn.addEventListener('click', () => {
     delete livePlatformMap[urlCh]
-    saveLivePlatformMap()
+    saveLivePlatformMap(urlCh)
     home()
     applyLivePlatformOverrides()
   })
 
   const doSave = () => {
-    const tw = twitch.input.value.trim().toLowerCase().replace(/^@/, '')
-    const ki = kick.input.value.trim().toLowerCase().replace(/^@/, '')
+    // a blank field means no chat from that platform; anything else must be a name
+    // (a pasted link reduces to its name, as in the add and edit forms)
+    const tw = parseTwitchLoginValue(twitch.input.value)
+    const ki = parseKickSlugValue(kick.input.value)
     const ytVal = yt.input.value.trim() ? normalizeYtUrl(yt.input.value.trim()) : ''
-
+    if ((tw && !mcTwitchNameOk(tw)) || (ki && !mcKickNameOk(ki))) {
+      errEl.textContent = t('mc_invalid_name')
+      errEl.style.display = 'block'
+      return
+    }
+    const was = getLivePlatformNames()
     livePlatformMap[urlCh] = { twitch: tw, kick: ki, youtube: ytVal }
-    saveLivePlatformMap()
+    saveLivePlatformMap(urlCh)
+    // the room the live tab read before goes, unless something else still shows it
+    if (was.twitch !== tw) mcLeaveUnshown('twitch', was.twitch, config.channels)
+    if (was.kick !== ki) mcLeaveUnshown('kick', was.kick, config.channels)
     home()
     applyLivePlatformOverrides()
   }
@@ -1010,8 +1041,8 @@ function showEditChannelForm(tabId) {
   const btnRow = document.createElement('div')
   btnRow.style.cssText = 'display:flex;gap:8px;margin-top:4px;'
 
-  const saveBtn = makeMcBtn('save', true)
-  const cancelBtn = makeMcBtn('cancel', false)
+  const saveBtn = makeMcBtn(t('mc_mr_save'), true)
+  const cancelBtn = makeMcBtn(t('mc_mr_cancel'), false)
   btnRow.appendChild(saveBtn)
   btnRow.appendChild(cancelBtn)
   wrapper.appendChild(btnRow)
@@ -1025,22 +1056,11 @@ function showEditChannelForm(tabId) {
 
   const doSave = () => {
     errEl.style.display = 'none'
-    const twitchVal = twitch.input.value.trim().toLowerCase().replace(/^@/, '')
-    const kickVal = kick.input.value.trim().toLowerCase().replace(/^@/, '')
-    const ytVal = yt.input.value.trim() ? normalizeYtUrl(yt.input.value.trim()) : ''
-
-    if (!twitchVal && !kickVal && !ytVal) {
-      showErr(t('mc_enter_platform'))
-      return
-    }
-
-    // Check duplicate twitch/kick (excluding self)
-    if (twitchVal && config.channels.some((c) => c !== ch && c.twitch === twitchVal)) {
-      showErr(t('mc_twitch_exists'))
-      return
-    }
-    if (kickVal && config.channels.some((c) => c !== ch && c.kick === kickVal)) {
-      showErr(t('mc_kick_exists'))
+    // the add form's rules, checked against every tab but this one: a pasted link
+    // saved as-is was a dead tab, and a new name could take a reserved or used id
+    const { twitchVal, kickVal, ytVal, err } = mcChannelInputs(twitch.input.value, kick.input.value, yt.input.value, ch)
+    if (err) {
+      showErr(t(err))
       return
     }
 
@@ -1049,8 +1069,10 @@ function showEditChannelForm(tabId) {
     const oldKick = ch.kick
     const oldYt = ch.youtube
 
-    if (oldTwitch && oldTwitch !== twitchVal) irc?.part(oldTwitch)
-    if (oldKick && oldKick !== kickVal) kickChat?.part(oldKick)
+    // the tab still holds its old names here: judge by the others
+    const others = config.channels.filter((c) => c !== ch)
+    if (oldTwitch && oldTwitch !== twitchVal) mcLeaveUnshown('twitch', oldTwitch, others)
+    if (oldKick && oldKick !== kickVal) mcLeaveUnshown('kick', oldKick, others)
 
     // Unsubscribe old YouTube if changed
     if (oldYt && oldYt !== ytVal) {
@@ -1118,7 +1140,7 @@ function showEditChannelForm(tabId) {
     // Join new channels if changed
     if (twitchVal && twitchVal !== oldTwitch) {
       irc?.join(twitchVal)
-      safeSendMessage({ type: 'join_channel', platform: 'twitch', channel: twitchVal })
+      joinExtraChannel('twitch', twitchVal)
     }
     if (kickVal && kickVal !== oldKick) kickChat?.join(kickVal)
     if (ytVal && ytVal !== oldYt) {
@@ -1144,5 +1166,5 @@ function showEditChannelForm(tabId) {
       if (e.key === 'Escape') switchTab(tabId)
     })
   })
-  cleanup.raf(() => twitch.input.focus())
+  cmgFocusFirst(wrapper, twitch.input)
 }

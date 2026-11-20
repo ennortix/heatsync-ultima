@@ -2,6 +2,60 @@
 // one scope with the other main-*.js parts and main.js at bundle time (build.js MAIN_PARTS, in list order).
 // no wrapper here: the IIFE is the bundle's.
 
+// PASS A of the render: the rows on screen, by key. A second copy of a key goes, a yt-status pin
+// of this tab is detached to be pinned again at the end, and a row the render no longer wants
+// goes. Returns whether a removal left the rows under it out of stripe phase, and from where.
+function sweepPaneRows(msgsEl, id, desiredSet, existingByKey, detachedExtras) {
+  // a row removed below another leaves the rows under it a beat out of phase;
+  // the lowest such gap is where the upward restripe starts
+  let zebraGap = false
+  let zebraGapBelow = null
+  const dropRow = (c) => {
+    if (c.previousElementSibling) {
+      zebraGap = true
+      zebraGapBelow = c.nextElementSibling
+    }
+    removeRow(c)
+  }
+  // Walk the LIVE HTMLCollection in place instead of materializing
+  // [...msgsEl.children] (up to DOM_RENDER_CAP+scrollback nodes, every
+  // render). Safe because we only ever advance `i` when the current child
+  // is KEPT: removing children[i] slides the next child into that same
+  // index, so re-checking index i next iteration is correct — nothing is
+  // skipped, and nothing here reorders a kept node.
+  for (let i = 0; i < msgsEl.children.length; ) {
+    const c = msgsEl.children[i]
+    if (c.dataset?.hsYtStatus && c.dataset?.hsYtStatusTab === String(id)) {
+      detachedExtras.push(c)
+      c.remove() // yt-status pins aren't tracked in indices
+      continue
+    }
+    // the docked/filled video player lives in the scroller but is not a row —
+    // sweeping it here killed it on the next full render (popout: instantly)
+    if (c.id === 'hs-mc-embed-player') {
+      i++
+      continue
+    }
+    const k = c.dataset?.msgKey
+    if (k && desiredSet.has(k)) {
+      if (existingByKey.has(k)) {
+        dropRow(c) // pre-existing dupe — drop the second copy
+        // The kept copy carries the same key, and unindexing the dropped one took that key out
+        // of the index: the row on screen read as "not shown", so the next live line with that
+        // key was appended as a second copy again, and the index watchdog repainted the pane.
+        _msgKeyIndex.add(k)
+        continue
+      }
+      existingByKey.set(k, c)
+    } else {
+      dropRow(c)
+      continue
+    }
+    i++
+  }
+  return { zebraGap, zebraGapBelow }
+}
+
 function _renderMessagesImpl(id, opts) {
   if (editingChannel) return
   // The pinned bar follows the tab on screen (same rooms inside 30s: a repaint only)
@@ -135,17 +189,24 @@ function _renderMessagesImpl(id, opts) {
 
   let msgs = []
   let mtSrcs = null // the merged tab's sources, for mtNoteRender below
+  const asOf = renderAsOf(msgsEl)
   if (id === 'mentions') {
     msgs = mentionsBuffer
   } else if (id === 'add') {
     hideMultistreamBanner()
-    renderAddChannelForm(msgsEl)
+    // The form (or its import / paste view) is already up. Renders land here from all over
+    // (an emote set arriving, a setting or rule changed in another tab): building it again
+    // would empty what the reader has typed.
+    if (!msgsEl.querySelector(':scope > .hs-mc-add-pane')) renderAddChannelForm(msgsEl)
     return
   } else {
     // live tab or channel tab: twitch + kick + youtube, merged fairly (see
     // merged-tab.js for where each source comes from)
-    mtSrcs = mergedTabSources(id, SCROLLBACK_MAX, true)
-    msgs = fairMerge(mtSrcs)
+    // a paused reader: the whole buffer, cut at the newest row they have (main-state.js)
+    const win = renderWindow(asOf, !!liveSearchQuery(id))
+    const srcs = mergedTabSources(id, win.take, true)
+    mtSrcs = cutSourcesAsOf(srcs, asOf)
+    msgs = fairMerge(mtSrcs, win.keep)
   }
 
   // Merge follow stream events into channel + live tabs (went live,
@@ -223,7 +284,10 @@ function _renderMessagesImpl(id, opts) {
   // removed leg that stood for the line must not leave another leg standing in.
   let toRender = msgs.filter((m) => !m?.hidden)
   if (mtSrcs) toRender = foldSimulcastLegs(toRender)
-  toRender = toRender.filter((m) => !isMsgFiltered(m, _ff))
+  const _cut = lclearCutFor(id)
+  toRender = toRender.filter(
+    (m) => !isMsgFiltered(m, _ff) && !ruleHides(m, id) && !isMsgUserDropped(m, id) && !(_cut && m.time <= _cut),
+  )
   if (_ff.dups) {
     const out = []
     let prevText = null
@@ -238,7 +302,7 @@ function _renderMessagesImpl(id, opts) {
   // Live-tab local filter: matcher compiled ONCE per query (not per message)
   // so /regex/ patterns, ReDoS guards, and @user/text modes are all O(1) setup.
   const _liveQ = liveSearchQuery(id)
-  const _liveMatcher = _liveQ ? buildLiveSearchMatcher(_liveQ) : null
+  const _liveMatcher = _liveQ ? liveSearchMatcherFor(_liveQ) : null
   const _liveCountEl = document.getElementById('hs-mc-search-count')
   if (_liveMatcher) {
     toRender = toRender.filter((m) => _liveMatcher.test(m))
@@ -269,8 +333,7 @@ function _renderMessagesImpl(id, opts) {
   // Live tail is always DOM_RENDER_CAP; _scrollbackWindow adds older rows
   // when the user has scrolled to the top (loadOlderScrollback). Capped at
   // SCROLLBACK_MAX so the DOM stays bounded on low-RAM hardware.
-  const _renderCap = Math.min(DOM_RENDER_CAP + _scrollbackWindow, SCROLLBACK_MAX)
-  let _cap = _renderCap
+  let _cap = renderRowCap()
   if (_paintFor === id) _cap = Math.min(_cap, _paintCap)
   else if (
     _paintFor === null &&
@@ -283,6 +346,8 @@ function _renderMessagesImpl(id, opts) {
     _cap = FIRST_PAINT_ROWS
     growFirstPaint(id)
   }
+  // …and nothing that joined the list on the way here (stream events, mentions) is newer either
+  if (asOf !== null) toRender = toRender.filter((m) => ordOf(m) <= asOf)
   toRender = toRender.slice(-_cap)
   isProgrammaticScroll = true
 
@@ -339,6 +404,7 @@ function _renderMessagesImpl(id, opts) {
   // shifting after new msgs arrived during the user's absence.
   if (justRestored) {
     const _rp0 = performance.now()
+    dropRestoredFiltered(msgsEl, msgs, desiredSet)
     const insertedKeys = _rmInsertedKeys
     insertedKeys.clear()
     for (let j = 0; j < toRender.length; j++) {
@@ -444,50 +510,7 @@ function _renderMessagesImpl(id, opts) {
   const existingByKey = _rmExistingByKey
   existingByKey.clear()
   const detachedExtras = []
-  // a row removed below another leaves the rows under it a beat out of phase;
-  // the lowest such gap is where the upward restripe starts
-  let zebraGap = false
-  let zebraGapBelow = null
-  const dropRow = (c) => {
-    if (c.previousElementSibling) {
-      zebraGap = true
-      zebraGapBelow = c.nextElementSibling
-    }
-    _unindexMessageDiv(c)
-    c.remove()
-  }
-  // Walk the LIVE HTMLCollection in place instead of materializing
-  // [...msgsEl.children] (up to DOM_RENDER_CAP+scrollback nodes, every
-  // render). Safe because we only ever advance `i` when the current child
-  // is KEPT: removing children[i] slides the next child into that same
-  // index, so re-checking index i next iteration is correct — nothing is
-  // skipped, and nothing here reorders a kept node.
-  for (let i = 0; i < msgsEl.children.length; ) {
-    const c = msgsEl.children[i]
-    if (c.dataset?.hsYtStatus && c.dataset?.hsYtStatusTab === String(id)) {
-      detachedExtras.push(c)
-      c.remove() // yt-status pins aren't tracked in indices
-      continue
-    }
-    // the docked/filled video player lives in the scroller but is not a row —
-    // sweeping it here killed it on the next full render (popout: instantly)
-    if (c.id === 'hs-mc-embed-player') {
-      i++
-      continue
-    }
-    const k = c.dataset?.msgKey
-    if (k && desiredSet.has(k)) {
-      if (existingByKey.has(k)) {
-        dropRow(c) // pre-existing dupe — drop the second copy
-        continue
-      }
-      existingByKey.set(k, c)
-    } else {
-      dropRow(c)
-      continue
-    }
-    i++
-  }
+  const { zebraGap, zebraGapBelow } = sweepPaneRows(msgsEl, id, desiredSet, existingByKey, detachedExtras)
   if (zebraGap) zebraRepaintUp(msgsEl, zebraGapBelow?.isConnected ? zebraGapBelow : null)
 
   // Bulletproof sticky-bottom: if the user hasn't scrolled up via input,
@@ -524,7 +547,9 @@ function _renderMessagesImpl(id, opts) {
   // placed, however many older rows sit out of order below it. In the sorted
   // case this is exactly "after the previous desired row" (the O(1) path).
   let prevNode = null
-  let zebraFrom = null // first row whose stripe may now be out of phase
+  // the first and last rows (in list order) that landed mid-list: the rows around them may be out of phase
+  let midTop = null
+  let midLow = null
   let zebraRebuilt = false // a stale row was rebuilt in place
   // The lowest row already on screen. A LIVE line (it carries an ord) is
   // never slotted above one: a kick line a beat behind the twitch line it
@@ -532,8 +557,9 @@ function _renderMessagesImpl(id, opts) {
   // their stripes under the reader's eyes (~1 in 4 lines on a busy two-
   // platform tab). It goes just under the screen's last row instead, so a
   // live line only ever appends and a shown row never moves or changes
-  // stripe. History (no ord) still weaves to its real place. The cost is a
-  // line up to LIVE_WEAVE_SKEW_MS out of timestamp order, by design.
+  // stripe. History (no ord) still weaves to its real place, and so does a
+  // line older than the weave window (isLateLiveLine). The cost is a line up
+  // to LIVE_WEAVE_SKEW_MS out of timestamp order, by design.
   let settledEnd = null
   for (let el = msgsEl.lastElementChild; el; el = el.previousElementSibling) {
     if (el._hsAt !== undefined) {
@@ -541,6 +567,7 @@ function _renderMessagesImpl(id, opts) {
       break
     }
   }
+  const shownSpan = settledEnd ? ordSpanOnScreen(msgsEl) : null
   for (let j = 0; j < toRender.length; j++) {
     const key = desiredKeys[j]
     if (insertedKeys.has(key)) continue
@@ -612,31 +639,23 @@ function _renderMessagesImpl(id, opts) {
     div.dataset.msgKey = key
     div.dataset.hsEpoch = String(_renderEpoch)
     let after
-    if (prevNode) after = prevNode.nextSibling
-    else {
-      after = msgsEl.firstElementChild
-      if (after?.id === 'hs-mc-embed-player') after = after.nextElementSibling // the player is not a row
-    }
-    if (
-      settledEnd &&
-      m.ord != null &&
-      after &&
-      (after === settledEnd || after.compareDocumentPosition(settledEnd) & Node.DOCUMENT_POSITION_FOLLOWING)
-    ) {
-      prevNode = settledEnd
-      after = settledEnd.nextSibling
-    }
+    ;[prevNode, after] = newRowSlot(msgsEl, prevNode, settledEnd, shownSpan, m)
     stampZebra(div, m, prevNode)
-    if (after) zebraFrom = zebraFrom || div
     msgsEl.insertBefore(div, after)
+    if (after) {
+      if (!midTop || div.compareDocumentPosition(midTop) & Node.DOCUMENT_POSITION_FOLLOWING) midTop = div
+      if (!midLow || midLow.compareDocumentPosition(div) & Node.DOCUMENT_POSITION_FOLLOWING) midLow = div
+    }
     _indexMessageDiv(div, key)
     prevNode = div
   }
 
   // Re-pin yt-status notices to the very end.
   for (const ex of detachedExtras) msgsEl.appendChild(ex)
-  if (zebraFrom) zebraRepaint(msgsEl, zebraFrom)
-  if (zebraRebuilt) zebraRepaintUp(msgsEl, null)
+  // A mid insert restripes the side of it that shows fewer rows; an in-place
+  // rebuild alone settles upward, the newest rows keeping their stripes.
+  if (midTop) zebraSettleMid(msgsEl, midTop, midLow)
+  else if (zebraRebuilt) zebraRepaintUp(msgsEl, null)
 
   // Final safety net: hard-cap DOM so no future regression can OOM the tab.
   // toRender is already sliced to 500; anything beyond that + yt-status
@@ -712,8 +731,28 @@ function getLivePlatformNames() {
   }
 }
 
-function saveLivePlatformMap() {
-  chrome.storage.local.set({ hs_live_platform_map: livePlatformMap })
+// Write one channel's entry (or its removal) into the stored map, read fresh:
+// writing this tab's whole copy dropped what another open tab saved since this
+// one loaded. Other tabs' entries are adopted on the way. Chained, so two saves
+// in this tab never interleave their read and write.
+let _liveMapChain = Promise.resolve()
+function saveLivePlatformMap(ch) {
+  _liveMapChain = _liveMapChain.then(() => _saveLivePlatformMapNow(ch))
+  return _liveMapChain
+}
+async function _saveLivePlatformMapNow(ch) {
+  try {
+    const stored = (await browser.storage.local.get('hs_live_platform_map')).hs_live_platform_map
+    const next = { ...(stored && typeof stored === 'object' ? stored : {}) }
+    if (livePlatformMap[ch]) next[ch] = livePlatformMap[ch]
+    else delete next[ch]
+    // adopt what other tabs saved, never over this tab's own entries (one may be
+    // waiting in the chain behind this save)
+    for (const k of Object.keys(next)) if (!(k in livePlatformMap) && k !== ch) livePlatformMap[k] = next[k]
+    await browser.storage.local.set({ hs_live_platform_map: next })
+  } catch (e) {
+    reportStorageWriteFailure('live platforms', e, 'mc_main_config_save_failed')
+  }
 }
 
 async function loadLivePlatformMap() {
@@ -1294,7 +1333,7 @@ async function resolveLiveCandidateToTab({ name, platform, youtubeUrl, _videoId 
       try {
         trackJoin(entry.id, irc?.join?.(entry.twitch))
       } catch {}
-      safeSendMessage({ type: 'join_channel', platform: 'twitch', channel: entry.twitch })
+      joinExtraChannel('twitch', entry.twitch)
     }
     if (entry.kick) {
       try {
@@ -1326,7 +1365,7 @@ async function resolveLiveCandidateToTab({ name, platform, youtubeUrl, _videoId 
       try {
         trackJoin(entry.id, irc?.join?.(twitchName))
       } catch {}
-      safeSendMessage({ type: 'join_channel', platform: 'twitch', channel: twitchName })
+      joinExtraChannel('twitch', twitchName)
     }
     if (!entry.kick && kickName) {
       entry.kick = kickName

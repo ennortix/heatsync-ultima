@@ -345,10 +345,10 @@
     "message": "oglądam"
   },
   "mc_tab_temp_title": {
-    "message": "temporary tab: watching another stream takes its slot · right-click to keep"
+    "message": "karta tymczasowa: inny stream zajmie jej miejsce · prawy klik, żeby zachować"
   },
   "mc_tab_keep": {
-    "message": "keep tab"
+    "message": "zachowaj kartę"
   },
   "mc_tab_pinned": {
     "message": "zapisane"
@@ -741,7 +741,7 @@
     "message": "opublikuj na heatsync..."
   },
   "mc_input_send_tag_title": {
-    "message": "sends to $TARGETS$",
+    "message": "wysyła do: $TARGETS$",
     "placeholders": {
       "targets": {
         "content": "$1"
@@ -1023,6 +1023,12 @@
   "mc_settings_chat_position_desc": {
     "message": "po której stronie odtwarzacza dokuje panel czatu — hidden chowa go (klawisz \\ przełącza)"
   },
+  "mc_settings_start_hidden": {
+    "message": "uruchom ukryty"
+  },
+  "mc_settings_start_hidden_desc": {
+    "message": "każda karta otwiera się z ukrytym czatem. \\ pokazuje go w tej karcie. do tego czasu strona zostaje bez zmian"
+  },
   "mc_settings_yt_suggestions": {
     "message": "youtube: pasek sugestii"
   },
@@ -1103,6 +1109,12 @@
   },
   "mc_settings_suggest_inventory_emotes_desc": {
     "message": "oferuj swój ekwipunek w uzupełnianiu tabem i podpowiedziach przy pisaniu. wyłączone zostawia tylko emotki kanałowe i globalne"
+  },
+  "mc_settings_tab_list": {
+    "message": "tab otwiera listę"
+  },
+  "mc_settings_tab_list_desc": {
+    "message": "tab na słowie pokazuje pasujące emotki na liście nad polem wpisywania. strzałki wybierają, tab lub enter wstawia, esc zamyka. wyłączone uzupełnia od razu w tekście"
   },
   "mc_settings_show_pronouns": {
     "message": "zaimki"
@@ -2173,6 +2185,9 @@
   "mc_main_celebration_share_failed": {
     "message": "udostępnienie celebracji nie powiodło się — wysyłam twoją wiadomość na czat"
   },
+  "mc_main_cw_signin": {
+    "message": "zaloguj się do heatsync, aby to zmienić"
+  },
   "mc_main_cw_save_failed": {
     "message": "nie udało się zapisać: $NOUN$ — spróbuj ponownie",
     "placeholders": {
@@ -2197,9 +2212,6 @@
   },
   "mc_main_config_save_failed": {
     "message": "kanał nie zapisany — błąd pamięci"
-  },
-  "mc_main_mute_save_failed": {
-    "message": "lista wyciszonych nie zapisana — błąd pamięci"
   },
   "mc_main_no_share_token": {
     "message": "brak tokenu udostępniania — celebracja wysłana bez tekstu, twoja wiadomość idzie na czat"
@@ -2411,6 +2423,14 @@
   },
   "mc_settingsui_import_ok": {
     "message": "ustawienia zaimportowane — przeładowuję…"
+  },
+  "mc_settingsui_import_partial": {
+    "message": "ustawienia zaimportowane, pominięto nieprawidłowe wartości: $COUNT$ — przeładowuję…",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
   },
   "mc_settingsui_invalid_expression": {
     "message": "nieprawidłowe wyrażenie"
@@ -3191,6 +3211,9 @@
   },
   "mc_mr_cancel": {
     "message": "anuluj"
+  },
+  "mc_ch_reset": {
+    "message": "resetuj"
   },
   "mc_mr_pattern_ph": {
     "message": "wzorzec..."

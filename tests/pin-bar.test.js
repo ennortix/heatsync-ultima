@@ -102,7 +102,9 @@ function mount(opts = {}) {
 }
 
 const bar = () => win.document.getElementById('hs-mc-pinbar')
-const row = (id = 'm1', ch = 'somechan', plat = 'twitch') => {
+// a real twitch row carries no platform: buildMessageDiv stamps `m.platform || ''` and twitch
+// messages have none. The default here is that row, not a tidier one.
+const row = (id = 'm1', ch = 'somechan', plat = '') => {
   const r = win.document.createElement('div')
   r.className = 'hs-mc-msg'
   r.dataset.msgId = id
@@ -111,8 +113,8 @@ const row = (id = 'm1', ch = 'somechan', plat = 'twitch') => {
   win.document.getElementById('hs-mc-messages').append(r)
   return r
 }
-const keyOn = (k, target) => {
-  const ev = new win.KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true })
+const keyOn = (k, target, init = {}) => {
+  const ev = new win.KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true, ...init })
   target.dispatchEvent(ev)
   return ev
 }
@@ -201,6 +203,74 @@ describe('pin bar', () => {
     await flush()
     expect(sent[0]).toMatchObject({ type: 'pin', op: 'clear', platform: 'twitch', channel: 'somechan' })
     expect(bar().hidden).toBe(true)
+  })
+
+  // The second click of a double click, and Enter held on the x, answered the ask the first
+  // press had only just put up: unpinned for the room, unread. The site's bar had the same.
+  test('mod x: a double click only asks; a click once the ask has been up does it', async () => {
+    const p = mount({ mods: ['twitch/somechan'] })
+    await p.pinSync('chan')
+    sent.length = 0
+    const x = bar().querySelector('.hs-mc-pin-x')
+    const now = Date.now
+    try {
+      const t0 = now()
+      Date.now = () => t0
+      x.click()
+      Date.now = () => t0 + 120
+      x.click()
+      keyOn('Enter', bar())
+      await flush()
+      expect(bar().dataset.confirm).toBe('1')
+      expect(sent).toEqual([])
+      Date.now = () => t0 + 450
+      x.click()
+      await flush()
+    } finally {
+      Date.now = now
+    }
+    expect(sent[0]).toMatchObject({ type: 'pin', op: 'clear', platform: 'twitch', channel: 'somechan' })
+  })
+
+  test('mod x: Enter held down never answers, and never reaches the button under it', async () => {
+    const p = mount({ mods: ['twitch/somechan'] })
+    await p.pinSync('chan')
+    sent.length = 0
+    const now = Date.now
+    try {
+      const t0 = now()
+      Date.now = () => t0
+      bar().querySelector('.hs-mc-pin-x').click()
+      // the key repeats for as long as it is down: half a second in, two seconds in
+      for (const ms of [500, 2000]) {
+        Date.now = () => t0 + ms
+        const ev = keyOn('Enter', bar(), { repeat: true })
+        expect(ev.defaultPrevented).toBe(true)
+      }
+      await flush()
+    } finally {
+      Date.now = now
+    }
+    expect(bar().dataset.confirm).toBe('1')
+    expect(sent).toEqual([])
+  })
+
+  test('mod x: Enter answers once the ask has been up', async () => {
+    const p = mount({ mods: ['twitch/somechan'] })
+    await p.pinSync('chan')
+    sent.length = 0
+    const now = Date.now
+    try {
+      const t0 = now()
+      Date.now = () => t0
+      bar().querySelector('.hs-mc-pin-x').click()
+      Date.now = () => t0 + 450
+      keyOn('Enter', bar())
+      await flush()
+    } finally {
+      Date.now = now
+    }
+    expect(sent[0]).toMatchObject({ type: 'pin', op: 'clear' })
   })
 
   test('mod x: esc backs out, nothing is sent', async () => {
@@ -326,6 +396,9 @@ describe('pin bar', () => {
     await p.pinSync('chan')
     expect(p.pinRoomOfRow(row('m1', 'somechan', 'youtube'))).toBeNull()
     expect(p.pinRoomOfRow(row('m1', 'somechan', 'twitch'))?.room).toBe('twitch/somechan')
+    // the row twitch chat really draws: no platform stamped
+    expect(p.pinRoomOfRow(row('m1', 'somechan', ''))?.room).toBe('twitch/somechan')
+    expect(p.pinRoomOfRow(row('m1', 'some-kick', 'kick'))?.room).toBe('kick/some-kick')
   })
 })
 

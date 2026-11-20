@@ -161,6 +161,14 @@
       location.pathname.startsWith('/live_chat') &&
       !location.pathname.startsWith('/live_chat_replay'))
 
+  // startChatHidden: a tab opens hidden until \ shows chat in it (mirrored by
+  // the startChatHidden applier). A popout is all chat and never starts hidden.
+  try {
+    if (!isPopout && String(readLS('startChatHidden', '0')) === '1' && !sessionStorage.getItem('hs-chat-shown-local')) {
+      chatPosition = 'hidden'
+    }
+  } catch {}
+
   // Only prepaint where chat will actually mount — otherwise the black bar
   // shows for up to 4s on home/directory/browse/search/shorts/etc. while the
   // user is just browsing (no chat to smooth in). Pathname-only (document_start),
@@ -387,6 +395,10 @@ ${
   window.addEventListener('message', (e) => {
     if (e.origin !== location.origin || e.data?.type !== 'heatsync-nav') return
     if (!isChatPage()) return
+    // Chat hidden in this tab (\): no column to hold, and the zero-width panel below reads as
+    // "nothing mounted". Twitch and kick replaceState while they load, so a hidden tab got the
+    // black bar on every load and every in-page hop. The body class is the live answer.
+    if (document.body ? document.body.classList.contains('hs-chat-hidden') : chatPosition === 'hidden') return
     const mounted = document.getElementById('hs-mc-container')
     if (mounted && mounted.getBoundingClientRect().width > 0) return
     if (document.documentElement.classList.contains('hs-prepaint-active')) return

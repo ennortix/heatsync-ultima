@@ -96,12 +96,18 @@ function buildChatLogPermalink(r) {
 // fell back to a retyped quote on all but the handful of rows peekSentHost had
 // retagged. The fallback is safe in the direction that matters: a kick or
 // youtube row always carries its own value and can never land here.
+//
+// An id made up here names nothing in the archive: a mod notice or a share callout drawn locally
+// carries one (hs-synth-…), and a send being tracked has one too (hs-pend-…, on no row today). The
+// link of such a row is the day page, as on the site, never `?m=hs-synth-…`.
+const HS_LOCAL_MSG_ID_RE = /^hs-(?:pend|synth)-/
 function buildRowPermalink(row) {
   if (!row) return null
+  const id = row.dataset.msgId
   return buildLogPermalink({
     platform: row.dataset.msgPlatform || 'twitch',
     channel: row.dataset.msgChannel,
-    messageId: row.dataset.msgId,
+    messageId: HS_LOCAL_MSG_ID_RE.test(id || '') ? '' : id,
     time: Number(row.dataset.msgTime) || 0,
   })
 }
@@ -210,6 +216,8 @@ async function fetchChatLogsPage() {
   if (state.channel) params.set('channel', state.channel)
   params.set('limit', String(HS_CL_PAGE))
   if (state.cursor) params.set('cursor', state.cursor)
+  // the first page again (a refresh, another channel, a cleared search): the list starts whole
+  else state.cut = false
   const path = `/api/archive/user/${encodeURIComponent(state.platform)}/${encodeURIComponent(state.username)}/messages?${params.toString()}`
   let resp
   try {
@@ -231,8 +239,13 @@ async function fetchChatLogsPage() {
   const incoming = resp.data.results || []
   // results are newest-first; append to bottom of list since we're loading older
   state.rows.push(...incoming)
-  // Cap accumulated rows so full-repaint cost stays bounded (matches DOM_RENDER_CAP elsewhere)
-  if (state.rows.length > 500) state.rows.splice(0, state.rows.length - 500)
+  // Cap accumulated rows so full-repaint cost stays bounded (matches DOM_RENDER_CAP elsewhere).
+  // The reader is at the bottom asking for older lines, so the newest ones go, and the list
+  // says so at its top (renderChatLogsView): it no longer starts at the newest line.
+  if (state.rows.length > 500) {
+    state.rows.splice(0, state.rows.length - 500)
+    state.cut = true
+  }
   state.cursor = resp.data.next_cursor || null
   if (!state.cursor || incoming.length === 0) state.exhausted = true
   // Server kicked off ivr.fi historical backfill — flag so the UI shows a
@@ -334,8 +347,16 @@ function chatLogsServerRemoved(d) {
 function clInsertLive(r) {
   const st = activeChatLogs
   if (!st) return
+  // A list cut at its top does not show the newest lines: a new one has no place in it. A full
+  // list has no room either: making room took the oldest row, which the next page starts after,
+  // so a line went missing from the middle of the archive for each one added. It is cut instead.
+  if (st.cut) return
+  if (st.rows.length >= 500) {
+    st.cut = true
+    renderChatLogsView()
+    return
+  }
   st.rows.unshift(r)
-  if (st.rows.length > 500) st.rows.pop()
 
   const list = document.querySelector('#hs-mc-subpane .hs-cl-list')
   if (!list || list.querySelector('.hs-cl-empty')) {
@@ -344,7 +365,7 @@ function clInsertLive(r) {
   }
   // Keep the reader's place: at the top, new lines just appear; scrolled down
   // into older lines, the view must not slide under them.
-  const row = renderChatLogRow(r)
+  const row = clRow(r)
   const atTop = list.scrollTop < 4
   list.insertBefore(row, list.firstChild)
   if (!atTop) list.scrollTop += row.offsetHeight
@@ -398,6 +419,7 @@ async function searchChatLogs(query) {
   }
   state.loadError = false
   state.rows = resp.data.results || []
+  state.cut = false
   state.cursor = null
   state.exhausted = true
   renderChatLogsView()
@@ -436,9 +458,34 @@ function exportChatLogs(format) {
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
+// The reader's place in the logs list: the first row in view, and how far under the list's top
+// edge it sits. Every change redraws the whole view, and a redraw starts at the top: an older
+// page arrived and the reader, who had scrolled to the bottom to ask for it, was back at the
+// newest line, with every page (kick, e2e s23, 11-17). Read before the redraw, put back after.
+function clReadPlace(list) {
+  if (!list) return null
+  const top = list.getBoundingClientRect().top
+  for (const el of list.children) {
+    if (!el._hsRow) continue
+    const b = el.getBoundingClientRect()
+    if (b.bottom > top) return { row: el._hsRow, dy: b.top - top }
+  }
+  return null
+}
+// A row that is gone (another search, another channel) leaves the list at the top.
+function clRestorePlace(list, place) {
+  if (!place) return
+  for (const el of list.children) {
+    if (el._hsRow !== place.row) continue
+    list.scrollTop += el.getBoundingClientRect().top - list.getBoundingClientRect().top - place.dy
+    return
+  }
+}
+
 function renderChatLogsView() {
   const msgsEl = document.getElementById('hs-mc-subpane')
   if (!msgsEl || !activeChatLogs) return
+  const place = clReadPlace(msgsEl.querySelector('.hs-cl-list'))
   msgsEl.textContent = ''
 
   const { username, channel, rows, loading, exhausted, query, scope } = activeChatLogs
@@ -563,32 +610,50 @@ function renderChatLogsView() {
     }
     list.appendChild(empty)
   } else {
+    // The newest lines were let go to keep the list short: say so where they were, and one
+    // press starts the list from the newest line again.
+    if (activeChatLogs.cut) {
+      const newer = document.createElement('div')
+      newer.className = 'hs-cl-loader hs-cl-retry hs-cl-newer'
+      newer.textContent = `\u2191 ${t('mc_logs_refresh')}`
+      newer.addEventListener('click', refreshChatLogs)
+      list.appendChild(newer)
+    }
     // Render newest-at-top (matches Twitch viewer card mental model)
-    for (const r of rows) list.appendChild(renderChatLogRow(r))
+    for (const r of rows) list.appendChild(clRow(r))
   }
 
   // Load-more sentinel at the bottom (scroll-down to load older)
   if (!exhausted) {
+    const failed = !!activeChatLogs.loadError
     const sentinel = document.createElement('div')
     sentinel.className = 'hs-cl-loader'
-    sentinel.textContent = loading ? t('content_card_loading') : t('mc_logs_scroll_older')
+    // an empty list already says the load failed, right above: the loader is then the way to try again
+    const failedText = rows.length ? t('mc_logs_load_failed') : t('common_retry')
+    sentinel.textContent = loading ? t('content_card_loading') : failed ? failedText : t('mc_logs_scroll_older')
+    sentinel.classList.toggle('hs-cl-retry', failed && !loading)
     list.appendChild(sentinel)
+    const more = () => {
+      if (_clLoadMoreObs) {
+        cleanup.untrackObserver(_clLoadMoreObs)
+        _clLoadMoreObs = null
+      }
+      // said here: the list is only redrawn when the page answers, and a slow one read as nothing happening
+      sentinel.textContent = t('content_card_loading')
+      fetchChatLogsPage()
+    }
+    if (failed && !loading) sentinel.addEventListener('click', more)
     // IntersectionObserver auto-fires when sentinel scrolls into view
     if (!loading && 'IntersectionObserver' in window) {
       if (_clLoadMoreObs) {
         cleanup.untrackObserver(_clLoadMoreObs)
         _clLoadMoreObs = null
       }
+      const st = { armed: !failed }
       _clLoadMoreObs = cleanup.trackObserver(
         new IntersectionObserver(
           (entries) => {
-            if (entries.some((e) => e.isIntersecting)) {
-              if (_clLoadMoreObs) {
-                cleanup.untrackObserver(_clLoadMoreObs)
-                _clLoadMoreObs = null
-              }
-              fetchChatLogsPage()
-            }
+            if (clLoaderAsks(entries, st)) more()
           },
           { root: list, rootMargin: '200px' },
         ),
@@ -599,6 +664,26 @@ function renderChatLogsView() {
 
   wrap.appendChild(list)
   msgsEl.appendChild(wrap)
+  clRestorePlace(list, place)
+}
+
+// Does the loader ask for the next page? In view = yes. But after a failed page it is still in
+// view, and asking again at once was a request loop for as long as the api stayed down: no
+// pause between tries, and no word on screen (the failure was only said on an empty list). Then
+// it has to leave the view and come back ("scroll again", as its text says), or be clicked.
+function clLoaderAsks(entries, st) {
+  for (const e of entries) {
+    if (!e.isIntersecting) st.armed = true
+    else if (st.armed) return true
+  }
+  return false
+}
+
+// A row's element, tagged with the line it shows so the reader's place can be found again.
+function clRow(r) {
+  const el = renderChatLogRow(r)
+  el._hsRow = r
+  return el
 }
 
 function renderChatLogRow(r) {
@@ -682,6 +767,8 @@ function clEmoteImg(host, src, alt) {
   img.src = src
   img.alt = alt
   img.loading = 'lazy'
+  // one address, no retry: a picture that cannot be had reads as its name, not a broken icon
+  img.addEventListener('error', () => hsEmoteAsName(img), { once: true })
   host.appendChild(img)
 }
 

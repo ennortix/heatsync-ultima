@@ -287,10 +287,7 @@ function retroFoldOwnEchoes() {
     if (leg === survivor && leg.m.sentHost === 'heatsync') continue
     // Every non-survivor leg is the dual-send duplicate.
     leg.m.hidden = true
-    try {
-      _unindexMessageDiv(leg.div)
-    } catch (_) {}
-    leg.div.remove()
+    removeRow(leg.div)
   }
 }
 
@@ -1130,6 +1127,7 @@ const emojiAcState = {
   matches: [],
   index: 0,
   query: '',
+  plain: false, // Tab opened it on a bare word (tab-list.js): no ':' before the query
 }
 let _emojiAcDebounce = null
 // Cap the visible list — findEmoteMatches can return dozens of hits; the
@@ -1258,6 +1256,7 @@ function createInputBar() {
   return bar
 }
 
+const BLOCK_TAGS = new Set(['DIV', 'P', 'LI'])
 // Get text from input (handles both input and contenteditable)
 function getInputText() {
   const input = document.getElementById('hs-mc-input')
@@ -1329,12 +1328,17 @@ function getInputText() {
         const emjMods = node.dataset.hsWords
         if (emjMods) for (const w of emjMods.split(/\s+/).filter(Boolean)) text += ` ${w}`
         _lastWasChip = true
+      } else if (node.nodeType === Node.ELEMENT_NODE && node.tagName === 'BR') {
+        text += '\n'
       } else if (node.nodeType === Node.ELEMENT_NODE) {
-        text += node.textContent || ''
+        // a pasted or shift+enter line lands as <div>/<p> (<br> above): each
+        // starts a new word, and chips inside it still serialize
+        if (BLOCK_TAGS.has(node.tagName) && text && !/\s$/.test(text)) text += '\n'
+        for (const child of node.childNodes) extractNode(child)
       }
     }
     for (const node of input.childNodes) extractNode(node)
-    return text.replace(/\u00A0/g, ' ')
+    return oneLine(text.replace(/\u00A0/g, ' '))
   }
   return input.value || ''
 }
@@ -2350,7 +2354,7 @@ function initInput() {
         const row = x.closest('.hs-mc-msg')
         const held = irc?.getMessages(row?.dataset.msgChannel).find((m) => m.id === row.dataset.msgId)
         if (held) held.resolved = true
-        row?.remove()
+        removeRow(row)
       },
       { signal: mcSignal },
     )
@@ -2476,7 +2480,7 @@ async function hsBlockFromMenu(username, platform) {
   const id = p?.id || p?.userId
   // Registered → real account-level block (persists, auto-unfollows). Otherwise
   // fall back to a local session hide so block still works on non-heatsync users.
-  if (id) pcToggleBlock(id, username, !!(p.relationship?.youBlock || p.relationship?.isBlocked))
+  if (id) pcToggleBlock(id, username, !!(p.relationship?.youBlock || p.relationship?.isBlocked), platform)
   else _toggleMcBlock(username, platform)
 }
 
@@ -2954,7 +2958,6 @@ async function _toggleMcMute(username, platform) {
     const exp = Date.now() + 86400000
     for (const k of aliasKeys) safeSendMessage({ type: 'mute_user', username: k, expiresAt: exp })
   }
-  persistMcMuted()
   if (wasUnmute) {
     // restoreMcUnmutedDom matches by bare DOM text — use bare aliases here.
     for (const a of aliases) restoreMcUnmutedDom(a)
@@ -2989,7 +2992,7 @@ async function _toggleMcBlock(username, platform) {
     showToast(t('mc_input_blocked', [username + aliasNote]), 'success')
     for (const k of aliasKeys) safeSendMessage({ type: 'block_user', username: k })
   }
-  // buildMessageDiv filters blocked users, so a full re-render hides/restores them.
+  // the render pass drops blocked people's rows (isMsgUserDropped) and draws them back on unblock.
   // bypassScrollPause so a block applied while scrolled up takes effect now
   // instead of silently waiting until the reader returns to the bottom.
   renderMessages(currentTab, { bypassScrollPause: true })
@@ -3105,6 +3108,10 @@ function mcQuoteToInput(text) {
   input.dispatchEvent(new Event('input', { bubbles: true }))
 }
 
+// What sits in a row beside the message and is never part of its text. The row's own buttons
+// belong here: the thread button was missing and every copied message ended in " »".
+const MC_ROW_FURNITURE =
+  '.hs-mc-platform-badge, .hs-mc-badge, .hs-mc-time, .hs-mc-reply-ctx, .hs-mod-toolbar, .hs-mc-stack-collapse, .hs-mc-stack-block-all, .hs-mc-thread-btn'
 function _extractMcMsgText(msg) {
   // Walk siblings after the username link, gathering text nodes + emote alts.
   // textContent on the whole row leaks badge/timestamp/username junk; this
@@ -3124,16 +3131,7 @@ function _extractMcMsgText(msg) {
     }
     if (node.nodeType !== 1) return
     const cls = node.classList
-    if (
-      cls?.contains('hs-mc-platform-badge') ||
-      cls?.contains('hs-mc-badge') ||
-      cls?.contains('hs-mc-time') ||
-      cls?.contains('hs-mc-reply-ctx') ||
-      cls?.contains('hs-mod-toolbar') ||
-      cls?.contains('hs-mc-stack-collapse') ||
-      cls?.contains('hs-mc-stack-block-all')
-    )
-      return
+    if (node.matches(MC_ROW_FURNITURE)) return
     if (node.tagName === 'IMG') {
       if (node.alt) parts.push(node.alt)
       return
@@ -3308,7 +3306,8 @@ function applyMcMutes() {
   // true for a name in (or aliased into) mutedUsers, so size 0 = no mutes.
   if (typeof mutedUsers === 'undefined' || mutedUsers.size === 0) return
   document.querySelectorAll('.hs-mc-msg').forEach((msg) => {
-    const userEl = msg.querySelector('.hs-mc-user')
+    // the author, past a reply bar's "@name" (also .hs-mc-user)
+    const userEl = msg.querySelector('.hs-mc-user:not(.hs-mc-reply-user)')
     const username = userEl?.textContent?.trim()?.toLowerCase()
     const platform = userEl?.dataset?.platform
     const muted =
@@ -3327,7 +3326,7 @@ function restoreMcUnmutedDom(username) {
   document.querySelectorAll('.hs-mc-msg.hs-mc-muted').forEach((msg) => {
     const userEl = msg.querySelector('.hs-mc-user:not(.hs-mc-reply-user)')
     const u = userEl?.textContent?.trim()?.toLowerCase()
-    if (!target || u === target) msg.remove()
+    if (!target || u === target) removeRow(msg)
   })
 }
 function stripMcMutedMessage(msg) {
@@ -3516,10 +3515,16 @@ function handleInputKeydownInner(e, input) {
       return
     }
     if (e.key === 'Tab' || e.key === 'Enter') {
-      e.preventDefault()
       const sel = slashAcState.matches[slashAcState.index]
-      if (sel) insertSlashCommand(sel)
-      return
+      // the whole command is typed and needs nothing more: Enter runs it,
+      // instead of filling in what is already there and waiting for a second
+      if (e.key === 'Enter' && sel && slashRunsAsTyped(sel, getInputText())) {
+        hideSlashDropdown()
+      } else {
+        e.preventDefault()
+        if (sel) insertSlashCommand(sel)
+        return
+      }
     }
     if (e.key === 'Escape') {
       e.preventDefault()
@@ -3757,6 +3762,7 @@ function handleInputKeydownInner(e, input) {
       // so re-completion searches the full word (SupHomie + 3 → SupHomie3).
       if (wysiwygEnabled) mergeChipIntoWordForRecompletion(input)
       const word = getCurrentWord(input)
+      if (word.length >= 2 && getSetting('tabOpensEmoteList') === true && openTabEmoteList(word)) return // tab-list.js
       if (word.length >= 2) {
         const matches = findEmoteMatches(word)
         // Set up cycling state even with zero local matches — the cross-provider
@@ -6378,6 +6384,7 @@ function hideEmojiDropdown() {
   emojiAcState.matches = []
   emojiAcState.index = 0
   emojiAcState.query = ''
+  emojiAcState.plain = false
   const dd = document.getElementById('hs-mc-emoji-dropdown')
   if (dd) hsListboxHide(dd)
 }
@@ -6397,7 +6404,7 @@ function insertEmojiFromDropdown(match) {
   acState.index = emojiAcState.matches.indexOf(match)
   if (acState.index === -1) acState.index = 0
   acState.active = true
-  acState.search = `:${emojiAcState.query}`
+  acState.search = emojiAcState.plain ? emojiAcState.query : `:${emojiAcState.query}`
   acState.remoteDone = false
   acState.remotePending = false
 
@@ -6428,6 +6435,7 @@ function checkEmojiAutocomplete() {
   emojiAcState.active = true
   emojiAcState.matches = matches
   emojiAcState.query = ctx.query
+  emojiAcState.plain = false
   emojiAcState.index = 0
   showEmojiDropdown(matches, 0)
 }
@@ -6826,6 +6834,16 @@ function hideSlashDropdown() {
   slashAcState.index = 0
   const dd = document.getElementById('hs-mc-slash-dropdown')
   if (dd) hsListboxHide(dd)
+}
+
+// "/lclear" typed out in full (or an alias of it), on a command whose
+// arguments are none or optional
+function slashRunsAsTyped(c, text) {
+  if (c.args && !c.args.startsWith('[')) return false
+  const typed = String(text || '')
+    .trim()
+    .toLowerCase()
+  return [c.cmd, ...(c.alias || [])].some((n) => typed === `/${n}`)
 }
 
 function insertSlashCommand(c) {
@@ -7292,7 +7310,6 @@ async function handleSlashCommand(text, input) {
       return true
     }
     for (const k of aliasKeys) mutedUsers.add(k)
-    persistMcMuted()
     const exp = Date.now() + 86400000
     for (const k of aliasKeys) safeSendMessage({ type: 'mute_user', username: k, expiresAt: exp })
     const aliasNote = aliasKeys.length > 1 ? ` (+@${aliasKeys[1]})` : ''
@@ -7317,7 +7334,6 @@ async function handleSlashCommand(text, input) {
       return true
     }
     for (const k of forms) mutedUsers.delete(k)
-    persistMcMuted()
     for (const k of aliasKeys) safeSendMessage({ type: 'unmute_user', username: k })
     showToast(t('mc_input_unmuted', [u]), 'success')
     renderMessages(currentTab)
@@ -7337,16 +7353,10 @@ async function handleSlashCommand(text, input) {
   }
 
   if (cmd === 'lclear') {
-    let cleared = 0
-    if (irc?.channels?.has(currentTab)) {
-      irc.channels.get(currentTab).clear?.()
-      cleared++
-    }
-    if (kickChat?.channels?.has(currentTab)) {
-      kickChat.channels.get(currentTab).clear?.()
-      cleared++
-    }
-    renderMessages(currentTab)
+    // any chat tab, live included, every platform in it (see lclearTab)
+    const chat = currentTab === 'live' || !!getChannelById(currentTab)
+    const cleared = chat && lclearTab(currentTab)
+    if (cleared) renderMessages(currentTab, { bypassScrollPause: true })
     showToast(cleared ? t('mc_input_buffer_cleared') : t('mc_input_nothing_to_clear'), cleared ? 'success' : undefined)
     clearInput(input)
     return true
@@ -8091,49 +8101,9 @@ async function handleSlashCommand(text, input) {
     return true
   }
 
-  // ── /set — change any registry setting from the composer ────────────────
-  // setSetting owns coercion + validation (returns false on unknown key or bad
-  // value — never corrupts the sync blob), so this is just key/alias resolution
-  // plus the one gap a raw string can't cross: bool, where coerceSettingValue
-  // does !!v and "off" would read as true.
+  // ── /set — change any registry setting from the composer (set-command.js) ──
   if (cmd === 'set') {
-    const m = rest.match(/^(\S+)\s+([\s\S]+)$/)
-    if (!m) {
-      showToast(t('mc_input_usage_set') || '/set <setting> <value>', 'error')
-      return true
-    }
-    const rawKey = m[1]
-    const lk = rawKey.toLowerCase()
-    const def =
-      typeof SETTINGS !== 'undefined' ? SETTINGS.find((d) => d.key.toLowerCase() === lk || d.alias === lk) : null
-    if (!def) {
-      showToast(t('mc_input_set_unknown', [rawKey]) || `unknown setting: ${rawKey}`, 'error')
-      return true
-    }
-    if (def.type === 'multiselect' || def.type === 'boolmap' || def.type === 'json') {
-      showToast(t('mc_input_set_complex') || 'change that one in the settings panel', 'error')
-      return true
-    }
-    let val = m[2].trim()
-    if (def.type === 'bool') {
-      const on = /^(on|true|1|yes|enabled?|show)$/i.test(val)
-      const off = /^(off|false|0|no|disabled?|hide)$/i.test(val)
-      if (!on && !off) {
-        showToast(t('mc_input_set_bool', [def.key]) || `use on/off for ${def.key}`, 'error')
-        return true
-      }
-      val = on
-    }
-    const ok = typeof setSetting === 'function' && setSetting(def.key, val)
-    if (ok) {
-      showToast(t('mc_input_set_done', [def.key, String(val)]) || `${def.key} = ${val}`, 'success')
-      clearInput(input)
-    } else {
-      let hint = ''
-      if (def.type === 'enum' && Array.isArray(def.options)) hint = ` · ${def.options.map((o) => o.value).join('/')}`
-      else if (def.type === 'range' && def.options) hint = ` · ${def.options.min}-${def.options.max}`
-      showToast(`${t('mc_input_set_invalid', [def.key]) || `invalid value for ${def.key}`}${hint}`, 'error')
-    }
+    runSetCommand(rest, input)
     return true
   }
 

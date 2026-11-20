@@ -231,11 +231,7 @@ function bgKickAppend(channel, rows) {
   const buf = new BGCircularBuffer(BG_KICK_PERSIST_MAX)
   for (const m of all.slice(-BG_KICK_PERSIST_MAX)) buf.push(m)
   BG_KICK.channels.set(ch, buf)
-  if (BG_KICK.channels.size > MAX_BG_KICK_CHANNELS) {
-    const oldest = BG_KICK.channels.keys().next().value
-    BG_KICK.channels.delete(oldest)
-    bgIdbDelete(BG_IDB_KICK, oldest)
-  }
+  bgCapRings(BG_KICK.channels, MAX_BG_KICK_CHANNELS, 'kick', ch, BG_IDB_KICK)
   bgKickPersistChannel(ch)
   return added
 }
@@ -284,11 +280,7 @@ function bgKickIngest(data) {
   const isFirstSightOfChannel = !BG_KICK.channels.has(ch)
   if (isFirstSightOfChannel) {
     BG_KICK.channels.set(ch, new BGCircularBuffer(BG_KICK_PERSIST_MAX))
-    if (BG_KICK.channels.size > MAX_BG_KICK_CHANNELS) {
-      const oldest = BG_KICK.channels.keys().next().value
-      BG_KICK.channels.delete(oldest)
-      bgIdbDelete(BG_IDB_KICK, oldest)
-    }
+    bgCapRings(BG_KICK.channels, MAX_BG_KICK_CHANNELS, 'kick', ch, BG_IDB_KICK)
     // First time we see this Kick channel — pull deep history from postgres
     // archive in addition to the 200-msg server ring (which came via
     // kick-chat-backfill on the WS).
@@ -602,7 +594,7 @@ async function bgYtFetchRecentArchive(channelId, hintUrl) {
 function ytReplayMessageFor(channelId, m) {
   return {
     type: 'youtube_chat_message',
-    videoId: '',
+    videoId: m.videoId || '',
     channelId,
     id: m.id || undefined,
     user: m.user,
@@ -1482,9 +1474,10 @@ async function _kpConnect() {
   // Capture the socket locally — a stale socket's late close/error/message
   // events must never clobber a newer _kpWs (leave→join races spawn orphaned
   // duplicate-subscribed sockets otherwise).
+  // opened in a kick.com frame: kick refuses the extension's own origin (10-kick-socket-host.js)
   let ws
   try {
-    ws = new WebSocket(ep.url)
+    ws = _kpOpenSocket(ep.url)
   } catch {
     return _kpRefuse('socket unopenable')
   }
@@ -2169,6 +2162,7 @@ function kickTapLeave(slug) {
     // zero-subscription socket after the last channel leaves.
     _kpClearTimers()
     _kpDetach()
+    _kpHostRelease()
   }
 }
 
@@ -2178,18 +2172,17 @@ function bgYtIngest(payload) {
   const channelId = payload.channelId
   if (!BG_YT.channels.has(channelId)) {
     BG_YT.channels.set(channelId, new BGCircularBuffer(BG_YT_PERSIST_MAX))
-    if (BG_YT.channels.size > MAX_BG_YT_CHANNELS) {
-      const oldest = BG_YT.channels.keys().next().value
-      BG_YT.channels.delete(oldest)
-      bgIdbDelete(BG_IDB_YT, oldest)
-    }
+    bgCapRings(BG_YT.channels, MAX_BG_YT_CHANNELS, 'youtube', channelId, BG_IDB_YT)
   }
   // Strip transient flags before storing. `id` (innertube) is NOT transient —
   // it's the only cross-source-stable identity a yt message has. Without it a
   // replayed buffer row can't be id-deduped by the surface, and the content
   // fallback misses because the surface pacer rewrites live msg times.
+  // videoId rides along: the live tab's slot (__live_yt_auto__) is whatever stream a page has
+  // open, so a row replayed into a later page must say which stream it came from.
   const msg = {
     id: payload.id || undefined,
+    videoId: payload.videoId || undefined,
     user: payload.user,
     text: payload.text,
     color: payload.color,

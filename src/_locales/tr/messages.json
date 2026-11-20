@@ -345,10 +345,10 @@
     "message": "izliyor"
   },
   "mc_tab_temp_title": {
-    "message": "temporary tab: watching another stream takes its slot · right-click to keep"
+    "message": "geçici tab: başka bir yayın izlenince yerini o alır · tutmak için sağ tık"
   },
   "mc_tab_keep": {
-    "message": "keep tab"
+    "message": "tabı tut"
   },
   "mc_tab_pinned": {
     "message": "kayıtlı"
@@ -741,7 +741,7 @@
     "message": "heatsync'e post at..."
   },
   "mc_input_send_tag_title": {
-    "message": "sends to $TARGETS$",
+    "message": "şuraya gönderir: $TARGETS$",
     "placeholders": {
       "targets": {
         "content": "$1"
@@ -1023,6 +1023,12 @@
   "mc_settings_chat_position_desc": {
     "message": "sohbet panelinin oynatıcının hangi tarafına yaslanacağı — hidden gizler (\\ tuşu açıp kapatır)"
   },
+  "mc_settings_start_hidden": {
+    "message": "gizli başlat"
+  },
+  "mc_settings_start_hidden_desc": {
+    "message": "her sekme sohbet gizli açılır. \\ o sekmede gösterir. o zamana kadar sayfa olduğu gibi kalır"
+  },
   "mc_settings_yt_suggestions": {
     "message": "youtube: öneri şeridi"
   },
@@ -1103,6 +1109,12 @@
   },
   "mc_settings_suggest_inventory_emotes_desc": {
     "message": "envanterini tab ile tamamlamada ve yazarken önerilerde sun. kapalıyken sadece kanal ve genel emotes kalır"
+  },
+  "mc_settings_tab_list": {
+    "message": "tab bir liste açar"
+  },
+  "mc_settings_tab_list_desc": {
+    "message": "bir kelimede tab, eşleşen emote'ları yazma alanının üstünde bir listede gösterir. oklar seçer, tab ya da enter ekler, esc kapatır. kapalıyken doğrudan metinde tamamlar"
   },
   "mc_settings_show_pronouns": {
     "message": "zamirler"
@@ -2173,6 +2185,9 @@
   "mc_main_celebration_share_failed": {
     "message": "kutlama paylaşımı başarısız — mesajın sohbete gönderiliyor"
   },
+  "mc_main_cw_signin": {
+    "message": "bunu değiştirmek için heatsync'e giriş yap"
+  },
   "mc_main_cw_save_failed": {
     "message": "$NOUN$ kaydedilemedi — tekrar dene",
     "placeholders": {
@@ -2197,9 +2212,6 @@
   },
   "mc_main_config_save_failed": {
     "message": "kanal kaydedilmedi — depolama hatası"
-  },
-  "mc_main_mute_save_failed": {
-    "message": "susturma listesi kaydedilmedi — depolama hatası"
   },
   "mc_main_no_share_token": {
     "message": "paylaşım jetonu yok — kutlama metinsiz gitti, mesajın sohbete gidiyor"
@@ -2411,6 +2423,14 @@
   },
   "mc_settingsui_import_ok": {
     "message": "ayarlar içe aktarıldı — yeniden yükleniyor…"
+  },
+  "mc_settingsui_import_partial": {
+    "message": "ayarlar içe aktarıldı, $COUNT$ geçersiz değer atlandı — yeniden yükleniyor…",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
   },
   "mc_settingsui_invalid_expression": {
     "message": "geçersiz ifade"
@@ -3191,6 +3211,9 @@
   },
   "mc_mr_cancel": {
     "message": "iptal"
+  },
+  "mc_ch_reset": {
+    "message": "sıfırla"
   },
   "mc_mr_pattern_ph": {
     "message": "kalıp..."

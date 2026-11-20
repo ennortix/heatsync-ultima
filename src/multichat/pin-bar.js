@@ -95,7 +95,8 @@ function pinCanAct(platform, channel) {
 
 // the room a chat row's pin lives on, or null (youtube / no channel / not on this tab)
 function pinRoomOfRow(row) {
-  const platform = row?.dataset?.msgPlatform || ''
+  // a twitch row carries no platform (buildMessageDiv stamps `m.platform || ''`)
+  const platform = row?.dataset?.msgPlatform || 'twitch'
   const channel = String(row?.dataset?.msgChannel || '').toLowerCase()
   if ((platform !== 'twitch' && platform !== 'kick') || !channel) return null
   const room = `${platform}/${channel}`
@@ -236,14 +237,20 @@ function pinApply(room, pin) {
   pinRender()
 }
 
+// The ask has to be on screen before the same press can answer it: the second click of a double
+// click, or Enter held a moment too long, unpinned for the whole room without the ask being read.
+// y is another key, pressed on purpose, and answers at once.
+const PIN_ASK_HOLD_MS = 400
 function pinConfirm(on) {
   const n = pinState.node
   if (!n) return
   if (on) {
     n.dataset.confirm = '1'
+    n._askedAt = Date.now()
     n._x.focus()
   } else delete n.dataset.confirm
 }
+const pinAskSeen = () => Date.now() - (pinState.node?._askedAt || 0) >= PIN_ASK_HOLD_MS
 
 function pinOnX() {
   const cur = pinState.cur
@@ -254,8 +261,8 @@ function pinOnX() {
     pinRender()
     return
   }
-  if (pinState.node.dataset.confirm) pinUnpin(cur.room)
-  else pinConfirm(true)
+  if (!pinState.node.dataset.confirm) pinConfirm(true)
+  else if (pinAskSeen()) pinUnpin(cur.room)
 }
 
 function pinOnKey(e) {
@@ -271,7 +278,8 @@ function pinOnKey(e) {
   } else if (n.dataset.confirm && (e.key === 'y' || e.key === 'Enter')) {
     e.preventDefault()
     e.stopPropagation()
-    if (pinState.cur) pinUnpin(pinState.cur.room)
+    // a key still down from the press that asked is not an answer, however long it is held
+    if (pinState.cur && !e.repeat && (e.key === 'y' || pinAskSeen())) pinUnpin(pinState.cur.room)
   }
 }
 

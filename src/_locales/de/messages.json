@@ -345,10 +345,10 @@
     "message": "zuschauen"
   },
   "mc_tab_temp_title": {
-    "message": "temporary tab: watching another stream takes its slot · right-click to keep"
+    "message": "temporärer tab: ein anderer stream übernimmt seinen platz · rechtsklick zum behalten"
   },
   "mc_tab_keep": {
-    "message": "keep tab"
+    "message": "tab behalten"
   },
   "mc_tab_pinned": {
     "message": "gespeichert"
@@ -741,7 +741,7 @@
     "message": "auf heatsync posten..."
   },
   "mc_input_send_tag_title": {
-    "message": "sends to $TARGETS$",
+    "message": "sendet an $TARGETS$",
     "placeholders": {
       "targets": {
         "content": "$1"
@@ -1023,6 +1023,12 @@
   "mc_settings_chat_position_desc": {
     "message": "an welcher Seite des Players das Chat-Panel andockt — hidden versteckt es (Taste \\ schaltet um)"
   },
+  "mc_settings_start_hidden": {
+    "message": "versteckt starten"
+  },
+  "mc_settings_start_hidden_desc": {
+    "message": "jeder tab startet mit verstecktem chat. \\ blendet ihn in diesem tab ein. bis dahin bleibt die seite wie sie ist"
+  },
   "mc_settings_yt_suggestions": {
     "message": "youtube: Vorschlagsleiste"
   },
@@ -1103,6 +1109,12 @@
   },
   "mc_settings_suggest_inventory_emotes_desc": {
     "message": "bietet dein Inventar bei Tab-Vervollständigung und Tipp-Vorschlägen an. aus lässt nur Kanal- und globale Emotes"
+  },
+  "mc_settings_tab_list": {
+    "message": "tab öffnet eine liste"
+  },
+  "mc_settings_tab_list_desc": {
+    "message": "tab auf einem wort zeigt passende emotes in einer liste über dem eingabefeld. pfeiltasten wählen, tab oder enter fügt ein, esc schließt. aus vervollständigt direkt im text"
   },
   "mc_settings_show_pronouns": {
     "message": "pronomen"
@@ -2173,6 +2185,9 @@
   "mc_main_celebration_share_failed": {
     "message": "feier-Teilen fehlgeschlagen — sende deine Nachricht in den Chat"
   },
+  "mc_main_cw_signin": {
+    "message": "bei heatsync anmelden, um das zu ändern"
+  },
   "mc_main_cw_save_failed": {
     "message": "$NOUN$ konnte nicht gespeichert werden — versuch's nochmal",
     "placeholders": {
@@ -2197,9 +2212,6 @@
   },
   "mc_main_config_save_failed": {
     "message": "kanal nicht gespeichert — Speicherfehler"
-  },
-  "mc_main_mute_save_failed": {
-    "message": "stummliste nicht gespeichert — Speicherfehler"
   },
   "mc_main_no_share_token": {
     "message": "kein Share-Token — Feier ohne Text gesendet, deine Nachricht geht in den Chat"
@@ -2411,6 +2423,14 @@
   },
   "mc_settingsui_import_ok": {
     "message": "einstellungen importiert — lädt neu…"
+  },
+  "mc_settingsui_import_partial": {
+    "message": "einstellungen importiert, $COUNT$ ungültige werte ausgelassen — lädt neu…",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
   },
   "mc_settingsui_invalid_expression": {
     "message": "ungültiger Ausdruck"
@@ -3191,6 +3211,9 @@
   },
   "mc_mr_cancel": {
     "message": "abbrechen"
+  },
+  "mc_ch_reset": {
+    "message": "zurücksetzen"
   },
   "mc_mr_pattern_ph": {
     "message": "muster..."

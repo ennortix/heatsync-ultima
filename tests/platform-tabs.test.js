@@ -37,8 +37,20 @@ describe('platform picker tabs', () => {
       expect(back).toContain(undone)
   })
 
+  test('a src-less chat frame is not live unless the player says so', () => {
+    // a past stream's replay frame stamped in a background tab never gets its
+    // src; reading it as live hid the playlist on the next autoplayed video
+    const storage = src('main-storage.js')
+    expect(storage).toContain('const liveChatFramePresent = !!frameEl && !isReplayChat && (!!chatSrc || ytPlayerLive)')
+    // the class sits on the player's time display; #movie_player never has it
+    expect(storage).toContain("document.querySelector('#movie_player .ytp-time-display.ytp-live')")
+    expect(storage).not.toContain("'#movie_player.ytp-live'")
+  })
+
   test('the hide rules and checkYtLive both stand down while it is up', () => {
-    expect(css).toContain('body:not(.hs-yt-owns-chat):not(.hs-yt-peek):has(#hs-mc-container) ytd-live-chat-frame#chat')
+    expect(css).toContain(
+      'body:not(.hs-offline):not(.hs-yt-owns-chat):not(.hs-yt-peek):not(.hs-chat-hidden):has(#hs-mc-container) ytd-live-chat-frame#chat',
+    )
     expect(css).toContain('body.hs-yt-peek ytd-live-chat-frame#chat {')
     expect(css).toContain('body.hs-yt-peek ytd-watch-flexy #secondary {') // its view-transition-name pins a stacking context
     expect(css).toContain('#secondary-inner > #chat-container {') // the sidebar sweep hides its parent
@@ -130,13 +142,15 @@ describe('kick idle animation', () => {
 describe('hover hold', () => {
   const main = src('main.js')
   test('the feed stops sliding while the pointer is on an emote, name or badge, and lets go after a beat', () => {
-    expect(main).toContain("el.closest('.hs-mc-emote-wrapper, .hs-mc-user, .hs-mc-badge-img')")
+    expect(main).toContain("el.closest('.hs-mc-emote-wrapper, .hs-mc-user, .hs-mc-badge-img, .hs-mc-link')")
     expect(main).toContain('_hoverRelease = cleanup.setTimeout(releaseHold, 120)')
-    expect(main).toContain("msgsEl.addEventListener('mouseleave', releaseHold")
+    expect(main).toContain("msgsEl.addEventListener('mouseleave', leave")
   })
   test('a real scroll-up, the resume button and a scroll back to the bottom all end the hold cleanly', () => {
     expect(main).toMatch(/if \(hoverHeld\) \{\s*hoverHeld = false\s*isScrolledUp = false\s*\}/)
-    expect(main).toMatch(/'click',\s*\(\) => \{\s*hoverHeld = false/)
+    // the resume button and the End key share one jump
+    expect(main).toMatch(/const jumpToTail = \(\) => \{\s*hoverHeld = false/)
+    expect(main).toContain("newBtn.addEventListener('click', jumpToTail")
     expect(main).toMatch(/if \(checkAtBottom\(\)\) \{\s*hoverHeld = false/)
   })
 })

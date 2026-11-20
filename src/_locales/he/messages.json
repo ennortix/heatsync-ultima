@@ -345,10 +345,10 @@
     "message": "צופה"
   },
   "mc_tab_temp_title": {
-    "message": "temporary tab: watching another stream takes its slot · right-click to keep"
+    "message": "לשונית זמנית: צפייה בסטרים אחר תופסת את מקומה · קליק ימני כדי לשמור"
   },
   "mc_tab_keep": {
-    "message": "keep tab"
+    "message": "שמור לשונית"
   },
   "mc_tab_pinned": {
     "message": "שמור"
@@ -741,7 +741,7 @@
     "message": "פרסם ב-heatsync..."
   },
   "mc_input_send_tag_title": {
-    "message": "sends to $TARGETS$",
+    "message": "שולח אל $TARGETS$",
     "placeholders": {
       "targets": {
         "content": "$1"
@@ -1023,6 +1023,12 @@
   "mc_settings_chat_position_desc": {
     "message": "לאיזה צד של הנגן פאנל הצ'אט נצמד — hidden מסתיר אותו (מקש \\ מחליף)"
   },
+  "mc_settings_start_hidden": {
+    "message": "להתחיל מוסתר"
+  },
+  "mc_settings_start_hidden_desc": {
+    "message": "כל לשונית נפתחת עם צ'אט מוסתר. \\ מציג אותו בלשונית הזו. עד אז הדף נשאר כמו שהוא"
+  },
   "mc_settings_yt_suggestions": {
     "message": "youtube: פס הצעות"
   },
@@ -1103,6 +1109,12 @@
   },
   "mc_settings_suggest_inventory_emotes_desc": {
     "message": "הצע את המלאי שלך בהשלמת tab ובהצעות הקלדה. כבוי משאיר רק אימוטי ערוץ וגלובליים"
+  },
+  "mc_settings_tab_list": {
+    "message": "tab פותח רשימה"
+  },
+  "mc_settings_tab_list_desc": {
+    "message": "tab על מילה מציג אימוטים מתאימים ברשימה מעל שדה הכתיבה. החצים בוחרים, tab או enter מוסיפים, esc סוגר. כבוי משלים ישירות בטקסט"
   },
   "mc_settings_show_pronouns": {
     "message": "כינויי גוף"
@@ -2173,6 +2185,9 @@
   "mc_main_celebration_share_failed": {
     "message": "שיתוף החגיגה נכשל — ההודעה שלך נשלחת לצ'אט"
   },
+  "mc_main_cw_signin": {
+    "message": "התחברו ל-heatsync כדי לשנות את זה"
+  },
   "mc_main_cw_save_failed": {
     "message": "שמירת $NOUN$ נכשלה — נסה שוב",
     "placeholders": {
@@ -2197,9 +2212,6 @@
   },
   "mc_main_config_save_failed": {
     "message": "הערוץ לא נשמר — שגיאת אחסון"
-  },
-  "mc_main_mute_save_failed": {
-    "message": "רשימת ההשתקות לא נשמרה — שגיאת אחסון"
   },
   "mc_main_no_share_token": {
     "message": "אין טוקן שיתוף — החגיגה נשלחה בלי טקסט, ההודעה שלך נשלחת לצ'אט"
@@ -2411,6 +2423,14 @@
   },
   "mc_settingsui_import_ok": {
     "message": "ההגדרות יובאו — טוען מחדש…"
+  },
+  "mc_settingsui_import_partial": {
+    "message": "ההגדרות יובאו, $COUNT$ ערכים לא תקינים הושמטו — טוען מחדש…",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
   },
   "mc_settingsui_invalid_expression": {
     "message": "ביטוי לא תקין"
@@ -3191,6 +3211,9 @@
   },
   "mc_mr_cancel": {
     "message": "בטל"
+  },
+  "mc_ch_reset": {
+    "message": "אפס"
   },
   "mc_mr_pattern_ph": {
     "message": "תבנית..."

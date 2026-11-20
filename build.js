@@ -385,6 +385,7 @@ const BG_PARTS = [
   '08-diag-push.js',
   '09-irc.js',
   '10-kick-yt.js',
+  '10-kick-socket-host.js',
   '11-boot.js',
 ]
 let bgSourceCache = null
@@ -716,6 +717,8 @@ const COPY_FILES = [
   'twitch-callout-token.js',
   'kick-nav-watcher.js',
   'kick-chat-intercept.js',
+  'kick-socket-host.js',
+  'offscreen.html',
   'youtube-keyboard-guard.js',
   'yt-data-bridge.js',
   'platform-detector.js',
@@ -812,7 +815,8 @@ const LIB_EXTRAS = {
 //     was undefined — 56 ReferenceErrors no typeof guard on an entry point can see.
 //   content.js runs the chat filter rules on native twitch/kick rows (highlight
 //     words with the overlay off) and folds the old text filters into them
-//     (content/native-filter-rules.js is the content-side half).
+//     (content/native-filter-rules.js is the content-side half), and leaves the site's own
+//     text nodes in place on kick (content/site-nodes.js).
 //   content.js + youtube-content.js pick your own emote's size rung (multichat/emote-rungs.js);
 //   heatsync-button.js's upload form runs the overlay's upload rules (multichat/emote-upload-core.js).
 //   content.js + heatsync-button.js draw their close × with the overlay's one
@@ -829,6 +833,7 @@ const ENTRY_MODULES = {
     'multichat/filter-rules.js',
     'multichat/filter-rules-legacy.js',
     'content/native-filter-rules.js',
+    'content/site-nodes.js',
     'multichat/x-glyph.js',
     'multichat/emote-rungs.js',
   ],
@@ -911,6 +916,7 @@ const MULTICHAT_MODULES = [
   'kick-send.js',
   'emote-rungs.js',
   'emotes.js',
+  'emote-cache-evict.js',
   'emote-upload-core.js',
   'emote-upload.js',
   'gifs.js',
@@ -922,6 +928,7 @@ const MULTICHAT_MODULES = [
   'platform-tabs.js',
   'feed-embed.js',
   'feed-engage.js',
+  'polled-tab.js',
   'social.js',
   'whispers.js',
   'eventsub-whispers.js',
@@ -929,7 +936,9 @@ const MULTICHAT_MODULES = [
   'sent-history.js',
   'composer-attrs.js',
   'ctx-menu.js',
+  'set-command.js',
   'input.js',
+  'tab-list.js',
   'profile-card.js',
   'chat-logs.js',
   'pred-view.js',
@@ -939,6 +948,7 @@ const MULTICHAT_MODULES = [
   'badges.js',
   'name-style.js',
   'fill-family.js',
+  'fill-touch.js',
   'stream-line-ids.js',
   'name-marks.js',
   'name-marks-data.js',
@@ -1358,12 +1368,12 @@ function build(browser) {
     cpSync(localesDir, join(chromeDir, '_locales'), { recursive: true })
     // src stays pretty for diffs and translators; a minified build ships
     // compact json — the indentation alone was ~1.2MB across 34 locales.
-    if (shouldMinify) {
-      for (const dir of new Set([outDir, chromeDir])) {
-        for (const loc of readdirSync(join(dir, '_locales'))) {
-          const f = join(dir, '_locales', loc, 'messages.json')
-          if (existsSync(f)) writeFileSync(f, JSON.stringify(JSON.parse(readFileSync(f, 'utf8'))))
-        }
+    // chrome/_locales is tracked: it is compact on every build, or a plain
+    // (debug/e2e) build rewrites all 34 files as a 250k-line diff
+    for (const dir of new Set(shouldMinify ? [outDir, chromeDir] : [chromeDir])) {
+      for (const loc of readdirSync(join(dir, '_locales'))) {
+        const f = join(dir, '_locales', loc, 'messages.json')
+        if (existsSync(f)) writeFileSync(f, JSON.stringify(JSON.parse(readFileSync(f, 'utf8'))))
       }
     }
     console.log(`  Copied _locales`)

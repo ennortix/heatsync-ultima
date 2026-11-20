@@ -82,6 +82,10 @@ function sfxFormSoundOptions(current) {
   )
 }
 
+// the pick button is as wide as its text up to this many characters: every locale's "pick file" fits
+// whole (the longest is 20 with the note), a long file name is cut with … (the row's ♪ names it in full)
+const SFX_PICK_CH = 24
+
 // the file name shown on the pick button: the one just picked, else the one an edited rule already carries
 function sfxPickLabel(keptName) {
   return `♪ ${sfxPending ? sfxPending.n : keptName || t('mc_sfx_pick')}`
@@ -95,7 +99,7 @@ function sfxRuleFormHtml(vol, keptName) {
   return (
     `<input type="range" class="hs-mc-set-range" data-fr-field="vol" min="0" max="100" step="5" value="${shown}" style="width:70px" title="${escapeHtml(t('mc_sfx_volume'))}">` +
     `<span class="hs-mc-set-range-val">${shown}</span>` +
-    `<button data-fr-action="pick" style="${FR_BTN};max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(t('mc_sfx_note'))}">${escapeHtml(sfxPickLabel(keptName))}</button>` +
+    `<button data-fr-action="pick" style="${FR_BTN};max-width:${SFX_PICK_CH}ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(t('mc_sfx_note'))}">${escapeHtml(sfxPickLabel(keptName))}</button>` +
     `<button data-fr-action="preview" style="${FR_BTN};padding:1px 4px" title="${escapeHtml(t('mc_sfx_play'))}">▶</button>`
   )
 }
@@ -172,7 +176,8 @@ function sfxMentionRow(def) {
       '<span class="hs-mc-set-child-glyph">└ </span>' +
       `<span class="hs-mc-setting-label">${escapeHtml(label)}</span>` +
       '<div style="display:flex;align-items:center;gap:4px;min-width:0">' +
-      `<span class="hs-mc-set-range-val" style="min-width:0;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(name || t('mc_sfx_none'))}</span>` +
+      // a file name can be any length and is cut to fit; "no file yet" is ours and never is
+      `<span class="hs-mc-set-range-val" style="min-width:0;${name ? 'max-width:110px;' : ''}overflow:hidden;text-overflow:ellipsis;white-space:nowrap"${name ? ` title="${escapeHtml(name)}"` : ''}>${escapeHtml(name || t('mc_sfx_none'))}</span>` +
       `<button data-sfx-action="pick" style="${FR_BTN}">${escapeHtml(t('mc_sfx_pick'))}</button>` +
       `<button data-sfx-action="play" style="${FR_BTN};padding:1px 4px" title="${escapeHtml(t('mc_sfx_play'))}">▶</button>` +
       (name

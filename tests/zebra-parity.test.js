@@ -5,6 +5,7 @@
  */
 
 import { describe, expect, test } from 'bun:test'
+import { Window } from 'happy-dom'
 import { mainSource } from './main-src.js'
 
 const MAIN_SRC = mainSource()
@@ -25,6 +26,10 @@ const zebraRepaint = new Function('zebraEnabled', `${sliceFn('zebraRepaint')}; r
 const zebraRepaintUp = new Function(
   'zebraEnabled',
   `${sliceFn('zebraRepaint')}; ${sliceFn('zebraRepaintUp')}; return zebraRepaintUp`,
+)(true)
+const zebraSettleMid = new Function(
+  'zebraEnabled',
+  `${sliceFn('zebraRepaint')}; ${sliceFn('zebraRepaintUp')}; ${sliceFn('zebraRowsShown')}; ${sliceFn('zebraSettleMid')}; return zebraSettleMid`,
 )(true)
 
 // minimal linked-list DOM: rows with classList + sibling pointers
@@ -198,8 +203,163 @@ describe('zebra parity', () => {
     for (let i = 1; i < s.length; i++) expect(s[i]).toBe(!s[i - 1])
   })
 
-  test('render restripes after a mid-list removal and after an in-place rebuild', () => {
+  // what a history backfill leaves: `n` rows woven in above live row `at`, each
+  // stamped off the row above it the way the render pass does before it settles
+  function withRowsInserted(live, at, n) {
+    const { els } = fakeList(Array(live + n).fill('chat'))
+    const liveRows = els.slice(0, live)
+    const added = els.slice(live)
+    for (const [i, e] of liveRows.entries()) e.classList.toggle('hs-mc-zebra', i % 2 === 1)
+    const list = [...liveRows.slice(0, at), ...added, ...liveRows.slice(at)]
+    list.forEach((e, i) => {
+      e.previousElementSibling = list[i - 1] || null
+      e.nextElementSibling = list[i + 1] || null
+    })
+    for (const e of added) {
+      const want = zebraOfInsert({ type: 'chat' }, e.previousElementSibling)
+      e.classList.toggle('hs-mc-zebra', want)
+    }
+    return {
+      list,
+      tail: liveRows.slice(at),
+      added,
+      msgsEl: { firstElementChild: list[0], lastElementChild: list.at(-1) },
+    }
+  }
+
+  test('an odd backfill woven in above the live rows: the rows on screen keep their stripes', () => {
+    for (const at of [0, 2]) {
+      const { list, tail, msgsEl } = withRowsInserted(6, at, 3)
+      const before = stripes(tail)
+      zebraRepaintUp(msgsEl, null)
+      expect(stripes(tail)).toEqual(before)
+      const s = stripes(list)
+      for (let i = 1; i < s.length; i++) expect(s[i]).toBe(!s[i - 1])
+    }
+  })
+
+  test('the downward pass a mid insert used to run flips those rows: the flicker this pins', () => {
+    const { tail, added, msgsEl } = withRowsInserted(6, 0, 3)
+    const before = stripes(tail)
+    zebraRepaint(msgsEl, added[0])
+    expect(stripes(tail)).toEqual(before.map((z) => !z))
+  })
+
+  // the list laid out 20px a row in a 200px pane scrolled so rows [first, first+10) show
+  function laidOut(t, first) {
+    t.list.forEach((e, i) => {
+      e.getBoundingClientRect = () => ({ top: (i - first) * 20, bottom: (i - first + 1) * 20 })
+    })
+    t.msgsEl.getBoundingClientRect = () => ({ top: 0, bottom: 200 })
+    return t
+  }
+  const flipped = (a, b) => a.filter((z, i) => z !== b[i]).length
+
+  test('a late line landing just over the newest rows flips the few under it, not the screen above', () => {
+    // a merged tab's kick line arriving after two newer twitch lines were drawn
+    const t = laidOut(withRowsInserted(40, 38, 1), 31)
+    const shown = t.list.slice(31)
+    const before = stripes(shown)
+    zebraSettleMid(t.msgsEl, t.added[0], t.added[0])
+    expect(
+      flipped(
+        stripes(shown.filter((e) => !t.added.includes(e))),
+        before.filter((_, i) => shown[i] !== t.added[0]),
+      ),
+    ).toBe(2)
+    const s = stripes(t.list)
+    for (let i = 1; i < s.length; i++) expect(s[i]).toBe(!s[i - 1])
+  })
+
+  test('history woven in above the screen still leaves every row on screen alone', () => {
+    const t = laidOut(withRowsInserted(40, 5, 3), 33)
+    const shown = t.list.slice(33)
+    const before = stripes(shown)
+    zebraSettleMid(t.msgsEl, t.added[0], t.added.at(-1))
+    expect(stripes(shown)).toEqual(before)
+    const s = stripes(t.list)
+    for (let i = 1; i < s.length; i++) expect(s[i]).toBe(!s[i - 1])
+  })
+
+  test('a pane with no size (hidden tab) settles upward, the newest rows keeping their stripes', () => {
+    const t = withRowsInserted(12, 10, 1)
+    for (const e of t.list) e.getBoundingClientRect = () => ({ top: 0, bottom: 0 })
+    t.msgsEl.getBoundingClientRect = () => ({ top: 0, bottom: 0 })
+    const before = stripes(t.tail)
+    zebraSettleMid(t.msgsEl, t.added[0], t.added[0])
+    expect(stripes(t.tail)).toEqual(before)
+  })
+
+  test('render settles a removal upward, and a mid insert on the side that shows fewer rows', () => {
     expect(MAIN_SRC).toContain('if (zebraGap) zebraRepaintUp(msgsEl,')
-    expect(MAIN_SRC).toContain('if (zebraRebuilt) zebraRepaintUp(msgsEl, null)')
+    expect(MAIN_SRC).toContain('if (midTop) zebraSettleMid(msgsEl, midTop, midLow)')
+    expect(MAIN_SRC).toContain('else if (zebraRebuilt) zebraRepaintUp(msgsEl, null)')
+    expect(MAIN_SRC).not.toMatch(/zebraRepaint\(msgsEl, zebraFrom\)/)
+  })
+})
+
+describe('zebra flicker watchdog', () => {
+  const zebraFlickerTally = new Function(`${sliceFn('zebraFlickerTally')}; return zebraFlickerTally`)()
+
+  // the real observer config domThrashCheck uses, over a real DOM; resolves with the
+  // tally of the first batch of records `act` produces
+  function tallyOf(rows, act, inView = () => true) {
+    const win = new Window()
+    const doc = win.document
+    const msgsEl = doc.createElement('div')
+    doc.body.appendChild(msgsEl)
+    const mk = (z) => {
+      const d = doc.createElement('div')
+      d.className = z ? 'hs-mc-msg hs-mc-zebra' : 'hs-mc-msg'
+      return d
+    }
+    for (let i = 0; i < rows; i++) msgsEl.appendChild(mk(i % 2 === 1))
+    return new Promise((res) => {
+      const obs = new win.MutationObserver((ms) => {
+        obs.disconnect()
+        res(zebraFlickerTally(ms, msgsEl, inView))
+      })
+      obs.observe(msgsEl, {
+        attributes: true,
+        attributeFilter: ['class'],
+        attributeOldValue: true,
+        subtree: true,
+        childList: true,
+      })
+      act(msgsEl, mk)
+    })
+  }
+
+  test('a backfill inserted above and restriped in the same task is not a flicker', async () => {
+    const t = await tallyOf(4, (msgsEl, mk) => {
+      const top = msgsEl.firstElementChild
+      const added = [mk(false), mk(false), mk(false)]
+      for (const a of added) msgsEl.insertBefore(a, top)
+      for (const a of added) a.classList.toggle('hs-mc-zebra')
+    })
+    expect(t).toEqual({ flips: 0, mid: 3 })
+  })
+
+  test('rows already on screen changing stripe count as flips', async () => {
+    const t = await tallyOf(4, (msgsEl) => {
+      for (const r of msgsEl.children) r.classList.toggle('hs-mc-zebra')
+    })
+    expect(t).toEqual({ flips: 4, mid: 0 })
+  })
+
+  test('rows off screen realigning are not a flicker: only the ones showing count', async () => {
+    const t = await tallyOf(
+      6,
+      (msgsEl) => {
+        for (const r of msgsEl.children) r.classList.toggle('hs-mc-zebra')
+      },
+      (row) => row.parentElement.lastElementChild === row,
+    )
+    expect(t).toEqual({ flips: 1, mid: 0 })
+  })
+
+  test('an append at the bottom is not a mid insert', async () => {
+    const t = await tallyOf(2, (msgsEl, mk) => msgsEl.appendChild(mk(false)))
+    expect(t).toEqual({ flips: 0, mid: 0 })
   })
 })

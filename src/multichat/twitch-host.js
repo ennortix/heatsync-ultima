@@ -217,6 +217,42 @@ function scheduleTwitchChatRefit() {
   }, 80)
 }
 
+// A hard load can reach us before twitch has drawn anything: no top nav, no .channel-root, no
+// chat shell (2 of 28 fresh loads, e2e 11-18). What is read off that blank page is not the
+// page: the nav measured 0px with no observer on it, and a channel page read as "no channel",
+// which pinned the panel over the full height with its tab bar under twitch's top bar, the
+// page squeezed beside it, until a reload.
+const twitchDrawn = () =>
+  !!document.querySelector('[data-a-target="top-nav-container"], .top-nav, .channel-root, .chat-shell')
+
+// Boot read the navs and the page kind as soon as it could; the mount reads them again, off
+// the page twitch has drawn by then. All three are safe to run twice.
+function rereadTwitchPage() {
+  if (hostPlatform !== 'twitch') return
+  setupTwitchSideNavObserver()
+  setupTwitchTopNavObserver()
+  updateTwitchNoChannelClass()
+}
+
+// The shell of the page can be drawn before the channel in it. A page mounted as "no channel"
+// that grows a .channel-root with no navigation is the channel arriving late, and gets what a
+// navigation onto it gets. Asked a few times a second for the first seconds, then never again.
+const TWITCH_LATE_CHANNEL_MS = 15000
+function watchTwitchLateChannel() {
+  const until = Date.now() + TWITCH_LATE_CHANNEL_MS
+  const path = location.pathname
+  const tick = () => {
+    if (mcSignal?.aborted || Date.now() > until || location.pathname !== path) return
+    // where the panel is, not the class: a theatre flip re-reads the page kind by itself and
+    // would clear the class with the panel still parked on body
+    const c = document.getElementById('hs-mc-container')
+    if (!c || c.parentElement !== document.body) return
+    if (!document.querySelector('.channel-root, [class*="channel-root"]')) return cleanup.setTimeout(tick, 250)
+    softTwitchNav(null)
+  }
+  cleanup.setTimeout(tick, 250)
+}
+
 let _twitchTopNavObs = null
 // Twitch's top nav (.top-nav) is 50px tall and lives in a sibling DOM tree
 // that paints above HS's chat container — even though HS has z-index 9999,
@@ -331,7 +367,7 @@ function softTwitchNav(prevLiveCh) {
     // behind a "N new" pause indicator the user never asked for.
     isScrolledUp = false
     newMessageCount = 0
-    _scrollbackWindow = 0 // new channel starts at the live tail
+    resetScrollback() // new channel starts at the live tail
     // SPA nav changed the URL channel — re-join + repaint the live tab so the
     // new channel actually connects and renders. Without this the panel froze
     // on the previous channel until an unrelated render fired — a deadlock on
@@ -377,7 +413,9 @@ function softTwitchNav(prevLiveCh) {
         try {
           startNativeTap(newCh)
         } catch (_) {}
-      renderMessages('live')
+      // the live tab only: a tab the reader picked keeps its own chat (repainting live here
+      // blanked a picked saved tab to "connecting" on every channel the page moved to, 11-16)
+      if (currentTab === 'live') renderMessages('live')
     } catch (_) {}
     // Hold the nav guard for ~300ms so Twitch's render cycle + width
     // transitions on chat-shell ancestors complete entirely behind it.

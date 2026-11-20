@@ -345,10 +345,10 @@
     "message": "กำลังดู"
   },
   "mc_tab_temp_title": {
-    "message": "temporary tab: watching another stream takes its slot · right-click to keep"
+    "message": "แท็บชั่วคราว: ดูสตรีมอื่นแล้วจะถูกแทนที่ · คลิกขวาเพื่อเก็บไว้"
   },
   "mc_tab_keep": {
-    "message": "keep tab"
+    "message": "เก็บแท็บไว้"
   },
   "mc_tab_pinned": {
     "message": "บันทึก"
@@ -741,7 +741,7 @@
     "message": "โพสต์ไป heatsync..."
   },
   "mc_input_send_tag_title": {
-    "message": "sends to $TARGETS$",
+    "message": "ส่งไปที่ $TARGETS$",
     "placeholders": {
       "targets": {
         "content": "$1"
@@ -1023,6 +1023,12 @@
   "mc_settings_chat_position_desc": {
     "message": "แผงแชทยึดติดด้านไหนของเพลเยอร์ — hidden ซ่อนไว้ (กดปุ่ม \\ เพื่อสลับ)"
   },
+  "mc_settings_start_hidden": {
+    "message": "เริ่มแบบซ่อน"
+  },
+  "mc_settings_start_hidden_desc": {
+    "message": "ทุกแท็บเปิดโดยซ่อนแชทไว้ \\ จะแสดงแชทในแท็บนั้น ก่อนหน้านั้นหน้าเว็บจะเป็นแบบเดิม"
+  },
   "mc_settings_yt_suggestions": {
     "message": "youtube: แถบวิดีโอแนะนำ"
   },
@@ -1103,6 +1109,12 @@
   },
   "mc_settings_suggest_inventory_emotes_desc": {
     "message": "เสนอคลังของคุณตอนกด tab เติมคำและตอนพิมพ์ ปิดจะเหลือเฉพาะ emotes ของช่องและส่วนกลาง"
+  },
+  "mc_settings_tab_list": {
+    "message": "tab เปิดรายการ"
+  },
+  "mc_settings_tab_list_desc": {
+    "message": "กด tab บนคำจะแสดงอีโมตที่ตรงกันในรายการเหนือช่องพิมพ์ ลูกศรเลือก tab หรือ enter แทรก esc ปิด ปิดไว้จะเติมคำในข้อความทันที"
   },
   "mc_settings_show_pronouns": {
     "message": "สรรพนาม"
@@ -2173,6 +2185,9 @@
   "mc_main_celebration_share_failed": {
     "message": "แชร์การฉลองไม่สำเร็จ — ส่งข้อความของคุณเข้าแชทแทน"
   },
+  "mc_main_cw_signin": {
+    "message": "ลงชื่อเข้าใช้ heatsync เพื่อเปลี่ยนค่านี้"
+  },
   "mc_main_cw_save_failed": {
     "message": "บันทึก $NOUN$ ไม่สำเร็จ — ลองอีกครั้ง",
     "placeholders": {
@@ -2197,9 +2212,6 @@
   },
   "mc_main_config_save_failed": {
     "message": "ไม่ได้บันทึกช่อง — ที่เก็บข้อมูลมีปัญหา"
-  },
-  "mc_main_mute_save_failed": {
-    "message": "ไม่ได้บันทึกรายการปิดเสียง — ที่เก็บข้อมูลมีปัญหา"
   },
   "mc_main_no_share_token": {
     "message": "ไม่มีโทเคนแชร์ — ส่งการฉลองโดยไม่มีข้อความ ข้อความของคุณไปที่แชท"
@@ -2411,6 +2423,14 @@
   },
   "mc_settingsui_import_ok": {
     "message": "นำเข้าการตั้งค่าแล้ว — กำลังโหลดใหม่…"
+  },
+  "mc_settingsui_import_partial": {
+    "message": "นำเข้าการตั้งค่าแล้ว ข้ามค่าที่ไม่ถูกต้อง $COUNT$ รายการ — กำลังโหลดใหม่…",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
   },
   "mc_settingsui_invalid_expression": {
     "message": "นิพจน์ไม่ถูกต้อง"
@@ -3191,6 +3211,9 @@
   },
   "mc_mr_cancel": {
     "message": "ยกเลิก"
+  },
+  "mc_ch_reset": {
+    "message": "รีเซ็ต"
   },
   "mc_mr_pattern_ph": {
     "message": "รูปแบบ..."

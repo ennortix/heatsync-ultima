@@ -567,6 +567,9 @@ function getOrCreateHsContainer(chatRoom) {
       const f = document.querySelector('ytd-live-chat-frame#chat')
       if (!f) return false
       if (ytOwnsChat()) return true
+      // our panel is down on this page (a past stream, a video): its chat replay is youtube's
+      // to show. checkYtLive hides the frame itself once the page turns out to be live.
+      if (document.body.classList.contains('hs-offline')) return true
       if (f.style.display !== 'none') {
         const frameHeight = f.offsetHeight || 500
         f.dataset.hsPrevDisplay = f.style.display ?? ''
@@ -708,7 +711,10 @@ function ensureUIElements() {
       document.querySelector('ytd-live-chat-frame#chat')?.parentElement ||
       document.querySelector('#secondary')
   } else if (isKick) {
-    chatRoom = document.getElementById('channel-chatroom') || document.querySelector('[id*="chatroom"]')
+    // A pop-out's chatroom is server-rendered and still waiting for kick's React to hydrate it at
+    // mount: a panel placed beside it broke the hydration (React #418, kick re-rendered the page
+    // client-side). The pop-out window is all chat, so the panel fills it from <body>.
+    chatRoom = document.body.classList.contains('hs-popout') ? null : kickChatroomLoose()
   } else {
     chatRoom =
       document.querySelector('[class*="chat-room__content"]') ||
@@ -756,6 +762,9 @@ function ensureUIElements() {
       log('Reclaimed existing overlay')
     } else {
       overlayElement = createOverlay()
+      // a new pane holds no rows. Rebuilt after the host swapped our container away, the index of
+      // the old pane still claimed every row it held was on screen (index_desync, then a repaint)
+      _clearMessageIndices()
       log('Created overlay')
     }
   }
@@ -1044,8 +1053,12 @@ function switchTab(id, sub, subOpts) {
   } catch {}
   // …and a full-size picture: the switch repaints the pane itself
   if (typeof imgViewDrop === 'function') imgViewDrop()
-  // Tab switch closes profile card without re-rendering (we'll render the tab below)
-  if (typeof activeProfileCard !== 'undefined' && activeProfileCard) {
+  // Tab switch closes the profile card and the prediction view without re-rendering (we'll
+  // render the tab below). The prediction view used to stay: the bar moved to the new tab and
+  // the pane kept showing predictions, whichever tab was clicked.
+  const _predWasOpen = typeof predViewOpen === 'function' && predViewOpen()
+  if (_predWasOpen) predViewDrop()
+  if ((typeof activeProfileCard !== 'undefined' && activeProfileCard) || _predWasOpen) {
     activeProfileCard = null
     pcAuthorSync()
     // the card's DOM must not be snapshotted as the outgoing tab's rows: it
@@ -1091,7 +1104,7 @@ function switchTab(id, sub, subOpts) {
   flushHeldOlder()
   snapshotTabState(currentTab)
   currentTab = id
-  _scrollbackWindow = 0 // new tab starts at the live tail, not prior scrollback depth
+  resetScrollback() // new tab starts at the live tail, not prior scrollback depth
   markTabSeen(id)
 
   // Update settings button icon: X when settings open, cog otherwise
@@ -1199,6 +1212,7 @@ function switchTab(id, sub, subOpts) {
 
   // Reset scroll state BEFORE rendering - always start at bottom when switching tabs
   isScrolledUp = false
+  _paneHold = null // the row a paused reader was kept on belongs to the tab being left
   newMessageCount = 0
   const newBtn = document.getElementById('hs-mc-new-msgs')
   if (newBtn) newBtn.style.display = 'none'
@@ -1667,7 +1681,13 @@ function reprocessEmoteTextInPlace() {
     const span = div.querySelector(':scope > .hs-mc-text')
     const m = div._hsMsg
     if (!span || !m) return
-    const html = computeMessageText(m) // m._renderedHtml cleared by caller → recomputes
+    // The row can hold an older copy of its line than the ring does: a history
+    // re-pull swaps fresh objects into the ring (mergeIntoRing), the row keeps
+    // the one it was drawn from, and the caller only clears the ring's copies.
+    // That memo handed back the text the row was first drawn with, so history
+    // drawn before the channel's set landed kept its emote names as text.
+    m._renderedHtml = null
+    const html = computeMessageText(m)
     // No-op when the recompute produced identical HTML — innerHTML assignment
     // recreates every <img> even for byte-identical markup, and a recreated
     // emote paints its alt TEXT for a frame before the image decodes (the

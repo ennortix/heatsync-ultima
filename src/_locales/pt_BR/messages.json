@@ -345,10 +345,10 @@
     "message": "assistindo"
   },
   "mc_tab_temp_title": {
-    "message": "temporary tab: watching another stream takes its slot · right-click to keep"
+    "message": "aba temporária: assistir a outra stream ocupa o lugar dela · clique direito para manter"
   },
   "mc_tab_keep": {
-    "message": "keep tab"
+    "message": "manter aba"
   },
   "mc_tab_pinned": {
     "message": "salvos"
@@ -741,7 +741,7 @@
     "message": "postar no heatsync..."
   },
   "mc_input_send_tag_title": {
-    "message": "sends to $TARGETS$",
+    "message": "envia para $TARGETS$",
     "placeholders": {
       "targets": {
         "content": "$1"
@@ -1023,6 +1023,12 @@
   "mc_settings_chat_position_desc": {
     "message": "em qual lado do player o painel do chat fica acoplado — oculto esconde (a tecla \\ alterna)"
   },
+  "mc_settings_start_hidden": {
+    "message": "começar oculto"
+  },
+  "mc_settings_start_hidden_desc": {
+    "message": "cada aba abre com o chat oculto. \\ mostra ele naquela aba. até lá a página fica como está"
+  },
   "mc_settings_yt_suggestions": {
     "message": "youtube: faixa de sugestões"
   },
@@ -1103,6 +1109,12 @@
   },
   "mc_settings_suggest_inventory_emotes_desc": {
     "message": "oferece seu inventário no autocompletar com tab e nas sugestões ao digitar. desligado deixa só emotes de canal e globais"
+  },
+  "mc_settings_tab_list": {
+    "message": "tab abre uma lista"
+  },
+  "mc_settings_tab_list_desc": {
+    "message": "tab sobre uma palavra mostra os emotes correspondentes numa lista acima do campo. as setas escolhem, tab ou enter insere, esc fecha. desligado completa direto no texto"
   },
   "mc_settings_show_pronouns": {
     "message": "pronomes"
@@ -2173,6 +2185,9 @@
   "mc_main_celebration_share_failed": {
     "message": "falha ao compartilhar a celebração — enviando sua mensagem ao chat"
   },
+  "mc_main_cw_signin": {
+    "message": "entre no heatsync para mudar isso"
+  },
   "mc_main_cw_save_failed": {
     "message": "falha ao salvar $NOUN$ — tente de novo",
     "placeholders": {
@@ -2197,9 +2212,6 @@
   },
   "mc_main_config_save_failed": {
     "message": "canal não salvo — erro de armazenamento"
-  },
-  "mc_main_mute_save_failed": {
-    "message": "lista de mutados não salva — erro de armazenamento"
   },
   "mc_main_no_share_token": {
     "message": "sem token de compartilhamento — celebração enviada sem texto, sua mensagem vai para o chat"
@@ -2411,6 +2423,14 @@
   },
   "mc_settingsui_import_ok": {
     "message": "configurações importadas — recarregando…"
+  },
+  "mc_settingsui_import_partial": {
+    "message": "configurações importadas, $COUNT$ valores inválidos ignorados — recarregando…",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
   },
   "mc_settingsui_invalid_expression": {
     "message": "expressão inválida"
@@ -3191,6 +3211,9 @@
   },
   "mc_mr_cancel": {
     "message": "cancelar"
+  },
+  "mc_ch_reset": {
+    "message": "redefinir"
   },
   "mc_mr_pattern_ph": {
     "message": "padrão..."

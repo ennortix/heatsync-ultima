@@ -1823,6 +1823,9 @@
     }
     function _onStorageChanged(changes, area) {
       if (area === 'sync' && changes.ui_settings?.newValue) mirrorUiSettings(changes.ui_settings.newValue)
+      // another tab's pick: adopt it, or this tab's next pick writes its stale list over it
+      if (area === 'local' && Array.isArray(changes.recent_emotes?.newValue))
+        recentEmotes = changes.recent_emotes.newValue
     }
     chrome.storage.onChanged.addListener(_onStorageChanged)
     btnSignal.addEventListener('abort', () => {
@@ -4798,6 +4801,11 @@
 
       // Kick fallback — anchor near the chat input area
       if (!anchor && window.location.hostname.includes('kick.com')) {
+        // Kick server-renders the input and hydrates it later (a pop-out has it in the first html):
+        // a button put inside it before then broke kick's hydration (React #418, the page redrawn
+        // client-side). The editor's first paragraph is drawn by kick's editor once it is live.
+        const editor = document.querySelector('[class*="editor-input"]')
+        if (editor ? !editor.firstElementChild : !document.querySelector('next-route-announcer')) return
         anchor =
           document.querySelector('.editor-input')?.parentElement ||
           document.querySelector('[class*="editor-input"]')?.parentElement ||

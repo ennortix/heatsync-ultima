@@ -345,10 +345,10 @@
     "message": "đang xem"
   },
   "mc_tab_temp_title": {
-    "message": "temporary tab: watching another stream takes its slot · right-click to keep"
+    "message": "tab tạm: xem stream khác sẽ chiếm chỗ của nó · chuột phải để giữ"
   },
   "mc_tab_keep": {
-    "message": "keep tab"
+    "message": "giữ tab"
   },
   "mc_tab_pinned": {
     "message": "đã lưu"
@@ -741,7 +741,7 @@
     "message": "đăng lên heatsync..."
   },
   "mc_input_send_tag_title": {
-    "message": "sends to $TARGETS$",
+    "message": "gửi tới $TARGETS$",
     "placeholders": {
       "targets": {
         "content": "$1"
@@ -1023,6 +1023,12 @@
   "mc_settings_chat_position_desc": {
     "message": "panel chat gắn vào bên nào của trình phát — ẩn sẽ giấu đi (phím \\ để bật/tắt)"
   },
+  "mc_settings_start_hidden": {
+    "message": "bắt đầu ẩn"
+  },
+  "mc_settings_start_hidden_desc": {
+    "message": "mỗi tab mở với chat bị ẩn. \\ hiện nó trong tab đó. cho đến lúc đó trang giữ nguyên"
+  },
   "mc_settings_yt_suggestions": {
     "message": "youtube: dải gợi ý"
   },
@@ -1103,6 +1109,12 @@
   },
   "mc_settings_suggest_inventory_emotes_desc": {
     "message": "đưa kho của bạn vào tab-complete và gợi ý khi gõ. tắt thì chỉ còn emote kênh và toàn cục"
+  },
+  "mc_settings_tab_list": {
+    "message": "tab mở danh sách"
+  },
+  "mc_settings_tab_list_desc": {
+    "message": "nhấn tab trên một từ sẽ hiện các emote khớp trong danh sách phía trên ô nhập. phím mũi tên để chọn, tab hoặc enter để chèn, esc để đóng. tắt thì hoàn thành ngay trong văn bản"
   },
   "mc_settings_show_pronouns": {
     "message": "đại từ nhân xưng"
@@ -2173,6 +2185,9 @@
   "mc_main_celebration_share_failed": {
     "message": "chia sẻ ăn mừng thất bại — đang gửi tin nhắn của bạn vào chat"
   },
+  "mc_main_cw_signin": {
+    "message": "đăng nhập heatsync để thay đổi mục này"
+  },
   "mc_main_cw_save_failed": {
     "message": "lưu $NOUN$ thất bại — thử lại nhé",
     "placeholders": {
@@ -2197,9 +2212,6 @@
   },
   "mc_main_config_save_failed": {
     "message": "chưa lưu kênh — lỗi bộ nhớ"
-  },
-  "mc_main_mute_save_failed": {
-    "message": "chưa lưu danh sách tắt tiếng — lỗi bộ nhớ"
   },
   "mc_main_no_share_token": {
     "message": "không có token chia sẻ — đã gửi ăn mừng không kèm chữ, tin nhắn của bạn vào chat"
@@ -2411,6 +2423,14 @@
   },
   "mc_settingsui_import_ok": {
     "message": "đã nhập cài đặt — đang tải lại…"
+  },
+  "mc_settingsui_import_partial": {
+    "message": "đã nhập cài đặt, bỏ qua $COUNT$ giá trị không hợp lệ — đang tải lại…",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
   },
   "mc_settingsui_invalid_expression": {
     "message": "biểu thức không hợp lệ"
@@ -3191,6 +3211,9 @@
   },
   "mc_mr_cancel": {
     "message": "hủy"
+  },
+  "mc_ch_reset": {
+    "message": "đặt lại"
   },
   "mc_mr_pattern_ph": {
     "message": "mẫu..."

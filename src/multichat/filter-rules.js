@@ -12,6 +12,29 @@ function _frIsDangerous(p) {
   if (/\{\s*\d{2,}/.test(p)) return true
   return false
 }
+// What a word is made of, for a keyword's edges: letters (with their combining marks),
+// digits and the underscore, in any script.
+const _FR_WORD = '[\\p{L}\\p{M}\\p{N}_]'
+const _FR_WORD_CH = /^[\p{L}\p{M}\p{N}_]/u
+// How much of a line a user's own regex is run on. Every site's longest message fits (twitch
+// and kick 500 characters, youtube 200), so a real message is read whole. A keyword and a
+// `contains` are plain scans and read all of it, whatever its length. All three stopped at 256:
+// a word late in a long line, the spam a hide rule is written for, got past the rule (kick and
+// twitch, e2e 11-18).
+const _FR_REGEX_TEXT_MAX = 512
+// A regex cannot be stopped once it runs, and one with three loops over the same characters
+// takes 0.1-0.25s on 256 of them and 2-4s on 512 (measured). So a long line is tried on its
+// first 256 first: a pattern slow on that much is answered from there, as every rule was
+// before, and only a quick one goes on to the whole line.
+const _FR_REGEX_HEAD = 256
+const _FR_REGEX_HEAD_MS = 4
+function _frRegexTest(re, s) {
+  if (s.length <= _FR_REGEX_HEAD) return re.test(s)
+  const start = performance.now()
+  const head = re.test(s.slice(0, _FR_REGEX_HEAD))
+  if (performance.now() - start > _FR_REGEX_HEAD_MS) return head
+  return re.test(s.length > _FR_REGEX_TEXT_MAX ? s.slice(0, _FR_REGEX_TEXT_MAX) : s)
+}
 function _frEscapeLiteral(p) {
   return p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
@@ -288,16 +311,10 @@ function _frEvalNode(node, m) {
       if (node.v === 'reply') return !!m.replyTo?.user
       if (node.v === 'cheer') return !!(m.bits && Number(m.bits) > 0)
       return false
-    case 'contains': {
-      if (typeof m.text !== 'string') return false
-      const t = m.text.length > 256 ? m.text.slice(0, 256) : m.text
-      return t.toLowerCase().includes(node.v)
-    }
-    case 'regex': {
-      if (typeof m.text !== 'string') return false
-      const t = m.text.length > 256 ? m.text.slice(0, 256) : m.text
-      return node.re.test(t)
-    }
+    case 'contains':
+      return typeof m.text === 'string' && m.text.toLowerCase().includes(node.v)
+    case 'regex':
+      return typeof m.text === 'string' && _frRegexTest(node.re, m.text)
     case 'bits': {
       const b = Number(m.bits) || 0
       if (node.cmp === '>') return b > node.n
@@ -358,12 +375,19 @@ function _frCompileOne(rule) {
 
   switch (m.type) {
     case 'keyword': {
-      // Word-boundary–ish: allow leading/trailing whitespace or line boundary,
-      // but don't require \b so emoji/Unicode words also match. Case-insensitive
-      // by default. RegExp compiled once; never touches user-supplied raw regex.
+      // A whole word, by letters and digits in any script: on a side where the keyword is
+      // itself a letter or a digit, it may not run on into another. "here" is found in
+      // "here🥹", "(here)" and "here-ish", and not in "there" or "hereby". Only a space and
+      // a few marks used to count as an edge, so a word with an emoji stuck to it (how
+      // youtube chat writes) or in brackets got past a hide rule. A keyword that starts or
+      // ends with a mark or an emoji needs no edge on that side. Case-insensitive by
+      // default. Compiled once; never touches user-supplied raw regex.
       const esc = _frEscapeLiteral(val)
+      const chars = [...val]
+      const pre = _FR_WORD_CH.test(chars[0]) ? `(?<!${_FR_WORD})` : ''
+      const post = _FR_WORD_CH.test(chars[chars.length - 1]) ? `(?!${_FR_WORD})` : ''
       try {
-        c.re = new RegExp(`(?:^|[\\s,!?.:;'"])${esc}(?=$|[\\s,!?.:;'"])`, flags)
+        c.re = new RegExp(`${pre}${esc}${post}`, `${flags}u`)
       } catch {
         c.re = null
       }
@@ -466,6 +490,12 @@ function evaluateFilterRules(m, channelKey) {
   return _frVerdict(false, highlight, soundRule, notify)
 }
 
+// Any rule at all — the cheap question a redraw of 1500 rows asks before it
+// looks up each row's channel.
+function filterRulesOn() {
+  return _frAllRules.length > 0 || _frByChannel.size > 0
+}
+
 // One verdict shape everywhere, so callers read the same fields on every path.
 function _frVerdict(hide, highlight, rule, notify) {
   return {
@@ -481,11 +511,9 @@ function _frVerdict(hide, highlight, rule, notify) {
 function _frTest(rule, m) {
   switch (rule.matchType) {
     case 'keyword':
-    case 'regex': {
-      if (!rule.re || typeof m.text !== 'string') return false
-      const t = m.text.length > 256 ? m.text.slice(0, 256) : m.text
-      return rule.re.test(t)
-    }
+      return !!rule.re && typeof m.text === 'string' && rule.re.test(m.text)
+    case 'regex':
+      return !!rule.re && typeof m.text === 'string' && _frRegexTest(rule.re, m.text)
     case 'expr':
       return rule.ast ? _frEvalNode(rule.ast, m) : false
     case 'user': {
@@ -540,4 +568,4 @@ function previewFilterRule(rule, msgs, limit = FR_PREVIEW_LIMIT) {
   return { ok: true, hits, total }
 }
 
-export { compileFilterRules, evaluateFilterRules, previewFilterRule }
+export { compileFilterRules, evaluateFilterRules, filterRulesOn, previewFilterRule }

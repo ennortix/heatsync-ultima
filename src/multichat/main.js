@@ -755,6 +755,8 @@ async function init() {
           platform: 'youtube',
           channel: currentChannel,
           channelId: ytUrl || null,
+          // the tab's own channel only on youtube; a twitch or kick page keeps its booking
+          ...(hostPlatform === 'yt' ? {} : { book: false }),
         })
       }
       // Zero-config cross-platform: resolve the page channel's heatsync
@@ -794,7 +796,7 @@ async function init() {
             // delay the BG channel-emotes fetch indefinitely. Kick off both
             // independently; emote fetch only needs the channel name.
             trackJoin(ch.id, irc.join(twitchName))
-            safeSendMessage({ type: 'join_channel', platform: 'twitch', channel: twitchName })
+            joinExtraChannel('twitch', twitchName)
           }
           if (gKick && kickName) {
             trackJoin(ch.id, kickChat.join(kickName))
@@ -815,7 +817,7 @@ async function init() {
         for (const tw of mcDroppedTwitch(config.channels, irc.channels, page)) {
           log('[heatsync-mc] rejoining dropped channel', tw)
           irc.join(tw)
-          safeSendMessage({ type: 'join_channel', platform: 'twitch', channel: tw })
+          joinExtraChannel('twitch', tw)
         }
       }, 15000)
     }
@@ -1014,7 +1016,7 @@ async function init() {
           const msgsEl = document.getElementById('hs-mc-messages')
           const safe = CSS.escape ? CSS.escape(claim.synthId) : claim.synthId.replace(/"/g, '\\"')
           const row = msgsEl?.querySelector(`.hs-mc-msg[data-msg-id="${safe}"]`)
-          if (row) row.remove()
+          removeRow(row)
         } catch (_) {}
       }
     }
@@ -1029,7 +1031,7 @@ async function init() {
       const msgsEl = document.getElementById('hs-mc-messages')
       for (const id of msg.resolvedHolds) {
         const safe = CSS.escape ? CSS.escape(id) : id.replace(/"/g, '\\"')
-        msgsEl?.querySelector(`.hs-mc-msg[data-msg-id="${safe}"]`)?.remove()
+        removeRow(msgsEl?.querySelector(`.hs-mc-msg[data-msg-id="${safe}"]`))
       }
     }
     // Track sub tenure from IRC badge-info
@@ -2097,10 +2099,7 @@ async function init() {
         startLayoutWatcher()
       })
     } else {
-      waitForMount(
-        () => document.getElementById('channel-chatroom') || document.querySelector('[id*="chatroom"]'),
-        'Kick chatroom',
-      )
+      waitForMount(() => kickChatroomLoose(), 'Kick chatroom')
     }
   } else {
     // Twitch: try to hook into React, fall back to MutationObserver
@@ -2116,6 +2115,7 @@ async function init() {
  */
 function tryHookReact() {
   let done = false
+  let giveUp = false
   const tryHook = () => {
     if (done || mcSignal?.aborted) return false
     // Non-channel twitch pages (/directory, /settings, /videos, /search…)
@@ -2126,19 +2126,24 @@ function tryHookReact() {
     const onChannel = !!document.querySelector('.channel-root, [class*="channel-root"]')
     const isPopout = document.body.classList.contains('hs-popout')
     if (!onChannel && !isPopout) {
+      // a page twitch has not drawn yet has no channel either: that is not an answer (twitchDrawn)
+      if (!giveUp && !twitchDrawn()) return false
       done = true
       log('Twitch non-channel page — body-mount overlay')
+      rereadTwitchPage()
       _runOverlayMountPass('twitch non-channel body-mount', () => {
         ensureUIElements()
         bootSwitch()
         startLayoutWatcher()
       })
+      watchTwitchLateChannel()
       return true
     }
     const chatRoom = findChatRoomComponent()
     if (chatRoom) {
       done = true
       log('Found chat room component')
+      rereadTwitchPage()
       _runOverlayMountPass('twitch react hook', () => {
         patchChatRoomRender(chatRoom)
         ensureUIElements()
@@ -2156,6 +2161,7 @@ function tryHookReact() {
     if (chatContainer) {
       done = true
       log('Using fallback DOM injection')
+      rereadTwitchPage()
       _runOverlayMountPass('twitch fallback dom injection', () => {
         ensureUIElements()
         bootSwitch()
@@ -2176,6 +2182,10 @@ function tryHookReact() {
   // after 15s to free the observer.
   cleanup.setTimeout(() => {
     if (done) return
+    // nothing of twitch's own to wait for any longer: a page with no channel on it gets the
+    // overlay it always got, one that has a channel and no chat stays as it is
+    giveUp = true
+    if (tryHook()) return obs.disconnect()
     done = true
     obs.disconnect()
     log('Failed to find chat components after 15s')

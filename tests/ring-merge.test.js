@@ -82,7 +82,9 @@ test('no history push straight onto a ring remains', () => {
 
 test('the render merge re-sorts any run that arrives out of order', () => {
   const main = mainSource()
-  expect(main).toMatch(/function fairMerge\(sources\) \{\s*sources = sources\.map\(_ordSortedRun\)/)
+  expect(main).toMatch(
+    /function fairMerge\(sources, limit = DOM_RENDER_CAP\) \{\s*sources = sources\.map\(_ordSortedRun\)/,
+  )
   const s = main.indexOf('function _ordSortedRun(')
   const sortRun = new Function('ordOf', `${main.slice(s, main.indexOf('\n}\n', s) + 3)}; return _ordSortedRun`)(ordOf)
   const ok = [{ time: 1 }, { time: 2 }]
@@ -136,7 +138,8 @@ test('multi-platform render debounce cannot be held forever by a frozen rAF', ()
   const main = mainSource()
   expect(main).toMatch(/nowMp - _multiPlatformRenderAt > 500/)
   expect(main).toMatch(/cleanup\.setTimeout\(run, 500\)/)
-  expect(main).toMatch(/hs-popout'\)\) \{\s*_hiddenSkippedAppend = true/)
+  // and never draws in a hidden tab (tests/hidden-pane-no-render.test.js runs it)
+  expect(main).toMatch(/function scheduleMergedRender\(\) \{[^}]*if \(_skipHiddenRender\(\)\) return/)
 })
 
 test('a quiet pane on a busy channel logs which side went quiet', () => {
@@ -171,7 +174,7 @@ test('a new row anchors on the lowest placed row, never on a shared cursor', () 
 test('a live line never lands above a row already on screen', () => {
   const src = mainSource()
   expect(src).toMatch(/div\._hsAt = 1/)
-  expect(src).toMatch(/settledEnd &&\s*m\.ord != null/)
+  expect(src).toMatch(/settledEnd &&\s*isLateLiveLine\(m, shownSpan\)/)
 })
 
 // Real shape: mellen's reply sent from another client. The live row that got

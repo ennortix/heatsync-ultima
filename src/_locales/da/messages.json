@@ -345,10 +345,10 @@
     "message": "ser"
   },
   "mc_tab_temp_title": {
-    "message": "temporary tab: watching another stream takes its slot · right-click to keep"
+    "message": "midlertidig fane: en anden stream overtager pladsen · højreklik for at beholde"
   },
   "mc_tab_keep": {
-    "message": "keep tab"
+    "message": "behold fane"
   },
   "mc_tab_pinned": {
     "message": "gemt"
@@ -741,7 +741,7 @@
     "message": "post på heatsync..."
   },
   "mc_input_send_tag_title": {
-    "message": "sends to $TARGETS$",
+    "message": "sender til $TARGETS$",
     "placeholders": {
       "targets": {
         "content": "$1"
@@ -1023,6 +1023,12 @@
   "mc_settings_chat_position_desc": {
     "message": "hvilken side af afspilleren chatpanelet docker til — hidden gemmer det væk (\\-tasten skifter)"
   },
+  "mc_settings_start_hidden": {
+    "message": "start skjult"
+  },
+  "mc_settings_start_hidden_desc": {
+    "message": "hver fane åbner med chatten skjult. \\ viser den i den fane. indtil da forbliver siden som den er"
+  },
   "mc_settings_yt_suggestions": {
     "message": "youtube: forslagsbånd"
   },
@@ -1103,6 +1109,12 @@
   },
   "mc_settings_suggest_inventory_emotes_desc": {
     "message": "tilbyd dit inventar i tab-udfyldning og forslag mens du skriver. fra efterlader kun kanal- og globale emotes"
+  },
+  "mc_settings_tab_list": {
+    "message": "tab åbner en liste"
+  },
+  "mc_settings_tab_list_desc": {
+    "message": "tab på et ord viser matchende emotes i en liste over inputfeltet. pilene vælger, tab eller enter indsætter, esc lukker. fra fuldender direkte i teksten"
   },
   "mc_settings_show_pronouns": {
     "message": "pronominer"
@@ -2173,6 +2185,9 @@
   "mc_main_celebration_share_failed": {
     "message": "deling af fejring mislykkedes — sender din besked til chatten"
   },
+  "mc_main_cw_signin": {
+    "message": "log ind på heatsync for at ændre dette"
+  },
   "mc_main_cw_save_failed": {
     "message": "kunne ikke gemme $NOUN$ — prøv igen",
     "placeholders": {
@@ -2197,9 +2212,6 @@
   },
   "mc_main_config_save_failed": {
     "message": "kanal ikke gemt — lagerfejl"
-  },
-  "mc_main_mute_save_failed": {
-    "message": "lydløsliste ikke gemt — lagerfejl"
   },
   "mc_main_no_share_token": {
     "message": "intet delingstoken — fejring sendt uden tekst, din besked går til chatten"
@@ -2411,6 +2423,14 @@
   },
   "mc_settingsui_import_ok": {
     "message": "indstillinger importeret — genindlæser…"
+  },
+  "mc_settingsui_import_partial": {
+    "message": "indstillinger importeret, $COUNT$ ugyldige værdier udeladt — genindlæser…",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
   },
   "mc_settingsui_invalid_expression": {
     "message": "ugyldigt udtryk"
@@ -3191,6 +3211,9 @@
   },
   "mc_mr_cancel": {
     "message": "annuller"
+  },
+  "mc_ch_reset": {
+    "message": "nulstil"
   },
   "mc_mr_pattern_ph": {
     "message": "mønster..."

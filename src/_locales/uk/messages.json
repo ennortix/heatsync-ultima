@@ -345,10 +345,10 @@
     "message": "дивлюся"
   },
   "mc_tab_temp_title": {
-    "message": "temporary tab: watching another stream takes its slot · right-click to keep"
+    "message": "тимчасова вкладка: інший стрім займе її місце · правий клік, щоб залишити"
   },
   "mc_tab_keep": {
-    "message": "keep tab"
+    "message": "залишити вкладку"
   },
   "mc_tab_pinned": {
     "message": "збережене"
@@ -741,7 +741,7 @@
     "message": "опублікуй у heatsync..."
   },
   "mc_input_send_tag_title": {
-    "message": "sends to $TARGETS$",
+    "message": "надсилає в $TARGETS$",
     "placeholders": {
       "targets": {
         "content": "$1"
@@ -1023,6 +1023,12 @@
   "mc_settings_chat_position_desc": {
     "message": "з якого боку плеєра прикріплюється панель чату — hidden ховає її (клавіша \\ перемикає)"
   },
+  "mc_settings_start_hidden": {
+    "message": "запускати прихованим"
+  },
+  "mc_settings_start_hidden_desc": {
+    "message": "кожна вкладка відкривається з прихованим чатом. \\ показує його в цій вкладці. доти сторінка лишається як є"
+  },
   "mc_settings_yt_suggestions": {
     "message": "youtube: смуга пропозицій"
   },
@@ -1103,6 +1109,12 @@
   },
   "mc_settings_suggest_inventory_emotes_desc": {
     "message": "пропонує твій інвентар в автодоповненні tab і підказках під час набору. вимкнено — лишаються лише канальні та глобальні emotes"
+  },
+  "mc_settings_tab_list": {
+    "message": "tab відкриває список"
+  },
+  "mc_settings_tab_list_desc": {
+    "message": "tab на слові показує відповідні емоути у списку над полем вводу. стрілки вибирають, tab або enter вставляє, esc закриває. вимкнено — доповнює просто в тексті"
   },
   "mc_settings_show_pronouns": {
     "message": "займенники"
@@ -2173,6 +2185,9 @@
   "mc_main_celebration_share_failed": {
     "message": "не вдалося поділитися святкуванням — надсилаю твоє повідомлення в чат"
   },
+  "mc_main_cw_signin": {
+    "message": "увійдіть у heatsync, щоб змінити це"
+  },
   "mc_main_cw_save_failed": {
     "message": "не вдалося зберегти $NOUN$ — спробуй ще раз",
     "placeholders": {
@@ -2197,9 +2212,6 @@
   },
   "mc_main_config_save_failed": {
     "message": "канал не збережено — помилка сховища"
-  },
-  "mc_main_mute_save_failed": {
-    "message": "список мутів не збережено — помилка сховища"
   },
   "mc_main_no_share_token": {
     "message": "немає токена поширення — святкування надіслано без тексту, твоє повідомлення піде в чат"
@@ -2411,6 +2423,14 @@
   },
   "mc_settingsui_import_ok": {
     "message": "налаштування імпортовано — перезавантажую…"
+  },
+  "mc_settingsui_import_partial": {
+    "message": "налаштування імпортовано, пропущено недійсних значень: $COUNT$ — перезавантажую…",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
   },
   "mc_settingsui_invalid_expression": {
     "message": "неправильний вираз"
@@ -3191,6 +3211,9 @@
   },
   "mc_mr_cancel": {
     "message": "скасувати"
+  },
+  "mc_ch_reset": {
+    "message": "скинути"
   },
   "mc_mr_pattern_ph": {
     "message": "шаблон..."

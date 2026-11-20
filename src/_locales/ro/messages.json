@@ -345,10 +345,10 @@
     "message": "vizionez"
   },
   "mc_tab_temp_title": {
-    "message": "temporary tab: watching another stream takes its slot · right-click to keep"
+    "message": "tab temporar: alt stream îi ia locul · click dreapta ca să-l păstrezi"
   },
   "mc_tab_keep": {
-    "message": "keep tab"
+    "message": "păstrează tabul"
   },
   "mc_tab_pinned": {
     "message": "salvate"
@@ -741,7 +741,7 @@
     "message": "postează pe heatsync..."
   },
   "mc_input_send_tag_title": {
-    "message": "sends to $TARGETS$",
+    "message": "trimite către $TARGETS$",
     "placeholders": {
       "targets": {
         "content": "$1"
@@ -1023,6 +1023,12 @@
   "mc_settings_chat_position_desc": {
     "message": "pe ce parte a playerului se fixează panoul de chat — hidden îl ascunde (tasta \\ comută)"
   },
+  "mc_settings_start_hidden": {
+    "message": "pornește ascuns"
+  },
+  "mc_settings_start_hidden_desc": {
+    "message": "fiecare tab se deschide cu chatul ascuns. \\ îl arată în acel tab. până atunci pagina rămâne neschimbată"
+  },
   "mc_settings_yt_suggestions": {
     "message": "youtube: bandă de sugestii"
   },
@@ -1103,6 +1109,12 @@
   },
   "mc_settings_suggest_inventory_emotes_desc": {
     "message": "oferă inventarul tău la tab-complete și în sugestiile de tastare. oprit lasă doar emote-urile de canal și globale"
+  },
+  "mc_settings_tab_list": {
+    "message": "tab deschide o listă"
+  },
+  "mc_settings_tab_list_desc": {
+    "message": "tab pe un cuvânt arată emote-urile potrivite într-o listă deasupra câmpului. săgețile aleg, tab sau enter inserează, esc închide. oprit completează direct în text"
   },
   "mc_settings_show_pronouns": {
     "message": "pronume"
@@ -2173,6 +2185,9 @@
   "mc_main_celebration_share_failed": {
     "message": "distribuirea celebrării a eșuat — trimit mesajul tău în chat"
   },
+  "mc_main_cw_signin": {
+    "message": "conectează-te la heatsync ca să schimbi asta"
+  },
   "mc_main_cw_save_failed": {
     "message": "nu s-a putut salva $NOUN$ — încearcă din nou",
     "placeholders": {
@@ -2197,9 +2212,6 @@
   },
   "mc_main_config_save_failed": {
     "message": "canal nesalvat — eroare de stocare"
-  },
-  "mc_main_mute_save_failed": {
-    "message": "lista de mute nesalvată — eroare de stocare"
   },
   "mc_main_no_share_token": {
     "message": "fără token de distribuire — celebrare trimisă fără text, mesajul tău merge în chat"
@@ -2411,6 +2423,14 @@
   },
   "mc_settingsui_import_ok": {
     "message": "setări importate — se reîncarcă…"
+  },
+  "mc_settingsui_import_partial": {
+    "message": "setări importate, $COUNT$ valori nevalide omise — se reîncarcă…",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
   },
   "mc_settingsui_invalid_expression": {
     "message": "expresie invalidă"
@@ -3191,6 +3211,9 @@
   },
   "mc_mr_cancel": {
     "message": "anulează"
+  },
+  "mc_ch_reset": {
+    "message": "resetează"
   },
   "mc_mr_pattern_ph": {
     "message": "tipar..."

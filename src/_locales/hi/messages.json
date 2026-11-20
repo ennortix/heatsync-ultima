@@ -345,10 +345,10 @@
     "message": "देख रहे"
   },
   "mc_tab_temp_title": {
-    "message": "temporary tab: watching another stream takes its slot · right-click to keep"
+    "message": "अस्थायी टैब: दूसरी स्ट्रीम देखने पर इसकी जगह चली जाती है · रखने के लिए राइट-क्लिक करो"
   },
   "mc_tab_keep": {
-    "message": "keep tab"
+    "message": "टैब रखो"
   },
   "mc_tab_pinned": {
     "message": "सहेजे"
@@ -741,7 +741,7 @@
     "message": "heatsync पर पोस्ट करें..."
   },
   "mc_input_send_tag_title": {
-    "message": "sends to $TARGETS$",
+    "message": "$TARGETS$ पर भेजता है",
     "placeholders": {
       "targets": {
         "content": "$1"
@@ -1023,6 +1023,12 @@
   "mc_settings_chat_position_desc": {
     "message": "चैट पैनल प्लेयर की किस तरफ़ लगे — hidden उसे छिपा देता है (\\ कुंजी से टॉगल)"
   },
+  "mc_settings_start_hidden": {
+    "message": "छिपा हुआ शुरू करें"
+  },
+  "mc_settings_start_hidden_desc": {
+    "message": "हर टैब चैट छिपी हुई के साथ खुलता है। \\ उसे उस टैब में दिखाता है। तब तक पेज जैसा है वैसा रहता है"
+  },
   "mc_settings_yt_suggestions": {
     "message": "youtube: सुझाव पट्टी"
   },
@@ -1103,6 +1109,12 @@
   },
   "mc_settings_suggest_inventory_emotes_desc": {
     "message": "tab-complete और टाइपिंग सुझावों में तुम्हारी इन्वेंटरी दिखाओ। बंद करने पर सिर्फ़ चैनल और ग्लोबल emotes बचते हैं"
+  },
+  "mc_settings_tab_list": {
+    "message": "tab से सूची खुले"
+  },
+  "mc_settings_tab_list_desc": {
+    "message": "किसी शब्द पर tab दबाने से मेल खाते emotes इनपुट के ऊपर एक सूची में दिखते हैं। तीर चुनते हैं, tab या enter डालता है, esc बंद करता है। बंद होने पर सीधे टेक्स्ट में पूरा करता है"
   },
   "mc_settings_show_pronouns": {
     "message": "प्रोनाउन"
@@ -2173,6 +2185,9 @@
   "mc_main_celebration_share_failed": {
     "message": "सेलिब्रेशन शेयर नहीं हुआ — तुम्हारा मैसेज चैट में जा रहा है"
   },
+  "mc_main_cw_signin": {
+    "message": "इसे बदलने के लिए heatsync में साइन इन करें"
+  },
   "mc_main_cw_save_failed": {
     "message": "$NOUN$ सेव नहीं हो पाया — फिर कोशिश करो",
     "placeholders": {
@@ -2197,9 +2212,6 @@
   },
   "mc_main_config_save_failed": {
     "message": "चैनल सेव नहीं हुआ — स्टोरेज एरर"
-  },
-  "mc_main_mute_save_failed": {
-    "message": "म्यूट सूची सेव नहीं हुई — स्टोरेज एरर"
   },
   "mc_main_no_share_token": {
     "message": "शेयर टोकन नहीं है — सेलिब्रेशन बिना टेक्स्ट के गया, तुम्हारा मैसेज चैट में जाता है"
@@ -2411,6 +2423,14 @@
   },
   "mc_settingsui_import_ok": {
     "message": "सेटिंग इम्पोर्ट हुईं — रीलोड हो रहा है…"
+  },
+  "mc_settingsui_import_partial": {
+    "message": "सेटिंग इम्पोर्ट हुईं, $COUNT$ अमान्य मान छोड़ दिए गए — रीलोड हो रहा है…",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
   },
   "mc_settingsui_invalid_expression": {
     "message": "गलत एक्सप्रेशन"
@@ -3191,6 +3211,9 @@
   },
   "mc_mr_cancel": {
     "message": "रद्द करें"
+  },
+  "mc_ch_reset": {
+    "message": "रीसेट"
   },
   "mc_mr_pattern_ph": {
     "message": "पैटर्न..."

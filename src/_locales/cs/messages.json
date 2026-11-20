@@ -345,10 +345,10 @@
     "message": "sleduji"
   },
   "mc_tab_temp_title": {
-    "message": "temporary tab: watching another stream takes its slot · right-click to keep"
+    "message": "dočasný tab: jiný stream zabere jeho místo · pravým kliknutím ho ponecháš"
   },
   "mc_tab_keep": {
-    "message": "keep tab"
+    "message": "ponechat tab"
   },
   "mc_tab_pinned": {
     "message": "uložené"
@@ -741,7 +741,7 @@
     "message": "publikuj na heatsync..."
   },
   "mc_input_send_tag_title": {
-    "message": "sends to $TARGETS$",
+    "message": "odesílá do $TARGETS$",
     "placeholders": {
       "targets": {
         "content": "$1"
@@ -1023,6 +1023,12 @@
   "mc_settings_chat_position_desc": {
     "message": "ke které straně přehrávače se panel chatu přichytí — hidden ho schová (klávesa \\ přepíná)"
   },
+  "mc_settings_start_hidden": {
+    "message": "spustit skrytě"
+  },
+  "mc_settings_start_hidden_desc": {
+    "message": "každá karta se otevře se skrytým chatem. \\ ho v té kartě ukáže. do té doby zůstane stránka beze změny"
+  },
   "mc_settings_yt_suggestions": {
     "message": "youtube: pruh návrhů"
   },
@@ -1103,6 +1109,12 @@
   },
   "mc_settings_suggest_inventory_emotes_desc": {
     "message": "nabídne tvůj inventář v tab-doplňování a návrzích při psaní. vypnuto nechá jen kanálové a globální emotes"
+  },
+  "mc_settings_tab_list": {
+    "message": "tab otevře seznam"
+  },
+  "mc_settings_tab_list_desc": {
+    "message": "tab na slově ukáže odpovídající emoty v seznamu nad polem pro psaní. šipky vybírají, tab nebo enter vloží, esc zavře. vypnuto doplňuje přímo v textu"
   },
   "mc_settings_show_pronouns": {
     "message": "zájmena"
@@ -2173,6 +2185,9 @@
   "mc_main_celebration_share_failed": {
     "message": "sdílení oslavy selhalo — posílám tvou zprávu do chatu"
   },
+  "mc_main_cw_signin": {
+    "message": "pro změnu se přihlaste do heatsync"
+  },
   "mc_main_cw_save_failed": {
     "message": "nepodařilo se uložit $NOUN$ — zkus to znovu",
     "placeholders": {
@@ -2197,9 +2212,6 @@
   },
   "mc_main_config_save_failed": {
     "message": "kanál neuložen — chyba úložiště"
-  },
-  "mc_main_mute_save_failed": {
-    "message": "seznam ztlumených neuložen — chyba úložiště"
   },
   "mc_main_no_share_token": {
     "message": "žádný sdílecí token — oslava odeslána bez textu, tvá zpráva jde do chatu"
@@ -2411,6 +2423,14 @@
   },
   "mc_settingsui_import_ok": {
     "message": "nastavení importováno — načítám znovu…"
+  },
+  "mc_settingsui_import_partial": {
+    "message": "nastavení importováno, $COUNT$ neplatných hodnot vynecháno — načítám znovu…",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
   },
   "mc_settingsui_invalid_expression": {
     "message": "neplatný výraz"
@@ -3191,6 +3211,9 @@
   },
   "mc_mr_cancel": {
     "message": "zrušit"
+  },
+  "mc_ch_reset": {
+    "message": "resetovat"
   },
   "mc_mr_pattern_ph": {
     "message": "vzor..."

@@ -559,7 +559,7 @@ function pcLocalLineHtml(m) {
 function pcMergeRecent(serverRecent, username, platform) {
   const server = Array.isArray(serverRecent) ? serverRecent : []
   const seen = new Set(server.map((r) => `${(r.channel || '').toLowerCase()}:${r.message}`))
-  const local = (typeof getRecentMessagesFromUser === 'function' ? getRecentMessagesFromUser(username, platform) : [])
+  const local = getRecentMessagesFromUser(username, platform)
     .filter((m) => m.text && m.time)
     .map((m) => ({
       timestamp: new Date(m.time).toISOString(),
@@ -567,7 +567,7 @@ function pcMergeRecent(serverRecent, username, platform) {
       message: m.text,
       // snake_case: this array is the /api/card payload shape, and hsCardModel
       // maps message_html -> messageHtml (a camelCase key here was dropped)
-      message_html: typeof pcLocalLineHtml === 'function' ? pcLocalLineHtml(m) : null,
+      message_html: pcLocalLineHtml(m),
       permalink: null,
     }))
     .filter((r) => !seen.has(`${(r.channel || '').toLowerCase()}:${r.message}`))
@@ -670,7 +670,7 @@ function pcMakeSection(title) {
 // applicable (own profile, no recent messages, no channel you mod) so
 // hsCardModel's `ctx.modGroups.length` check skips the section entirely.
 function pcBuildModGroups(username, platform) {
-  if (typeof getRecentMessagesFromUser !== 'function' || !username) return []
+  if (!username) return []
   // Don't surface mod actions on your own profile — self-mod buttons are nonsense.
   if (
     typeof currentUsername !== 'undefined' &&
@@ -867,7 +867,7 @@ function pcBuildSocials(data) {
 function pcRenderBadgesHtml(data, username) {
   try {
     const userId = data?.twitch_user_id || data?.twitch_id || null
-    const recent = typeof getRecentMessagesFromUser === 'function' ? getRecentMessagesFromUser(username) : []
+    const recent = getRecentMessagesFromUser(username)
     const recentTwitch = recent.find((m) => (m.platform || 'twitch') === 'twitch' && m.badges)
     let html = ''
     if (recentTwitch && typeof renderBadges === 'function')
@@ -1832,13 +1832,7 @@ function pcMention(name) {
       const sep = cur && !cur.endsWith(' ') ? ' ' : ''
       input.textContent = cur + sep + tag
       input.focus()
-      // Place caret at end
-      const range = document.createRange()
-      range.selectNodeContents(input)
-      range.collapse(false)
-      const sel = window.getSelection()
-      sel.removeAllRanges()
-      sel.addRange(range)
+      cursorToEnd(input)
     }
   }, 60)
 }
@@ -1868,12 +1862,8 @@ function pcGiftChannel() {
 async function pcDoGift(username) {
   const ch = pcGiftChannel()
   if (!ch || !username) return
-  try {
-    await navigator.clipboard.writeText(username)
-    showToast(t('mc_card_gift_copied', [username]), 'success')
-  } catch (e) {
-    showToast(t('mc_card_gift_copy_failed', [username]), 'error')
-  }
+  if (await window.HS.copyText(username)) showToast(t('mc_card_gift_copied', [username]), 'success')
+  else showToast(t('mc_card_gift_copy_failed', [username]), 'error')
   window.open(`https://www.twitch.tv/subs/${encodeURIComponent(ch)}`, '_blank', 'noopener')
 }
 
@@ -1894,12 +1884,9 @@ async function pcDoClip(username, platform, btn) {
     const editUrl = resp.data?.edit_url || resp.data?.editUrl || null
     const clipUrl = resp.data?.clip_url || resp.data?.clipUrl || null
     if (editUrl) btn.dataset.editUrl = editUrl
-    if (clipUrl) {
-      try {
-        await navigator.clipboard.writeText(clipUrl)
-      } catch {}
-    }
-    pcSetLabel(btn, clipUrl ? t('mc_pcard_url_copied') : editUrl ? t('mc_pcard_clip_created') : 'clip')
+    const copied = clipUrl ? await window.HS.copyText(clipUrl) : false
+    pcSetLabel(btn, copied ? t('mc_pcard_url_copied') : editUrl || clipUrl ? t('mc_pcard_clip_created') : 'clip')
+    if (clipUrl && !copied && typeof showToast === 'function') showToast(t('common_clipboard_blocked'), 'error')
     btn.disabled = false
   } catch (err) {
     pcSetLabel(btn, 'clip')

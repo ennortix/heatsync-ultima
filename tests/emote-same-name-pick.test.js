@@ -3,45 +3,14 @@
 // BEFORE the channel's same-name emote — otherwise a chosen variant renders as whatever the room
 // happens to have. The ref is only a precomputed lookup of the sender's own inventory, so a line with
 // no ref (the first one after an add or swap, a cold server cache, history) must resolve the same way:
-// the sender's set next, then the channel, then globals. Only the SENDER's set ever fills that slot
-// (processEmotes is handed one sender's map), and _sGate still holds it to the window they owned it.
+// the law's READ order (emote-law-read.js): a sender's 7tv/bttv personal set, then the ROOM, then the
+// sender's heatsync inventory, then globals. A name-match the server made is the inventory, not a pick.
+// _sGate still holds the sender's entries to the window they owned them.
 
 import { describe, expect, test } from 'bun:test'
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
 import * as mods from '../src/lib/modifiers.js'
 import { escapeHtml, unescapeHtml } from '../src/lib/utils.js'
 import './emote-rungs-globals.js'
-
-// ── source order ─────────────────────────────────────────────────────────────
-
-const emotes = readFileSync(join(import.meta.dir, '..', 'src', 'multichat', 'emotes.js'), 'utf8')
-const lookup = emotes.slice(
-  emotes.indexOf('const _lookup = (name) => {'),
-  emotes.indexOf('// Kick emote splits gated by indexOf'),
-)
-
-describe('same-name emote pick: lookup order', () => {
-  test("the message's own ref is looked up first of all", () => {
-    const ref = lookup.indexOf('msgRefs?.get(name)')
-    const sender = lookup.indexOf('_sGet(raw)')
-    expect(ref).toBeGreaterThan(-1)
-    expect(ref).toBeLessThan(sender)
-  })
-
-  test('with no ref for a name, the sender set wins over the channel; the channel over globals', () => {
-    const sender = lookup.indexOf('_sGet(raw)')
-    const channel = lookup.indexOf('channelEmoteCaches[channel]?.get(raw)')
-    const globals = lookup.indexOf('emoteCache.get(raw)')
-    expect(sender).toBeGreaterThan(-1)
-    expect(sender).toBeLessThan(channel)
-    expect(channel).toBeLessThan(globals)
-  })
-
-  test('the sender set is read once, through the gate (no second, ungated read of it)', () => {
-    expect(lookup.split('_sGet(raw)').length - 1).toBe(1)
-  })
-})
 
 // ── behavior ─────────────────────────────────────────────────────────────────
 // Same bundle-global stub pattern as emote-inventory-gate.test.js (each file must run on its own).
@@ -63,7 +32,7 @@ globalThis.linksEnabled = false
 let _settings = {}
 globalThis.getSetting = (k) => _settings[k]
 
-const { processEmotes, channelEmoteCaches, emoteCache } = await import('../src/multichat/emotes.js')
+const { processEmotes, channelEmoteCaches, emoteCache, hsAnyChannelEmotes } = await import('../src/multichat/emotes.js')
 
 const T = 1700000000000
 const SKEW = 120000 // EMOTE_ADDED_SKEW_MS
@@ -74,7 +43,8 @@ const REF = '01SERVERREF000000000000000'
 const GLOBAL = '01GLOBALIDK0000000000000000'
 
 const channelSet = () => new Map([['IDK', { url: url(CHANNEL), source: '7tv', state: 'channel' }]])
-const senderSet = (extra = {}) => new Map([['IDK', { url: url(MINE), source: '7tv', state: 'owned', ...extra }]])
+const senderSet = (extra = {}) =>
+  new Map([['IDK', { url: url(MINE), source: '7tv', state: 'owned', personal: true, ...extra }]])
 const draws = (out, id) => out.includes(id)
 
 function withChannel(fn) {
@@ -87,11 +57,33 @@ function withChannel(fn) {
 }
 
 describe('same-name emote pick: what a line draws', () => {
+  // a pick the server says was taken down since the line was sent (history's `{ gone: true }`): the
+  // word is text. not the room's emote of the name, not the sender's, not the roomless last resort
+  test('a taken-down pick is text, never another emote of the name', () =>
+    withChannel(() => {
+      const gone = new Map([['IDK', { gone: true }]])
+      const out = processEmotes('IDK', 'chan-x', null, senderSet({ addedAt: T }), T + 5000, true, gone)
+      expect(out).toBe('IDK')
+      const roomless = processEmotes('IDK', null, null, undefined, T, true, gone, hsAnyChannelEmotes())
+      expect(roomless).toBe('IDK')
+      // the same word with no marker still draws: the marker is what stops it
+      expect(draws(processEmotes('IDK', null, null, undefined, T, true, null, hsAnyChannelEmotes()), CHANNEL)).toBe(
+        true,
+      )
+    }))
+
   test('no ref: the sender own IDK is drawn, not the channel IDK', () =>
     withChannel(() => {
       const out = processEmotes('IDK', 'chan-x', null, senderSet({ addedAt: T }), T + 5000)
       expect(draws(out, MINE)).toBe(true)
       expect(draws(out, CHANNEL)).toBe(false)
+    }))
+
+  test("a sender's inventory copy (not a personal set) loses to the room's", () =>
+    withChannel(() => {
+      const out = processEmotes('IDK', 'chan-x', null, senderSet({ addedAt: T, personal: undefined }), T + 5000)
+      expect(draws(out, CHANNEL)).toBe(true)
+      expect(draws(out, MINE)).toBe(false)
     }))
 
   test('a sender who does not carry the name still gets the channel IDK', () =>
@@ -152,4 +144,70 @@ describe('same-name emote pick: what a line draws', () => {
         emoteCache.delete('IDK')
       }
     }))
+})
+
+describe('the law: the row reads its own room', () => {
+  test("a row draws its OWN channel's emote, whatever tab is open", () => {
+    channelEmoteCaches['chan-x'] = channelSet()
+    channelEmoteCaches['chan-open'] = new Map([['IDK', { url: url(GLOBAL), source: '7tv', state: 'channel' }]])
+    globalThis.currentTab = 'chan-open'
+    try {
+      expect(draws(processEmotes('IDK', 'chan-x', null, null, T), CHANNEL)).toBe(true)
+    } finally {
+      globalThis.currentTab = 'chan-a'
+      delete channelEmoteCaches['chan-x']
+      delete channelEmoteCaches['chan-open']
+    }
+  })
+
+  test('a server name-match (named ref) is the sender inventory: below the room, not a pick', () =>
+    withChannel(() => {
+      const refs = new Map([['IDK', { url: url(REF), source: '7tv', state: 'global', zeroWidth: false, named: true }]])
+      expect(draws(processEmotes('IDK', 'chan-x', null, null, T, true, refs), CHANNEL)).toBe(true)
+    }))
+
+  test('a name only the inventory has still draws (no room copy)', () => {
+    const refs = new Map([['Solo', { url: url(REF), source: '7tv', state: 'global', zeroWidth: false, named: true }]])
+    expect(draws(processEmotes('Solo', 'chan-x', null, null, T, true, refs), REF)).toBe(true)
+  })
+})
+
+describe('the law: a line with no room (a whisper, a dm)', () => {
+  const A = '01ROOMAIDK0000000000000000'
+  const B = '01ROOMBIDK0000000000000000'
+  const set = (id) => new Map([['IDK', { url: url(id), source: '7tv', state: 'channel' }]])
+  const roomless = (text) => processEmotes(text, null, null, undefined, undefined, true, null, hsAnyChannelEmotes())
+  const clear = () => {
+    for (const k of ['room-b', 'room-a']) delete channelEmoteCaches[k]
+    emoteCache.delete('IDK')
+  }
+
+  test('a word only some loaded channel has still draws: it is the last resort, not text', () => {
+    channelEmoteCaches['room-a'] = set(A)
+    try {
+      expect(draws(roomless('IDK'), A)).toBe(true)
+    } finally {
+      clear()
+    }
+  })
+
+  test('a global of that name wins: an unrelated channel never outranks what everyone shares', () => {
+    channelEmoteCaches['room-a'] = set(A)
+    emoteCache.set('IDK', { url: url(GLOBAL), source: '7tv', state: 'global' })
+    try {
+      expect(draws(roomless('IDK'), GLOBAL)).toBe(true)
+    } finally {
+      clear()
+    }
+  })
+
+  test('which channel supplies the word never depends on which loaded first', () => {
+    channelEmoteCaches['room-b'] = set(B)
+    channelEmoteCaches['room-a'] = set(A)
+    try {
+      expect(draws(roomless('IDK'), A)).toBe(true)
+    } finally {
+      clear()
+    }
+  })
 })

@@ -849,6 +849,14 @@
   "mc_input_no_channel": {
     "message": "kanal yok — yukarıdan bir sekme seç"
   },
+  "mc_input_login_to_chat": {
+    "message": "$PLATFORM$ ya da heatsync'te giriş yap",
+    "placeholders": {
+      "platform": {
+        "content": "$1"
+      }
+    }
+  },
   "mc_whisper_follow_to_dm": {
     "message": "$USER$ kullanıcısına dm atmak için takip et — takip et + gönder",
     "placeholders": {
@@ -1116,6 +1124,18 @@
   "mc_settings_tab_list_desc": {
     "message": "bir kelimede tab, eşleşen emote'ları yazma alanının üstünde bir listede gösterir. oklar seçer, tab ya da enter ekler, esc kapatır. kapalıyken doğrudan metinde tamamlar"
   },
+  "mc_settings_colon_list": {
+    "message": "`:` listesi gösterir"
+  },
+  "mc_settings_colon_list_desc": {
+    "message": ": yazınca açılan listenin en üste koyduğu. önce emote'lar tab'ın sırasıdır; önce emojiler her emojiyi emote'ların üstüne koyar. tab ve seçicideki arama tek bir sıra tutar"
+  },
+  "lib_opt_colon_emotes": {
+    "message": "önce emote'lar"
+  },
+  "lib_opt_colon_emoji": {
+    "message": "önce emojiler"
+  },
   "mc_settings_show_pronouns": {
     "message": "zamirler"
   },
@@ -1350,8 +1370,8 @@
   "mc_signed_out_action": {
     "message": "giriş yap"
   },
-  "mc_chatlogs_copy_failed": {
-    "message": "kopyalanamadı"
+  "common_clipboard_blocked": {
+    "message": "pano engellendi"
   },
   "mc_common_unknown": {
     "message": "bilinmiyor"
@@ -2236,6 +2256,14 @@
   },
   "mc_mod_label_deleted": {
     "message": "silindi"
+  },
+  "mc_mod_deleted_only": {
+    "message": "yalnızca $PLATFORMS$ üzerinde silindi",
+    "placeholders": {
+      "platforms": {
+        "content": "$1"
+      }
+    }
   },
   "mc_mod_label_timed_out": {
     "message": "timeout $SEC$sn",
@@ -3369,6 +3397,9 @@
       }
     }
   },
+  "mc_cycle_wont_show": {
+    "message": "burada görünmez"
+  },
   "mc_twapi_ql_subscribe": {
     "message": "abone ol"
   },
@@ -4114,6 +4145,9 @@
   },
   "mc_social_no_mod_actions": {
     "message": "henüz mod işlemi yok"
+  },
+  "mc_modlog_connect": {
+    "message": "hangi modun ne yaptığını göster — twitch bağla"
   },
   "mc_social_platform": {
     "message": "platform"
@@ -7431,5 +7465,17 @@
   },
   "common_close": {
     "message": "kapat"
+  },
+  "mc_picker_favorites": {
+    "message": "favoriler"
+  },
+  "mc_fav_add": {
+    "message": "favorilere ekle"
+  },
+  "mc_fav_remove": {
+    "message": "favorilerden çıkar"
+  },
+  "mc_fav_full": {
+    "message": "favoriler dolu — önce birini çıkar"
   }
 }

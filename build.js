@@ -21,7 +21,10 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { transformSync } from 'esbuild'
 import { computeBuildStamp } from './scripts/lib/build-stamp.mjs'
+import { rebindBgDebugLog, rebindDebugLog, unbindBgDebugLog, unbindDebugLog } from './scripts/lib/debug-log.mjs'
 import { emojiPairsSource } from './scripts/lib/emoji-pairs.mjs'
+import { emoteLawSource, lawIsUsed } from './scripts/lib/emote-law-bundle.mjs'
+import { trackedFiles } from './scripts/lib/tracked-files.mjs'
 
 // Build stamp — swapped into bootstrap.js's '__HS_BUILD_STAMP__' literal so
 // every hs_diag_ring boot event names the code it ran. Needed because a tab
@@ -285,6 +288,8 @@ function checkScopeCollisions() {
     'gif-search-remote.js',
     // The site's emote_refs builder (verbatim copy) — feed posts vouch their emotes.
     'emote-refs.js',
+    // the stored shape of a line's refs ({p,id,a}): what the server files, byte copy of the site's
+    'emote-refs-normalize.js',
     // What a stream event says and which stored ones a reload brings back
     // (client/utils/stream-event-text.js on the site) — one answer for both.
     'stream-event-text.js',
@@ -833,6 +838,7 @@ const ENTRY_MODULES = {
     'multichat/filter-rules.js',
     'multichat/filter-rules-legacy.js',
     'content/native-filter-rules.js',
+    'content/native-emote-law.js',
     'content/site-nodes.js',
     'multichat/x-glyph.js',
     'multichat/emote-rungs.js',
@@ -915,6 +921,12 @@ const MULTICHAT_MODULES = [
   'auth-irc.js',
   'kick-send.js',
   'emote-rungs.js',
+  'emote-rooms.js',
+  'emote-law-read.js',
+  'emote-law-send.js',
+  'emote-law-usage.js',
+  'emote-favorites.js',
+  'emote-law-offer.js',
   'emotes.js',
   'emote-cache-evict.js',
   'emote-upload-core.js',
@@ -929,6 +941,7 @@ const MULTICHAT_MODULES = [
   'feed-embed.js',
   'feed-engage.js',
   'polled-tab.js',
+  'auth-state.js',
   'social.js',
   'whispers.js',
   'eventsub-whispers.js',
@@ -954,6 +967,7 @@ const MULTICHAT_MODULES = [
   'name-marks-data.js',
   'mod-toolbar.js',
   'automod-queue.js',
+  'mod-log-watch.js',
   'blocked-terms.js',
   'mod-suite-calls.js',
   'mod-suite.js',
@@ -1088,6 +1102,13 @@ function readMultichatModules() {
   if (existsSync(emoteRefsPath)) {
     combined += `\n// --- lib/emote-refs.js ---\n${stripExports(readFileSync(emoteRefsPath, 'utf8'))}\n`
   }
+  // the shape the server stores a line's refs in ({p,id,a}), the site's own normaliser: a send ships that
+  const refsWirePath = join(SRC_DIR, 'lib', 'emote-refs-normalize.js')
+  combined += `\n// --- lib/emote-refs-normalize.js ---\n${stripExports(readFileSync(refsWirePath, 'utf8'))}\n`
+
+  // The emote law (shared/emote-law.ts, byte copy of the site's) as one namespace object. Only when a
+  // multichat module names it: unused it is ~10KB of nothing.
+  if (lawIsUsed(__dirname)) combined += `\n// --- shared/emote-law.ts ---\n${emoteLawSource(__dirname)}\n`
 
   // What a stream event says and which stored ones a reload brings back
   // (scripts/sync-site-copies.sh mirror of client/utils/stream-event-text.js).
@@ -1422,34 +1443,40 @@ function syntaxCheck(outDir, browser) {
   console.log(`  Syntax check: ${files.length} files clean`)
 }
 
-// Build a source zip suitable for AMO source-code review:
-// - everything needed to reproduce the build (chrome/, src/, build.js, lockfile, package.json)
-// - reviewer-facing docs (README, CHANGELOG, LICENSE, etc.)
-// - excludes generated multichat.js (regenerated from src/multichat/), dist/, node_modules/, .git/
+// Build a source zip suitable for AMO source-code review: every file this repo is
+// made of (scripts/lib/tracked-files.mjs — tracked, plus new files git does not
+// ignore), so an unpacked zip holds everything `bun install && bun run build.js
+// firefox --package` reads: build.js's own imports (scripts/lib), shared/, the
+// tests every build runs first, the configs. The hand-kept include list it
+// replaced had no scripts/ or shared/, and build.js died on its first import
+// inside the zip.
 function buildSourceZip() {
   const version = getVersion()
   const zipName = `heatsync-source-${version}.zip`
   const zipPath = join(__dirname, 'dist', zipName)
   if (existsSync(zipPath)) rmSync(zipPath)
 
-  const include = [
-    'chrome',
-    'src',
+  const files = trackedFiles(__dirname)
+  for (const need of [
     'build.js',
-    'bun.lock',
     'package.json',
-    'README.md',
-    'CHANGELOG.md',
-    'CONTRIBUTING.md',
-    'LICENSE',
-    'SECURITY.md',
-  ].filter((p) => existsSync(join(__dirname, p)))
-
-  const excludes = ['chrome/multichat-core.js', 'dist/*', 'node_modules/*', '.git/*', '*/.DS_Store']
-  const args = ['-rq', zipPath, ...include]
-  for (const ex of excludes) args.push('-x', ex)
-  execFileSync('zip', args, { cwd: __dirname, stdio: 'inherit' })
-  console.log(`  ${zipName}`)
+    'bun.lock',
+    'scripts/lib/tracked-files.mjs',
+    'src',
+    'shared',
+    'tests',
+  ]) {
+    if (!files.some((f) => f === need || f.startsWith(`${need}/`))) {
+      throw new Error(`buildSourceZip: ${need} is missing from the source list — the zip could not rebuild`)
+    }
+  }
+  // -X: no uid/gid extras, so the same files zip the same on any machine. names on stdin (-@).
+  execFileSync('zip', ['-q', '-X', zipPath, '-@'], {
+    cwd: __dirname,
+    input: files.join('\n'),
+    stdio: ['pipe', 'inherit', 'inherit'],
+  })
+  console.log(`  ${zipName} (${files.length} files)`)
   return zipPath
 }
 
@@ -1496,7 +1523,10 @@ function deploy() {
 function minifyDistFile(outDir, file, extraDefines) {
   const path = join(outDir, file)
   if (!existsSync(path)) return
-  const src = readFileSync(path, 'utf8')
+  let src = readFileSync(path, 'utf8')
+  if (file === 'multichat-core.js') src = unbindDebugLog(src)
+  const bgQuiet = file === 'background.js' ? unbindBgDebugLog(src) : null
+  if (bgQuiet !== null) src = bgQuiet
   const flat = src.startsWith(FLAT_MARK)
   try {
     const result = transformSync(flat ? `"use strict";\n${src}` : src, {
@@ -1509,8 +1539,13 @@ function minifyDistFile(outDir, file, extraDefines) {
       // and tree-shaking then sees the lib as top-level declarations.
       ...(flat ? { format: 'iife', treeShaking: true } : {}),
       ...(extraDefines ? { define: extraDefines } : {}),
+      // see scripts/lib/debug-log.mjs
+      ...(file === 'multichat-core.js' || bgQuiet !== null ? { pure: ['log'] } : {}),
     })
-    writeFileSync(path, result.code)
+    let code = result.code
+    if (file === 'multichat-core.js') code = rebindDebugLog(code)
+    if (bgQuiet !== null) code = rebindBgDebugLog(code)
+    writeFileSync(path, code)
   } catch (e) {
     // an unwrapped bundle left on disk would leak its lib into the page's world
     if (flat) throw new Error(`build: minify+shake of ${file} failed: ${e.message?.split('\n')[0]}`)

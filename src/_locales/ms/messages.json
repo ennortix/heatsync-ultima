@@ -849,6 +849,14 @@
   "mc_input_no_channel": {
     "message": "tiada saluran — pilih tab di atas"
   },
+  "mc_input_login_to_chat": {
+    "message": "log masuk di $PLATFORM$ atau heatsync",
+    "placeholders": {
+      "platform": {
+        "content": "$1"
+      }
+    }
+  },
   "mc_whisper_follow_to_dm": {
     "message": "ikut $USER$ untuk dm — ikut + hantar",
     "placeholders": {
@@ -1116,6 +1124,18 @@
   "mc_settings_tab_list_desc": {
     "message": "tab pada satu perkataan menunjukkan emote yang sepadan dalam senarai di atas ruang input. anak panah memilih, tab atau enter memasukkan, esc menutup. mati melengkapkan terus dalam teks"
   },
+  "mc_settings_colon_list": {
+    "message": "senarai `:` menunjukkan"
+  },
+  "mc_settings_colon_list_desc": {
+    "message": "apa yang diletakkan di atas oleh senarai yang dibuka dengan menaip :. emote dahulu ialah susunan tab; emoji dahulu meletakkan setiap emoji di atas emote. tab dan carian pemilih kekal satu susunan"
+  },
+  "lib_opt_colon_emotes": {
+    "message": "emote dahulu"
+  },
+  "lib_opt_colon_emoji": {
+    "message": "emoji dahulu"
+  },
   "mc_settings_show_pronouns": {
     "message": "kata ganti nama"
   },
@@ -1350,8 +1370,8 @@
   "mc_signed_out_action": {
     "message": "log masuk"
   },
-  "mc_chatlogs_copy_failed": {
-    "message": "gagal menyalin"
+  "common_clipboard_blocked": {
+    "message": "papan keratan disekat"
   },
   "mc_common_unknown": {
     "message": "tidak diketahui"
@@ -2236,6 +2256,14 @@
   },
   "mc_mod_label_deleted": {
     "message": "dipadam"
+  },
+  "mc_mod_deleted_only": {
+    "message": "dipadam di $PLATFORMS$ sahaja",
+    "placeholders": {
+      "platforms": {
+        "content": "$1"
+      }
+    }
   },
   "mc_mod_label_timed_out": {
     "message": "timeout $SEC$s",
@@ -3369,6 +3397,9 @@
       }
     }
   },
+  "mc_cycle_wont_show": {
+    "message": "tidak akan dipaparkan di sini"
+  },
   "mc_twapi_ql_subscribe": {
     "message": "langgan"
   },
@@ -4114,6 +4145,9 @@
   },
   "mc_social_no_mod_actions": {
     "message": "belum ada tindakan mod"
+  },
+  "mc_modlog_connect": {
+    "message": "tunjukkan mod mana yang buat setiap tindakan — sambung twitch"
   },
   "mc_social_platform": {
     "message": "platform"
@@ -7431,5 +7465,17 @@
   },
   "common_close": {
     "message": "tutup"
+  },
+  "mc_picker_favorites": {
+    "message": "kegemaran"
+  },
+  "mc_fav_add": {
+    "message": "tambah ke kegemaran"
+  },
+  "mc_fav_remove": {
+    "message": "buang daripada kegemaran"
+  },
+  "mc_fav_full": {
+    "message": "kegemaran penuh — buang satu dahulu"
   }
 }

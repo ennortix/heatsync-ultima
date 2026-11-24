@@ -849,6 +849,14 @@
   "mc_input_no_channel": {
     "message": "沒有頻道 — 請在上方選擇分頁"
   },
+  "mc_input_login_to_chat": {
+    "message": "登入 $PLATFORM$ 或 heatsync",
+    "placeholders": {
+      "platform": {
+        "content": "$1"
+      }
+    }
+  },
   "mc_whisper_follow_to_dm": {
     "message": "追蹤 $USER$ 才能傳 dm — 追蹤並傳送",
     "placeholders": {
@@ -1116,6 +1124,18 @@
   "mc_settings_tab_list_desc": {
     "message": "在單字上按 tab 會在輸入框上方的清單中顯示相符的表情。方向鍵選擇，tab 或 enter 插入，esc 關閉。關閉時直接在文字中補全"
   },
+  "mc_settings_colon_list": {
+    "message": "`:` 清單顯示"
+  },
+  "mc_settings_colon_list_desc": {
+    "message": "輸入 : 開啟的清單把什麼放在最上面。表情優先與 tab 的順序相同；emoji 優先把所有 emoji 放在表情上面。tab 和選擇器搜尋保持同一順序"
+  },
+  "lib_opt_colon_emotes": {
+    "message": "表情優先"
+  },
+  "lib_opt_colon_emoji": {
+    "message": "emoji 優先"
+  },
   "mc_settings_show_pronouns": {
     "message": "代名詞"
   },
@@ -1350,8 +1370,8 @@
   "mc_signed_out_action": {
     "message": "登入"
   },
-  "mc_chatlogs_copy_failed": {
-    "message": "複製失敗"
+  "common_clipboard_blocked": {
+    "message": "剪貼簿被封鎖"
   },
   "mc_common_unknown": {
     "message": "未知"
@@ -2236,6 +2256,14 @@
   },
   "mc_mod_label_deleted": {
     "message": "已刪除"
+  },
+  "mc_mod_deleted_only": {
+    "message": "僅在 $PLATFORMS$ 上刪除",
+    "placeholders": {
+      "platforms": {
+        "content": "$1"
+      }
+    }
   },
   "mc_mod_label_timed_out": {
     "message": "已禁言 $SEC$ 秒",
@@ -3369,6 +3397,9 @@
       }
     }
   },
+  "mc_cycle_wont_show": {
+    "message": "在這裡不會顯示"
+  },
   "mc_twapi_ql_subscribe": {
     "message": "訂閱"
   },
@@ -4114,6 +4145,9 @@
   },
   "mc_social_no_mod_actions": {
     "message": "尚無管理操作"
+  },
+  "mc_modlog_connect": {
+    "message": "顯示每項操作是哪位管理員做的 — 連結 twitch"
   },
   "mc_social_platform": {
     "message": "平台"
@@ -7431,5 +7465,17 @@
   },
   "common_close": {
     "message": "關閉"
+  },
+  "mc_picker_favorites": {
+    "message": "收藏"
+  },
+  "mc_fav_add": {
+    "message": "加入收藏"
+  },
+  "mc_fav_remove": {
+    "message": "取消收藏"
+  },
+  "mc_fav_full": {
+    "message": "收藏已滿 — 請先移除一個"
   }
 }

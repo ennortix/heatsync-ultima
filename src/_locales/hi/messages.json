@@ -849,6 +849,14 @@
   "mc_input_no_channel": {
     "message": "कोई चैनल नहीं — ऊपर से टैब चुनो"
   },
+  "mc_input_login_to_chat": {
+    "message": "$PLATFORM$ या heatsync पर लॉगिन करें",
+    "placeholders": {
+      "platform": {
+        "content": "$1"
+      }
+    }
+  },
   "mc_whisper_follow_to_dm": {
     "message": "dm करने के लिए $USER$ को फ़ॉलो करो — फ़ॉलो + भेजो",
     "placeholders": {
@@ -1116,6 +1124,18 @@
   "mc_settings_tab_list_desc": {
     "message": "किसी शब्द पर tab दबाने से मेल खाते emotes इनपुट के ऊपर एक सूची में दिखते हैं। तीर चुनते हैं, tab या enter डालता है, esc बंद करता है। बंद होने पर सीधे टेक्स्ट में पूरा करता है"
   },
+  "mc_settings_colon_list": {
+    "message": "`:` सूची दिखाती है"
+  },
+  "mc_settings_colon_list_desc": {
+    "message": ": लिखने से खुलने वाली सूची सबसे ऊपर क्या रखे। पहले इमोट वही क्रम है जो tab देता है; पहले इमोजी हर इमोजी को इमोट के ऊपर रखता है। tab और पिकर की खोज एक ही क्रम रखते हैं"
+  },
+  "lib_opt_colon_emotes": {
+    "message": "पहले इमोट"
+  },
+  "lib_opt_colon_emoji": {
+    "message": "पहले इमोजी"
+  },
   "mc_settings_show_pronouns": {
     "message": "प्रोनाउन"
   },
@@ -1350,8 +1370,8 @@
   "mc_signed_out_action": {
     "message": "लॉग इन"
   },
-  "mc_chatlogs_copy_failed": {
-    "message": "कॉपी नहीं हुआ"
+  "common_clipboard_blocked": {
+    "message": "क्लिपबोर्ड अवरुद्ध"
   },
   "mc_common_unknown": {
     "message": "अज्ञात"
@@ -2236,6 +2256,14 @@
   },
   "mc_mod_label_deleted": {
     "message": "डिलीट"
+  },
+  "mc_mod_deleted_only": {
+    "message": "केवल $PLATFORMS$ पर हटाया गया",
+    "placeholders": {
+      "platforms": {
+        "content": "$1"
+      }
+    }
   },
   "mc_mod_label_timed_out": {
     "message": "timeout $SEC$s",
@@ -3369,6 +3397,9 @@
       }
     }
   },
+  "mc_cycle_wont_show": {
+    "message": "यहाँ नहीं दिखेगा"
+  },
   "mc_twapi_ql_subscribe": {
     "message": "सब्सक्राइब"
   },
@@ -4114,6 +4145,9 @@
   },
   "mc_social_no_mod_actions": {
     "message": "अभी कोई मॉड एक्शन नहीं"
+  },
+  "mc_modlog_connect": {
+    "message": "दिखाएँ कि हर कार्रवाई किस मॉड ने की — twitch जोड़ें"
   },
   "mc_social_platform": {
     "message": "प्लेटफ़ॉर्म"
@@ -7431,5 +7465,17 @@
   },
   "common_close": {
     "message": "बंद करें"
+  },
+  "mc_picker_favorites": {
+    "message": "पसंदीदा"
+  },
+  "mc_fav_add": {
+    "message": "पसंदीदा में जोड़ें"
+  },
+  "mc_fav_remove": {
+    "message": "पसंदीदा से हटाएं"
+  },
+  "mc_fav_full": {
+    "message": "पसंदीदा भर गए — पहले एक हटाएं"
   }
 }

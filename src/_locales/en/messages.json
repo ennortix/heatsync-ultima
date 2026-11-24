@@ -850,6 +850,14 @@
   "mc_input_no_channel": {
     "message": "no channel — pick a tab above"
   },
+  "mc_input_login_to_chat": {
+    "message": "log in to $PLATFORM$ or heatsync",
+    "placeholders": {
+      "platform": {
+        "content": "$1"
+      }
+    }
+  },
   "mc_whisper_follow_to_dm": {
     "message": "follow $USER$ to dm them — follow + send",
     "placeholders": {
@@ -1117,6 +1125,18 @@
   "mc_settings_tab_list_desc": {
     "message": "tab on a word shows matching emotes in a list above the input. arrows pick, tab or enter inserts, esc closes. off completes in place"
   },
+  "mc_settings_colon_list": {
+    "message": "`:` list shows"
+  },
+  "mc_settings_colon_list_desc": {
+    "message": "what the list typing : opens puts on top. emotes first is the order tab gives; emoji first puts every emoji above the emotes. tab and the picker search keep one order"
+  },
+  "lib_opt_colon_emotes": {
+    "message": "emotes first"
+  },
+  "lib_opt_colon_emoji": {
+    "message": "emoji first"
+  },
   "mc_settings_show_pronouns": {
     "message": "pronouns"
   },
@@ -1351,8 +1371,8 @@
   "mc_signed_out_action": {
     "message": "log in"
   },
-  "mc_chatlogs_copy_failed": {
-    "message": "copy failed"
+  "common_clipboard_blocked": {
+    "message": "clipboard blocked"
   },
   "mc_common_unknown": {
     "message": "unknown"
@@ -2237,6 +2257,14 @@
   },
   "mc_mod_label_deleted": {
     "message": "deleted"
+  },
+  "mc_mod_deleted_only": {
+    "message": "deleted on $PLATFORMS$ only",
+    "placeholders": {
+      "platforms": {
+        "content": "$1"
+      }
+    }
   },
   "mc_mod_label_timed_out": {
     "message": "timed out $SEC$s",
@@ -3385,6 +3413,10 @@
     },
     "description": "Tab-completion tooltip category for an emote found in a provider catalog search; PROVIDER is 7tv/bttv/ffz/heatsync"
   },
+  "mc_cycle_wont_show": {
+    "message": "won't show here",
+    "description": "Tab-completion tooltip: another emote of this name shows instead on the platform this message goes to"
+  },
   "mc_twapi_ql_subscribe": {
     "message": "subscribe"
   },
@@ -4130,6 +4162,9 @@
   },
   "mc_social_no_mod_actions": {
     "message": "no mod actions yet"
+  },
+  "mc_modlog_connect": {
+    "message": "show which mod did each — connect twitch"
   },
   "mc_social_platform": {
     "message": "platform"
@@ -7448,5 +7483,17 @@
   },
   "common_close": {
     "message": "close"
+  },
+  "mc_picker_favorites": {
+    "message": "favorites"
+  },
+  "mc_fav_add": {
+    "message": "add to favorites"
+  },
+  "mc_fav_remove": {
+    "message": "remove from favorites"
+  },
+  "mc_fav_full": {
+    "message": "favorites full — remove one first"
   }
 }

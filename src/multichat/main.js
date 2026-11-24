@@ -426,6 +426,7 @@ async function init() {
 
   // Load heatsync auth state
   loadHsAuth()
+  hsInitFavorites()
 
   // Probe bg for auth state so the login banner can show on tabs that opened
   // after the initial auth_changed broadcast already fired (cookies.onChanged
@@ -601,6 +602,7 @@ async function init() {
       if (typeof __HS_DEV_BUILD__ !== 'undefined' && __HS_DEV_BUILD__)
         document.documentElement.dataset.hsAutomodInit = 'reached'
       if (typeof initAutomodQueue === 'function') initAutomodQueue()
+      if (typeof initModLogWatch === 'function') initModLogWatch()
       if (typeof initPinBar === 'function') initPinBar()
       if (typeof __HS_DEV_BUILD__ !== 'undefined' && __HS_DEV_BUILD__)
         document.documentElement.dataset.hsAutomodInit = 'done'
@@ -1082,7 +1084,9 @@ async function init() {
     // explicitly — IRC msgs leave m.platform unset so the host-platform
     // preference in isSentEcho can compare against it. msg lets a stranger's
     // identical line through instead of eating the credit of our own echo.
-    if (isSentEcho(msg.text, 'twitch', msg)) return
+    // the buffer keeps the dropped copy: a render folds it into the row on screen, which takes its
+    // badges when it has none (merged-tab.js). A quiet chat has no render coming, so ask for one
+    if (isSentEcho(msg.text, 'twitch', msg)) return scheduleMergedRender()
     // Own-message badge: only override when the echo matches a message we
     // tracked as sent FROM the extension input bar. That way echoes
     // originating from elsewhere (e.g. heatsync.org website) keep
@@ -1202,10 +1206,10 @@ async function init() {
     // kick is sent browser → kick, never seen by the server: record our own echo. Before the
     // dual-send drop below, which only keeps one copy on screen: the server still needs THIS
     // leg's message id, or every other viewer sees it as a second line.
-    if (isSelf(msg, 'kick')) hsWitnessOwnEcho('kick', msg.channel, msg.id, peekSentId(msg.text))
+    if (isSelf(msg, 'kick')) hsWitnessOwnEcho('kick', msg.channel, msg.id, peekSentId(msg.text), msg.text)
     // Suppress echo of own sent messages (dedup dual-send) — pass 'kick'
     // so host-platform preference can favor this echo when on kick.com.
-    if (isSentEcho(msg.text, 'kick', msg)) return
+    if (isSentEcho(msg.text, 'kick', msg)) return scheduleMergedRender()
     // Own-message badge: only override for ext-tracked sends (matches
     // IRC handler comment above). Untracked echoes keep msg.platform='kick'
     // which already renders as [K]. Gated on peekSentHost alone — same

@@ -64,6 +64,8 @@ const MC_PREFETCH_AHEAD = new Set(['7tv'])
 const MC_PAGE_SIZE = { '7tv': 24, bttv: 100, ffz: 200, hs: 100 }
 const _mcProviderAborts = { '7tv': null, bttv: null, ffz: null, hs: null }
 let mcCurrentQuery = ''
+// the same query as the person spelled it (the emote law leads with the spelling typed)
+let mcCurrentTyped = ''
 // Exact-match filter — when on, picker search shows only emotes whose name
 // equals the query (drops prefix + substring), so a common stem like "xd"
 // pins to the literal name. Client-side filter; no refetch needed to toggle.
@@ -92,93 +94,40 @@ function mcRerenderSearch(query) {
   mcRemoteEmoteIndex.clear()
   if (!query) {
     _mcSearchRenderedQuery = ''
-    grid.innerHTML = renderEmoteSections(groupEmotes(pickerBaseEmotes()))
+    grid.innerHTML = renderEmoteSections(groupEmotes())
     attachChunkObserver(grid)
     markPickerDirty()
     return
   }
-  // Best-match ordering — type a name, the exact match leads instantly, then
-  // prefix, then substring; remote provider-fuzzy hits land last. Within a
-  // match bucket: owned > channel > global-local > remote (locality), then
-  // popularity (provider order / local iteration order = `pop`), then alpha.
-  // `pop` is a monotonic insertion counter, so already-shown tiles keep a
-  // stable order when load-more appends new pages.
-  const seenNames = new Set()
-  const seenVariantIds = new Set()
-  const entries = []
-  let pop = 0
-  const matchQuality = (nl) => (nl === query ? 0 : nl.startsWith(query) ? 1 : nl.includes(query) ? 2 : 3)
-  // Local matches (your set + channel + globals) — locality 0/1/2.
-  {
-    const localLoc = new Map()
-    const pool = new Map()
-    for (const [k, v] of viewerPersonalEmotes) {
-      pool.set(k, v)
-      localLoc.set(k, 0)
-    }
-    for (const sc of activeTabEmotePools())
-      for (const [k, v] of sc)
-        if (!pool.has(k)) {
-          pool.set(k, v)
-          localLoc.set(k, 1)
-        }
-    for (const [k, v] of emoteCache)
-      if (!pool.has(k)) {
-        pool.set(k, v)
-        localLoc.set(k, 2)
-      }
-    for (const [name, emote] of pool) {
-      const mq = matchQuality(name.toLowerCase())
-      if (mq === 3) continue // local has no fuzzy concept — substring or nothing
-      if (mcExactMatch && mq !== 0) continue
-      seenNames.add(name)
-      entries.push({ name, emote, mq, loc: localLoc.get(name) ?? 2, pop: pop++ })
-    }
-  }
-  // Remote provider results — locality 3 (below all local). Provider order
-  // already reflects popularity (7TV TOP_ALL_TIME / FFZ count-desc), preserved
-  // via `pop`. Same-name dups collapse to the first (one tile per name —
-  // inventory is name-keyed, so a viewer can only hold one image per name) —
-  // iterate in emoteProviderPriority order so the collapse picks the same
-  // winner as the merged channel/global pools ('hs' stays last, unaffected).
+  // The emote law's list leads (lawPickerSearch): the same order Tab gives, so the first tile is
+  // what typing the word sends. Every other picture the providers returned follows in their own
+  // order (the provider setting first, 'hs' last): the picker is where another KEKW is picked.
+  const found = []
   for (const p of [...emoteProviderOrder(emoteProviderPriority), 'hs']) {
     if (!mcPickerSources.has(p)) continue
     if (mcProviderLastQuery[p] !== query) continue
-    for (const r of mcProviderResults[p]) {
-      if (!r.name) continue
-      // Once the name is typed in full, every upload of it is its own tile —
-      // 7TV holds hundreds of 'dance' and they are different art. Told apart by
-      // id; all paste the same name, and the one you click is the one added.
-      const exactName = r.name.toLowerCase() === query
-      const variant = seenNames.has(r.name) && exactName && !!r.id && !seenVariantIds.has(r.id)
-      if (seenNames.has(r.name) && !variant) continue
-      const mq = matchQuality(r.name.toLowerCase())
-      if (mcExactMatch && mq !== 0) continue
-      seenNames.add(r.name)
-      // state='remote' — unowned picker result, click handler routes through
-      // addEmoteToInventory to persist. Auto-add-on-send also commits the slot.
-      if (r.id && exactName) seenVariantIds.add(r.id)
-      const vkey = variant ? `${r.name}#${r.id}` : r.name
-      entries.push({
-        name: r.name,
-        // source tracks the emote's real provider (r.provider), which equals the
-        // bucket key p for third-party but is 'heatsync' for the 'hs' directory —
-        // keeps source/provider aligned for state + tooltip + re-add.
-        emote: {
-          source: r.provider || p,
-          state: 'remote',
-          url: r.url,
-          provider: r.provider,
-          variant: variant ? r.id : '',
-        },
-        mq,
-        loc: 3,
-        pop: pop++,
-      })
-      mcRemoteEmoteIndex.set(vkey, { url: r.url, provider: r.provider, id: r.id, zeroWidth: !!r.zeroWidth })
-    }
+    // source tracks the emote's real provider (r.provider), which equals the bucket key p for
+    // third-party but is 'heatsync' for the 'hs' directory
+    for (const r of mcProviderResults[p]) if (r.name) found.push(r.provider ? r : { ...r, provider: p })
   }
-  entries.sort((a, b) => a.mq - b.mq || a.loc - b.loc || a.pop - b.pop || a.name.localeCompare(b.name))
+  // the spelling as typed leads its case twin; provider caches stay keyed by the lowercased query
+  const typed = mcCurrentTyped.toLowerCase() === query ? mcCurrentTyped : query
+  const entries = lawPickerSearch(typed, found, mcExactMatch).map((e) => {
+    if (!e.remote) return { name: e.name, emote: e.raw }
+    // state='remote': an unowned result. A click picks it for this message; the send adds it to
+    // your set. Every upload is its own tile, told apart by id.
+    const r = e.raw
+    mcRemoteEmoteIndex.set(r.id ? `${e.name}#${r.id}` : e.name, {
+      url: r.url,
+      provider: r.source,
+      id: r.id,
+      zeroWidth: r.zeroWidth,
+    })
+    return {
+      name: e.name,
+      emote: { source: r.source, state: 'remote', url: r.url, provider: r.source, variant: r.id || '' },
+    }
+  })
   // One unified flat feed — no section headers, no visual distinction between
   // owned and remote results. Click handler routes remote emotes through
   // add-to-inventory transparently.
@@ -837,14 +786,9 @@ function getHighResUrl(url) {
   return hsOwnCanonicalUrl(url)
 }
 
-/**
- * Group emotes by state+source into ordered sections
- */
-// 'set' = anything the user owns (state==='owned'), regardless of original
-// provider. Without this branch a 7tv emote in the user's heatsync set
-// would bucket into '7tv' and the user's 982-emote set would scatter
-// across every section instead of sitting in one.
-const SECTION_ORDER = ['set', '7tv', 'bttv', 'ffz', 'twitch', 'kick', 'heatsync']
+// The headings of the untyped picker's sections (the order is the law adapter's, LAW_BROWSE_ORDER).
+// 'set' = anything you own (state === 'owned'), whatever provider it came from: a 7tv emote in
+// your set sits with your set, not under 7TV.
 const SECTION_LABELS = {
   set: 'inventory',
   '7tv': '7TV',
@@ -855,155 +799,21 @@ const SECTION_LABELS = {
   heatsync: 'Heatsync',
 }
 
-// Recently-used emotes — a local MRU list (most-recent first), captured on
-// every insert via the picker or tab-complete (see recordRecentEmote). There
-// is no server-side personal usage signal in the picker (the `uses` field on
-// search results is FFZ global popularity, not per-user), so this starts
-// empty on a fresh device and fills as the user inserts emotes. Rendered as
-// the first picker section; omitted entirely while empty (no dead header).
-const RECENT_KEY = 'hs-mc-recent-emotes'
-const RECENT_CAP = 24
-
-function loadRecentEmotes() {
-  try {
-    const r = JSON.parse(localStorage.getItem(RECENT_KEY))
-    return Array.isArray(r) ? r : []
-  } catch (_) {
-    return []
-  }
+// The recents row: the pictures you sent last (emote-law-usage.js), drawn first and omitted while
+// empty. A recent emote also appears in its source section below — intended, mirrors Discord.
+function buildRecentSection() {
+  const emotes = lawRecentTiles([viewerPersonalEmotes, ...activeTabEmotePools(), emoteCache])
+  return emotes.length ? { key: 'recent', label: t('btn_recent'), emotes } : null
 }
 
-function recordRecentEmote(name) {
-  if (!name) return
-  let list = loadRecentEmotes().filter((n) => n !== name)
-  list.unshift(name)
-  if (list.length > RECENT_CAP) list = list.slice(0, RECENT_CAP)
-  try {
-    localStorage.setItem(RECENT_KEY, JSON.stringify(list))
-  } catch (_) {}
-  bumpEmoteFrecency(name) // the picker's cache key carries the list: next open rebuilds
-}
-
-// Frecency — per-emote use count with recency decay, feeding tab-complete
-// ranking. The RECENT_KEY list above is recency-only and capped at 24, which
-// made ordering fragile: one accidental completion of KKonaLand outranked
-// KKona used a hundred times, and a habitual emote silently fell off the cap.
-// Score = uses halved per week since last use, so an old habit fades but a
-// single stray insert never beats a real one.
-const FRECENCY_KEY = 'hs-mc-emote-frecency'
-const FRECENCY_CAP = 200
-const FRECENCY_HALF_LIFE_MS = 7 * 24 * 3600e3
-
-function _loadFrecencyRaw() {
-  try {
-    const r = JSON.parse(localStorage.getItem(FRECENCY_KEY))
-    if (r && typeof r === 'object' && !Array.isArray(r)) return r
-  } catch (_) {}
-  // First run: seed from the legacy MRU list so existing habits carry over
-  // (staggered timestamps preserve the list's recency order).
-  const seeded = {}
-  const legacy = loadRecentEmotes()
-  for (let i = 0; i < legacy.length; i++) {
-    seeded[legacy[i]] = { n: 1, t: Date.now() - i * 3600e3 }
-  }
-  return seeded
-}
-
-function _frecencyScore(entry, now) {
-  if (!entry || !(entry.n > 0)) return 0
-  const age = Math.max(0, now - (entry.t || 0))
-  return entry.n * 2 ** (-age / FRECENCY_HALF_LIFE_MS)
-}
-
-// findEmoteMatches calls loadEmoteFrecency() on every debounced keystroke —
-// re-reading + JSON.parse'ing localStorage and rebuilding the decayed Map
-// each time was pure waste when nothing changed since the last call. Cache
-// the built Map, keyed off the raw localStorage string itself (a cheap
-// getItem + === check) rather than a manual invalidation flag — self-heals
-// against ANY write to the key, not just the two functions below.
-let _frecencyCache = null // { raw, map }
-
-/** name → decayed score (>0 means "the user has actually inserted this"). */
-function loadEmoteFrecency() {
-  let raw
-  try {
-    raw = localStorage.getItem(FRECENCY_KEY)
-  } catch (_) {
-    raw = null
-  }
-  if (_frecencyCache && _frecencyCache.raw === raw) return _frecencyCache.map
-  const parsed = _loadFrecencyRaw()
-  const now = Date.now()
-  const out = new Map()
-  for (const [name, entry] of Object.entries(parsed)) {
-    const s = _frecencyScore(entry, now)
-    if (s > 0) out.set(name, s)
-  }
-  _frecencyCache = { raw, map: out }
-  return out
-}
-
-/** Revert one bump — used when the user cycles PAST a candidate mid-session,
- *  so only the emote they stop on keeps the credit. Subtracting 1 restores the
- *  exact pre-bump decayed score (bump set n = decayed + 1 at t = now). */
-function unbumpEmoteFrecency(name) {
-  if (!name) return
-  const raw = _loadFrecencyRaw()
-  const cur = raw[name]
-  if (!cur) return
-  const n = (cur.n || 0) - 1
-  if (n <= 0) delete raw[name]
-  else raw[name] = { n, t: cur.t }
-  try {
-    localStorage.setItem(FRECENCY_KEY, JSON.stringify(raw))
-  } catch (_) {}
-}
-
-function bumpEmoteFrecency(name) {
-  if (!name) return
-  const raw = _loadFrecencyRaw()
-  const cur = raw[name]
-  const now = Date.now()
-  // Fold the decayed old score into the new count so frequency survives the
-  // bump instead of resetting the decay clock on the full total.
-  raw[name] = { n: _frecencyScore(cur, now) + 1, t: now }
-  const names = Object.keys(raw)
-  if (names.length > FRECENCY_CAP) {
-    names.sort((a, b) => _frecencyScore(raw[a], now) - _frecencyScore(raw[b], now))
-    for (const dead of names.slice(0, names.length - FRECENCY_CAP)) delete raw[dead]
-  }
-  try {
-    localStorage.setItem(FRECENCY_KEY, JSON.stringify(raw))
-  } catch (_) {}
-}
-
-// Resolve MRU names to live emote pairs, dropping any no longer available
-// (blocked, removed, or not loaded for this channel). A recent emote also
-// appears in its source section below — intended, mirrors Discord.
-function buildRecentSection(allEmotes) {
-  const out = []
-  for (const name of loadRecentEmotes()) {
-    const e = allEmotes.get(name)
-    if (e) out.push([name, e])
-    if (out.length >= RECENT_CAP) break
-  }
-  return out.length ? { key: 'recent', label: t('btn_recent'), emotes: out } : null
-}
-
-function groupEmotes(allEmotes) {
-  const groups = {}
-  for (const [name, emote] of allEmotes) {
-    const key = emote.state === 'owned' ? 'set' : emote.source
-    if (!groups[key]) groups[key] = []
-    groups[key].push([name, emote])
-  }
-  const sections = SECTION_ORDER.filter((k) => groups[k]?.length).map((k) => ({
-    key: k,
-    label: SECTION_LABELS[k] || k,
-    emotes: groups[k],
-  }))
-  const recent = buildRecentSection(allEmotes)
+// The untyped picker: your favorites, the pictures you sent last, then the law's browse of the open
+// tab (emote-law-offer.js lawBrowseSections): yours, the room's, the globals by provider.
+function groupEmotes() {
+  const sections = lawBrowseSections(activeTabEmotePools(), { ...SECTION_LABELS, channel: t('btn_tab_channel') })
+  const recent = buildRecentSection()
   if (recent) sections.unshift(recent)
+  const fav = hsFavSection([viewerPersonalEmotes, ...activeTabEmotePools(), emoteCache])
+  if (fav) sections.unshift(fav)
   return sections
 }
 
@@ -1231,12 +1041,15 @@ function emoteImgHtml([name, emote]) {
   const cwAttr = flagCat ? ` data-cw="${escapeHtml(flagCat)}"` : ''
   const wrapCls = (isBlocked ? 'hs-mc-picker-emote-wrap blocked' : 'hs-mc-picker-emote-wrap') + nsfwTag
   const safeName = escapeHtml(name)
+  // who sees it if you send it, in the Tab readout's own words (a variant = not loaded in this room)
+  const who = emoteCycleMeta({ source: emote.source, tier: emote.state === 'owned' ? 1 : 2, remote: !!emote.variant })
+    .vis.t
   // The picker grid is a FIXED 32px box (.hs-mc-picker-emote, max-height:32px)
   // — it does not move with the emote-size setting, so it asks for the rung the
   // SCREEN needs and nothing else. Same reasoning as getChatResUrl: max-height
   // only shrinks, so a denser file changes the pixels and not the layout.
   const pickerUrl = hsRungUrl(emote.url, typeof devicePixelRatio === 'number' && devicePixelRatio >= 1.5 ? 2 : 1)
-  return `<span class="${wrapCls}" role="option" aria-selected="false" data-name="${safeName}"${cwAttr}><img src="${escapeHtml(pickerUrl)}" alt="${safeName}" title="${safeName} (${escapeHtml(emote.source)})" class="hs-mc-picker-emote hs-emote-${escapeHtml(emote.source)}" data-name="${safeName}"${emote.variant ? ` data-variant="${escapeHtml(emote.variant)}"` : ''} data-source="${escapeHtml(emote.source)}" data-state="${escapeHtml(state)}" loading="lazy"></span>`
+  return `<span class="${wrapCls}" role="option" aria-selected="false" data-name="${safeName}"${cwAttr}><img src="${escapeHtml(pickerUrl)}" alt="${safeName}" title="${safeName} (${escapeHtml(emote.source)} · ${escapeHtml(who)})" class="hs-mc-picker-emote hs-emote-${escapeHtml(emote.source)}" data-name="${safeName}"${emote.variant ? ` data-variant="${escapeHtml(emote.variant)}"` : ''} data-source="${escapeHtml(emote.source)}" data-state="${escapeHtml(state)}" loading="lazy"></span>`
 }
 
 /**
@@ -1272,17 +1085,6 @@ let pickerTab = 'emotes'
 let _pickerBuiltKey = null
 let _pickerPrebuildScheduled = false
 
-// What the picker grid lists with no query: your set first (so 'owned' shows on top), then
-// every channel pool this tab covers (a merged or yt tab spans several; the raw tab key
-// finds none of them), then globals. The same pools search and Tab read.
-function pickerBaseEmotes() {
-  const all = new Map()
-  for (const [k, v] of viewerPersonalEmotes) all.set(k, v)
-  for (const pool of activeTabEmotePools()) for (const [k, v] of pool) if (!all.has(k)) all.set(k, v)
-  for (const [k, v] of emoteCache) if (!all.has(k)) all.set(k, v)
-  return all
-}
-
 function pickerCacheKey() {
   // pickerTab is intentionally NOT in the key — switching the active tab
   // (emotes ↔ twitch) just toggles display, no rebuild needed.
@@ -1295,7 +1097,7 @@ function pickerCacheKey() {
   // the recents row too: another tab on this site writes the same list
   let recent = ''
   try {
-    recent = localStorage.getItem(RECENT_KEY) || ''
+    recent = localStorage.getItem(LAW_RECENT_KEY) || ''
   } catch (_) {}
   return `${ch}|${emoteSize}|${emoteCache.size}|${chSize}|${_blockedRev}|${recent}`
 }
@@ -1381,7 +1183,7 @@ function showEmotePicker(tab = null) {
   // Cache miss → build full DOM synchronously (no chunks, no popping).
   // Merge channel emotes first (keeps 'channel' state), then globals.
   // All names/urls are pre-sanitized via escapeHtml in render helpers.
-  const sections = groupEmotes(pickerBaseEmotes())
+  const sections = groupEmotes()
   picker.innerHTML = `
       <div class="hs-mc-tab-content" id="hs-mc-tab-emotes" style="display: ${pickerTab === 'emotes' ? 'flex' : 'none'}; flex-direction: column;">
         <div class="hs-mc-picker-header">
@@ -1501,7 +1303,8 @@ function showEmotePicker(tab = null) {
   let _searchFrame = 0
   const searchInput = document.getElementById('hs-mc-emote-search')
   searchInput?.addEventListener('input', (e) => {
-    const query = e.target.value.toLowerCase().trim()
+    mcCurrentTyped = e.target.value.trim()
+    const query = mcCurrentTyped.toLowerCase()
     mcCurrentQuery = query
     if (!_searchFrame) {
       _searchFrame = requestAnimationFrame(() => {
@@ -1606,49 +1409,28 @@ function showEmotePicker(tab = null) {
       const input = document.getElementById('hs-mc-input')
       if (!input || !name) return
 
-      // Remote (provider search) result — not yet in user's local emotes.
-      // Optimistically register the emote in viewerPersonalEmotes so
-      // pasteEmoteToInput resolves immediately (avoid the dead-click feel
-      // from awaiting a network round-trip). The server-side add fires in
-      // the background; on success the state is reconciled, on failure the
-      // user still sees the emote (server sync re-evaluates next load).
+      // A search result, or a favorite this tab does not hold: this message's pick of its name.
+      // A click never changes what you own. The line that carries the pick adds it to your set
+      // as it leaves (autoAddInputEmotes), like a Tab-completed search result and like the site;
+      // a pick you delete from the box, or never send, adds nothing.
       if (img.dataset.state === 'remote') {
-        const remote = mcRemoteEmoteIndex.get(img.dataset.variant ? `${name}#${img.dataset.variant}` : name)
-        // Race-guard rapid double-clicks: addEmoteToInventory tracks in-flight adds
-        // in pendingEmoteOps, so skip the optimistic-add + POST if one is already
-        // running for this name — otherwise a fast second click fires a second
-        // concurrent add POST (this was the only add entry point missing the guard).
-        // The paste below still runs, so multi-click still inserts the emote each time.
-        const _addInFlight = typeof pendingEmoteOps !== 'undefined' && pendingEmoteOps.has(name)
-        if (remote && !_addInFlight) {
-          const _optimistic = !viewerPersonalEmotes.has(name)
-          if (_optimistic) {
-            viewerPersonalEmotes.set(name, {
-              url: remote.url,
-              source: remote.provider || '7tv',
-              state: 'owned',
-              zeroWidth: !!remote.zeroWidth,
-              addedAt: Date.now(),
-            })
-          }
-          // Roll back the optimistic slot if the server add didn't take (e.g.
-          // logged out) — otherwise the picker shows a phantom "owned" emote
-          // with no real slot until the next reload (split-brain vs inventory).
-          const _rollback = () => {
-            if (_optimistic && !inventoryEmotes.has(name)) viewerPersonalEmotes.delete(name)
-          }
-          addEmoteToInventory(name, remote.url, remote.provider, img, !!remote.zeroWidth)
-            .then((ok) => {
-              if (!ok) _rollback()
-            })
-            .catch(_rollback)
+        const remote = hsRemoteTile(name, img.dataset.variant)
+        if (remote) {
+          trackCompletionForAutoAdd({
+            type: 'emote',
+            name,
+            url: remote.url,
+            source: remote.provider || '7tv',
+            id: remote.id,
+            zeroWidth: !!remote.zeroWidth,
+            remote: true,
+          })
         }
       }
 
       if (wysiwygEnabled || !('value' in input)) {
         pasteEmoteToInput(name)
       } else {
-        recordRecentEmote(name)
         const pos = input.selectionStart || input.value.length
         const before = input.value.slice(0, pos)
         const after = input.value.slice(pos)
@@ -1853,7 +1635,7 @@ function applyBlockedHashDelta(newHashesArr) {
         if (img) img.dataset.state = 'blocked'
       })
     } catch {}
-    applyInputEmoteBlockState(name, true)
+    applyInputEmoteBlockState(name)
   }
 
   for (const hash of toUnblock) {
@@ -1913,7 +1695,7 @@ function applyBlockedHashDelta(newHashesArr) {
         if (img) img.dataset.state = newState
       })
     } catch {}
-    applyInputEmoteBlockState(name, false)
+    applyInputEmoteBlockState(name)
   }
 
   if (changedNames.length) _blockedRev++
@@ -1925,7 +1707,7 @@ function applyBlockedHashDelta(newHashesArr) {
   // touches data-source="heatsync" wrappers. Invalidate ONLY the messages that
   // reference the changed emotes (no global epoch bump → no whole-chat rebuild
   // flash); live DOM was already corrected in-place above.
-  if (typeof invalidateRenderedForEmotes === 'function') invalidateRenderedForEmotes(changedNames)
+  invalidateRenderedForEmotes(changedNames)
 }
 
 // Flash all wrappers for a given emote name. Also touches multichat input
@@ -1962,7 +1744,7 @@ function flashAllEmotes(emoteName, flashClass) {
 function createInputEmoteImg(emoteName) {
   const resolved = lookupEmoteWithOverlay(emoteName)
   if (!resolved) return null
-  const { emote, isOverlay } = resolved
+  const { emote, isOverlay, key } = resolved
   if (hsEmoteHiddenForViewer(emote)) return null
   const img = document.createElement('img')
   img.className = 'hs-input-emote'
@@ -1970,15 +1752,17 @@ function createInputEmoteImg(emoteName) {
   img.alt = emoteName
   img.dataset.emoteName = emoteName
   img.draggable = false
-  // Persist state + source on the chip so findEmoteTarget (input.js:752) reads
-  // 'owned' instead of defaulting to 'global'. Without this, right-clicking a
-  // wavE chip in the input fell into the else branch and tried to BLOCK an
-  // emote you own; left-click hover also missed its green-state CSS. Match
-  // resolved emote.state ('owned'/'global'/'channel'/'unadded') 1:1.
+  // State + source + the picture's own url and hash ride on the chip: a right-click on it
+  // (input.js findEmoteTarget) acts on THIS picture, as it does on a chat line. Its own field
+  // names, so the page script's [data-emote-hash] passes never take a chip for a chat emote.
   const _resolvedSource = emote.source || detectEmoteSource(emote.url)
   img.dataset.source = _resolvedSource
-  // Owned shadows global/channel — surface what the user actually controls.
-  img.dataset.state = inventoryEmotes.has(emoteName) ? 'owned' : emote.state || 'global'
+  hsChipIs(img, emote.url, emote.hash, key)
+  // Yours = this very picture (rule 10), not the name: the room's emote under a name you also
+  // own read 'owned', and a right-click on its chip removed YOUR copy.
+  img.dataset.state = isViewerEmote(key || emoteName, emote)
+    ? 'owned'
+    : (emote.state !== 'owned' && emote.state) || 'global'
   img.classList.add(`hs-state-${img.dataset.state}`)
   // Category tell follows the emote into the input chip (decision surface) —
   // same cwCats source the picker cell reads, first category wins.
@@ -1997,16 +1781,15 @@ function createInputEmoteImg(emoteName) {
   // "name0" resolving to a blocked base ("TriHard0" -> blocked "TriHard") must
   // also render blocked — only when there's no literal "name0" emote of its
   // own (mirrors _synthOverlay in findEmoteMatches/_applyInputBlock, input.js).
-  // Hash check catches the same asset re-listed under a different alias.
+  // emoteIsBlocked reads the picture's own hash first: the same asset under another alias.
   const _chipBlockedByBase =
     isOverlay &&
     emoteName.length > 1 &&
     emoteName.endsWith('0') &&
     !lookupEmoteRenderOrder(emoteName) &&
     blockedEmoteNames.has(emoteName.slice(0, -1))
-  const _chipBlockedByHash = !!(emote.hash && blockedEmoteHashes.has(String(emote.hash)))
-  if (emoteIsBlocked(emoteName, emote) || _chipBlockedByBase || _chipBlockedByHash) markInputEmoteBlocked(img, true)
-  if (typeof hsAttachInputEmoteSnap === 'function') hsAttachInputEmoteSnap(img)
+  if (emoteIsBlocked(emoteName, emote) || _chipBlockedByBase) markInputEmoteBlocked(img, true)
+  hsAttachInputEmoteSnap(img)
   return img
 }
 
@@ -2050,11 +1833,13 @@ function markInputEmoteBlocked(img, blocked) {
 // multichat input and any cycling/preview imgs that share the class. Match
 // by alt + dataset.emoteName (both set at creation; alt may be the typed
 // overlay name like "TriHard0" while dataset is identical).
-function applyInputEmoteBlockState(emoteName, blocked) {
+function applyInputEmoteBlockState(emoteName) {
   if (!emoteName) return
   const inputs = document.querySelectorAll('img.hs-input-emote')
   for (const img of inputs) {
-    if (img.alt !== emoteName && img.dataset.emoteName !== emoteName) continue
+    if (img.alt !== emoteName && img.dataset.emoteName !== emoteName && img.dataset.hsKey !== emoteName) continue
+    // the chip's own picture decides (rule 9): blocking the room's W dashed a chip of YOUR W
+    const blocked = emoteIsBlocked(emoteName, { url: img.dataset.hsUrl, hash: img.dataset.hsHash })
     // Render the dashed box in place — same as chat/picker. The chip keeps its
     // alt/dataset.emoteName so getInputText still serializes the name on send
     // (recipient renders the emote unless they too blocked it). Removing the
@@ -2136,7 +1921,6 @@ function _hsMcParseModWords(s) {
 function pasteEmoteToInput(emoteName, modWords) {
   const input = document.getElementById('hs-mc-input')
   if (!input) return
-  recordRecentEmote(emoteName)
   const _applyMods = (img) => {
     if (!img || !modWords) return
     const { mods, hue, words } = _hsMcParseModWords(modWords)
@@ -2182,8 +1966,7 @@ function pasteEmoteToInput(emoteName, modWords) {
       // Fallback: emote not in cache, insert as text
       const text = input.textContent || ''
       const space = text.length > 0 && !text.endsWith(' ') ? ' ' : ''
-      const modTail = modWords ? ` ${modWords.trim()}` : ''
-      input.textContent = `${text + space + emoteName + modTail} `
+      input.textContent = `${text + space + hsModChipText(emoteName, modWords)} `
       cursorToEnd(input)
     }
     pendingMessage = getInputText()
@@ -2192,8 +1975,8 @@ function pasteEmoteToInput(emoteName, modWords) {
     const before = input.value.slice(0, pos)
     const after = input.value.slice(pos)
     const space = before.length > 0 && !before.endsWith(' ') ? ' ' : ''
-    const modTail = modWords ? ` ${modWords.trim()}` : ''
-    const insert = `${emoteName + modTail} `
+    // each word where it stays this emote's own, as a chip writes it (`w! Kappa`, `Kappa ffzX`)
+    const insert = `${hsModChipText(emoteName, modWords)} `
     input.value = before + space + insert + after
     pendingMessage = input.value
     input.selectionStart = input.selectionEnd = pos + space.length + insert.length
@@ -2376,9 +2159,13 @@ function applyLocalRemoval(emoteName, pt) {
   // nothing else is named that. We intentionally leave channel/global caches intact
   // so the fallback emote still resolves. Invalidate cached renders + reprocess
   // visible rows so existing messages update in place instead of keeping the
-  // removed image. (typeof guards: these live in main.js, loaded after this module.)
-  if (typeof invalidateRenderedForEmotes === 'function') invalidateRenderedForEmotes([emoteName])
-  if (typeof reprocessEmoteTextInPlace === 'function') reprocessEmoteTextInPlace()
+  // removed image.
+  invalidateRenderedForEmotes([emoteName])
+  reprocessEmoteTextInPlace()
+  // The box: a pick of the removed picture is no pick any more, and its chip is read again by
+  // what the word sends now (the room's emote, a global, or text). It kept your removed picture.
+  if (_re?.url) dropPick({ name: emoteName, url: _re.url }, lawBox())
+  rereadInputChips()
   rehoverAt(pt, false)
   // Failure path: put every cache back exactly as it was and re-render.
   return (undoPt) => {
@@ -2389,8 +2176,9 @@ function applyLocalRemoval(emoteName, pt) {
     if (_re) viewerPersonalEmotes.set(emoteName, _re)
     if (removedEmoteFallback.delete(emoteName)) persistRemovedFallback()
     markPickerDirty()
-    if (typeof invalidateRenderedForEmotes === 'function') invalidateRenderedForEmotes([emoteName])
-    if (typeof reprocessEmoteTextInPlace === 'function') reprocessEmoteTextInPlace()
+    invalidateRenderedForEmotes([emoteName])
+    reprocessEmoteTextInPlace()
+    rereadInputChips()
     rehoverAt(undoPt, true)
   }
 }
@@ -2496,7 +2284,7 @@ function blockEmote(emoteName, clickedUrl, clickedSource, opts) {
     })
   } catch {}
 
-  applyInputEmoteBlockState(emoteName, true)
+  applyInputEmoteBlockState(emoteName)
 
   refreshEmoteTooltip(emoteName, 'blocked')
   // Success toast fires from syncBlockToAPI on confirmation (or immediately for
@@ -2506,7 +2294,7 @@ function blockEmote(emoteName, clickedUrl, clickedSource, opts) {
   flashAllEmotes(emoteName, 'hs-flash-block')
   // Surgical: only re-key messages that reference this emote (no epoch bump →
   // no whole-chat rebuild flash). Live DOM already updated in-place above.
-  if (typeof invalidateRenderedForEmotes === 'function') invalidateRenderedForEmotes(emoteName)
+  invalidateRenderedForEmotes(emoteName)
 }
 
 // Re-apply current state to all rendered wrappers for `emoteName`. Use after
@@ -2584,8 +2372,7 @@ function unblockEmote(emoteName, opts) {
   // as a middle tier on the ladder; with the ladder gone, unblock is simply
   // "stop hiding this," and the natural state restores green-equivalent
   // highlight color across chat-row + picker.
-  const newState =
-    typeof getEmoteState === 'function' ? getEmoteState(emoteName, emote?.source) : emote?.state || 'global'
+  const newState = getEmoteState(emoteName, emote?.source)
   queryEmoteWrappers(emoteName).forEach((w) => {
     if (!wrapperIsEmote(w, hash, _bfEmote?.url || realUrl)) return
     w.classList.remove(
@@ -2597,13 +2384,21 @@ function unblockEmote(emoteName, opts) {
       'hs-emote-highlight',
     )
     w.closest?.('.hs-mc-emote-stack')?.classList.remove('hs-stack-hl')
-    w.classList.add(`hs-state-${newState}`)
-    w.dataset.state = newState
+    // The wrapper's own picture comes back, in its own state. The name's did: under a name you
+    // also own, the room's emote came back as YOUR copy's picture and marked yours.
+    const own = w.dataset?.emoteUrl
+    const url = own || realUrl
+    const state =
+      own && newState === 'owned' && !isViewerEmoteUrl(emoteName, own, w.dataset.emoteHash)
+        ? getEmoteState('', w.dataset.source)
+        : newState
+    w.classList.add(`hs-state-${state}`)
+    w.dataset.state = state
     w.style.outline = ''
     hsPinLogEmoteSize(w, false)
     const img = w.querySelector('img')
-    if (img && realUrl) {
-      img.src = realUrl
+    if (img && url) {
+      img.src = url
       img.style.width = ''
       img.style.height = ''
       img.classList.remove(
@@ -2613,8 +2408,8 @@ function unblockEmote(emoteName, opts) {
         'hs-emote-blocked',
         'hs-emote-unadded',
       )
-      img.classList.add(`hs-emote-${newState}`)
-      img.dataset.state = newState
+      img.classList.add(`hs-emote-${state}`)
+      img.dataset.state = state
     }
   })
 
@@ -2628,12 +2423,12 @@ function unblockEmote(emoteName, opts) {
     })
   } catch {}
 
-  applyInputEmoteBlockState(emoteName, false)
+  applyInputEmoteBlockState(emoteName)
 
   refreshEmoteTooltip(emoteName, newState)
   if (opts?.skipSync && !opts?.silent) showToast(t('mc_emote_unblocked', [emoteName]), 'success')
   flashAllEmotes(emoteName, 'hs-flash-unblock')
-  if (typeof invalidateRenderedForEmotes === 'function') invalidateRenderedForEmotes(emoteName)
+  invalidateRenderedForEmotes(emoteName)
 }
 
 // Add emote to inventory (click-to-add for unadded emotes).
@@ -2840,27 +2635,6 @@ const inventoryEmotes = new Set() // Names of emotes in user's inventory
 // Viewer's personal set — separated from emoteCache so it does NOT bleed into
 // OTHER users' rendered messages. Used as senderEmotes only when sender == viewer.
 const viewerPersonalEmotes = new Map() // Map<name, emoteData>
-// Emotes the viewer click-pasted from OTHER users' messages this session. NEVER
-// rolled back (unlike the viewerPersonalEmotes optimistic seed): if the
-// auto-add-on-send POST fails — offline, rate-limit, recycled SW, or composing
-// from a kick/yt surface with an unreadable heatsync cookie — that seed is
-// deleted and the own echo would textify with no fallback (the exact logged-out
-// symptom). This map is the durable fallback: own-message render consults it so
-// a click-pasted emote ALWAYS renders in your own echo. Keyed by ESCAPED name
-// (matches processEmotes' escaped-token lookups). Own-messages only — never
-// applied to other senders' rendering.
-const clickPastedRefs = new Map() // Map<escapedName, {url, source, state, zeroWidth}>
-const CLICK_PASTED_REFS_MAX = 300
-function registerClickPastedRef(name, url, source, zeroWidth) {
-  if (!name || !url || !/^https?:/i.test(url)) return
-  const key = escapeHtml(name)
-  clickPastedRefs.set(key, { url, source: source || 'heatsync', state: 'global', zeroWidth: !!zeroWidth })
-  while (clickPastedRefs.size > CLICK_PASTED_REFS_MAX) {
-    const oldest = clickPastedRefs.keys().next().value
-    if (oldest === undefined) break
-    clickPastedRefs.delete(oldest)
-  }
-}
 // Render fallback for emotes the viewer REMOVED from their set. Removing purges
 // the emote from inventory/caches, so after a refresh the viewer's own past
 // messages that used it would resolve to nothing and render as raw text. This
@@ -3070,7 +2844,10 @@ const SENDER_EMOTE_NAMES_MAX = 300
 // replace can carry names the sender never/no-longer owns (merge-era bleed) —
 // loading them paints wrong emotes for a fetch round-trip on every boot.
 // Bump to discard incompatible persisted data once; sets rebuild fresh.
-const SENDER_EMOTE_SETS_VERSION = 2
+// v3: an entry says whether it is a 7tv/bttv personal emote (`personal`), which the
+// emote law reads above the room. A v2 entry has no mark and would read below it
+// until its sender was refetched: a picture that flips twice for no reason.
+const SENDER_EMOTE_SETS_VERSION = 3
 // Clock-drift pad for the inventory-time render gate (_sGate): a message's
 // platform timestamp (tmi-sent-ts / kick / yt) and the server's added_at come
 // from different clocks. Without the pad, collect-then-send-within-seconds
@@ -3364,12 +3141,9 @@ async function loadSenderEmoteSets() {
       senderEmoteSets.set(k, new Map(Object.entries(names)))
     }
     if (entries.length > SENDER_EMOTE_LRU_MAX) {
-      log('Loaded sender_emote_sets:', senderEmoteSets.size, 'of', entries.length, 'persisted (truncated to LRU cap)')
       // Persist the truncation back so the storage shrinks too.
       _senderEmoteDirty = true
       _scheduleSenderEmotePersist()
-    } else {
-      log('Loaded sender_emote_sets:', senderEmoteSets.size, 'senders')
     }
   } catch (e) {
     log('Error loading sender_emote_sets:', e)
@@ -3429,31 +3203,6 @@ function lookupEmote(name) {
     blockedFallbackForName(name)
   )
 }
-// Kick-native emotes only exist on the wire as [emote:<id>:<name>]. Sending
-// the bare name posts literal text to every kick client — and our own renderer
-// paints bare names, so in-panel it looked right while nobody else saw the
-// emote at all. Proven on 2026-07-21: a pool emote sent from the composer
-// archived as the plain word, no emote ref. Rewrite kick-source words on the
-// way out; twitch and youtube keep the bare word (their wire formats differ).
-const KICK_EMOTE_ID_RE = /files\.kick\.com\/emotes\/(\d+)\//
-const KICK_MAX_MESSAGE = 500
-function kickifyEmoteText(text) {
-  if (!text || typeof text !== 'string') return text
-  const out = text.replace(/\S+/g, (word) => {
-    // Never touch a token the user (or kick's own composer) already wrote.
-    if (word.startsWith('[emote:')) return word
-    const e = typeof lookupEmoteWireOrder === 'function' ? lookupEmoteWireOrder(word) : null
-    if (e?.source !== 'kick' || !e.url) return word
-    const m = KICK_EMOTE_ID_RE.exec(e.url)
-    return m ? `[emote:${m[1]}:${word}]` : word
-  })
-  // Tokens are far longer than the names they replace. If expanding pushed a
-  // message that would have fit over kick's limit, send the words — a
-  // delivered message without emote images beats a rejected one.
-  if (out.length > KICK_MAX_MESSAGE && text.length <= KICK_MAX_MESSAGE) return text
-  return out
-}
-
 // In-set lookup: only emotes the viewer actually owns (heatsync inventory +
 // their native Twitch subs). Excludes channel/global/3rd-party pools — those
 // are words a viewer never deliberately added (e.g. a channel's lowercase
@@ -3461,10 +3210,9 @@ function kickifyEmoteText(text) {
 function lookupOwnedEmote(name) {
   return viewerPersonalEmotes.get(name)
 }
-// Composer preview order: inventory > channel > global, the order a sent line draws in
-// (see _lookup: your own emote beats the channel's of the same name). lookupEmote stays
-// inventory-first too — it drives block/add/state/tooltip. Removed/blocked fallbacks
-// stay last so a blocked emote still resolves its real url for the dashed-box preview.
+// "Does anything here answer to this name": inventory, the open tab's channel, globals, then
+// the removed/blocked fallbacks (a blocked emote still resolves its real url for the
+// dashed-box preview). Not what a word sends or draws: that is the law's (lawChip, lawShip).
 function lookupEmoteRenderOrder(name) {
   return (
     viewerPersonalEmotes.get(name) ||
@@ -3478,17 +3226,6 @@ function lookupEmoteRenderOrder(name) {
 // your inventory, which is yours alone (rule 4).
 function lookupPublicEmote(name) {
   return activeTabChannelEmote(name) || emoteCache.get(name)
-}
-// Wire order for kick: channel > inventory > global, so a kick channel emote that shares a name
-// with one you own still goes out as the kick-native token every kick viewer can see.
-function lookupEmoteWireOrder(name) {
-  return (
-    activeTabChannelEmote(name) ||
-    viewerPersonalEmotes.get(name) ||
-    emoteCache.get(name) ||
-    removedEmoteFallback.get(name) ||
-    blockedFallbackForName(name)
-  )
 }
 // True if ANY cache knows this emote name is 7TV zero-width. The owned set
 // (viewerPersonalEmotes) and the heatsync server cache don't carry 7TV's
@@ -3549,25 +3286,27 @@ function zeroWidthForSameAsset(name, url) {
 // type-word-then-space auto-convert so only your emotes imagify as you type.
 // Channel/global emotes still render via Tab-complete (which omits the flag).
 function lookupEmoteWithOverlay(name, { ownedOnly = false } = {}) {
-  const resolve = ownedOnly ? lookupOwnedEmote : lookupEmoteRenderOrder
   const endsWithZero = name.length > 1 && name.endsWith('0')
-  // A literal full-name hit ALWAYS wins — an emote actually named "lerolero0"
-  // is a standalone emote, NOT the "lerolero" overlay. It only stacks if it
-  // carries a real zeroWidth flag (recoverable from any cache for owned
-  // copies that shadow the flagged channel/global entry). The trailing-0
-  // heuristic must never shadow a real "name0" emote. See processEmotes for
-  // the matching chat-render order.
-  const emote = resolve(name)
-  if (emote) {
-    let isOverlay = !!emote.zeroWidth
-    if (!isOverlay && zeroWidthFromAnyCache(name)) isOverlay = true
-    return { emote, isOverlay, displayName: name }
+  // as-you-type only turns a word you own into a chip; what the chip draws is still the send's answer
+  if (ownedOnly && !lookupOwnedEmote(name) && !(endsWithZero && lookupOwnedEmote(name.slice(0, -1)))) return null
+  // The chip is what a send from this tab would ship (the law's sendWord): this message's pick,
+  // then the room, then yours, then globals. A literal "name0" is tried before the overlay
+  // reading of "name" inside the law, so an emote really named "lerolero0" stays standalone.
+  const hit = lawChip(name)
+  if (hit) {
+    // owned copies have 7tv's zero-width flag stripped: recover it from any cache under the name
+    const isOverlay = hit.overlay || (!hit.e.zeroWidth && zeroWidthFromAnyCache(hit.key))
+    return { emote: hit.e, isOverlay, displayName: name, key: hit.key }
   }
-  // No literal hit — apply the 7TV-style "name0" overlay convention: strip the
-  // trailing 0 and overlay the base emote (e.g. "TriHard0" → overlay TriHard).
+  if (ownedOnly) return null
+  // nothing ships for this word. An emote you blocked still shows its dashed box. One you removed
+  // is text, as it ships: it kept its picture here while the line went out as a plain word
+  const gone = blockedFallbackForName
+  const emote = gone(name)
+  if (emote) return { emote, isOverlay: !!emote.zeroWidth || zeroWidthFromAnyCache(name), displayName: name }
   if (endsWithZero) {
-    const baseEmote = resolve(name.slice(0, -1))
-    if (baseEmote) return { emote: baseEmote, isOverlay: true, displayName: name }
+    const base = gone(name.slice(0, -1))
+    if (base) return { emote: base, isOverlay: true, displayName: name }
   }
   return null
 }
@@ -3631,22 +3370,17 @@ function getEmoteState(name, source) {
 // triggers loadEmotes against still-stale storage.
 function _buildChannelEmoteCache(ch, emotes, platform) {
   if (!ch || !Array.isArray(emotes)) return
-  platform = platform || 'twitch'
-  // Merge per-platform, keyed by the BARE channel name (every consumer —
-  // render/picker/autocomplete — reads bare). A same-name twitch+kick
-  // simulcast linked in one panel channel must keep BOTH sets: we replace
-  // only THIS platform's prior contribution (tagged via _plat) so an update
-  // refreshes without accumulating stale, and the other platform's emotes
-  // survive instead of being overwritten. Same-name/different-image across
-  // platforms falls to last-writer-wins (rare + cosmetic).
+  platform = channelLeg(platform) || 'twitch'
+  // One set per BARE channel name (every consumer reads bare), one list per platform inside
+  // it. A same-name twitch+kick simulcast keeps BOTH lists whole: an update replaces only its
+  // own platform's, and a name both have is each platform's own emote on that platform's rows
+  // (emote-rooms.js). The set itself reads twitch first, then kick, then youtube.
   let chCache = channelEmoteCaches[ch]
   if (!(chCache instanceof Map)) {
     chCache = new Map()
     channelEmoteCaches[ch] = chCache
   }
-  for (const [name, e] of chCache) {
-    if (e._plat === platform) chCache.delete(name)
-  }
+  const leg = new Map()
   for (const e of emotes) {
     if (!e.name || !e.url) continue
     if (
@@ -3687,17 +3421,18 @@ function _buildChannelEmoteCache(ch, emotes, platform) {
     // emoteProviderPriority decides the winner instead of plain array-order
     // last-write-wins. Every other pairing (heatsync, twitch, kick, or a
     // same-provider refresh) is untouched — see resolveEmoteProviderWinner.
-    chCache.set(e.name, resolveEmoteProviderWinner(chCache.get(e.name), entry, EMOTE_TIER_ORDER.channel))
+    leg.set(e.name, resolveEmoteProviderWinner(leg.get(e.name), entry, EMOTE_TIER_ORDER.channel))
     if (e.hash) {
       emoteHashes.set(e.name, e.hash)
       hashToName.set(e.hash, e.name)
     }
   }
-  // Ceiling on the per-channel map — every other cache in this file has one,
+  // Ceiling on a platform's list — every other cache in this file has one,
   // this (the authoritative path) trusted upstream response size. Real
   // channels combine to a few hundred names; 2000 only ever bites a
   // malformed/hostile payload. Oldest-inserted evicts first.
-  while (chCache.size > 2000) chCache.delete(chCache.keys().next().value)
+  while (leg.size > 2000) leg.delete(leg.keys().next().value)
+  channelLegPut(chCache, platform, leg)
   // Self-heal the stale-emote ghost registry: any name back in this channel's
   // live set was re-added (perhaps while we missed the event) — drop it so old
   // messages stop rendering ghosted. The render path also guards on the live
@@ -3937,8 +3672,6 @@ async function loadEmotes() {
 
       // Rebuild blockedEmoteNames from loaded hashes
       rebuildBlockedNames()
-
-      log('Loaded', emoteCache.size, 'emotes (inventory:', inventoryEmotes.size, ', hashes:', emoteHashes.size, ')')
     } catch (e) {
       log('Error loading emotes:', e)
     }
@@ -3998,7 +3731,7 @@ function scanDomForEmotes() {
       // them into channelEmoteCaches as if they were channel-wide. That
       // leaks the viewer's set into every sender's message in this channel.
       if (source === '7tv' || source === 'bttv' || source === 'ffz') continue
-      cache.set(name, { url, source, state: getEmoteState(name, source), zeroWidth: false })
+      channelScanPut(cache, name, { url, source, state: getEmoteState(name, source), zeroWidth: false })
       found++
     }
   }
@@ -4025,8 +3758,6 @@ cleanup.persistInterval(cleanup.setIntervalIfVisible(scanDomForEmotes, 10000))
 // FFZ/BTTV-style modifier helpers — bridged to lib/modifiers.js
 // (HS_MOD_TOKENS, hsModClassify, hsModBuildStyleAttr, hsModInjectWrapperStyle,
 // hsModComposeFilter, hsModHexToHue) are bundled by build.js.
-const HS_MC_MODS = HS_MOD_TOKENS
-const HS_MC_C_RE = HS_MOD_C_HEX_RE
 // Static list — hoisted out of the per-word inline-suffix peel so it isn't
 // reallocated for every non-resolved word on the message hot path. DERIVED from
 // HS_MOD_TOKENS, never hand-listed: the hand-written version had drifted and was
@@ -4034,9 +3765,11 @@ const HS_MC_C_RE = HS_MOD_C_HEX_RE
 // eaten by an upstream send pipeline) resolved to nothing. Longest-first so a
 // long token wins over any shorter one that ends the same way.
 const HS_INLINE_MOD_SUFFIXES = Object.keys(HS_MOD_TOKENS).sort((a, b) => b.length - a.length)
-function _hsMcHexToHue(h) {
-  return hsModHexToHue(h)
-}
+// Every modifier word starts with one of its tokens, and those are `x!` or
+// `ffz…`: a word that is neither is never asked the longer question (this runs
+// for every word of every line).
+const _isModWord = (w) => (w.charCodeAt(1) === 33 || w.startsWith('ffz')) && hsModClassify(w).kind === 'modifier'
+
 function _hsMcApplyMods(html, mods, hue) {
   if (!mods?.length && hue == null) return html
   // Stamp the ORDERED effect list on the wrapper so the hover tooltip can show
@@ -4222,7 +3955,7 @@ const _hsSnapQueue = new Set()
 let _hsSnapScheduled = false
 const HS_SNAP_QUEUE_CAP = 200
 function hsAttachInputEmoteSnap(img) {
-  if (!img || typeof hsSnapEmoteBox !== 'function') return
+  if (!img) return
   img.addEventListener('load', () => hsSnapEmoteBox(img), { once: true })
   // A cached image fires no load event — that path stayed blurry without this.
   if (img.complete && img.naturalWidth) hsSnapEmoteBox(img)
@@ -4504,8 +4237,11 @@ function _hsCwBoxHtml(cwCat, displayName, boxW) {
 
 // A whisper / DM belongs to no channel, so a channel-only emote ("BillyLift" from
 // the channel you typed it in) found nothing to resolve against and stayed plain
-// text. This is every loaded channel's set in one map (names escaped, the form
-// processEmotes' extraCache is keyed by), rebuilt only when a set changes size.
+// text. This is every loaded channel's set in one map (names escaped), rebuilt
+// only when a set changes size. It is processEmotes' LAST RESORT for a roomless
+// line: the emote law gives such a line no room (pick, yours, globals), so a
+// channel's emote only fills a word nothing else answers, and of two channels
+// holding the word the first by name supplies it, never the first to load.
 let _anyChanEmotes = null
 let _anyChanSig = ''
 function hsAnyChannelEmotes() {
@@ -4513,7 +4249,7 @@ function hsAnyChannelEmotes() {
   for (const k in channelEmoteCaches) sig += `${k}:${channelEmoteCaches[k]?.size || 0};`
   if (_anyChanEmotes && sig === _anyChanSig) return _anyChanEmotes
   const all = new Map()
-  for (const k in channelEmoteCaches) {
+  for (const k of Object.keys(channelEmoteCaches).sort()) {
     for (const [name, e] of channelEmoteCaches[k] || []) {
       const key = escapeHtml(name)
       if (!all.has(key)) all.set(key, e)
@@ -4524,13 +4260,24 @@ function hsAnyChannelEmotes() {
   return all
 }
 
-function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMentions = false, msgRefs = null) {
+function processEmotes(
+  text,
+  channel,
+  extraCache,
+  senderEmotes,
+  msgTime,
+  skipMentions = false,
+  msgRefs = null,
+  lastResort = null,
+  platform = undefined,
+) {
   if (
     emoteCache.size === 0 &&
     !channelEmoteCaches[channel] &&
     !extraCache?.size &&
     !senderEmotes?.size &&
-    !msgRefs?.size
+    !msgRefs?.size &&
+    !lastResort?.size
   )
     return text
   // Removed-emote render fallback applies ONLY to the viewer's own messages
@@ -4571,48 +4318,32 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
     if (entry.untilAt && msgTime >= entry.untilAt + EMOTE_ADDED_SKEW_MS) return null
     return entry
   }
-  const _sGet = (name) => (_invRender ? _sGate(senderEmotes?.get(name)) : null)
-  // Provenance-aware resolve: message ref > sender inventory > channel > native >
-  // global > removed-inventory fallback. `inv` marks hits that render BECAUSE of a
-  // heatsync inventory (the sender's, or the viewer's own) — the tooltip
-  // attributes those to the inventory instead of the emote's original
-  // provider, which the viewer may have no relationship with (same emote
-  // labeled "set" on own rows but "7TV" on the sender's).
+  // Which emote is this word: the law's READ order (emote-law-read.js), over the row's own room. A
+  // hit marks `inv` when it draws because of an inventory (the sender's, or a server name-match):
+  // the tooltip attributes those to the inventory instead of the emote's original provider.
+  // Past ownership and the removed-emote fallback come after: the law has no clock to ask.
+  const _lawCtx = lawReadCtx({
+    room: (channel && channelRoomNames(channelEmoteCaches[channel], platform)) || null,
+    platform,
+    globals: emoteCache,
+    tags: extraCache,
+    refs: msgRefs,
+    sender: _invRender ? senderEmotes : null,
+    gate: _sGate,
+    unesc: unescapeHtml,
+  })
   const _lookup = (name) => {
-    // `name` is an HTML-escaped token: main.js runs escapeHtml(m.text) before
-    // processEmotes, so a name with HTML specials arrives escaped (`>:3` →
-    // `&gt;:3`, `<3` → `&lt;3`). The channel/sender/global/removed caches are
-    // keyed by RAW emote names, so we must unescape before those lookups or
-    // the emote renders as plain text. extraCache (twitchExtra) is keyed by
-    // the escaped name to match this token directly. escapeHtml is identity
-    // for names without specials, so raw === name on the hot path (no `&`).
+    const hit = lawReadWord(name, _lawCtx, unescapeHtml)
+    if (hit) return hit
+    // `name` is an HTML-escaped token; the removed/past-ownership stores are keyed by RAW names
     const raw = name.indexOf('&') === -1 ? name : unescapeHtml(name)
-    // Server-enriched per-message refs: the sender's inventory emote actually
-    // used in THIS message, resolved authoritatively server-side. First of all:
-    // many emotes share one name across providers (a channel's AYAYA, the kick
-    // AYAYA, the 7tv variant someone collected), and the one the sender
-    // picked is the only one that is not a guess. Ungated by _sGate — it's
-    // current by construction.
-    // A platform token (twitch IRC emotes= tag) is exact by position (rule 1): it is
-    // what the line literally carries, so nothing with the same name replaces it.
-    let e = extraCache?.get(name)
-    if (e) return { e, inv: false }
-    e = msgRefs?.get(name)
+    // a pick taken down since the line was sent is text: no past copy of it, no look-alike
+    if (_lawCtx.refs[raw]?.gone) return null
+    const e = _rfGate(_rf?.get(raw)) || (_rf ? pastOwnershipAt(raw, msgTime) : null)
     if (e) return { e, inv: true }
-    // The SENDER's own set next, before the channel: the ref above is just a
-    // precomputed lookup of this same inventory, so a line with no ref (the first
-    // one after an add or swap, a cold server cache, history) must still resolve
-    // to the emote they picked and not the room's same-name one. Only the sender's
-    // set ever fills this — never another user's — and _sGate keeps it to the
-    // window they actually owned the emote.
-    e = _sGet(raw)
-    if (e) return { e, inv: true }
-    e = channel ? channelEmoteCaches[channel]?.get(raw) : null
-    if (e) return { e, inv: false }
-    e = emoteCache.get(raw)
-    if (e) return { e, inv: false }
-    e = _rfGate(_rf?.get(raw)) || (_rf ? pastOwnershipAt(raw, msgTime) : null)
-    return e ? { e, inv: true } : null
+    // a roomless line's last resort (hsAnyChannelEmotes): only a word nothing above answered
+    const any = lastResort?.get(name)
+    return any ? { e: any, inv: false } : null
   }
 
   // Kick emote splits gated by indexOf — Kick text is <5% of overall msg volume;
@@ -4698,81 +4429,41 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
     // user, and multi-emote runs are exactly where interop breaks visibly.
     // A token with an emote on NEITHER side stays literal text (never
     // swallowed — that regression is why the orphan guard exists below).
-    const _modForward = (w) => w.endsWith('!') // BTTV token shape; ffz* are backward
+    // Which emote: hsModSide (lib/modifiers.js), the rule every app runs from
+    // emote-mods.vectors.json. A chain (`w!h!ffzX`, a heatsync-ism no provider
+    // parses) goes the way of the word it is led by.
     // Is there an emote ahead before any plain word? Skips intervening
-    // modifiers so "c! ffzX Kappa" lands both on Kappa.
+    // modifiers, chains included, so "c! ffzX Kappa" lands both on Kappa.
     const _emoteComesNext = (from) => {
       for (let j = from; j < words.length; j++) {
         const w = words[j]
         if (WS_RE.test(w)) continue
-        if (HS_MC_MODS[w] || HS_MC_C_RE.test(w)) continue
+        if (_isModWord(w)) continue
         if (hasKickEmote && /^\[emote:\d+:[^\]]+\]$/.test(w)) return true
         return !!_lookup(w)?.e
       }
       return false
     }
 
-    // FFZ semantic: modifier attaches to the IMMEDIATELY PRECEDING emote.
-    // Kappa RainTime w! → wide RainTime (not Kappa).
-    // FFZ modifiers attach to the IMMEDIATELY PRECEDING emote. If there's no
-    // emote in the current stack to attach to (e.g. the base failed to resolve
-    // from a cold cache after a refresh), the modifier is ORPHANED — it must
-    // render as literal text, NOT be silently swallowed. Swallowing it into
-    // pendingMods (the old behavior) dropped it entirely when no following emote
-    // consumed it — the reported "WideBirdge ffzW ..." → plain "WideBirdge"
-    // repeated, every ffzW eaten. So each modifier branch only consumes the token
-    // when _lastItem() exists; otherwise it falls through to the text path below.
-    const modKind = HS_MC_MODS[word]
-    if (modKind) {
-      const fwd = _modForward(word)
-      // canonical direction first, opposite as fallback, else fall through to text
-      if (fwd && _emoteComesNext(_wIdx + 1)) {
-        pendingMods.push(modKind)
-        pendingWhitespace = ''
-        continue
-      }
-      if (_lastItem()) {
-        _lastItem().mods.push(modKind)
-        pendingWhitespace = ''
-        continue
-      }
-      if (!fwd && _emoteComesNext(_wIdx + 1)) {
-        pendingMods.push(modKind)
-        pendingWhitespace = ''
-        continue
-      }
+    // A modifier with an emote on NEITHER side is ORPHANED: it must render as
+    // literal text (or as the emote of that name), NOT be silently swallowed.
+    // Swallowing it dropped the reported "WideBirdge ffzW ..." to a plain
+    // "WideBirdge" repeated when the base failed to resolve from a cold cache,
+    // every ffzW eaten. So the word is only consumed when it has an emote to
+    // change; otherwise it falls through to the text path below.
+    const _cls = _isModWord(word) ? hsModClassify(word) : null
+    const _side = _cls && hsModSide(word, !!_lastItem(), () => _emoteComesNext(_wIdx + 1))
+    if (_side === 'next') {
+      // ride pendingMods onto the emote that follows
+      for (const m of _cls.mods) pendingMods.push(m)
+      if (_cls.hue != null) pendingHue = _cls.hue
+      pendingWhitespace = ''
+      continue
     }
-    const cMatchTok = word.match(HS_MC_C_RE)
-    if (cMatchTok) {
-      // c!#hex is a BTTV-shaped token — forward first, same as its siblings.
-      const hueVal = _hsMcHexToHue(cMatchTok[1])
-      if (_emoteComesNext(_wIdx + 1)) {
-        pendingHue = hueVal
-        pendingWhitespace = ''
-        continue
-      }
-      if (_lastItem()) {
-        _lastItem().hue = hueVal
-        pendingWhitespace = ''
-        continue
-      }
-    }
-    // Peel chained modifier word (e.g. "w!h!ffzX" or "w!c!#888h!"). Chaining is
-    // a heatsync-ism — no provider parses it — so direction follows the word's
-    // FIRST token, matching what the user led with and keeping the rule
-    // identical to the single-token case above.
-    const _hsPeel = _lastItem() || _emoteComesNext(_wIdx + 1) ? hsModPeelChain(word) : null
-    if (_hsPeel) {
-      const chainFwd = _modForward(word)
-      const target = chainFwd && _emoteComesNext(_wIdx + 1) ? null : _lastItem()
-      if (target) {
-        for (const m of _hsPeel.mods) target.mods.push(m)
-        if (_hsPeel.hue != null) target.hue = _hsPeel.hue
-      } else {
-        // forward: ride pendingMods onto the emote that follows
-        for (const m of _hsPeel.mods) pendingMods.push(m)
-        if (_hsPeel.hue != null) pendingHue = _hsPeel.hue
-      }
+    if (_side === 'last') {
+      const target = _lastItem()
+      for (const m of _cls.mods) target.mods.push(m)
+      if (_cls.hue != null) target.hue = _cls.hue
       pendingWhitespace = ''
       continue
     }
@@ -4882,6 +4573,11 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
     if (_hit) {
       emote = _hit.e
       emoteFromInv = _hit.inv
+      // the law strips one trailing 0 when no emote is named so: the base, drawn as an overlay
+      if (_hit.stripped) {
+        isOverlayEmote = true
+        overlayBaseName = word.slice(0, -1)
+      }
     }
     // blockedEmoteFallback last, own messages only: resolves a blocked emote to
     // its real url+dims so it renders the dashed box at the emote's true
@@ -4905,8 +4601,10 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
       // trailing-0 heuristic. Own outgoing messages resolve via senderEmotes
       // (viewerPersonalEmotes), which lacks the 7TV flag — recover it from
       // channel/global caches so an overlay emote you own still stacks.
-      isOverlayEmote = !!emote.zeroWidth
-      if (!isOverlayEmote && zeroWidthFromAnyCache(word)) isOverlayEmote = true
+      if (!_hit?.stripped) {
+        isOverlayEmote = !!emote.zeroWidth
+        if (!isOverlayEmote && zeroWidthFromAnyCache(word)) isOverlayEmote = true
+      }
     } else if (endsWithZero) {
       // No literal "name0" emote — strip the 0 and overlay the base.
       const baseName = word.slice(0, -1)
@@ -4934,7 +4632,7 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
             emote = candHit.e
             emoteFromInv = candHit.inv
             isOverlayEmote = !!emote.zeroWidth
-            _hsInlineModSuffix = HS_MC_MODS[suf] || null
+            _hsInlineModSuffix = HS_MOD_TOKENS[suf] || null
             // resolved from the peeled base — a block on the base must hide
             // "Basew!" too, same as the trailing-0 overlay path
             overlayBaseName = baseGuess
@@ -4953,8 +4651,8 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
             emoteFromInv = candHit.inv
             isOverlayEmote = !!emote.zeroWidth
             overlayBaseName = baseGuess
-            const m = inlineColor[2].match(HS_MC_C_RE)
-            if (m) _hsInlineModSuffix = { hue: _hsMcHexToHue(m[1]) }
+            const m = inlineColor[2].match(HS_MOD_C_HEX_RE)
+            if (m) _hsInlineModSuffix = { hue: hsModHexToHue(m[1]) }
           }
         }
       }
@@ -5022,7 +4720,7 @@ function processEmotes(text, channel, extraCache, senderEmotes, msgTime, skipMen
             ? window._hsStaleEmotes.get(chKey)?.get(word)
             : null
         if (meta) {
-          const liveSet = channelEmoteCaches[chKey] || channelEmoteCaches[channel]
+          const liveSet = channelRoomNames(channelEmoteCaches[chKey] || channelEmoteCaches[channel], platform)
           const liveNow = !!liveSet?.has(word)
           // Identity: only ghost the emote that was actually removed. Trust the
           // hash when both sides have one; else require the same provider —
@@ -5264,7 +4962,6 @@ export {
   blockedEmoteNames,
   blockedFallbackForName,
   blockedFallbacksForName,
-  bumpEmoteFrecency,
   channelEmoteCaches,
   deriveStaticEmoteSrc,
   detectEmoteSource,
@@ -5275,23 +4972,21 @@ export {
   ensureHsEmoteIdleObserver,
   getEmoteState,
   getSenderEmotes,
+  hsAnyChannelEmotes,
   hsSwapRowEmotesForIdle,
   hydrateEmoteBoxWidths,
   inventoryEmotes,
   isViewerEmote,
   isViewerEmoteUrl,
-  loadEmoteFrecency,
   loadSenderEmoteSets,
   lookupEmote,
   lookupEmoteRenderOrder,
-  lookupEmoteWireOrder,
   lookupEmoteWithOverlay,
   lookupOwnedEmote,
   lookupPublicEmote,
   mergeSenderEmotes,
   pastOwnership,
   pastOwnershipAt,
-  pickerBaseEmotes,
   processEmotes,
   reapHsIdleEmoteRows,
   rememberBlockedEmote,
@@ -5302,7 +4997,6 @@ export {
   staticEmoteSrc,
   sweepHsEmoteIdleRows,
   teardownHsEmoteIdleGate,
-  unbumpEmoteFrecency,
   viewerPersonalEmotes,
   whyEmote,
   zeroWidthFromAnyCache,

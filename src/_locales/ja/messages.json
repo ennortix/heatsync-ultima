@@ -849,6 +849,14 @@
   "mc_input_no_channel": {
     "message": "チャンネルなし — 上のタブを選んで"
   },
+  "mc_input_login_to_chat": {
+    "message": "$PLATFORM$かheatsyncにログイン",
+    "placeholders": {
+      "platform": {
+        "content": "$1"
+      }
+    }
+  },
   "mc_whisper_follow_to_dm": {
     "message": "$USER$ に dm するにはフォローが必要 — フォロー + 送信",
     "placeholders": {
@@ -1116,6 +1124,18 @@
   "mc_settings_tab_list_desc": {
     "message": "単語の上で tab を押すと、一致する emote を入力欄の上にリストで表示。矢印で選択、tab か enter で挿入、esc で閉じる。オフだとその場で補完"
   },
+  "mc_settings_colon_list": {
+    "message": "`:` リストの表示"
+  },
+  "mc_settings_colon_list_desc": {
+    "message": ": を入力して開くリストで上に来るもの。エモート優先は tab と同じ順番、絵文字優先はすべての絵文字をエモートより上に置きます。tab とピッカー検索の順番は変わりません"
+  },
+  "lib_opt_colon_emotes": {
+    "message": "エモート優先"
+  },
+  "lib_opt_colon_emoji": {
+    "message": "絵文字優先"
+  },
   "mc_settings_show_pronouns": {
     "message": "代名詞"
   },
@@ -1350,8 +1370,8 @@
   "mc_signed_out_action": {
     "message": "ログイン"
   },
-  "mc_chatlogs_copy_failed": {
-    "message": "コピー失敗"
+  "common_clipboard_blocked": {
+    "message": "クリップボードがブロックされました"
   },
   "mc_common_unknown": {
     "message": "不明"
@@ -2236,6 +2256,14 @@
   },
   "mc_mod_label_deleted": {
     "message": "削除済み"
+  },
+  "mc_mod_deleted_only": {
+    "message": "$PLATFORMS$ でのみ削除しました",
+    "placeholders": {
+      "platforms": {
+        "content": "$1"
+      }
+    }
   },
   "mc_mod_label_timed_out": {
     "message": "timeout $SEC$秒",
@@ -3369,6 +3397,9 @@
       }
     }
   },
+  "mc_cycle_wont_show": {
+    "message": "ここでは表示されません"
+  },
   "mc_twapi_ql_subscribe": {
     "message": "サブスク登録"
   },
@@ -4114,6 +4145,9 @@
   },
   "mc_social_no_mod_actions": {
     "message": "mod 操作はまだない"
+  },
+  "mc_modlog_connect": {
+    "message": "どのモデレーターが行ったかを表示 — twitch を連携"
   },
   "mc_social_platform": {
     "message": "プラットフォーム"
@@ -7431,5 +7465,17 @@
   },
   "common_close": {
     "message": "閉じる"
+  },
+  "mc_picker_favorites": {
+    "message": "お気に入り"
+  },
+  "mc_fav_add": {
+    "message": "お気に入りに追加"
+  },
+  "mc_fav_remove": {
+    "message": "お気に入りから削除"
+  },
+  "mc_fav_full": {
+    "message": "お気に入りがいっぱいです — 先に1つ削除してください"
   }
 }

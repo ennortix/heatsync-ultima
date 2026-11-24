@@ -849,6 +849,14 @@
   "mc_input_no_channel": {
     "message": "chưa có kênh — chọn một tab phía trên"
   },
+  "mc_input_login_to_chat": {
+    "message": "đăng nhập $PLATFORM$ hoặc heatsync",
+    "placeholders": {
+      "platform": {
+        "content": "$1"
+      }
+    }
+  },
   "mc_whisper_follow_to_dm": {
     "message": "theo dõi $USER$ để nhắn dm — theo dõi + gửi",
     "placeholders": {
@@ -1116,6 +1124,18 @@
   "mc_settings_tab_list_desc": {
     "message": "nhấn tab trên một từ sẽ hiện các emote khớp trong danh sách phía trên ô nhập. phím mũi tên để chọn, tab hoặc enter để chèn, esc để đóng. tắt thì hoàn thành ngay trong văn bản"
   },
+  "mc_settings_colon_list": {
+    "message": "danh sách `:` hiện"
+  },
+  "mc_settings_colon_list_desc": {
+    "message": "danh sách mở ra khi gõ : đặt gì lên đầu. emote trước là thứ tự của tab; emoji trước đặt mọi emoji lên trên emote. tab và tìm kiếm trong bộ chọn giữ một thứ tự"
+  },
+  "lib_opt_colon_emotes": {
+    "message": "emote trước"
+  },
+  "lib_opt_colon_emoji": {
+    "message": "emoji trước"
+  },
   "mc_settings_show_pronouns": {
     "message": "đại từ nhân xưng"
   },
@@ -1350,8 +1370,8 @@
   "mc_signed_out_action": {
     "message": "đăng nhập"
   },
-  "mc_chatlogs_copy_failed": {
-    "message": "sao chép thất bại"
+  "common_clipboard_blocked": {
+    "message": "bộ nhớ tạm bị chặn"
   },
   "mc_common_unknown": {
     "message": "không rõ"
@@ -2236,6 +2256,14 @@
   },
   "mc_mod_label_deleted": {
     "message": "đã xóa"
+  },
+  "mc_mod_deleted_only": {
+    "message": "chỉ đã xoá trên $PLATFORMS$",
+    "placeholders": {
+      "platforms": {
+        "content": "$1"
+      }
+    }
   },
   "mc_mod_label_timed_out": {
     "message": "timeout $SEC$s",
@@ -3369,6 +3397,9 @@
       }
     }
   },
+  "mc_cycle_wont_show": {
+    "message": "sẽ không hiển thị ở đây"
+  },
   "mc_twapi_ql_subscribe": {
     "message": "đăng ký"
   },
@@ -4114,6 +4145,9 @@
   },
   "mc_social_no_mod_actions": {
     "message": "chưa có thao tác mod"
+  },
+  "mc_modlog_connect": {
+    "message": "hiện mod nào đã làm từng việc — kết nối twitch"
   },
   "mc_social_platform": {
     "message": "nền tảng"
@@ -7431,5 +7465,17 @@
   },
   "common_close": {
     "message": "đóng"
+  },
+  "mc_picker_favorites": {
+    "message": "yêu thích"
+  },
+  "mc_fav_add": {
+    "message": "thêm vào yêu thích"
+  },
+  "mc_fav_remove": {
+    "message": "xóa khỏi yêu thích"
+  },
+  "mc_fav_full": {
+    "message": "yêu thích đã đầy — hãy xóa một mục trước"
   }
 }

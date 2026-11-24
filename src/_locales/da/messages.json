@@ -849,6 +849,14 @@
   "mc_input_no_channel": {
     "message": "ingen kanal — vælg en fane ovenfor"
   },
+  "mc_input_login_to_chat": {
+    "message": "log ind på $PLATFORM$ eller heatsync",
+    "placeholders": {
+      "platform": {
+        "content": "$1"
+      }
+    }
+  },
   "mc_whisper_follow_to_dm": {
     "message": "følg $USER$ for at skrive — følg + send",
     "placeholders": {
@@ -1116,6 +1124,18 @@
   "mc_settings_tab_list_desc": {
     "message": "tab på et ord viser matchende emotes i en liste over inputfeltet. pilene vælger, tab eller enter indsætter, esc lukker. fra fuldender direkte i teksten"
   },
+  "mc_settings_colon_list": {
+    "message": "`:`-listen viser"
+  },
+  "mc_settings_colon_list_desc": {
+    "message": "hvad listen, som : åbner, sætter øverst. emotes først er den rækkefølge tab giver; emoji først sætter alle emoji over emotes. tab og vælgerens søgning holder én rækkefølge"
+  },
+  "lib_opt_colon_emotes": {
+    "message": "emotes først"
+  },
+  "lib_opt_colon_emoji": {
+    "message": "emoji først"
+  },
   "mc_settings_show_pronouns": {
     "message": "pronominer"
   },
@@ -1350,8 +1370,8 @@
   "mc_signed_out_action": {
     "message": "log ind"
   },
-  "mc_chatlogs_copy_failed": {
-    "message": "kopiering mislykkedes"
+  "common_clipboard_blocked": {
+    "message": "udklipsholder blokeret"
   },
   "mc_common_unknown": {
     "message": "ukendt"
@@ -2236,6 +2256,14 @@
   },
   "mc_mod_label_deleted": {
     "message": "slettet"
+  },
+  "mc_mod_deleted_only": {
+    "message": "slettet kun på $PLATFORMS$",
+    "placeholders": {
+      "platforms": {
+        "content": "$1"
+      }
+    }
   },
   "mc_mod_label_timed_out": {
     "message": "timeout $SEC$ s",
@@ -3369,6 +3397,9 @@
       }
     }
   },
+  "mc_cycle_wont_show": {
+    "message": "vises ikke her"
+  },
   "mc_twapi_ql_subscribe": {
     "message": "abonnér"
   },
@@ -4114,6 +4145,9 @@
   },
   "mc_social_no_mod_actions": {
     "message": "ingen mod-handlinger endnu"
+  },
+  "mc_modlog_connect": {
+    "message": "vis hvilken mod der gjorde hvad — forbind twitch"
   },
   "mc_social_platform": {
     "message": "platform"
@@ -7431,5 +7465,17 @@
   },
   "common_close": {
     "message": "luk"
+  },
+  "mc_picker_favorites": {
+    "message": "favoritter"
+  },
+  "mc_fav_add": {
+    "message": "føj til favoritter"
+  },
+  "mc_fav_remove": {
+    "message": "fjern fra favoritter"
+  },
+  "mc_fav_full": {
+    "message": "favoritter er fulde — fjern én først"
   }
 }

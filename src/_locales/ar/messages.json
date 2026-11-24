@@ -849,6 +849,14 @@
   "mc_input_no_channel": {
     "message": "لا قناة — اختر تبويبًا من الأعلى"
   },
+  "mc_input_login_to_chat": {
+    "message": "سجّل دخول على $PLATFORM$ أو heatsync",
+    "placeholders": {
+      "platform": {
+        "content": "$1"
+      }
+    }
+  },
   "mc_whisper_follow_to_dm": {
     "message": "تابع $USER$ لمراسلته — متابعة + إرسال",
     "placeholders": {
@@ -1116,6 +1124,18 @@
   "mc_settings_tab_list_desc": {
     "message": "الضغط على tab فوق كلمة يعرض الإيموتات المطابقة في قائمة فوق حقل الكتابة. الأسهم للاختيار، tab أو enter للإدراج، esc للإغلاق. عند الإيقاف يكمل الكلمة مباشرة"
   },
+  "mc_settings_colon_list": {
+    "message": "قائمة `:` تعرض"
+  },
+  "mc_settings_colon_list_desc": {
+    "message": "ما تضعه القائمة التي تفتحها كتابة : في الأعلى. الإيموتات أولًا هو ترتيب tab؛ الإيموجي أولًا يضع كل إيموجي فوق الإيموتات. tab وبحث المنتقي يحتفظان بترتيب واحد"
+  },
+  "lib_opt_colon_emotes": {
+    "message": "الإيموتات أولًا"
+  },
+  "lib_opt_colon_emoji": {
+    "message": "الإيموجي أولًا"
+  },
   "mc_settings_show_pronouns": {
     "message": "الضمائر"
   },
@@ -1350,8 +1370,8 @@
   "mc_signed_out_action": {
     "message": "تسجيل الدخول"
   },
-  "mc_chatlogs_copy_failed": {
-    "message": "فشل النسخ"
+  "common_clipboard_blocked": {
+    "message": "الحافظة محظورة"
   },
   "mc_common_unknown": {
     "message": "غير معروف"
@@ -2236,6 +2256,14 @@
   },
   "mc_mod_label_deleted": {
     "message": "محذوفة"
+  },
+  "mc_mod_deleted_only": {
+    "message": "حُذفت على $PLATFORMS$ فقط",
+    "placeholders": {
+      "platforms": {
+        "content": "$1"
+      }
+    }
   },
   "mc_mod_label_timed_out": {
     "message": "timeout لمدة $SEC$s",
@@ -3369,6 +3397,9 @@
       }
     }
   },
+  "mc_cycle_wont_show": {
+    "message": "لن يظهر هنا"
+  },
   "mc_twapi_ql_subscribe": {
     "message": "اشترك"
   },
@@ -4114,6 +4145,9 @@
   },
   "mc_social_no_mod_actions": {
     "message": "لا إجراءات mod بعد"
+  },
+  "mc_modlog_connect": {
+    "message": "اعرض أي مشرف قام بكل إجراء — اربط twitch"
   },
   "mc_social_platform": {
     "message": "المنصة"
@@ -7431,5 +7465,17 @@
   },
   "common_close": {
     "message": "إغلاق"
+  },
+  "mc_picker_favorites": {
+    "message": "المفضلة"
+  },
+  "mc_fav_add": {
+    "message": "أضف إلى المفضلة"
+  },
+  "mc_fav_remove": {
+    "message": "أزل من المفضلة"
+  },
+  "mc_fav_full": {
+    "message": "المفضلة ممتلئة — أزل واحدًا أولًا"
   }
 }

@@ -1694,7 +1694,7 @@
 
   // Per-row visibility tag — same wedge signal as the cycle readout on the other
   // surfaces: who sees this emote if you send it. green everyone → yellow {provider}
-  // (needs that ext) → orange heatsync only. Unknown source falls back to the
+  // (needs that ext) → white heatsync only. Unknown source falls back to the
   // neutral category so it never asserts a wrong visibility.
   function hsVisTag(e) {
     if (e.isChatter || e.isEmoji) return { t: 'everyone', cls: 'v-all' }
@@ -1820,7 +1820,7 @@
     const el = document.createElement('div')
     el.className = 'hs-yt-toast'
     el.textContent = text
-    document.body.appendChild(el)
+    ;(document.body || document.documentElement).appendChild(el)
     const timer = setTimeout(() => {
       el.classList.add('fade')
       const rmTimer = setTimeout(() => el.remove(), 350)
@@ -1883,7 +1883,9 @@
 
   const emotePreview = document.createElement('div')
   emotePreview.className = 'heatsync-emote-preview'
-  document.body.appendChild(emotePreview)
+  // a live_chat frame can run this with no <body> yet (firefox, a frame mid-navigation): a
+  // throw here stopped the whole script before init, so the frame got no chat features
+  ;(document.body || document.documentElement).appendChild(emotePreview)
   signal.addEventListener('abort', () => emotePreview.remove(), { once: true })
 
   const previewScale = (w, h) => Math.min(4, (innerWidth - 40) / w, (innerHeight - 100) / h)

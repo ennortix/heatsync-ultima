@@ -1,7 +1,7 @@
 {
   "name": "heatsync-extension",
-  "version": "1.7.138",
-  "description": "Custom emotes for Twitch, Kick, and YouTube live chat — 5000 slots, real-time sync, multichat overlay",
+  "version": "1.7.140",
+  "description": "twitch, kick and youtube live chat in one panel, plus your own emotes in any channel: 5,000 free slots",
   "private": true,
   "license": "MIT",
   "homepage": "https://heatsync.org",
@@ -17,7 +17,7 @@
     "test:freshness:firefox": "bun run build.js firefox --minify && bun scripts/freshness-firefox.ts",
     "test:render": "bun run build.js chrome --minify && bun scripts/render-extension.ts",
     "test:rtl": "bun run build.js chrome --minify && bun scripts/render-rtl.ts",
-    "test:emotes": "bun run build.js chrome --minify && bun scripts/render-emote-collisions.ts && bun scripts/render-emote-collisions-native.ts && bun scripts/render-emote-collisions-kick.ts",
+    "test:emotes": "bun run build.js chrome --minify && bun scripts/render-emote-collisions.ts && bun scripts/render-emote-collisions-native.ts && bun scripts/render-emote-collisions-kick.ts && bun scripts/render-emote-favorites.ts",
     "test:e2e-live": "bun run build.js chrome --minify && bun scripts/e2e-live.ts",
     "test:heap": "bun run build.js chrome --minify && bun scripts/heap-soak.ts",
     "test:heap-tabs": "bun run build.js chrome --minify && bun scripts/heap-tabs.ts",
@@ -36,11 +36,11 @@
   },
   "type": "module",
   "devDependencies": {
-    "@biomejs/biome": "^2.5.1",
-    "@types/chrome": "^0.2.0",
-    "esbuild": "^0.28.0",
+    "@biomejs/biome": "2.6.8",
+    "@types/chrome": "^0.3",
+    "esbuild": "0.28.2",
     "happy-dom": "21.0.4",
-    "playwright-core": "^1.63.0",
+    "playwright-core": "1.65.1",
     "typescript": "^6.0.3"
   }
 }

@@ -59,7 +59,7 @@ test('thread id click: the >>id quote always lands at the end of the input', () 
   const social = readFileSync(new URL('../src/multichat/social.js', import.meta.url), 'utf8')
   const i = social.indexOf('const quote = `>>${qid} `')
   const h = social.slice(i, i + 900)
-  expect(h).toMatch(/range\.collapse\(false\)[\s\S]*insertText/)
+  expect(h).toMatch(/cursorToEnd\(input\)[\s\S]*insertText/)
   expect(h).toMatch(/input\.value \+= quote/)
 })
 
@@ -68,10 +68,12 @@ test("blocked card-line emote: the pinned size out-ranks the card's width:auto !
   expect(css).toMatch(/img\.hs-state-blocked:is\(\.emote[^{]*\{\s*width: var\(--hs-lock-w, 24px\) !important/)
 })
 
-test('whispers and inline dms resolve channel emotes via the all-channels map', () => {
+test('whispers and inline dms resolve channel emotes via the all-channels map, as the last resort of a roomless line', () => {
   for (const f of ['whispers.js', 'main.js']) {
     const t = f === 'main.js' ? mainSource() : readFileSync(new URL(`../src/multichat/${f}`, import.meta.url), 'utf8')
-    expect(t).toMatch(/processEmotes\(escapeHtml\(m\.text\), null, hsAnyChannelEmotes\(\)/)
+    expect(t).toMatch(
+      /processEmotes\(escapeHtml\(m\.text\), null, null, undefined, undefined, true, null, hsAnyChannelEmotes\(\)\)/,
+    )
   }
 })
 

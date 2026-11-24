@@ -41,7 +41,24 @@ export function ok(msg: string) {
   passes.push(`${_scenario}: ${msg}`)
   console.log(`  ✓ ${msg}`)
 }
+/**
+ * Scenarios whose browser youtube sent to google.com/sorry (its captcha wall for an ip it
+ * distrusts: the nightly's datacenter runner, 11-21 and 11-22). On CI a youtube finding in
+ * such a scenario is youtube refusing the runner, not the extension: it is said out loud
+ * and not counted. On a home line it still counts.
+ */
+const ytWalled = new Set<string>()
+const YT_WALL = /google\.com\/sorry/
+function excusedByYtWall(what: string, detail: unknown): boolean {
+  if (!process.env.CI || !ytWalled.has(_scenario)) return false
+  const text = `${_scenario} ${what} ${detail === undefined ? '' : JSON.stringify(detail)}`
+  return /youtube|google\.com\/sorry|solveSimpleChallenge/i.test(text)
+}
 export function bad(what: string, detail?: unknown) {
+  if (excusedByYtWall(what, detail)) {
+    info(`skipped: youtube walled this runner (google.com/sorry), not counted: ${what}`)
+    return
+  }
   findings.push({ scenario: _scenario, what, detail })
   console.log(`  ✗ ${what}${detail === undefined ? '' : `\n      ${JSON.stringify(detail).slice(0, 600)}`}`)
 }
@@ -92,6 +109,15 @@ export async function launch(
       ...(opts.args ?? []),
     ],
   })
+  const watchWall = (pg: any) =>
+    pg.on('framenavigated', (f: any) => {
+      if (f === pg.mainFrame() && YT_WALL.test(f.url()) && !ytWalled.has(_scenario)) {
+        ytWalled.add(_scenario)
+        info('youtube sent this browser to google.com/sorry (its captcha wall)')
+      }
+    })
+  ctx.on('page', watchWall)
+  for (const pg of ctx.pages()) watchWall(pg)
   if (opts.onPage) {
     ctx.on('page', opts.onPage)
     for (const pg of ctx.pages()) opts.onPage(pg)
@@ -268,8 +294,8 @@ export async function liveChannels(platform: 'twitch' | 'kick', n: number): Prom
   if (names.length < n) throw new Error(`only ${names.length} live ${platform} channels found, wanted ${n}`)
   return names.slice(0, n)
 }
-/** A youtube video that is live right now (24/7 streams; canonical url of the handle's /live). */
-export async function liveYtVideo(handles = ['LofiGirl', 'lofigirl', 'chillhopmusic', 'SpaceVideosHD']) {
+/** A youtube video that is live right now (canonical url of the handle's /live). Busy news chats first: a quiet chat can't prove flow. */
+export async function liveYtVideo(handles = ['aljazeeraenglish', 'SkyNews', 'LofiGirl', 'lofigirl', 'chillhopmusic', 'SpaceVideosHD']) {
   for (const h of handles) {
     const res = await fetch(`https://www.youtube.com/@${h}/live`, {
       headers: { 'user-agent': UA, 'accept-language': 'en', cookie: 'SOCS=CAI' },
@@ -313,16 +339,20 @@ export async function ringSince(p: any, t0: number) {
   // (a 4s one on a ci runner's first twitch load, nightly 11-18). The overlay itself only acts
   // at 10s. A second one on the same channel, or one of 10s, is a finding.
   const gaps = recent.filter((x) => x.e === 'ingest_gap')
+  const probeOf = (e: any) => recent.find((x) => x.e === 'ingest_gap_probe' && x.ch === e.ch && x.t >= e.t && x.t - e.t < 5000)
   const delivered = (e: any) => {
     if (e.e !== 'ingest_gap') return true
     if (e.gapS >= 10) return true
-    const probe = recent.find((x) => x.e === 'ingest_gap_probe' && x.ch === e.ch && x.t >= e.t && x.t - e.t < 5000)
+    const probe = probeOf(e)
     return !!probe && probe.bgAheadS >= 2 && gaps.filter((x) => x.ch === e.ch).length > 1
   }
   // render_stall says why the newest line is not drawn when something of the reader's is in the
   // way (a card over the list, a form, a reader scrolled up): that one is the list doing as told.
   const blocked = (e: any) => e.e === 'render_stall' && (e.editing || e.panel || e.card || e.scrolledUp)
-  const bad = recent.filter((e) => (BAD_RING as readonly string[]).includes(e.e) && delivered(e) && !blocked(e))
+  // a gap carries its probe: the worker ahead of the tab is our delivery, both quiet is the chat
+  const bad = recent
+    .filter((e) => (BAD_RING as readonly string[]).includes(e.e) && delivered(e) && !blocked(e))
+    .map((e) => (e.e === 'ingest_gap' ? { ...e, probe: probeOf(e) || 'none' } : e))
   return { recent, counts, bad }
 }
 

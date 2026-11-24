@@ -849,6 +849,14 @@
   "mc_input_no_channel": {
     "message": "brak kanału — wybierz kartę powyżej"
   },
+  "mc_input_login_to_chat": {
+    "message": "zaloguj się na $PLATFORM$ lub heatsync",
+    "placeholders": {
+      "platform": {
+        "content": "$1"
+      }
+    }
+  },
   "mc_whisper_follow_to_dm": {
     "message": "zaobserwuj $USER$, żeby napisać dm — obserwuj + wyślij",
     "placeholders": {
@@ -1116,6 +1124,18 @@
   "mc_settings_tab_list_desc": {
     "message": "tab na słowie pokazuje pasujące emotki na liście nad polem wpisywania. strzałki wybierają, tab lub enter wstawia, esc zamyka. wyłączone uzupełnia od razu w tekście"
   },
+  "mc_settings_colon_list": {
+    "message": "lista `:` pokazuje"
+  },
+  "mc_settings_colon_list_desc": {
+    "message": "co lista otwierana wpisaniem : stawia na górze. najpierw emotki to kolejność tab; najpierw emoji stawia każde emoji nad emotkami. tab i wyszukiwanie w wyborze trzymają jedną kolejność"
+  },
+  "lib_opt_colon_emotes": {
+    "message": "najpierw emotki"
+  },
+  "lib_opt_colon_emoji": {
+    "message": "najpierw emoji"
+  },
   "mc_settings_show_pronouns": {
     "message": "zaimki"
   },
@@ -1350,8 +1370,8 @@
   "mc_signed_out_action": {
     "message": "zaloguj"
   },
-  "mc_chatlogs_copy_failed": {
-    "message": "nie udało się skopiować"
+  "common_clipboard_blocked": {
+    "message": "schowek zablokowany"
   },
   "mc_common_unknown": {
     "message": "nieznane"
@@ -2236,6 +2256,14 @@
   },
   "mc_mod_label_deleted": {
     "message": "usunięto"
+  },
+  "mc_mod_deleted_only": {
+    "message": "usunięto tylko na $PLATFORMS$",
+    "placeholders": {
+      "platforms": {
+        "content": "$1"
+      }
+    }
   },
   "mc_mod_label_timed_out": {
     "message": "timeout $SEC$s",
@@ -3369,6 +3397,9 @@
       }
     }
   },
+  "mc_cycle_wont_show": {
+    "message": "nie pokaże się tutaj"
+  },
   "mc_twapi_ql_subscribe": {
     "message": "subskrybuj"
   },
@@ -4114,6 +4145,9 @@
   },
   "mc_social_no_mod_actions": {
     "message": "brak akcji moderatorów"
+  },
+  "mc_modlog_connect": {
+    "message": "pokaż, który mod co zrobił — połącz twitch"
   },
   "mc_social_platform": {
     "message": "platforma"
@@ -7431,5 +7465,17 @@
   },
   "common_close": {
     "message": "zamknij"
+  },
+  "mc_picker_favorites": {
+    "message": "ulubione"
+  },
+  "mc_fav_add": {
+    "message": "dodaj do ulubionych"
+  },
+  "mc_fav_remove": {
+    "message": "usuń z ulubionych"
+  },
+  "mc_fav_full": {
+    "message": "ulubione pełne — najpierw usuń jedną"
   }
 }

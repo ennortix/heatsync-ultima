@@ -849,6 +849,14 @@
   "mc_input_no_channel": {
     "message": "нет канала — выбери вкладку выше"
   },
+  "mc_input_login_to_chat": {
+    "message": "войдите в $PLATFORM$ или heatsync",
+    "placeholders": {
+      "platform": {
+        "content": "$1"
+      }
+    }
+  },
   "mc_whisper_follow_to_dm": {
     "message": "подпишись на $USER$, чтобы писать в лс — подписаться и отправить",
     "placeholders": {
@@ -1116,6 +1124,18 @@
   "mc_settings_tab_list_desc": {
     "message": "tab на слове показывает подходящие эмоуты в списке над полем ввода. стрелки выбирают, tab или enter вставляет, esc закрывает. выключено — дополняет прямо в тексте"
   },
+  "mc_settings_colon_list": {
+    "message": "список `:` показывает"
+  },
+  "mc_settings_colon_list_desc": {
+    "message": "что список, открываемый вводом :, ставит наверх. сначала эмоуты — порядок tab; сначала эмодзи ставит каждое эмодзи над эмоутами. tab и поиск в выборе держат один порядок"
+  },
+  "lib_opt_colon_emotes": {
+    "message": "сначала эмоуты"
+  },
+  "lib_opt_colon_emoji": {
+    "message": "сначала эмодзи"
+  },
   "mc_settings_show_pronouns": {
     "message": "местоимения"
   },
@@ -1350,8 +1370,8 @@
   "mc_signed_out_action": {
     "message": "войти"
   },
-  "mc_chatlogs_copy_failed": {
-    "message": "не удалось скопировать"
+  "common_clipboard_blocked": {
+    "message": "буфер обмена заблокирован"
   },
   "mc_common_unknown": {
     "message": "неизвестно"
@@ -2236,6 +2256,14 @@
   },
   "mc_mod_label_deleted": {
     "message": "удалено"
+  },
+  "mc_mod_deleted_only": {
+    "message": "удалено только на $PLATFORMS$",
+    "placeholders": {
+      "platforms": {
+        "content": "$1"
+      }
+    }
   },
   "mc_mod_label_timed_out": {
     "message": "таймаут $SEC$с",
@@ -3369,6 +3397,9 @@
       }
     }
   },
+  "mc_cycle_wont_show": {
+    "message": "здесь не отобразится"
+  },
   "mc_twapi_ql_subscribe": {
     "message": "подписаться"
   },
@@ -4114,6 +4145,9 @@
   },
   "mc_social_no_mod_actions": {
     "message": "действий модераторов пока нет"
+  },
+  "mc_modlog_connect": {
+    "message": "показывать, какой модератор что сделал — подключить twitch"
   },
   "mc_social_platform": {
     "message": "платформа"
@@ -7431,5 +7465,17 @@
   },
   "common_close": {
     "message": "закрыть"
+  },
+  "mc_picker_favorites": {
+    "message": "избранное"
+  },
+  "mc_fav_add": {
+    "message": "добавить в избранное"
+  },
+  "mc_fav_remove": {
+    "message": "убрать из избранного"
+  },
+  "mc_fav_full": {
+    "message": "избранное заполнено — сначала убери один"
   }
 }

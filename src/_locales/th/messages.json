@@ -849,6 +849,14 @@
   "mc_input_no_channel": {
     "message": "ไม่มีช่อง — เลือกแท็บด้านบน"
   },
+  "mc_input_login_to_chat": {
+    "message": "เข้าสู่ระบบ $PLATFORM$ หรือ heatsync",
+    "placeholders": {
+      "platform": {
+        "content": "$1"
+      }
+    }
+  },
   "mc_whisper_follow_to_dm": {
     "message": "ติดตาม $USER$ เพื่อ dm หา — ติดตาม + ส่ง",
     "placeholders": {
@@ -1116,6 +1124,18 @@
   "mc_settings_tab_list_desc": {
     "message": "กด tab บนคำจะแสดงอีโมตที่ตรงกันในรายการเหนือช่องพิมพ์ ลูกศรเลือก tab หรือ enter แทรก esc ปิด ปิดไว้จะเติมคำในข้อความทันที"
   },
+  "mc_settings_colon_list": {
+    "message": "รายการ `:` แสดง"
+  },
+  "mc_settings_colon_list_desc": {
+    "message": "สิ่งที่รายการซึ่งเปิดเมื่อพิมพ์ : วางไว้บนสุด อีโมตก่อนคือลำดับเดียวกับ tab ส่วนอีโมจิก่อนจะวางอีโมจิทุกตัวไว้เหนืออีโมต tab และการค้นหาในตัวเลือกใช้ลำดับเดียว"
+  },
+  "lib_opt_colon_emotes": {
+    "message": "อีโมตก่อน"
+  },
+  "lib_opt_colon_emoji": {
+    "message": "อีโมจิก่อน"
+  },
   "mc_settings_show_pronouns": {
     "message": "สรรพนาม"
   },
@@ -1350,8 +1370,8 @@
   "mc_signed_out_action": {
     "message": "เข้าสู่ระบบ"
   },
-  "mc_chatlogs_copy_failed": {
-    "message": "คัดลอกไม่สำเร็จ"
+  "common_clipboard_blocked": {
+    "message": "คลิปบอร์ดถูกบล็อก"
   },
   "mc_common_unknown": {
     "message": "ไม่ทราบ"
@@ -2236,6 +2256,14 @@
   },
   "mc_mod_label_deleted": {
     "message": "ลบแล้ว"
+  },
+  "mc_mod_deleted_only": {
+    "message": "ลบแล้วเฉพาะบน $PLATFORMS$",
+    "placeholders": {
+      "platforms": {
+        "content": "$1"
+      }
+    }
   },
   "mc_mod_label_timed_out": {
     "message": "timeout $SEC$s",
@@ -3369,6 +3397,9 @@
       }
     }
   },
+  "mc_cycle_wont_show": {
+    "message": "จะไม่แสดงที่นี่"
+  },
   "mc_twapi_ql_subscribe": {
     "message": "สมัครสมาชิก"
   },
@@ -4114,6 +4145,9 @@
   },
   "mc_social_no_mod_actions": {
     "message": "ยังไม่มีการกระทำของม็อด"
+  },
+  "mc_modlog_connect": {
+    "message": "แสดงว่าม็อดคนไหนทำแต่ละอย่าง — เชื่อมต่อ twitch"
   },
   "mc_social_platform": {
     "message": "แพลตฟอร์ม"
@@ -7431,5 +7465,17 @@
   },
   "common_close": {
     "message": "ปิด"
+  },
+  "mc_picker_favorites": {
+    "message": "รายการโปรด"
+  },
+  "mc_fav_add": {
+    "message": "เพิ่มในรายการโปรด"
+  },
+  "mc_fav_remove": {
+    "message": "นำออกจากรายการโปรด"
+  },
+  "mc_fav_full": {
+    "message": "รายการโปรดเต็มแล้ว — นำออกหนึ่งรายการก่อน"
   }
 }

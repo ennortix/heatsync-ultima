@@ -39,6 +39,7 @@ const SITE = siteDir('client/utils/gif-search-remote.js')
 const FILES = [
   ['client/utils/gif-search-remote.js', 'src/lib/gif-search-remote.js'],
   ['client/utils/emote-refs.js', 'src/lib/emote-refs.js'],
+  ['client/utils/emote-refs-normalize.js', 'src/lib/emote-refs-normalize.js'],
   ['client/utils/stream-event-text.js', 'src/lib/stream-event-text.js'],
   ['client/card/card-time.js', 'src/lib/card-time.js'],
   ['client/card/card-model.js', 'src/lib/card-model.js'],
@@ -49,6 +50,12 @@ const FILES = [
   ['shared/brand/tokens.gen.js', 'src/lib/brand-tokens.js'],
   ['scripts/lib/inline-doctrine.mjs', 'tests/lib/inline-doctrine.mjs'],
   ['scripts/lib/strip-comments.mjs', 'tests/lib/strip-comments.mjs'],
+  ['shared/emote-law.ts', 'shared/emote-law.ts'],
+  ['shared/emote-rank.ts', 'shared/emote-rank.ts'],
+  ['shared/emote-usage.ts', 'shared/emote-usage.ts'],
+  ['shared/emote-law.vectors.json', 'shared/emote-law.vectors.json'],
+  ['shared/emote-mods.vectors.json', 'shared/emote-mods.vectors.json'],
+  ['tests/helpers/emote-world.ts', 'tests/helpers/emote-world.ts'],
 ]
 
 describe('site-copy parity', () => {

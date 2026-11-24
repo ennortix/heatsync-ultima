@@ -2869,10 +2869,10 @@
             insertEmoteIntoChat(`:${e.name}:`)
           } else if (!isGlobal && !inInventory && isLoggedIn && currentTab !== 'mine') {
             addEmoteToInventorySilent(e)
-              .then(() => insertEmoteIntoChat(e.name))
-              .catch(() => insertEmoteIntoChat(e.name))
+              .then(() => insertEmoteIntoChat(e.name, e.hash))
+              .catch(() => insertEmoteIntoChat(e.name, e.hash))
           } else {
-            insertEmoteIntoChat(e.name)
+            insertEmoteIntoChat(e.name, e.hash)
           }
         })
 
@@ -3520,7 +3520,7 @@
         }
       }
       recordRecentEmote(emote)
-      insertEmoteIntoChat(emote.name)
+      insertEmoteIntoChat(emote.name, emote.hash)
       closePanel()
     }
 
@@ -4308,8 +4308,8 @@
                 const shortId = resp.data?.shortId || resp.shortId
                 if (shortId) {
                   discoverShareUrl = `https://heatsync.org/s/${shortId}`
-                  navigator.clipboard.writeText(discoverShareUrl).catch(() => {})
-                  showPickerToast(t('hsbtn_share_copied', [discoverShareUrl]))
+                  const copied = await HS.copyText(discoverShareUrl)
+                  showPickerToast(copied ? t('hsbtn_share_copied', [discoverShareUrl]) : discoverShareUrl)
                 } else {
                   showPickerToast(t('hsbtn_share_failed'))
                 }
@@ -4333,10 +4333,10 @@
       const copyName = document.createElement('button')
       copyName.className = 'hs-emote-ctx-item'
       copyName.textContent = t('btn_ctx_copy_name')
-      copyName.addEventListener('click', () => {
+      copyName.addEventListener('click', async () => {
         dismissContextMenu()
-        navigator.clipboard.writeText(emote.name).catch(() => {})
-        showPickerToast(t('btn_toast_copied'))
+        const copied = await HS.copyText(emote.name)
+        showPickerToast(t(copied ? 'btn_toast_copied' : 'common_clipboard_blocked'))
       })
       menu.appendChild(copyName)
 
@@ -4344,10 +4344,10 @@
       const copyUrl = document.createElement('button')
       copyUrl.className = 'hs-emote-ctx-item'
       copyUrl.textContent = t('btn_ctx_copy_url')
-      copyUrl.addEventListener('click', () => {
+      copyUrl.addEventListener('click', async () => {
         dismissContextMenu()
-        navigator.clipboard.writeText(emote.url || emote.pickerUrl || '').catch(() => {})
-        showPickerToast(t('btn_toast_copied'))
+        const copied = await HS.copyText(emote.url || emote.pickerUrl || '')
+        showPickerToast(t(copied ? 'btn_toast_copied' : 'common_clipboard_blocked'))
       })
       menu.appendChild(copyUrl)
 
@@ -4355,10 +4355,10 @@
       const copyMd = document.createElement('button')
       copyMd.className = 'hs-emote-ctx-item'
       copyMd.textContent = t('hsbtn_copy_markdown')
-      copyMd.addEventListener('click', () => {
+      copyMd.addEventListener('click', async () => {
         dismissContextMenu()
-        navigator.clipboard.writeText(`![${emote.name}](${emote.url || emote.pickerUrl || ''})`).catch(() => {})
-        showPickerToast(t('btn_toast_copied'))
+        const copied = await HS.copyText(`![${emote.name}](${emote.url || emote.pickerUrl || ''})`)
+        showPickerToast(t(copied ? 'btn_toast_copied' : 'common_clipboard_blocked'))
       })
       menu.appendChild(copyMd)
 
@@ -4715,7 +4715,8 @@
     }
 
     // Insert emote name into Twitch chat input
-    function insertEmoteIntoChat(emoteName) {
+    function insertEmoteIntoChat(emoteName, hash) {
+      window.__hsNativePick?.(emoteName, hash) // a tile is this draft's pick of that picture: content.js, native-emote-law.js
       const platform = window.heatsyncPlatform?.detectPlatform() || 'unknown'
 
       let chatInput
@@ -4759,7 +4760,6 @@
         }
       }
 
-      // Close panel after inserting
       closePanel()
     }
 

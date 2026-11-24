@@ -15,7 +15,7 @@
 // no-network behavior even if --publish is also passed.
 //
 // credentials live in ~/.config/heatsync/publish.env (chmod 600, never in the
-// repo). see README.md "releasing" for one-time setup.
+// repo). see docs/RELEASING.md for one-time setup.
 
 import { execFileSync } from 'node:child_process'
 import { createHmac } from 'node:crypto'
@@ -210,7 +210,7 @@ async function cwsAuthFlow() {
   if (!map.CWS_CLIENT_ID || !map.CWS_CLIENT_SECRET) {
     console.error(`CWS_CLIENT_ID / CWS_CLIENT_SECRET not found in ${path}`)
     console.error('create a Google Cloud OAuth client (type "Web application", redirect URI http://127.0.0.1:8976) and add both keys first')
-    console.error('see README.md "releasing" for the exact steps')
+    console.error('see docs/RELEASING.md for the exact steps')
     process.exit(1)
   }
 
@@ -369,13 +369,13 @@ function composeApprovalNotes(ver) {
     bunVersion = execFileSync('bun', ['--version']).toString().trim()
   } catch {}
   return [
-    'reproducible build:',
+    'reproducible build (needs zip and node on the path):',
     `  1. bun ${bunVersion} (https://bun.sh)`,
-    '  2. git clone https://github.com/mellen9999/heatsync-extension.git && cd heatsync-extension',
-    `  3. git checkout v${ver}`,
-    '  4. bun install',
-    '  5. bun run build.js firefox --package',
-    `output: dist/firefox/ (unpacked), dist/heatsync-firefox-${ver}.zip (submitted build)`,
+    `  2. unzip the attached heatsync-source-${ver}.zip into an empty folder and cd into it`,
+    `     (or: git clone https://github.com/mellen9999/heatsync-extension.git && cd heatsync-extension && git checkout v${ver})`,
+    '  3. bun install --frozen-lockfile',
+    '  4. bun run build.js firefox --package',
+    `output: dist/firefox/ (unpacked), dist/heatsync-firefox-${ver}.zip — same files, byte for byte, as the submitted build`,
     '',
     'no remote code is executed at build or runtime — zero runtime dependencies ' +
       '(enforced by build.js checkNoRuntimeDeps), no eval()/new Function() anywhere in src/ or chrome/ ' +

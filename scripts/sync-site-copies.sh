@@ -37,6 +37,16 @@
 # this stick; biome.json leaves these files unformatted so a formatter pass
 # cannot break byte parity.
 #
+# shared/emote-law.{ts,vectors.json} + shared/emote-rank.ts are the emote law (docs/emote-law.md on the
+# site): the one rule for "which emote is this word". The vectors are its contract; the extension
+# runs every case against its own copy (tests/emote-law-vectors.test.ts, which builds its worlds with
+# tests/helpers/emote-world.ts, copied too). They keep the site's shared/ layout so the helper's
+# own imports resolve unchanged. build.js transpiles the .ts into the multichat bundle.
+#
+# shared/emote-mods.vectors.json is the modifier rule as data (docs/emote-law.md, modifiers): what
+# the words add up to and which emote a word changes. tests/emote-mods-vectors.test.js runs every
+# row through the real row renderer.
+#
 #   scripts/sync-site-copies.sh            # from ../heatsync (or $HS_SITE_DIR)
 set -euo pipefail
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -46,6 +56,7 @@ site=${HS_SITE_DIR:-$(cd "$here/../.." 2>/dev/null && pwd)/heatsync}
 for pair in \
   client/utils/gif-search-remote.js:src/lib/gif-search-remote.js \
   client/utils/emote-refs.js:src/lib/emote-refs.js \
+  client/utils/emote-refs-normalize.js:src/lib/emote-refs-normalize.js \
   client/utils/stream-event-text.js:src/lib/stream-event-text.js \
   client/card/card-time.js:src/lib/card-time.js \
   client/card/card-model.js:src/lib/card-model.js \
@@ -55,7 +66,13 @@ for pair in \
   public/css/modules/brand-rows.css:src/multichat/styles/21-brand-rows.css \
   shared/brand/tokens.gen.js:src/lib/brand-tokens.js \
   scripts/lib/inline-doctrine.mjs:tests/lib/inline-doctrine.mjs \
-  scripts/lib/strip-comments.mjs:tests/lib/strip-comments.mjs
+  scripts/lib/strip-comments.mjs:tests/lib/strip-comments.mjs \
+  shared/emote-law.ts:shared/emote-law.ts \
+  shared/emote-rank.ts:shared/emote-rank.ts \
+  shared/emote-usage.ts:shared/emote-usage.ts \
+  shared/emote-law.vectors.json:shared/emote-law.vectors.json \
+  shared/emote-mods.vectors.json:shared/emote-mods.vectors.json \
+  tests/helpers/emote-world.ts:tests/helpers/emote-world.ts
 do
   src_rel="${pair%%:*}"
   dst_rel="${pair##*:}"

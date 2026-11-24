@@ -849,6 +849,14 @@
   "mc_input_no_channel": {
     "message": "κανένα κανάλι — διάλεξε καρτέλα από πάνω"
   },
+  "mc_input_login_to_chat": {
+    "message": "συνδέσου στο $PLATFORM$ ή στο heatsync",
+    "placeholders": {
+      "platform": {
+        "content": "$1"
+      }
+    }
+  },
   "mc_whisper_follow_to_dm": {
     "message": "κάνε follow τον/την $USER$ για dm — follow + αποστολή",
     "placeholders": {
@@ -1116,6 +1124,18 @@
   "mc_settings_tab_list_desc": {
     "message": "το tab πάνω σε λέξη δείχνει τα αντίστοιχα emotes σε λίστα πάνω από το πεδίο. τα βέλη επιλέγουν, tab ή enter εισάγει, esc κλείνει. όταν είναι κλειστό συμπληρώνει μέσα στο κείμενο"
   },
+  "mc_settings_colon_list": {
+    "message": "η λίστα `:` δείχνει"
+  },
+  "mc_settings_colon_list_desc": {
+    "message": "τι βάζει πάνω η λίστα που ανοίγει το : . πρώτα τα emotes είναι η σειρά του tab· πρώτα τα emoji βάζει κάθε emoji πάνω από τα emotes. το tab και η αναζήτηση του επιλογέα κρατούν μία σειρά"
+  },
+  "lib_opt_colon_emotes": {
+    "message": "πρώτα τα emotes"
+  },
+  "lib_opt_colon_emoji": {
+    "message": "πρώτα τα emoji"
+  },
   "mc_settings_show_pronouns": {
     "message": "αντωνυμίες"
   },
@@ -1350,8 +1370,8 @@
   "mc_signed_out_action": {
     "message": "σύνδεση"
   },
-  "mc_chatlogs_copy_failed": {
-    "message": "η αντιγραφή απέτυχε"
+  "common_clipboard_blocked": {
+    "message": "το πρόχειρο αποκλείστηκε"
   },
   "mc_common_unknown": {
     "message": "άγνωστο"
@@ -2236,6 +2256,14 @@
   },
   "mc_mod_label_deleted": {
     "message": "διαγράφηκε"
+  },
+  "mc_mod_deleted_only": {
+    "message": "διαγράφηκε μόνο στο $PLATFORMS$",
+    "placeholders": {
+      "platforms": {
+        "content": "$1"
+      }
+    }
   },
   "mc_mod_label_timed_out": {
     "message": "timeout $SEC$s",
@@ -3369,6 +3397,9 @@
       }
     }
   },
+  "mc_cycle_wont_show": {
+    "message": "δεν θα εμφανιστεί εδώ"
+  },
   "mc_twapi_ql_subscribe": {
     "message": "συνδρομή"
   },
@@ -4114,6 +4145,9 @@
   },
   "mc_social_no_mod_actions": {
     "message": "καμία ενέργεια mod ακόμα"
+  },
+  "mc_modlog_connect": {
+    "message": "δείξε ποιος συντονιστής έκανε το καθένα — σύνδεσε το twitch"
   },
   "mc_social_platform": {
     "message": "πλατφόρμα"
@@ -7431,5 +7465,17 @@
   },
   "common_close": {
     "message": "κλείσιμο"
+  },
+  "mc_picker_favorites": {
+    "message": "αγαπημένα"
+  },
+  "mc_fav_add": {
+    "message": "προσθήκη στα αγαπημένα"
+  },
+  "mc_fav_remove": {
+    "message": "αφαίρεση από τα αγαπημένα"
+  },
+  "mc_fav_full": {
+    "message": "τα αγαπημένα γέμισαν — αφαίρεσε πρώτα ένα"
   }
 }

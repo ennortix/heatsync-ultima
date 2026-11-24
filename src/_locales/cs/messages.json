@@ -849,6 +849,14 @@
   "mc_input_no_channel": {
     "message": "žádný kanál — vyber tab nahoře"
   },
+  "mc_input_login_to_chat": {
+    "message": "přihlas se na $PLATFORM$ nebo heatsync",
+    "placeholders": {
+      "platform": {
+        "content": "$1"
+      }
+    }
+  },
   "mc_whisper_follow_to_dm": {
     "message": "sleduj $USER$ a napiš mu — sledovat + odeslat",
     "placeholders": {
@@ -1116,6 +1124,18 @@
   "mc_settings_tab_list_desc": {
     "message": "tab na slově ukáže odpovídající emoty v seznamu nad polem pro psaní. šipky vybírají, tab nebo enter vloží, esc zavře. vypnuto doplňuje přímo v textu"
   },
+  "mc_settings_colon_list": {
+    "message": "seznam `:` ukazuje"
+  },
+  "mc_settings_colon_list_desc": {
+    "message": "co dá seznam otevřený napsáním : nahoru. nejdřív emoty je pořadí, které dává tab; nejdřív emoji dá každé emoji nad emoty. tab a hledání ve výběru drží jedno pořadí"
+  },
+  "lib_opt_colon_emotes": {
+    "message": "nejdřív emoty"
+  },
+  "lib_opt_colon_emoji": {
+    "message": "nejdřív emoji"
+  },
   "mc_settings_show_pronouns": {
     "message": "zájmena"
   },
@@ -1350,8 +1370,8 @@
   "mc_signed_out_action": {
     "message": "přihlásit"
   },
-  "mc_chatlogs_copy_failed": {
-    "message": "kopírování selhalo"
+  "common_clipboard_blocked": {
+    "message": "schránka zablokována"
   },
   "mc_common_unknown": {
     "message": "neznámé"
@@ -2236,6 +2256,14 @@
   },
   "mc_mod_label_deleted": {
     "message": "smazáno"
+  },
+  "mc_mod_deleted_only": {
+    "message": "smazáno jen na $PLATFORMS$",
+    "placeholders": {
+      "platforms": {
+        "content": "$1"
+      }
+    }
   },
   "mc_mod_label_timed_out": {
     "message": "timeout $SEC$ s",
@@ -3369,6 +3397,9 @@
       }
     }
   },
+  "mc_cycle_wont_show": {
+    "message": "tady se nezobrazí"
+  },
   "mc_twapi_ql_subscribe": {
     "message": "odebírat"
   },
@@ -4114,6 +4145,9 @@
   },
   "mc_social_no_mod_actions": {
     "message": "zatím žádné mod akce"
+  },
+  "mc_modlog_connect": {
+    "message": "ukázat, který moderátor co udělal — propojit twitch"
   },
   "mc_social_platform": {
     "message": "platforma"
@@ -7431,5 +7465,17 @@
   },
   "common_close": {
     "message": "zavřít"
+  },
+  "mc_picker_favorites": {
+    "message": "oblíbené"
+  },
+  "mc_fav_add": {
+    "message": "přidat do oblíbených"
+  },
+  "mc_fav_remove": {
+    "message": "odebrat z oblíbených"
+  },
+  "mc_fav_full": {
+    "message": "oblíbené jsou plné — nejdřív jeden odeber"
   }
 }

@@ -256,7 +256,11 @@ async function site(env: Env, plat: Plat, url: string, errs: string[]): Promise<
         await sleep(60_000)
         const share = (await styleS() - s0) / ((Date.now() - w0) / 1000)
         info(`${name}: styles took ${(share * 100).toFixed(1)}% of the main thread over a minute of chat (${n0} rows on screen)`)
-        check('working out styles takes under 25% of the main thread while chat flows', share < 0.25 ? [] : [`${(share * 100).toFixed(0)}%`])
+        // a red here was one run in four on kick (11-20, 73%) with nothing to tell our list from the
+        // page's own: what each restyle touched says which. a row restyling the whole page is
+        // kick's sheet reaching our list (kick-css-fix.js); many small ones are the page animating
+        const why = share < 0.25 ? null : await styleTrace(cdp, p)
+        check('working out styles takes under 25% of the main thread while chat flows', share < 0.25 ? [] : [`${(share * 100).toFixed(0)}%`], why)
       }
       const s = await scanRows(p, MARK[plat])
       keep(s.hits)
@@ -336,7 +340,8 @@ async function site(env: Env, plat: Plat, url: string, errs: string[]): Promise<
       const hlRe = wordRe(hlW.word)
       const say = (rs: CRow[]) => rs.filter((r) => hlRe.test(r.body) && !hideRe.test(r.body))
       info(`${name}: hide "${hideW.word}" (${hideW.n} rows), highlight "${hlW.word}" (${hlW.n} rows)`)
-      const before = new Set((await chatRows(p)).map((r) => r.key))
+      const beforeRows = await chatRows(p)
+      const before = new Set(beforeRows.map((r) => r.key))
       await writeLocal(env, 'chat_filter_rules', JSON.stringify([rule('e2e-hide', 'hide', hideW.word), rule('e2e-hl', 'highlight', hlW.word)]))
       try {
         await sleep(6000) // the repaint is given its time before anything is judged
@@ -388,14 +393,18 @@ async function site(env: Env, plat: Plat, url: string, errs: string[]): Promise<
       let after = await chatRows(p)
       const stuck = after.filter((r) => r.hl && drawnUnder.has(r.key))
       const seenAgain = after.filter((r) => hideRe.test(r.body)).length
-      // a chat fast enough to have pushed every row from before the rules off the list has pushed the
-      // rows that said the word off with them: nothing is left to come back (kick, 13 rows a second)
-      const turnedOver = !after.some((r) => before.has(r.key))
-      if (!seenAgain && turnedOver) info(`${name}: every row from before the rules has left the list: "${hideW.word}" coming back is not observable`)
+      // a row the rule took off comes back only where the list still reaches: it sat after a row from
+      // before the rules that is still on it. a fast chat pushes every earlier row off (kick, 13 rows a
+      // second), and a word one row said goes with the oldest of them while newer ones stay (nightly
+      // 11-23: 1 row said it, 245 arrived under the rules): nothing is left to come back
+      const left = new Set(after.map((r) => r.key))
+      const oldestLeft = beforeRows.findIndex((r) => left.has(r.key))
+      const dueBack = oldestLeft >= 0 && beforeRows.slice(oldestLeft).some((r) => hideRe.test(r.body))
+      if (!seenAgain && !dueBack) info(`${name}: every row that said "${hideW.word}" before the rules has left the list: it coming back is not observable`)
       check(
         'rules removed: rows drawn under the highlight lose it, rows saying the word are on screen',
-        [...(stuck.length ? [`${stuck.length}/${drawnUnder.size} rows keep the rule highlight: ${JSON.stringify(stuck[0].body.slice(0, 80))}`] : []), ...(seenAgain || turnedOver ? [] : [`no row says "${hideW.word}"`])],
-        { stuck: stuck.slice(0, 2), seenAgain },
+        [...(stuck.length ? [`${stuck.length}/${drawnUnder.size} rows keep the rule highlight: ${JSON.stringify(stuck[0].body.slice(0, 80))}`] : []), ...(seenAgain || !dueBack ? [] : [`no row says "${hideW.word}"`])],
+        { stuck: stuck.slice(0, 2), seenAgain, oldestLeft, pre: beforeRows.length },
       )
       // new rows after removal must not take the highlight
       await sleep(20_000)
@@ -425,6 +434,39 @@ async function ytCandidates(): Promise<string[]> {
   const lofi = await liveYtVideo().catch(() => null)
   if (lofi) ids.push(lofi.id)
   return [...new Set(ids)]
+}
+
+/** Five seconds of the style work: how often, how many elements each, against the page's size. */
+async function styleTrace(cdp: any, p: any) {
+  const events: any[] = []
+  const onData = (d: any) => events.push(...d.value.filter((e: any) => e.name === 'UpdateLayoutTree' || e.name === 'Animation'))
+  cdp.on('Tracing.dataCollected', onData)
+  try {
+    await cdp.send('Tracing.start', { categories: 'devtools.timeline', transferMode: 'ReportEvents' })
+    await sleep(5000)
+    const done = new Promise((r) => cdp.once('Tracing.tracingComplete', r))
+    await cdp.send('Tracing.end')
+    await done
+  } catch (e) {
+    return { url: p.url(), traceFailed: String(e).slice(0, 200) }
+  } finally {
+    cdp.off('Tracing.dataCollected', onData)
+  }
+  const recalcs = events.filter((e) => e.name === 'UpdateLayoutTree' && e.ph === 'X')
+  const counts = recalcs.map((e) => e.args?.elementCount || 0).sort((a, b) => a - b)
+  const page = await p.evaluate(() => ({
+    elements: document.getElementsByTagName('*').length,
+    ours: document.querySelectorAll('#hs-mc-messages *').length,
+    animations: document.getAnimations().length,
+  }))
+  return {
+    url: p.url(),
+    ...page,
+    recalcsPerS: +(recalcs.length / 5).toFixed(1),
+    msPerS: +(recalcs.reduce((n, e) => n + (e.dur || 0), 0) / 5000).toFixed(1),
+    elementCount: { median: counts[counts.length >> 1] || 0, max: counts.at(-1) || 0 },
+    wholePage: recalcs.filter((e) => (e.args?.elementCount || 0) > page.elements / 2).length,
+  }
 }
 
 export async function s25Rows() {

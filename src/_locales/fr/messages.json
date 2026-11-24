@@ -849,6 +849,14 @@
   "mc_input_no_channel": {
     "message": "pas de chaîne — choisis un onglet au-dessus"
   },
+  "mc_input_login_to_chat": {
+    "message": "connecte-toi sur $PLATFORM$ ou heatsync",
+    "placeholders": {
+      "platform": {
+        "content": "$1"
+      }
+    }
+  },
   "mc_whisper_follow_to_dm": {
     "message": "suis $USER$ pour lui écrire — suivre + envoyer",
     "placeholders": {
@@ -1116,6 +1124,18 @@
   "mc_settings_tab_list_desc": {
     "message": "tab sur un mot affiche les emotes correspondants dans une liste au-dessus du champ. les flèches choisissent, tab ou entrée insère, échap ferme. désactivé complète directement dans le texte"
   },
+  "mc_settings_colon_list": {
+    "message": "la liste `:` montre"
+  },
+  "mc_settings_colon_list_desc": {
+    "message": "ce que la liste ouverte par : met en haut. emotes d'abord est l'ordre de tab ; emoji d'abord place chaque emoji au-dessus des emotes. tab et la recherche du sélecteur gardent un seul ordre"
+  },
+  "lib_opt_colon_emotes": {
+    "message": "emotes d'abord"
+  },
+  "lib_opt_colon_emoji": {
+    "message": "emoji d'abord"
+  },
   "mc_settings_show_pronouns": {
     "message": "pronoms"
   },
@@ -1350,8 +1370,8 @@
   "mc_signed_out_action": {
     "message": "connexion"
   },
-  "mc_chatlogs_copy_failed": {
-    "message": "copie échouée"
+  "common_clipboard_blocked": {
+    "message": "presse-papiers bloqué"
   },
   "mc_common_unknown": {
     "message": "inconnu"
@@ -2236,6 +2256,14 @@
   },
   "mc_mod_label_deleted": {
     "message": "supprimé"
+  },
+  "mc_mod_deleted_only": {
+    "message": "supprimé sur $PLATFORMS$ seulement",
+    "placeholders": {
+      "platforms": {
+        "content": "$1"
+      }
+    }
   },
   "mc_mod_label_timed_out": {
     "message": "timeout $SEC$s",
@@ -3369,6 +3397,9 @@
       }
     }
   },
+  "mc_cycle_wont_show": {
+    "message": "ne s'affichera pas ici"
+  },
   "mc_twapi_ql_subscribe": {
     "message": "s'abonner"
   },
@@ -4114,6 +4145,9 @@
   },
   "mc_social_no_mod_actions": {
     "message": "aucune action de mod pour l'instant"
+  },
+  "mc_modlog_connect": {
+    "message": "voir quel modo a fait chaque action — connecter twitch"
   },
   "mc_social_platform": {
     "message": "plateforme"
@@ -7431,5 +7465,17 @@
   },
   "common_close": {
     "message": "fermer"
+  },
+  "mc_picker_favorites": {
+    "message": "favoris"
+  },
+  "mc_fav_add": {
+    "message": "ajouter aux favoris"
+  },
+  "mc_fav_remove": {
+    "message": "retirer des favoris"
+  },
+  "mc_fav_full": {
+    "message": "favoris pleins — retires-en un d'abord"
   }
 }

@@ -46,13 +46,6 @@ function feedHeatRepaintSoon() {
   }, 500)
 }
 
-// A cached post by id: the open thread's OP / replies first, then the feed.
-function feedFindMsg(id) {
-  if (!id) return null
-  if (activeThread?.op?.base36_id === id) return activeThread.op
-  return activeThread?.replies?.find((r) => r.base36_id === id) || feedMessages.find((m) => m.base36_id === id) || null
-}
-
 // Every cached object for a post id. The open thread and the feed list hold
 // separate copies of the same post, so a vote landed on one is invisible to
 // the other until it refetches.
@@ -570,7 +563,7 @@ function showFeedEditUI(div, msg) {
       msg.edit_count = resp.data.message?.edit_count
       close()
       // Re-render entire feed to pick up sanitized content + emote refs
-      if (typeof renderFeed === 'function') renderFeed()
+      renderFeed()
     } else {
       errEl.textContent = resp?.data?.error || resp?.error || t('mc_social_edit_failed')
       saveBtn.disabled = false
@@ -628,7 +621,7 @@ async function apiFetch(path, opts = {}) {
 async function loadHsAuth() {
   try {
     const data = await api.storage.local.get(['auth_token_encrypted', 'auth_token'])
-    hsAuthToken = !!(data.auth_token_encrypted || data.auth_token)
+    hsAuthToken = hsAuthRead(data)
     log('Heatsync auth:', hsAuthToken ? 'logged in' : 'anonymous')
   } catch (_) {
     hsAuthToken = false
@@ -651,7 +644,7 @@ async function loadHsAuth() {
       }
       if (changes.auth_token_encrypted || changes.auth_token) {
         const wasAuthed = hsAuthToken
-        hsAuthToken = !!(changes.auth_token_encrypted?.newValue || changes.auth_token?.newValue)
+        hsAuthToken = hsAuthAfter(changes)
         if (wasAuthed !== hsAuthToken) {
           log('Auth state changed:', hsAuthToken ? 'logged in' : 'logged out')
           if (typeof _refreshKickHostSession === 'function') _refreshKickHostSession()
@@ -2092,7 +2085,7 @@ function renderFeed() {
   // Wire post-link hover preview once (event delegation — survives re-renders).
   // Must run before the thread-view early-return below: >>id links live IN the
   // thread view, so wiring only on the feed-list path missed them entirely.
-  if (typeof setupFeedPostLinkHover === 'function') setupFeedPostLinkHover()
+  setupFeedPostLinkHover()
 
   // Update feed tab button text
   const feedTabBtn = tabBarElement?.querySelector('[data-tab="feed"]')
@@ -2453,12 +2446,7 @@ function buildFeedMessageDiv(m, opUsername) {
       // repeated clicks would otherwise stack quotes at that spot
       if (wysiwygEnabled) {
         input.focus()
-        const range = document.createRange()
-        range.selectNodeContents(input)
-        range.collapse(false)
-        const sel = window.getSelection()
-        sel.removeAllRanges()
-        sel.addRange(range)
+        cursorToEnd(input)
         document.execCommand('insertText', false, quote)
       } else {
         input.value += quote
@@ -2632,10 +2620,10 @@ function renderFeedContent(content, emoteRefs) {
     }
   }
 
-  // Local emote fallback: render 7TV/BTTV/FFZ/channel emotes the server can't
-  // resolve (not in emote_refs — site only knows heatsync emotes). The extension
-  // augments with the viewer's full local emote set, matching chat-tile rendering.
-  if (typeof lookupPublicEmote === 'function') {
+  // A word the post shipped no ref for. A post has no room (emote law: no room, no room rule), so
+  // it is a global or it is text: never the open chat tab's emote (the same post drew a different
+  // picture per tab), never yours (your emote on their post).
+  {
     const refNames = emoteRefs && typeof emoteRefs === 'object' ? new Set(Object.keys(emoteRefs)) : null
     const parts = html.split(/(<[^>]+>)/)
     html = parts
@@ -2648,9 +2636,7 @@ function renderFeedContent(content, emoteRefs) {
           // the bare form when the qualified token misses.
           const bare = word.replace(/\([^)\s]*\)$/, '')
           if (bare !== word && refNames?.has(bare)) return word // handled by emote_refs pass
-          // Another author's bare word: channel + globals only. lookupEmote leads with the
-          // viewer's own inventory, which would draw MY emote on THEIR post (rule 4).
-          const em = lookupPublicEmote(word) || (bare !== word ? lookupPublicEmote(bare) : null)
+          const em = emoteCache.get(word) || (bare !== word ? emoteCache.get(bare) : null)
           // A blocked emote the caches no longer hold is still boxed (don't leak the name). One
           // they do hold is judged by its own key in renderFeedEmote, so blocking one W never
           // boxes another.
@@ -2661,9 +2647,7 @@ function renderFeedContent(content, emoteRefs) {
           ) {
             return renderFeedEmote(word, '', 'heatsync', '')
           }
-          // Own-inventory cwCats gate (viewer_show_* toggles) — lookupEmote's
-          // first hit is viewerPersonalEmotes, which carries cwCats the same
-          // way processEmotes' hsOwnCwHiddenCat check does for chat.
+          // a global the viewer's own content toggles hide (cwCats) is boxed, as in chat
           if (em) {
             const cwCat = typeof hsOwnCwHiddenCat === 'function' ? hsOwnCwHiddenCat(em) : ''
             if (cwCat) return renderFeedEmote(word, '', em.source || 'heatsync', em.hash || '', cwCat)
@@ -2960,38 +2944,42 @@ function _extractFeedBodyText(root) {
 // builder (src/lib/emote-refs.js, byte copy), so a post from here vouches the
 // same way a post from heatsync.org does.
 //
-// Sources, in the order the composer itself resolves a word: an emote picked
-// from remote search this session (recentRemoteCompletions — url-only ref, no
-// hash yet), then whatever the composer knows (channel > owned > global). A
+// Sources, in the law's order for a line with no room: a pick made in this very
+// message (the box's own draft; url-only ref, no hash yet), then yours, then globals. A
 // known emote with a real inventory hash goes through emotesMap so it keeps the
 // hash; anything else is registered as a url-only catalog ref. The server drops
 // a ref it dislikes, never the post, and the sanitizer re-checks every url.
 const FEED_REF_HASH_RE = /^[a-f0-9]{8,64}$/i
-function buildFeedEmoteRefs(text) {
+function buildFeedEmoteRefs(text, from, quoted) {
   if (!text) return null
   const owned = new Map()
   const names = new Set()
+  const box = {} // this post's own: a name registered for an earlier post can never vouch this one
+  const reg = (e) => registerRemoteEmoteRef(e, box)
   for (const word of String(text).split(/\s+/)) {
     if (!word) continue
     names.add(word)
     if (word.length > 1 && word.endsWith('0')) names.add(word.slice(0, -1))
   }
   for (const name of names) {
-    const pick = typeof recentRemoteCompletions !== 'undefined' ? recentRemoteCompletions.get(name) : null
+    // a pick made in THIS message, in the box it was written in; a post built from elsewhere has none
+    const held = from ? heldPick(name, from) : null
+    const pick = held && (held[0] || held[1])
     if (pick?.url && /^https:/i.test(pick.url)) {
-      registerRemoteEmoteRef({ name, url: pick.url, provider: pick.source, zeroWidth: !!pick.zeroWidth })
+      reg({ name, url: pick.url, provider: pick.provider, zeroWidth: !!pick.zeroWidth })
       continue
     }
-    const e = typeof lookupEmoteRenderOrder === 'function' ? lookupEmoteRenderOrder(name) : null
+    // a post has no room (yours, then globals); a quoted chat line is its room's words, never yours
+    const e = quoted ? lookupPublicEmote(name) : viewerPersonalEmotes.get(name) || emoteCache.get(name)
     if (!e?.url || !/^https:/i.test(e.url)) continue
     const provider = e.source || e.provider
     if (typeof e.hash === 'string' && FEED_REF_HASH_RE.test(e.hash)) {
       owned.set(name, { ...e, name, provider })
     } else {
-      registerRemoteEmoteRef({ name, url: e.url, provider, zeroWidth: !!e.zeroWidth, width: e.width, height: e.height })
+      reg({ name, url: e.url, provider, zeroWidth: !!e.zeroWidth, width: e.width, height: e.height })
     }
   }
-  const refs = buildEmoteRefs(text, owned)
+  const refs = buildEmoteRefs(text, owned, undefined, box)
   return Object.keys(refs).length ? refs : null
 }
 
@@ -3026,7 +3014,7 @@ async function postFeedMessage(text, { topLevel = false, replyTo = null } = {}) 
   }
 
   const body = { content: text }
-  const emoteRefs = buildFeedEmoteRefs(text)
+  const emoteRefs = buildFeedEmoteRefs(text, lawBox())
   if (emoteRefs) body.emote_refs = emoteRefs
   if (mediaUrl) {
     body.media_url = mediaUrl
@@ -3843,6 +3831,8 @@ function renderModLogTab() {
   const msgsEl = document.getElementById('hs-mc-messages')
   if (!msgsEl) return
   msgsEl.textContent = ''
+  const connect = typeof modlogConnectRow === 'function' ? modlogConnectRow() : null
+  if (connect) msgsEl.appendChild(connect)
   const log = typeof modActionLog !== 'undefined' ? modActionLog : []
   if (!log.length) {
     const empty = document.createElement('div')

@@ -145,7 +145,7 @@ function persistServerBlockedEmotes() {
 }
 
 // Extension badge — combined source: live followed creators (red, priority) +
-// unread heatsync notifications (orange, fallback). Whichever is non-zero wins,
+// unread heatsync notifications (black, fallback). Whichever is non-zero wins,
 // live wins when both. One number on the icon, colour disambiguates the source.
 // Firefox MV2 uses browserAction, Chrome MV3 uses action.
 const badgeApi = browser.action || browser.browserAction
@@ -1397,8 +1397,8 @@ function handleWSMessage(msg) {
           // batch keys this sender resolves as) + ver (emote-ver cache-bust) —
           // invalidate precisely. Legacy shape (no senderKeys): scrub by name
           // across every cached set.
-          log(' 🗑️ EMOTE REMOVED BROADCAST:', msg)
           const rmKeys = sanitizeSenderKeys(msg.senderKeys)
+          if (rmKeys) refreshOwnerEmotes(rmKeys)
           if (globalThis.__senderEmoteCache) {
             if (rmKeys) {
               for (const k of rmKeys) globalThis.__senderEmoteCache.delete(k)
@@ -1431,8 +1431,8 @@ function handleWSMessage(msg) {
           log(' ✅ EMOTE ADDED TO INVENTORY:', msg.name, 'slot:', msg.slot)
           scheduleInventoryRefresh()
         } else if (msg.username) {
-          log(' ➕ EMOTE ADDED BROADCAST:', msg)
           const addKeys = sanitizeSenderKeys(msg.senderKeys)
+          if (addKeys) refreshOwnerEmotes(addKeys)
           if (globalThis.__senderEmoteCache) {
             if (addKeys) for (const k of addKeys) globalThis.__senderEmoteCache.delete(k)
             else globalThis.__senderEmoteCache.clear()
@@ -1504,6 +1504,21 @@ function handleWSMessage(msg) {
           broadcastToTabs({ type: 'emote_unblocked', hash: msg.hash })
         }
         break
+
+      case 'site-settings:patch': {
+        // The site's own settings, under the site's names: not the extension's, except the one
+        // list both keep, favorite emotes. A pin made on heatsync.org or another device lands in
+        // the overlay's store (it cleans what it reads, src/multichat/emote-favorites.js). A change
+        // this device has not sent yet is newer than the account's, and is left alone.
+        const favs = msg.patches?.emoteFavorites
+        if (Array.isArray(favs)) {
+          browser.storage.local
+            .get('emote_favorites_unsent')
+            .then((d) => (d.emote_favorites_unsent ? null : browser.storage.local.set({ emote_favorites: favs })))
+            .catch(() => {})
+        }
+        break
+      }
 
       case 'ui-state:update': {
         // Cross-surface UI prefs sync — server merged a patch from another
@@ -2312,6 +2327,29 @@ function handleWSMessage(msg) {
       // every field — never trust the wire — same discipline as eventsub:event.
       case 'automod:hold': {
         broadcastToTabs(normalizeAutomodHold(msg))
+        break
+      }
+
+      // Which twitch mod did a ban/timeout/unban/untimeout/delete in a channel
+      // this user moderates — only for a mod who granted the modlog pack, to
+      // their own sockets only (mod-log.js names the entry). Coerced, never trusted.
+      case 'modlog:action': {
+        const action = String(msg.action || '')
+        if (!['ban', 'timeout', 'unban', 'untimeout', 'delete'].includes(action)) break
+        broadcastToTabs({
+          type: 'modlog_action',
+          broadcasterLogin: String(msg.broadcasterLogin || '')
+            .toLowerCase()
+            .slice(0, 64),
+          action,
+          target: String(msg.target || '')
+            .toLowerCase()
+            .slice(0, 64),
+          actor: String(msg.actor || '')
+            .toLowerCase()
+            .slice(0, 64),
+          at: Number(msg.at) || Date.now(),
+        })
         break
       }
 

@@ -849,6 +849,14 @@
   "mc_input_no_channel": {
     "message": "няма канал — избери таб горе"
   },
+  "mc_input_login_to_chat": {
+    "message": "влез в $PLATFORM$ или heatsync",
+    "placeholders": {
+      "platform": {
+        "content": "$1"
+      }
+    }
+  },
   "mc_whisper_follow_to_dm": {
     "message": "последвай $USER$, за да му пишеш — последвай + изпрати",
     "placeholders": {
@@ -1116,6 +1124,18 @@
   "mc_settings_tab_list_desc": {
     "message": "tab върху дума показва подходящите emotes в списък над полето за писане. стрелките избират, tab или enter вмъква, esc затваря. изключено допълва направо в текста"
   },
+  "mc_settings_colon_list": {
+    "message": "списъкът с `:` показва"
+  },
+  "mc_settings_colon_list_desc": {
+    "message": "какво поставя най-горе списъкът, който отваря писането на :. първо емоутите е редът на tab; първо емоджитата слага всяко емоджи над емоутите. tab и търсенето в избирача пазят един ред"
+  },
+  "lib_opt_colon_emotes": {
+    "message": "първо емоутите"
+  },
+  "lib_opt_colon_emoji": {
+    "message": "първо емоджитата"
+  },
   "mc_settings_show_pronouns": {
     "message": "местоимения"
   },
@@ -1350,8 +1370,8 @@
   "mc_signed_out_action": {
     "message": "вход"
   },
-  "mc_chatlogs_copy_failed": {
-    "message": "копирането не успя"
+  "common_clipboard_blocked": {
+    "message": "клипбордът е блокиран"
   },
   "mc_common_unknown": {
     "message": "непознато"
@@ -2236,6 +2256,14 @@
   },
   "mc_mod_label_deleted": {
     "message": "изтрито"
+  },
+  "mc_mod_deleted_only": {
+    "message": "изтрито само в $PLATFORMS$",
+    "placeholders": {
+      "platforms": {
+        "content": "$1"
+      }
+    }
   },
   "mc_mod_label_timed_out": {
     "message": "timeout $SEC$ s",
@@ -3369,6 +3397,9 @@
       }
     }
   },
+  "mc_cycle_wont_show": {
+    "message": "няма да се покаже тук"
+  },
   "mc_twapi_ql_subscribe": {
     "message": "абонирай се"
   },
@@ -4114,6 +4145,9 @@
   },
   "mc_social_no_mod_actions": {
     "message": "още няма mod действия"
+  },
+  "mc_modlog_connect": {
+    "message": "покажи кой модератор е направил всяко — свържи twitch"
   },
   "mc_social_platform": {
     "message": "платформа"
@@ -7431,5 +7465,17 @@
   },
   "common_close": {
     "message": "затвори"
+  },
+  "mc_picker_favorites": {
+    "message": "любими"
+  },
+  "mc_fav_add": {
+    "message": "добави в любими"
+  },
+  "mc_fav_remove": {
+    "message": "премахни от любими"
+  },
+  "mc_fav_full": {
+    "message": "любимите са пълни — първо махни един"
   }
 }

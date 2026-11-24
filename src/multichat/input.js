@@ -5,6 +5,9 @@
 // handlers dead until hard refresh
 const _onceGuardsInput = {}
 
+// the box changed by our own hand: all that listens for an edit hears it (undo, picks, the counter)
+const fireInput = (el) => el.dispatchEvent(new Event('input', { bubbles: true }))
+
 // Broken-image recovery for input-area emote imgs. Browser negatively caches
 // failed image responses (proxy hiccup, CDN blip); without this hook the typed
 // word renders forever as a broken-image placeholder in the composer.
@@ -62,7 +65,7 @@ function _pruneRecent(arr) {
 
 // Kick echoes a native emote back in its wire form, [emote:<id>:<name>], while
 // we track what the user typed. Since the composer now rewrites kick emotes on
-// the way out (kickifyEmoteText), the two forms differ by construction — and an
+// the way out (the law's kick wire), the two forms differ by construction — and an
 // echo that fails to match is an echo that renders a second time and never
 // confirms the pending send. Compare with the tokens collapsed to their names.
 // Guarded on the literal so the ~95% of traffic that carries no token pays
@@ -84,10 +87,13 @@ function _echoTextMatches(entry, msgText) {
   return !!entry.reply && b.replace(/^@\S+\s+/, '') === a
 }
 
-function trackSentMessage(text, hostOverride, synthId, echoes, reply, sendId) {
+function trackSentMessage(text, hostOverride, synthId, echoes, reply, sendId, shipped) {
   _recentSentMessages.push({
     text,
     sendId: sendId || '',
+    // what the line shipped for its emotes: kick's echo files the refs, and its own echo draws the
+    // picked ones (a pick is the one answer the row cannot read back from the room or your set)
+    ...(shipped?.refs ? { refs: shipped.refs, picked: shipped.picked } : null),
     time: Date.now(),
     host: hostOverride || hostPlatform,
     synthId,
@@ -333,6 +339,18 @@ function peekSentId(msgText) {
     if (e.sendId && e.time >= cutoff && _echoTextMatches(e, msgText)) return e.sendId
   }
   return ''
+}
+// the refs OUR send of these words shipped, for the echo of that very send: matched on the
+// echo's own time, so a reload keeps them and the same words typed again natively inherit nothing
+const SENT_REFS_WINDOW = 60000
+/** @returns {{text:string, refs:object}|null} the send's own entry: its typed words and their refs */
+function peekSentRefs(msgText, at) {
+  const t = at || Date.now()
+  for (let i = _recentSentMessages.length - 1; i >= 0; i--) {
+    const e = _recentSentMessages[i]
+    if (e.refs && Math.abs(t - e.time) <= SENT_REFS_WINDOW && _echoTextMatches(e, msgText)) return e
+  }
+  return null
 }
 function _peekSent(msgText) {
   // Use the longer SENT_HOST_WINDOW (24h) — badge attribution must survive
@@ -727,7 +745,7 @@ const acState = {
   active: false, // true when cycling through matches
   wordStart: 0, // Position where the completion word starts
   afterText: '', // Text after the completion
-  _frecBumped: null, // emote bumped this session — reverted if the user cycles past it
+  _pinStep: null, // { name, held }: what the name held before this cycle's step pinned it
   search: '', // search term that produced these matches (remote-fetch guard)
   remoteDone: false, // 7tv fallback already merged for this search
   remotePending: false, // a lazy remote fetch is in flight for this search
@@ -756,6 +774,8 @@ function trackCompletionForAutoAdd(match) {
   // persisted a bogus literal "name0" emote server-side, burning an inventory
   // slot. The base emote is tracked on its own; the "0" is a render convention.
   if (match._synthOverlay) return
+  // this message's pick of the name, whatever the emote is (the channel's, yours, a catalog one)
+  lawPin(match.name, match)
   // The latest pick for a name is the only one that counts: cycling from a
   // catalog IDK back onto the channel's IDK (or onto a native twitch/kick one
   // that never registers below) must un-pick the catalog one, or the send
@@ -793,19 +813,23 @@ function registerClickPasteForAutoAdd(emoteName, emoteUrl, source) {
   // emote server-side (same guard as trackCompletionForAutoAdd._synthOverlay).
   if (emoteName.length > 1 && emoteName.endsWith('0')) {
     const literal =
-      (typeof lookupEmoteRenderOrder === 'function' && lookupEmoteRenderOrder(emoteName)) ||
+      lookupEmoteRenderOrder(emoteName) ||
       (typeof senderEmoteSets !== 'undefined' &&
         [...senderEmoteSets.values()].some((m) => {
           const e = m.get(emoteName)
           return e && !e.removedAt
         }))
-    if (!literal) return
+    if (!literal) {
+      // the picture is the base emote's: this message's pick of the base name, read as its overlay
+      lawPin(emoteName.slice(0, -1), { url: emoteUrl, source, zeroWidth: true })
+      return
+    }
   }
   // Zero-width recovery: viewer caches strip the flag on owned copies
   // (identity-checked), and a sender-set overlay emote isn't in viewer caches
   // at all — sweep sender sets by asset id so the add inherits the flag
   // (losing it renders a stacked overlay as a standalone base after auto-add).
-  let zw = typeof zeroWidthForSameAsset === 'function' && zeroWidthForSameAsset(emoteName, emoteUrl)
+  let zw = zeroWidthForSameAsset(emoteName, emoteUrl)
   if (!zw && typeof senderEmoteSets !== 'undefined' && typeof _hsEmoteAssetId === 'function') {
     const aid = _hsEmoteAssetId(emoteUrl)
     if (aid) {
@@ -850,7 +874,8 @@ if (/(^|\.)twitch\.tv$/.test(location.hostname)) {
     while (recentRemoteCompletions.size > REMOTE_COMPLETION_CAP) {
       recentRemoteCompletions.delete(recentRemoteCompletions.keys().next().value)
     }
-    if (names.length) autoAddInputEmotes(names.join(' '))
+    // sent through twitch's own box: there is no draft of ours to hold these, the relay is the pick
+    if (names.length) autoAddInputEmotes(names.join(' '), { relayed: true })
   })
 }
 
@@ -919,7 +944,6 @@ async function fetchRemoteEmoteMatches(search) {
   // a short page is the exhaustion signal (no next page worth asking for).
   const sizes = typeof MC_PAGE_SIZE !== 'undefined' ? MC_PAGE_SIZE : { ffz: 200, bttv: 100 }
   const ex = acState._remoteExhausted || (acState._remoteExhausted = { ffz: false, bttv: false, stv: false })
-  const searchLower = search.toLowerCase()
   // Chase: an all-duplicate page (top catalog hits collide with loaded locals)
   // is not the end of the catalog — keep paging a bounded number of times
   // until something NEW appears or every provider runs dry.
@@ -970,106 +994,29 @@ async function fetchRemoteEmoteMatches(search) {
     const rf = drain(0, 'ffz', sizes.ffz || 200)
     const rb = drain(1, 'bttv', sizes.bttv || 100)
     const r7 = drain(2, 'stv', 60)
-    // FFZ's `uses` is real popularity — sort descending so the merged stream
-    // leads with highest-use FFZ emotes first.
-    rf.sort((a, b) => (b.uses || 0) - (a.uses || 0))
-    // Order follows the provider setting. 7TV led here for its relevance
-    // ranking ("pls" → the dancing XxxPls family), and the old FFZ-first combo
-    // felt dead because it was prefix-only; substring matching (below) fixed
-    // that, so the fast provider can lead again.
-    // emoteProviderPriority leads (ffz — fast and reliable);
-    // the other two keep their old relative order.
-    const byProvider = { '7tv': r7, bttv: rb, ffz: rf }
-    const order =
-      typeof emoteProviderOrder === 'function' && typeof emoteProviderPriority === 'string'
-        ? emoteProviderOrder(emoteProviderPriority)
-        : ['7tv', 'bttv', 'ffz']
-    const items = order.flatMap((k) => byProvider[k] || [])
-    // Twin check: the very same PICTURE under the same (case-insensitive) name,
-    // already in the cycle as a local or an earlier page. A different picture
-    // under a name something here already answers to is NOT a twin — that is the
-    // point: the 7tv IDK next to the channel's IDK, so you can pick the other one.
-    const picsByName = new Map()
-    // Names the CATALOG itself already put in the cycle. While the query is still
-    // partial, same-name uploads collapse to the first (10x "Sadge" is noise;
-    // first-seen wins so 7TV's top result holds). Typed in full, every upload
-    // stays its own entry (7TV has nine "shrujj": the art you meant may be any).
-    const catalogNames = new Set()
-    for (const m of acState.matches) {
-      if (m.type !== 'emote' || !m.name) continue
-      const l = m.name
-      if (!picsByName.has(l)) picsByName.set(l, new Set())
-      picsByName.get(l).add(_acPicKey(m.url))
-      if (m.remote) catalogNames.add(l)
+    // The catalog's answers so far, as the law's emotes. The law ranks them (the exact name, then
+    // starts-with, word-start, inside, more used, shorter, a-z), keeps one copy of a name and none
+    // of a name something loaded already answers to, so nothing here orders or dedupes.
+    const cat = acState._catalog || (acState._catalog = [])
+    for (const it of [...rf, ...rb, ...r7]) {
+      const e = lawCatalogEmote(it)
+      if (e) cat.push(e)
     }
-    // A local emote that answers to the name typed in full: sending that name
-    // means THAT one. A catalog variant is taken only by tabbing onto it.
-    const typedHasLocal = acState.matches.some((m) => m.type === 'emote' && !m.remote && (m.name || '') === search)
-    let exactRegistered = false
-    const add = []
-    for (const it of items) {
-      if (!it.name) continue
-      // dedupe on the EXACT name: KEKW and kekw are two emotes; only the prefix test is case-blind
-      const lower = it.name
-      const pic = _acPicKey(it.url)
-      if (pic && picsByName.get(lower)?.has(pic)) continue
-      // ("typed in full" is judged case-blind: idk + Tab still lists every IDK upload)
-      if (it.name.toLowerCase() !== searchLower && catalogNames.has(lower)) continue
-      // Substring is fine — the providers already relevance-matched the query;
-      // requiring a literal prefix dropped the suffix-named families users
-      // actually mean. Drop only fuzzy hits that don't contain the query.
-      if (!it.name.toLowerCase().includes(searchLower)) continue
-      // A blocked name must never surface from the remote catalog either —
-      // same leak as the local pool, just a different source.
-      if (typeof _hsAcEmoteBlocked === 'function' && _hsAcEmoteBlocked(it.name, null)) continue
-      // A name the globals already own can't take a second emote: the server
-      // refuses to add one (isGlobalTwin), so offering it would be a pick that
-      // can never be kept.
-      if (typeof emoteCache !== 'undefined' && emoteCache.get(it.name)?.state === 'global') continue
-      if (!picsByName.has(lower)) picsByName.set(lower, new Set())
-      picsByName.get(lower).add(pic)
-      catalogNames.add(lower)
-      const src = it.provider || '7tv'
-      add.push({
-        name: it.name,
-        url: it.url,
-        id: it.id,
-        source: src,
-        priority: 0,
-        type: 'emote',
-        remote: true,
-        zeroWidth: !!it.zeroWidth,
-        // Persistent sequence, NOT add.length — page 2's counter restarting
-        // at 0 would interleave it into page 1 on sort ties instead of after.
-        _ai: acState._aiSeq++,
-      })
-      // Auto-add-on-send registry: ONLY the emote whose name the user literally
-      // typed. Everything they cycle onto registers through
-      // insertCompletionKeepOpen → trackCompletionForAutoAdd, so this covers the
-      // one case that path can't: the full name typed out and sent without ever
-      // pressing Tab past the first hit.
-      //
-      // Registering the whole fetched page (what this used to do) meant every
-      // word in a sent message that happened to appear anywhere in a catalog
-      // search this session got silently added to the viewer's inventory —
-      // hundreds of names the user never saw, burning finite slots. Harmless
-      // while the fetch was lazy; not once it fires on the first Tab.
-      if (lower === search && !exactRegistered) {
-        exactRegistered = true
-        // ...unless something local already answers to that name (the channel's
-        // IDK): the box shows that one, so registering the catalog's IDK would
-        // silently add an emote nobody picked.
-        if (!typedHasLocal) {
-          recentRemoteCompletions.delete(it.name)
-          recentRemoteCompletions.set(it.name, { url: it.url, source: src, zeroWidth: !!it.zeroWidth, variant: true })
-          while (recentRemoteCompletions.size > REMOTE_COMPLETION_CAP) {
-            recentRemoteCompletions.delete(recentRemoteCompletions.keys().next().value)
-          }
-        }
+    // Late arrivals join after the cursor; nothing up to it moves (law extendOffer), so the N/M
+    // the user has seen only ever grows forward.
+    const before = acState.matches
+    const merged = findEmoteMatches(search, {
+      catalog: cat,
+      prev: before,
+      cursor: before.length ? acState.index : -1,
+    }).slice(0, AC_REMOTE_MAX_MATCHES)
+    if (merged.length > before.length) {
+      acState.matches = merged
+      // nothing local matched when Tab was pressed: the first catalog hit completes the word now
+      if (!before.length) {
+        acState.index = 0
+        insertCompletionKeepOpen(merged[0])
       }
-    }
-    if (add.length) {
-      _acMergeRemoteMatches(add, searchLower, search)
       break // got new content; the next page fetches as the user nears the new end
     }
     // all duplicates — chase the next page
@@ -1086,32 +1033,6 @@ async function fetchRemoteEmoteMatches(search) {
   showCycleTooltip() // refresh the N/M denominator / clear the searching state
 }
 
-// Append freshly-fetched catalog hits into the live cycle WITHOUT re-sorting
-// what the user has already cycled through. A full-list re-sort let a remote
-// exact-name hit jump above the current position — the tooltip ran BACKWARDS
-// (4/4 → 2/70) and every ordinal the user had seen reshuffled under them.
-// Append-only: existing entries never move, so N/M only ever grows forward;
-// the new block is ordered internally (exact match first, then fetch order:
-// FFZ-by-uses → BTTV → 7TV, pages in sequence via the persistent _ai).
-function _acMergeRemoteMatches(add, searchLower, typed) {
-  const wasEmpty = acState.matches.length === 0
-  add.sort((a, b) => {
-    const ax = (a.name || '') === typed ? 0 : (a.name || '').toLowerCase() === searchLower ? 1 : 2
-    const bx = (b.name || '') === typed ? 0 : (b.name || '').toLowerCase() === searchLower ? 1 : 2
-    if (ax !== bx) return ax - bx
-    return (a._ai || 0) - (b._ai || 0)
-  })
-  acState.matches.push(...add.slice(0, Math.max(0, AC_REMOTE_MAX_MATCHES - acState.matches.length)))
-  // wasEmpty — no local match existed when Tab was pressed, so this remote
-  // fetch fired immediately; insert the first remote hit now. (The lazy case
-  // needs nothing: append-only means the user's chip and index are untouched.)
-  if (wasEmpty && acState.matches.length > 0) {
-    acState.index = 0
-    insertCompletionKeepOpen(acState.matches[0])
-  }
-  showCycleTooltip() // refresh the N/M denominator
-}
-
 // bareLowerName → original-cased username, for recent-chatter completion
 // (findEmoteMatches below). Maintained incrementally by main.js's
 // addUsername — the sole writer of usernameCache — instead of being rebuilt
@@ -1120,7 +1041,7 @@ const _ucDisplay = new Map()
 
 // Colon-triggered dropdown state (":kap" — emotes + emoji, chatterino parity).
 // matches holds findEmoteMatches() results (type 'emote' | 'emoji'), already
-// ranked by the shared compareAcMatches comparator — same ranking Tab-cycle
+// ranked by the emote law's offer (emote-law-offer.js) — same ranking Tab-cycle
 // uses, just rendered as a live list instead of one-at-a-time.
 const emojiAcState = {
   active: false,
@@ -1264,7 +1185,7 @@ function getInputText() {
   if (wysiwygEnabled) {
     // Convert emote images, stacks, and cycling spans back to text.
     // Modifiers stored in dataset.hsWords (canonical, set by hsModApplyToImg)
-    // appended after the emote so recipients see "Kappa w! h!" not "Kappa".
+    // go out beside the emote so recipients see a wide Kappa, not "Kappa".
     let text = ''
     // Adjacency-safe serialization: chips (emote img / stack / emoji span /
     // mention) must stay whitespace-bounded on the wire — `parseEmotes` and
@@ -1274,12 +1195,10 @@ function getInputText() {
     const sepBefore = () => {
       if (text && !/\s$/.test(text)) text += ' '
     }
+    // each word where it stays this emote's own: `w! Kappa`, `Kappa ffzX` (hsModChipText)
     const appendImg = (img) => {
-      text += img.dataset.emoteName || img.alt || ''
       const modWords = img.dataset.hsWords || img.dataset.hsModWords // back-compat
-      if (modWords) {
-        for (const w of modWords.split(/\s+/).filter(Boolean)) text += ` ${w}`
-      }
+      text += hsModChipText(img.dataset.emoteName || img.alt || '', modWords)
     }
     const extractNode = (node) => {
       if (node.nodeType === Node.TEXT_NODE) {
@@ -1386,6 +1305,9 @@ function initInput() {
   input.addEventListener('keydown', handleInputKeydown)
   input.addEventListener('input', (e) => {
     handleInputChange(e)
+    // a finished modifier word beside a chip is that chip's now, not when the
+    // line lands: `w! Kappa` drew a plain Kappa in the box and a wide one in chat
+    if (wysiwygEnabled && input.firstElementChild) scanAndApplyModifiersInInput(input, { settled: true })
     // handleInputChange keeps pendingMessage synced with the live DOM on every
     // path (initial read + after each WYSIWYG mutation branch) — reuse it
     // instead of updateCharCount re-serializing the whole input a 3rd time.
@@ -1541,7 +1463,7 @@ function initInput() {
           range.collapse(false)
           sel.removeAllRanges()
           sel.addRange(range)
-          input.dispatchEvent(new Event('input', { bubbles: true }))
+          fireInput(input)
         }
       }
     })
@@ -1799,7 +1721,7 @@ function initInput() {
           document.execCommand('insertText', false, e.key)
         } else {
           input.value += e.key
-          input.dispatchEvent(new Event('input', { bubbles: true }))
+          fireInput(input)
         }
       },
       { capture: true, signal: mcSignal },
@@ -1840,7 +1762,7 @@ function initInput() {
         // Insert pasted text into the input
         if (input.tagName === 'INPUT' || input.tagName === 'TEXTAREA') {
           input.value = text
-          input.dispatchEvent(new Event('input', { bubbles: true }))
+          fireInput(input)
         } else {
           document.execCommand('insertText', false, text)
         }
@@ -1913,21 +1835,26 @@ function initInput() {
         (target.src?.includes('frankerfacez') && !target.src?.includes('room-badge/')) ||
         target.src?.includes('static-cdn.jtvnw.net/emoticons'))
     ) {
-      const isBlocked = target.classList.contains('hs-state-blocked') || target.dataset.state === 'blocked'
+      const d = target.dataset
+      const isBlocked = target.classList.contains('hs-state-blocked') || d.state === 'blocked'
+      // A box chip names its own picture (createInputEmoteImg, a Tab step): its url and hash, and
+      // the name it is filed under (an overlay typed as name0 is its base name's emote).
       return {
         wrapper: null,
-        emoteName: target.alt || target.dataset.emoteName || target.title?.split(' ')[0] || 'emote',
-        state: isBlocked ? 'blocked' : target.dataset.state || 'global',
-        emoteUrl: target.dataset.hsOrigSrc || target.src || '',
-        source: target.dataset.source || 'unknown',
+        chip: target.classList.contains('hs-input-emote'),
+        emoteName: d.hsKey || target.alt || d.emoteName || target.title?.split(' ')[0] || 'emote',
+        state: isBlocked ? 'blocked' : d.state || 'global',
+        emoteUrl: d.hsUrl || d.hsOrigSrc || target.src || '',
+        hash: d.hsHash,
+        source: d.source || 'unknown',
       }
     }
     return null
   }
 
-  function openEmoteCtxMenu(x, y, { emoteName, emoteUrl, state, source, targetEl, wrapper }) {
+  function openEmoteCtxMenu(x, y, { emoteName, emoteUrl, state, source, targetEl, wrapper, hash }) {
     const hi = getHighResUrl(emoteUrl)
-    const items = []
+    const items = hsFavMenuItems({ emoteName, emoteUrl, source, targetEl, wrapper })
     // Block/unblock + remove-from-set live here so the shift menu is the
     // complete per-emote surface. Plain right-click is the fast path: unblock a
     // blocked emote, remove an inventory one, block anything else — so for an
@@ -1935,12 +1862,12 @@ function initInput() {
     if (state === 'blocked') {
       items.push({
         label: t('mc_input_unblock'),
-        fn: () => unblockEmote(emoteName, { hash: wrapper?.dataset?.emoteHash || undefined }),
+        fn: () => unblockEmote(emoteName, { hash }),
       })
     } else {
       items.push({
         label: t('content_card_block'),
-        fn: () => blockEmote(emoteName, emoteUrl, source, { hash: wrapper?.dataset?.emoteHash || undefined }),
+        fn: () => blockEmote(emoteName, emoteUrl, source, { hash }),
       })
       if (state === 'owned' && inventoryEmotes.has(emoteName)) {
         items.push({ label: t('mc_input_remove_from_set'), fn: () => removeEmoteFromInventory(emoteName, targetEl) })
@@ -2067,20 +1994,17 @@ function initInput() {
         e.preventDefault()
         e.stopPropagation()
 
+        const { emoteName, emoteUrl, source, wrapper } = emoteInfo
+        const hash = wrapper?.dataset?.emoteHash || emoteInfo.hash || undefined
+        // yours = this exact emote, never the name (rule 10): emotes.js emoteClickState
+        const state = emoteClickState(emoteInfo, hash)
+
         if (e.shiftKey) {
           // targetEl: remove-from-set needs the clicked element so the
           // picker-tile cleanup path can find and drop the right tile.
-          openEmoteCtxMenu(e.clientX, e.clientY, { ...emoteInfo, targetEl: e.target })
+          openEmoteCtxMenu(e.clientX, e.clientY, { ...emoteInfo, state, hash, targetEl: e.target })
           return
         }
-
-        const { emoteName, emoteUrl, source, wrapper } = emoteInfo
-        // Yours = this exact emote, not the name: another chatter's channel W under a W
-        // you own is blocked, never a removal of yours (rule 10).
-        const state =
-          emoteInfo.state === 'owned' && wrapper && !isViewerEmoteUrl(emoteName, emoteUrl, wrapper?.dataset?.emoteHash)
-            ? 'global'
-            : emoteInfo.state
 
         // Race-guard against rapid clicking
         if (pendingEmoteOps.has(emoteName)) return
@@ -2090,11 +2014,11 @@ function initInput() {
         // emote promises), anything else → block. Blocking an owned emote is the
         // shift menu's 'block' — it keeps the server row, removal does not.
         if (state === 'blocked') {
-          unblockEmote(emoteName, { hash: wrapper?.dataset?.emoteHash || undefined })
+          unblockEmote(emoteName, { hash })
         } else if (state === 'owned' && inventoryEmotes.has(emoteName)) {
           removeEmoteFromInventory(emoteName, e.target)
         } else {
-          blockEmote(emoteName, emoteUrl, source, { hash: wrapper?.dataset?.emoteHash || undefined })
+          blockEmote(emoteName, emoteUrl, source, { hash })
         }
       },
       { capture: true, signal: mcSignal },
@@ -2166,14 +2090,12 @@ function initInput() {
               if (!name || pendingEmoteOps.has(name)) continue
               const url = w.dataset.emoteUrl || w.querySelector('img')?.src || ''
               const source = w.dataset.source || 'heatsync'
-              if (typeof registerClickPastedRef === 'function') registerClickPastedRef(name, url, source)
+              lawPin(name, { url, source }) // a clicked emote is this message's pick of its name
               addEmoteToInventory(name, url, source, w)
             } else {
               // global/channel/owned stack members follow the same
               // auto-add-on-send contract as the single-emote click path.
               const url = w.dataset.emoteUrl || w.querySelector('img')?.src || ''
-              if (typeof registerClickPastedRef === 'function')
-                registerClickPastedRef(w.dataset.emoteName, url, w.dataset.source || 'unknown')
               registerClickPasteForAutoAdd(w.dataset.emoteName, url, w.dataset.source || 'unknown')
             }
           }
@@ -2265,7 +2187,7 @@ function initInput() {
             !viewerPersonalEmotes.has(emoteName) &&
             emoteUrl &&
             /^https?:/i.test(emoteUrl) &&
-            (typeof lookupEmoteWithOverlay !== 'function' || !lookupEmoteWithOverlay(emoteName))
+            !lookupEmoteWithOverlay(emoteName)
           ) {
             viewerPersonalEmotes.set(emoteName, {
               url: emoteUrl,
@@ -2274,12 +2196,8 @@ function initInput() {
               addedAt: Date.now(),
             })
           }
-          // Durable own-echo fallback: record the ref so a failed auto-add-on-send
-          // (offline / rate-limit / recycled SW / unreadable cookie) never leaves
-          // your own echo as raw text. Never rolled back. See clickPastedRefs.
-          if (typeof registerClickPastedRef === 'function') registerClickPastedRef(emoteName, emoteUrl, source)
-          // Commit the slot at send (2-state contract) — without this the
-          // optimistic seed above renders the chip for the clicker only.
+          // The click is this message's pick (it ships with the line, and your own echo draws what
+          // shipped, so a failed add never leaves it as raw text), and the slot commits at send.
           registerClickPasteForAutoAdd(emoteName, emoteUrl, source)
           showInputBar()
           pasteEmoteToInput(emoteName, modWords)
@@ -2783,7 +2701,7 @@ function openUserCtxMenu(x, y, username, platform, ctx = {}) {
         const input = document.getElementById('hs-mc-search-input')
         if (!input) return
         input.value = `@${String(username).toLowerCase()}`
-        input.dispatchEvent(new Event('input', { bubbles: true }))
+        fireInput(input)
         input.focus()
       },
     })
@@ -3057,38 +2975,14 @@ function _formatMcChainLine(m) {
   return `${user}: ${text}`
 }
 
-// Robust clipboard copy: navigator.clipboard silently rejects in a content
-// script when the doc isn't focused (the exact "why can't i copy" case), so
-// fall back to a temp-textarea execCommand and always toast either way.
-function mcCopyFallback(text) {
+// Every menu copy says what happened: "copied" when it landed, "clipboard blocked" when it didn't.
+async function mcCopyToClipboard(text, okMsg = t('mc_input_copied')) {
+  if (!text) return false
+  const ok = await window.HS.copyText(text)
   try {
-    const ta = document.createElement('textarea')
-    ta.value = text
-    ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0'
-    document.body.appendChild(ta)
-    ta.focus()
-    ta.select()
-    const ok = document.execCommand('copy')
-    ta.remove()
-    return ok
-  } catch {
-    return false
-  }
-}
-function mcCopyToClipboard(text, okMsg = t('mc_input_copied')) {
-  if (!text) return
-  const done = () => {
-    try {
-      showToast(okMsg, 'success')
-    } catch {}
-  }
-  try {
-    navigator.clipboard.writeText(text).then(done, () => {
-      if (mcCopyFallback(text)) done()
-    })
-  } catch {
-    if (mcCopyFallback(text)) done()
-  }
+    showToast(ok ? okMsg : t('common_clipboard_blocked'), ok ? 'success' : 'error')
+  } catch {}
+  return ok
 }
 // Drop a message's text into the input box (quote/reply-by-paste).
 function mcQuoteToInput(text) {
@@ -3105,7 +2999,7 @@ function mcQuoteToInput(text) {
   } else {
     input.value = (input.value || '') + toInsert
   }
-  input.dispatchEvent(new Event('input', { bubbles: true }))
+  fireInput(input)
 }
 
 // What sits in a row beside the message and is never part of its text. The row's own buttons
@@ -3168,7 +3062,7 @@ function _prefillMcInput(text) {
     try {
       input.setSelectionRange(text.length, text.length)
     } catch {}
-    input.dispatchEvent(new Event('input', { bubbles: true }))
+    fireInput(input)
   } else {
     // mirror mcQuoteToInput: select-all + execCommand insertText replaces the
     // content, fires the input event, and leaves the caret at the end —
@@ -3181,7 +3075,7 @@ function _prefillMcInput(text) {
     sel.addRange(range)
     if (!document.execCommand('insertText', false, text)) {
       input.textContent = text
-      input.dispatchEvent(new Event('input', { bubbles: true }))
+      fireInput(input)
     }
   }
 }
@@ -3200,7 +3094,7 @@ async function _quickOpToFeed(username, msg) {
     showToast(t('mc_social_login_first') || 'log in at heatsync.org first to post', 'error')
     return
   }
-  const raw = ((typeof _extractMcMsgText === 'function' ? _extractMcMsgText(msg) : msg?.textContent) || '').trim()
+  const raw = (_extractMcMsgText(msg) || '').trim()
   if (!raw) {
     showToast(t('mc_input_nothing_to_post'), 'error')
     return
@@ -3208,7 +3102,7 @@ async function _quickOpToFeed(username, msg) {
   const content = truncateSafe(`@${username}: ${raw}`, 500)
   try {
     const body = { content }
-    const emoteRefs = buildFeedEmoteRefs(content)
+    const emoteRefs = buildFeedEmoteRefs(content, null, true)
     if (emoteRefs) body.emote_refs = emoteRefs
     const resp = await apiFetch('/api/messages', { method: 'POST', auth: true, body })
     showToast(resp?.ok ? t('mc_input_posted_to_feed') : t('mc_input_post_failed'), resp?.ok ? 'success' : 'error')
@@ -3286,12 +3180,7 @@ function _mentionInMcInput(username) {
     const needsSpace = !!last && !(last.nodeType === Node.TEXT_NODE && /\s$/.test(last.textContent || ''))
     input.appendChild(document.createTextNode((needsSpace ? ' ' : '') + mention))
     try {
-      const sel = window.getSelection()
-      const range = document.createRange()
-      range.selectNodeContents(input)
-      range.collapse(false)
-      sel.removeAllRanges()
-      sel.addRange(range)
+      cursorToEnd(input)
     } catch {}
     pendingMessage = getInputText()
   }
@@ -3369,7 +3258,8 @@ function _refreshKickHostSession() {
   })
 }
 
-function _composerNeedsLogin() {
+// the hint in place of "send to #channel" when nothing can send ('' when something can); twitch + kick name their own login
+function _composerLoginHint() {
   const hostSession =
     hostPlatform === 'twitch'
       ? !!getTwitchAuthToken()
@@ -3378,7 +3268,10 @@ function _composerNeedsLogin() {
         : hostPlatform === 'yt'
           ? true
           : null
-  return composerNeedsLogin({ hsAuth: hsAuthToken, hostSession })
+  if (!composerNeedsLogin({ hsAuth: hsAuthToken, hostSession })) return ''
+  return hostPlatform === 'twitch' || hostPlatform === 'kick'
+    ? t('mc_input_login_to_chat', [hostPlatform])
+    : t('mc_social_login_first')
 }
 
 // "[TKY] " before the input on a merged channel tab: which platforms a send
@@ -3430,7 +3323,7 @@ function updateInputPlaceholder() {
     // message..." promises a send that can't happen: Enter just flashes red. Name
     // the actual state instead.
     placeholder = channel ? t('mc_input_send_channel', [channel]) : t('mc_input_no_channel')
-    if (channel && _composerNeedsLogin()) placeholder = t('mc_social_login_first')
+    if (channel) placeholder = _composerLoginHint() || placeholder
   } else if (currentTab === 'mentions') {
     // Mentions aggregates across channels, so sendMessage refuses every plain
     // send here — promising "send to #channel" was a lie regardless of whether
@@ -3456,7 +3349,7 @@ function updateInputPlaceholder() {
     // fallbacks empty). The no-channel copy is the honest thing to show then —
     // t() no longer leaks the raw key either way, but don't render "send to #".
     placeholder = chanName ? t('mc_input_send_channel', [chanName]) : t('mc_input_no_channel')
-    if (chanName && _composerNeedsLogin()) placeholder = t('mc_social_login_first')
+    if (chanName) placeholder = _composerLoginHint() || placeholder
   }
 
   // shut for you here (banned / timed out / a room rule): say why, in place of the invite to type
@@ -3598,6 +3491,9 @@ function handleInputKeydownInner(e, input) {
     const text = hsSentHistoryStep(e.key === 'ArrowUp' ? 1 : -1, getInputText().trim())
     if (text !== null) {
       e.preventDefault()
+      // the line is back in its box, with the copies you chose in it
+      endComposerPicks(input)
+      resumeDraftPicks(hsSentHistoryPicks(text), input)
       if (wysiwygEnabled) restoreWysiwygText(input, text)
       else input.value = text
       return
@@ -3652,10 +3548,12 @@ function handleInputKeydownInner(e, input) {
         // Just delete the one chip — never auto-merge adjacent chips back
         // to text. The "merge intent" path was destroying valid WYSIWYG
         // state on every backspace.
+        // an edit like any other, so an input event: it ends the pick of the word that left (the
+        // name pasted back is a typed word). the box is saved first, so an undo brings chip + pick back
         e.preventDefault()
+        input._undoManager?.capture()
         target.remove()
-        pendingMessage = getInputText()
-        updateCharCount()
+        fireInput(input)
         return
       }
     }
@@ -3776,7 +3674,7 @@ function handleInputKeydownInner(e, input) {
         acState.remotePending = false
         acState._remotePage = 0
         acState._remoteExhausted = null
-        acState._aiSeq = 0
+        acState._catalog = null
 
         // Calculate positions for text input cycling (textarea only)
         if (!wysiwygEnabled && input.value !== undefined) captureAcWordBounds(input)
@@ -3856,15 +3754,10 @@ function isInlineChip(el) {
 function chipToText(el) {
   if (!el || el.nodeType !== Node.ELEMENT_NODE) return null
   if (el.tagName === 'IMG' && el.classList?.contains('hs-input-emote')) {
-    let txt = el.dataset.emoteName || el.alt || ''
     const mods = el.dataset.hsWords || el.dataset.hsModWords
-    if (mods) {
-      for (const w of mods.split(/\s+/).filter(Boolean)) txt += ` ${w}`
-      // Trailing space keeps modifier tokens parseable when merged into adjacent
-      // text — "Kappa w!" + "4He" must become "Kappa w! 4He", not "Kappa w!4He".
-      txt += ' '
-    }
-    return txt
+    // Trailing space keeps modifier tokens parseable when merged into adjacent
+    // text — "Kappa ffzX" + "4He" must become "Kappa ffzX 4He", not "Kappa ffzX4He".
+    return hsModChipText(el.dataset.emoteName || el.alt || '', mods) + (mods ? ' ' : '')
   }
   if (el.classList?.contains('hs-input-stack')) {
     const parts = []
@@ -3875,13 +3768,8 @@ function chipToText(el) {
         continue
       }
       if (child.tagName !== 'IMG') continue
-      let txt = child.dataset.emoteName || child.alt || ''
       const mods = child.dataset.hsWords || child.dataset.hsModWords
-      if (mods) {
-        for (const w of mods.split(/\s+/).filter(Boolean)) txt += ` ${w}`
-        txt += ' '
-      }
-      parts.push(txt)
+      parts.push(hsModChipText(child.dataset.emoteName || child.alt || '', mods) + (mods ? ' ' : ''))
     }
     return parts.join(' ')
   }
@@ -3977,7 +3865,6 @@ function deflectAdjacentChip(node, wordStart) {
 // recall/paste/undo path that turns a serialized wire string back into chips.
 function imagifyValidWordsInTextNode(textNode) {
   if (!textNode || textNode.nodeType !== Node.TEXT_NODE) return false
-  if (typeof lookupEmoteWithOverlay !== 'function') return false
   const text = textNode.textContent
   if (!text.trim()) return false
   const parts = text.split(/(\s+)/)
@@ -3999,7 +3886,7 @@ function imagifyValidWordsInTextNode(textNode) {
     // Blocked emotes must stay plain text here — keep them out of the chip
     // builder so a blocked emote reaching a text node (paste/undo/recall/
     // unwrap) can't render as a live image and defeat the block.
-    if (typeof blockedEmoteNames !== 'undefined' && emoteIsBlocked(part, lookupEmoteRenderOrder(part))) {
+    if (emoteIsBlocked(part, lookupEmoteRenderOrder(part))) {
       replacements.push(document.createTextNode(part))
       continue
     }
@@ -4015,7 +3902,7 @@ function imagifyValidWordsInTextNode(textNode) {
     // from the TYPED WORD (pool entries key on the name and don't carry a .name
     // field, so reading emote.name here produced "undefined" chips on recall),
     // and applies res-url + state + overlay parity with the type/paste path.
-    const chip = typeof createInputEmoteImg === 'function' ? createInputEmoteImg(part) : null
+    const chip = createInputEmoteImg(part)
     if (!chip) {
       replacements.push(document.createTextNode(part))
       continue
@@ -4041,12 +3928,7 @@ function restoreWysiwygText(input, text) {
     if (child.nodeType === Node.TEXT_NODE) imagifyValidWordsInTextNode(child)
   }
   try {
-    const sel = window.getSelection()
-    const range = document.createRange()
-    range.selectNodeContents(input)
-    range.collapse(false)
-    sel.removeAllRanges()
-    sel.addRange(range)
+    cursorToEnd(input)
   } catch {}
 }
 
@@ -4136,14 +4018,7 @@ function unwrapStuckChips(inputEl, acceptWhitespace) {
     }
   }
   if (changed && cursorTarget?.parentNode) {
-    const sel = window.getSelection()
-    if (sel) {
-      const r = document.createRange()
-      r.setStart(cursorTarget, Math.min(cursorOffset, cursorTarget.textContent.length))
-      r.collapse(true)
-      sel.removeAllRanges()
-      sel.addRange(r)
-    }
+    placeCaretAfter(cursorTarget, cursorOffset)
     pendingMessage = getInputText()
   }
   return changed
@@ -4159,6 +4034,14 @@ function handleInputChange(_e) {
   // this fix so the cursor can't re-enter.
   const inputEl = document.getElementById('hs-mc-input')
   if (inputEl) {
+    // a pick lives while its word is in the box: delete the chip and the same name typed by hand
+    // is a hand-typed word. An undo that brings the chip back brings its pick back.
+    const type = _e?.inputType
+    // what an undo restores is never mid-cycle: a step saved while Tab was cycling a chip carries the
+    // chip's cycling mark, and with it back the next Tab stepped that old chip, not the word typed
+    const undo = _e?.hsUndo
+    if (undo) hideAutocomplete()
+    keepPicksIn(() => getInputText(), inputEl, undo || /^history/.test(type))
     for (const stack of inputEl.querySelectorAll('.hs-input-stack')) {
       if (stack.getAttribute('contenteditable') !== 'false') {
         stack.setAttribute('contenteditable', 'false')
@@ -4196,14 +4079,7 @@ function handleInputChange(_e) {
         if (extra) {
           const t = document.createTextNode(extra)
           em.parentNode.insertBefore(t, em.nextSibling)
-          const sel = window.getSelection()
-          if (sel) {
-            const r = document.createRange()
-            r.setStart(t, t.textContent.length)
-            r.collapse(true)
-            sel.removeAllRanges()
-            sel.addRange(r)
-          }
+          placeCaretAfter(t, t.length)
         }
       }
     }
@@ -4317,35 +4193,10 @@ function handleInputChange(_e) {
           const match = before.match(/(\S+)\s$/)
           if (match) {
             const word = match[1]
-            // FFZ-style modifier token / chain — apply to the previous emote
-            // (don't insert as BTTV emote even if "w!" is a real emote name).
-            // Live-replace modifier path — delegate to shared lib + apply.
-            const cls = hsModClassify(word, { allowPrefix: false })
-            if (cls.kind === 'modifier') {
-              const wordStart = cursor - match[0].length
-              let prev = node.previousSibling
-              while (prev && prev.nodeType === Node.TEXT_NODE && prev.textContent.trim() === '') {
-                prev = prev.previousSibling
-              }
-              // Only whitespace may sit between the anchor chip and the
-              // modifier — "Kappa lol w!" is three words, not a wide Kappa.
-              const targetImg = /^[\s\u00a0]*$/.test(text.slice(0, wordStart)) ? hsModAnchorEl(prev) : null
-              if (targetImg) {
-                {
-                  hsModApplyToImg(targetImg, cls.mods, cls.hue, cls.words)
-                  node.textContent = text.slice(0, wordStart) + (text.slice(cursor) || ' ')
-                  const nr = document.createRange()
-                  nr.setStart(node, wordStart)
-                  nr.collapse(true)
-                  sel.removeAllRanges()
-                  sel.addRange(nr)
-                  pendingMessage = getInputText()
-                  return
-                }
-              }
-              // Modifier without an anchor — keep as plain text, don't insert as BTTV emote
-              return
-            }
+            // A modifier word is never an emote here, even where "w!" is a real emote name:
+            // the box's own pass (scanAndApplyModifiersInInput, settled, run right after this
+            // on every change) hands it to the chip the rule says, or leaves it as typed.
+            if (hsModClassify(word, { allowPrefix: false }).kind === 'modifier') return
             // Live auto-convert: in-set emotes only. Channel/global emotes
             // (incl. lowercase word collisions like "what") stay text until Tab.
             let resolved = lookupEmoteWithOverlay(word, { ownedOnly: true })
@@ -4559,10 +4410,10 @@ function tryOverlayOnZero(_input) {
   if (relocateSpan) {
     overlayEl = relocateSpan
   } else {
-    const resolved = typeof lookupEmoteWithOverlay === 'function' ? lookupEmoteWithOverlay(word) : null
+    const resolved = lookupEmoteWithOverlay(word)
     if (resolved?.isOverlay) {
       // (1)/(3) emote overlay
-      overlayEl = typeof createInputEmoteImg === 'function' ? createInputEmoteImg(word) : null
+      overlayEl = createInputEmoteImg(word)
     } else if (word.startsWith(':') && word.endsWith(':0') && word.length > 3) {
       // (4) literal ":smile:0" that never span-converted → build emoji overlay
       const ename = word.slice(1, -2)
@@ -4627,7 +4478,7 @@ function tryOverlayOnZero(_input) {
     }
     // Overlay onto a raw unicode emoji typed as plain text before the word
     // (only for non-relocate cases — relocate already has its element).
-    if (!relocateSpan && typeof peelTrailingEmoji === 'function') {
+    if (!relocateSpan) {
       const peeled = peelTrailingEmoji(beforeText.replace(/\s+$/, ''))
       if (peeled) {
         const restNode = peeled.rest ? document.createTextNode(peeled.rest) : null
@@ -4950,12 +4801,27 @@ function hsModAnchorEl(prev) {
   return null
 }
 
+// The emote a modifier typed right before a chip would change: the chip after
+// this text node, or the base of the stack there. An emoji is no emote here,
+// as in the rows (a modifier reaches ahead only for an emote).
+function hsModNextEl(textNode) {
+  const el = textNode?.nextSibling
+  if (!el || el.nodeType !== Node.ELEMENT_NODE) return null
+  if (el.tagName === 'IMG' && el.classList?.contains('hs-input-emote')) return el
+  if (!el.classList?.contains('hs-input-stack')) return null
+  const base = [...el.children].find((c) => c.tagName === 'IMG' || c.classList?.contains('hs-mc-emoji'))
+  return base?.tagName === 'IMG' ? base : null
+}
+
 // Scan input for modifier shorthands adjacent to emotes; apply via lib helper.
 // Cursor-position-agnostic. Returns true if any modifier was applied.
 // Only mutates a text node if it consumed at least one token from it — leaves
 // non-modifier text alone so emote autocomplete can still find words.
-function scanAndApplyModifiersInInput(input) {
+// settled (the box's own pass, as you type): no bare-letter shorthand, and the
+// word the caret is in or at the end of is still being written.
+function scanAndApplyModifiersInInput(input, opts) {
   if (!input) return false
+  const settled = !!opts?.settled
   let appliedAny = false
   let prevEmote = null
   // Bare-letter prefix forms ("w" → w!) only classify for the token the caret
@@ -4984,16 +4850,24 @@ function scanAndApplyModifiersInInput(input) {
       else if (child.tagName !== 'BR') prevEmote = null
       continue
     }
-    if (child.nodeType !== Node.TEXT_NODE || !prevEmote) continue
+    if (child.nodeType !== Node.TEXT_NODE) continue
+    // the emote chip right after this text: a word may be its own (`w! Kappa`)
+    const after = hsModNextEl(child)
+    if (!prevEmote && !after) continue
     const tokens = child.textContent.split(/(\s+)/)
+    const passable = (t) => !t || /^\s*$/.test(t) || hsModClassify(t, { allowPrefix: false }).kind === 'modifier'
     // Caret token = last non-whitespace token starting at or before the caret
     // in this node (covers both "w|" and "w |" caret positions).
     let caretTokIdx = -1
+    let openTokIdx = -1
     if (child === caretNode) {
       let pos = 0
       for (let i = 0; i < tokens.length; i++) {
         const end = pos + tokens[i].length
-        if (tokens[i] && !/^\s*$/.test(tokens[i]) && pos <= caretOffset) caretTokIdx = i
+        if (tokens[i] && !/^\s*$/.test(tokens[i]) && pos <= caretOffset) {
+          caretTokIdx = i
+          openTokIdx = caretOffset > pos && caretOffset <= end ? i : -1
+        }
         pos = end
       }
     }
@@ -5006,14 +4880,20 @@ function scanAndApplyModifiersInInput(input) {
     for (let i = 0; i < tokens.length; i++) {
       const tok = tokens[i]
       if (!tok || /^\s*$/.test(tok)) continue
-      const cls = hsModClassify(tok, { allowPrefix: i === caretTokIdx })
+      const cls = hsModClassify(tok, { allowPrefix: !settled && i === caretTokIdx })
       if (cls.kind !== 'modifier') {
         // Real text between the emote and the token breaks the anchor — a
-        // modifier attaches to the IMMEDIATELY preceding emote.
+        // modifier never reaches over text.
         prevEmote = null
         continue
       }
-      const targetImg = hsModAnchorEl(prevEmote)
+      if (settled && i === openTokIdx) continue
+      // Which chip: hsModSide, the rule the rows are drawn by. Ahead, it is the
+      // chip after this text when only modifiers stand between. A bare letter
+      // resolved at the caret ("w" → "w!") only ever reaches back.
+      const next = !!after && !cls.resolvedFrom && tokens.slice(i + 1).every(passable)
+      const side = hsModSide(cls.resolvedFrom ? 'ffz' : tok, !!prevEmote, () => next)
+      const targetImg = side === 'next' ? after : side === 'last' ? hsModAnchorEl(prevEmote) : null
       if (!targetImg) continue
       hsModApplyToImg(targetImg, cls.mods, cls.hue, cls.words)
       drop.add(i)
@@ -5025,80 +4905,21 @@ function scanAndApplyModifiersInInput(input) {
       consumedHere = true
     }
     if (consumedHere) {
+      // the caret keeps its place in what is left of this text
+      let cut = 0
+      if (child === caretNode) {
+        let pos = 0
+        for (let i = 0; i < tokens.length && pos < caretOffset; i++) {
+          if (drop.has(i)) cut += Math.min(tokens[i].length, caretOffset - pos)
+          pos += tokens[i].length
+        }
+      }
       child.textContent = tokens.filter((_, i) => !drop.has(i)).join('') || ' '
+      if (child === caretNode) _sel.collapse(child, Math.min(Math.max(caretOffset - cut, 0), child.textContent.length))
     }
   }
   if (appliedAny && typeof pendingMessage !== 'undefined') pendingMessage = getInputText()
   return appliedAny
-}
-
-// Shared tab-complete comparator — the ONE ranking for both the local sort
-// (findEmoteMatches) and the remote-merge re-sort (fetchRemoteEmoteMatches).
-// They drifted apart once already (strong-exact existed only locally); keep
-// every ordering change here.
-//
-// Order (most-correct first):
-//   0. local > remote                       (channel / own / globals beat catalog)
-//   1. exact full-name match — UNCONDITIONAL. Typing the whole name is the
-//      intent: "nam" → NaM (global, maybe never used) before the channel's
-//      NAMarrive. Reverses the old "tier beats never-used exact" call —
-//      precision over channel culture when the user typed the entire name.
-//   2. used-before > never-used             (frecency; personal habit is the
-//      strongest non-exact signal: "kko" → your KKona, never the channel's
-//      untouched KKonaLand)
-//      within used:   prefix > substring, then frecency score, then tier
-//      within unused: tier, prefix > substring, sub emote > non-sub
-//   3. remote catalog order (_ai: FFZ-by-uses → BTTV → 7TV)
-//   4. recency for @user matches            (who just talked beats name length)
-//   5. shorter prefix-match > longer        (Kap → Kappa before KappaPride),
-//      then alpha
-function compareAcMatches(a, b, searchLower, frecency, typed) {
-  const an = a.name || '',
-    bn = b.name || ''
-  // Exact-name match wins over EVERYTHING — even above the local/remote split.
-  // A channel 7TV emote often surfaces as a remote search result (before/instead
-  // of the pre-loaded channel map); if exact ranked below local, a local
-  // different-name prefix match would beat the exact one the user actually
-  // typed. You typed the full name → you get that emote. Two exacts tie here and
-  // fall through to local-before-remote + tier, so a local exact still beats a
-  // remote exact.
-  const ae = an.toLowerCase() === searchLower ? 0 : 1
-  const be = bn.toLowerCase() === searchLower ? 0 : 1
-  if (ae !== be) return ae - be
-  // Two emotes that are both the typed word in different casing (kek / KEK):
-  // the channel's own is what everyone in this chat reads as that word, so it
-  // leads — a habit or a global lookalike of the same name must not outrank it.
-  // Case twins (KEKW / kekw) are two emotes and both stay candidates; the one spelled like
-  // the typed word leads (rule 5). Prefix matching stays case-insensitive.
-  if (ae === 0 && typed && (an === typed) !== (bn === typed)) return an === typed ? -1 : 1
-  if (ae === 0 && (a.tier === 0) !== (b.tier === 0)) return a.tier === 0 ? -1 : 1
-  const al = a.remote ? 1 : 0,
-    bl = b.remote ? 1 : 0
-  if (al !== bl) return al - bl
-  const at = a.tier ?? 9,
-    bt = b.tier ?? 9
-  const af = frecency.get(an) || 0,
-    bf = frecency.get(bn) || 0
-  if (af > 0 !== bf > 0) return af > 0 ? -1 : 1
-  if (af > 0) {
-    // both used — they typed a prefix, respect it; then habit strength
-    if (a.priority !== b.priority) return a.priority - b.priority
-    if (af !== bf) return bf - af
-    if (at !== bt) return at - bt
-  } else {
-    // neither used — channel culture leads
-    if (at !== bt) return at - bt
-    if (a.priority !== b.priority) return a.priority - b.priority
-    if (!!a.sub !== !!b.sub) return a.sub ? -1 : 1
-  }
-  if (a.remote && b.remote) return (a._ai || 0) - (b._ai || 0)
-  if (a.type === 'user' && b.type === 'user') {
-    const arr = a.recencyRank ?? Infinity,
-      brr = b.recencyRank ?? Infinity
-    if (arr !== brr) return arr - brr
-  }
-  if (a.priority === 0 && an.length !== bn.length) return an.length - bn.length
-  return an.localeCompare(bn)
 }
 
 // Block enforcement for tab-complete/mention candidates that have no platform
@@ -5123,79 +4944,6 @@ function _isBlockedAnyPlat(name) {
   )
 }
 
-// Merged autocomplete emote source: channel pools (tier 0) over the viewer's
-// set (tier 1) over globals (tier 2) — channel written LAST so a name the channel
-// defines resolves to the channel image, except one you own under a different
-// picture (see keepOwn below: Tab shows what the sent line draws). findEmoteMatches runs
-// on EVERY debounced keystroke-word, and rebuilding this merge — allocating
-// two Maps across thousands of emotes each call — was the dominant typing-lag
-// cost on emote-heavy channels. Memoize it, keyed by a cheap signature: active
-// tab + the sizes of every source map. Any add/remove, tab switch, or pool
-// (re)hydration moves a size or the tab and busts the cache; the only miss is
-// a same-count in-place url swap, which leaves a stale thumbnail (never a
-// wrong insertion — names stay authoritative) until the next size change.
-// lowerByName rides along so the scan in findEmoteMatches reads a precomputed
-// lowercase name instead of calling .toLowerCase() twice per entry.
-let _acMergeCache = null // { sig, acEmotes, tierByName, lowerByName }
-function _getMergedAcEmotes() {
-  // activeTabEmotePools resolves the tab's twitch/kick slot names + yt handle —
-  // pools are keyed by fetched owner name, and the raw tab id is NOT a pool key
-  // on merged-identity/yt tabs (the kripparrian-vs-nl_kripp trap; see emotes.js).
-  const acPools =
-    typeof activeTabEmotePools === 'function'
-      ? activeTabEmotePools()
-      : [channelEmoteCaches[currentTab] || channelEmoteCaches[getCurrentChannel()]].filter(Boolean)
-  let poolsSig = ''
-  for (const p of acPools) poolsSig += `${p?.size || 0},`
-  // The toggle rides in the signature: flipping it has to invalidate the memo,
-  // otherwise suggestions keep serving the old pool until the next emote load.
-  const acInventory = getSetting('suggestInventoryEmotes') !== false
-  const sig = `${currentTab}|${emoteCache.size}|${viewerPersonalEmotes.size}|${poolsSig}|${acInventory ? 1 : 0}`
-  if (_acMergeCache && _acMergeCache.sig === sig) return _acMergeCache
-  const acEmotes = new Map()
-  const tierByName = new Map()
-  const lowerByName = new Map()
-  for (const [k, v] of emoteCache) {
-    acEmotes.set(k, v)
-    tierByName.set(k, 2)
-    lowerByName.set(k, k.toLowerCase())
-  }
-  // Off: names that exist ONLY in your inventory stop being offered. Names the
-  // channel or a global pool also defines still complete — those are real words
-  // in this chat regardless of what you collected. Your twitch sub emotes share
-  // viewerPersonalEmotes but are not inventory: twitch lets you type them in any
-  // chat, so they complete with the toggle off too (as in the app).
-  for (const [k, v] of viewerPersonalEmotes) {
-    if (!acInventory && !v.subscription) continue
-    acEmotes.set(k, v)
-    tierByName.set(k, 1)
-    lowerByName.set(k, k.toLowerCase())
-  }
-  // A name you own that the channel also defines: the one the SENT LINE draws
-  // is what Tab must show. A line draws the sender's own set before the
-  // channel's (emotes.js _lookup, the ref the server vouches is that same set),
-  // so yours stays under the name and the channel's different picture does not
-  // overwrite it — it used to, and the box showed the room's YESIDOTHINKSO while
-  // the sent row drew the one in your set. The channel's copy stays reachable
-  // through the catalog (fetchRemoteEmoteMatches' twin check keeps a different
-  // picture under the same name), and sending that swaps yours out.
-  // Same picture under both: the channel entry wins as before (the tier only
-  // labels it). Inventory renders off: rows draw the channel's, so Tab does too.
-  const keepOwn = acInventory && getSetting('renderInventoryEmotes') !== false && typeof _acPicKey === 'function'
-  for (const acChCache of acPools)
-    for (const [k, v] of acChCache) {
-      if (keepOwn && tierByName.get(k) === 1) {
-        const own = acEmotes.get(k)
-        if (own?.url && v?.url && _acPicKey(own.url) !== _acPicKey(v.url)) continue
-      }
-      acEmotes.set(k, v)
-      tierByName.set(k, 0)
-      lowerByName.set(k, k.toLowerCase())
-    }
-  _acMergeCache = { sig, acEmotes, tierByName, lowerByName }
-  return _acMergeCache
-}
-
 // Shared exclusion check for the autocomplete pool (dropdown + tab-cycle +
 // remote catalog) — a blocked OR viewer-hidden-nsfw emote must never paint
 // its real image in a suggestion, so it's filtered from the match POOL itself
@@ -5206,235 +4954,30 @@ function _getMergedAcEmotes() {
 // is unfiltered (see emotes.js _buildChannelEmoteCache).
 function _hsAcEmoteBlocked(name, emote) {
   if (!name) return false
-  if (typeof hsEmoteHiddenForViewer === 'function' && hsEmoteHiddenForViewer(emote)) return true
-  if (typeof hsChannelNsfwHidden === 'function' && hsChannelNsfwHidden(emote)) return true
-  if (typeof blockedEmoteNames === 'undefined') return false
+  if (hsEmoteHiddenForViewer(emote) || hsChannelNsfwHidden(emote)) return true
   // this exact emote (rule 9) — a blocked 7tv W does not drop the bttv W from the cycle
   if (emoteIsBlocked(name, emote)) return true
   if (typeof unescapeHtml === 'function' && emoteIsBlocked(unescapeHtml(name), emote)) return true
   return false
 }
 
-function findEmoteMatches(search) {
-  const matches = []
-
-  // FFZ-style modifier tokens MUST NOT autocomplete — even if BTTV has an emote
-  // literally named "w!". Use shared classifier; if it's a modifier, return [].
-  if (hsModClassify(search, { allowPrefix: false }).kind === 'modifier') {
-    return matches
+// A Tab step that was only looked at leaves its name as it found it: cycling past the catalog's
+// IDK must not leave it deciding what an IDK typed earlier in this message sends. Called before
+// the step pins; the cycle's last step is the one that stays (hideAutocomplete forgets the step).
+function acPinStep(match, box) {
+  const step = acState._pinStep
+  if (step && step.name !== match.name) {
+    putBackPick(step.name, step.held, box)
+    followPicks()
   }
+  if (match.type !== 'emote' || !match.name) acState._pinStep = null
+  else if (step?.name !== match.name) acState._pinStep = { name: match.name, held: heldPick(match.name, box) }
+}
 
-  // Check if searching for username (starts with @)
-  const isUserSearch = search.startsWith('@')
-  // Colon-triggered dropdown search (":kap") — strip the leading ':' so the
-  // emote-name matching below sees the bare query, exactly like the bare-word
-  // Tab-cycle path sees "kap". Without this, ":kap" only ever matched unicode
-  // emoji shortcodes (see the dedicated ":prefix" block further down) because
-  // no emote name literally starts with ':'.
-  const isColonSearch = !isUserSearch && search.startsWith(':')
-  const searchTerm = isUserSearch || isColonSearch ? search.slice(1) : search
-  const searchLower = searchTerm.toLowerCase()
-
-  // Username completion ONLY when explicit @prefix. Bare words never surface
-  // usernames — they pollute emote results and the @ form is the supported way
-  // to mention someone. Recency map / color prefetch only run on @search.
-  if (isUserSearch) {
-    const recency = getRecencyMap()
-    const _hsPrefetchList = []
-    for (const username of usernameCache) {
-      if (!username) continue
-      const userLower = username.toLowerCase()
-      // YouTube usernames arrive as "@handle" — match and insert on the bare
-      // name or yt chatters can never @-complete (typed query has no leading
-      // @ after the trigger slice, and '@' + '@handle' would insert '@@').
-      const bare = userLower.startsWith('@') ? userLower.slice(1) : userLower
-      // Blocked users never surface as an @-completion suggestion (and don't
-      // trigger a color prefetch for them).
-      if (_isBlockedAnyPlat(bare)) continue
-      let color = (typeof knownColors !== 'undefined' && knownColors.get(userLower)) || null
-      if (!color && _hsUserColorCache.has(userLower)) color = _hsUserColorCache.get(userLower) || null
-      if (!color) _hsPrefetchList.push(bare)
-      const recencyRank = recency.get(bare)
-      if (bare.startsWith(searchLower)) {
-        matches.push({ name: `@${username.replace(/^@/, '')}`, url: null, priority: 0, type: 'user', recencyRank })
-      }
-    }
-    if (_hsPrefetchList.length) {
-      try {
-        hsPrefetchUserColors(_hsPrefetchList.slice(0, 30))
-      } catch {}
-    }
-  }
-
-  // Search emote cache (unless explicitly searching users with @).
-  // Three tiers, in order: 0 = current channel BTTV/FFZ/7TV, 1 = viewer's own set
-  // (heatsync inventory + native sub emotes), 2 = globals. Tier rides on each
-  // pushed match so the sort can rank "channel > own > global" without
-  // re-walking the source maps.
-  // Channel emotes are written into the merge map LAST so a name the channel
-  // defines resolves to the CHANNEL image — unless you own a different picture
-  // under that name, which is what your sent line draws (_getMergedAcEmotes).
-  if (!isUserSearch) {
-    const { acEmotes, tierByName, lowerByName } = _getMergedAcEmotes()
-    for (const [name, emote] of acEmotes) {
-      // Only tab-complete heatsync emotes you own (can't send emotes not in your set)
-      if (emote.source === 'heatsync' && emote.state !== 'owned') continue
-      // Blocked emotes never surface as an autocomplete suggestion — the
-      // dropdown/tab-cycle preview paints entry.url unguarded (showEmojiDropdown),
-      // so a blocked name/hash has to be excluded from the pool itself, not
-      // just at insert time. Hash catches the same asset under a re-listed alias.
-      if (_hsAcEmoteBlocked(name, emote)) continue
-      const sub = !!emote.subscription
-      const tier = tierByName.get(name) ?? 2
-      const nameLower = lowerByName.get(name) ?? name.toLowerCase()
-      if (nameLower.startsWith(searchLower)) {
-        matches.push({
-          name,
-          url: emote.url,
-          source: emote.source,
-          priority: 0,
-          tier,
-          type: 'emote',
-          sub,
-          zeroWidth: !!emote.zeroWidth,
-        })
-      } else if (nameLower.includes(searchLower)) {
-        matches.push({
-          name,
-          url: emote.url,
-          source: emote.source,
-          priority: 1,
-          tier,
-          type: 'emote',
-          sub,
-          zeroWidth: !!emote.zeroWidth,
-        })
-      }
-    }
-    // 7TV "name0" overlay convention: a trailing "0" turns an emote into a
-    // zero-width overlay (e.g. "centipede0"). The literal "centipede0" matches
-    // no emote name, so synthesize an overlay match from the base name. Without
-    // this, re-completing a "name0" word (complete emote → backspace auto-space
-    // → type 0 → Tab) finds nothing and the chip collapses back to plain text.
-    // The insert path resolves the overlay flag via lookupEmoteWithOverlay and
-    // stacks it onto the preceding emote.
-    // Skip synthesis entirely when the literal "name0" is itself a real emote —
-    // a channel emote actually named "lerolero0" is standalone and already
-    // surfaced as a direct hit above; the strip-0 overlay must not shadow it
-    // (and the prefix branch below would otherwise emit bogus "name00" doubles).
-    const _literalIsReal = matches.some((m) => m.type === 'emote' && m.name.toLowerCase() === searchLower)
-    if (!_literalIsReal && searchLower.length > 2 && searchLower.endsWith('0')) {
-      const baseLower = searchLower.slice(0, -1)
-      const seen = new Set(matches.filter((m) => m.type === 'emote').map((m) => m.name.toLowerCase()))
-      for (const [name, emote] of acEmotes) {
-        if (emote.source === 'heatsync' && emote.state !== 'owned') continue
-        // A block on the base name must hide the synthesized "name0" overlay too.
-        if (_hsAcEmoteBlocked(name, emote)) continue
-        const nl = name.toLowerCase()
-        const overlayName = `${name}0`
-        if (seen.has(overlayName.toLowerCase())) continue
-        const tier = tierByName.get(name) ?? 2
-        if (nl === baseLower) {
-          matches.push({
-            name: overlayName,
-            url: emote.url,
-            source: emote.source,
-            priority: 0,
-            tier,
-            type: 'emote',
-            sub: !!emote.subscription,
-            _synthOverlay: true,
-          })
-        } else if (nl.startsWith(baseLower)) {
-          matches.push({
-            name: overlayName,
-            url: emote.url,
-            source: emote.source,
-            priority: 1,
-            tier,
-            type: 'emote',
-            sub: !!emote.subscription,
-            _synthOverlay: true,
-          })
-        }
-      }
-    }
-  }
-
-  // Recent-chatter completion — bare word (no @ / :): a chatter who JUST talked
-  // and whose name PREFIX-matches outranks every emote. Typing a name prefix is
-  // almost always addressing that person, so these jump above emotes (e.g.
-  // "ashr" → ashrubberyboi over HahaShrugLeft), most-recent-first. Inserted as
-  // the PLAIN name (no @) — respect what the user typed; they didn't type @, so
-  // don't force a mention/ping (the @-search path keeps the @ the user typed).
-  // Collected separately and prepended after the emote sort so emote ordering
-  // stays untouched.
-  const recentChatters = []
-  if (!isUserSearch && !search.startsWith(':') && searchLower.length > 0 && typeof getRecencyMap === 'function') {
-    for (const [userLower, rank] of getRecencyMap()) {
-      if (!userLower.startsWith(searchLower)) continue
-      recentChatters.push({
-        name: _ucDisplay.get(userLower) || userLower,
-        url: null,
-        priority: 0,
-        type: 'user',
-        recencyRank: rank,
-      })
-    }
-    recentChatters.sort((a, b) => a.recencyRank - b.recencyRank)
-  }
-  const _recentSeen = new Set(recentChatters.map((m) => m.name.toLowerCase().replace(/^@/, '')))
-
-  // Bare-word username fallback — when nothing emote-y matched, scan
-  // usernameCache for everyone NOT already surfaced as a recent chatter. Only
-  // kicks in for searches that didn't start with @ / : so the explicit-@ path
-  // keeps its dedicated behavior (recency + color prefetch). Inserted WITHOUT
-  // the @ prefix so the user gets the same bare-name they typed (e.g. typing
-  // "lichen" + Tab → "licheness").
-  if (!isUserSearch && !search.startsWith(':') && matches.length === 0 && typeof usernameCache !== 'undefined') {
-    for (const username of usernameCache) {
-      if (!username) continue
-      // Bare-name matching — yt cache entries carry a leading '@'.
-      const userLower = username.toLowerCase().replace(/^@/, '')
-      if (_recentSeen.has(userLower)) continue
-      if (_isBlockedAnyPlat(userLower)) continue
-      if (userLower.startsWith(searchLower)) {
-        matches.push({ name: username, url: null, priority: 0, type: 'user' })
-      } else if (userLower.includes(searchLower)) {
-        matches.push({ name: username, url: null, priority: 1, type: 'user' })
-      }
-    }
-  }
-
-  // Emoji shortcodes when typing :prefix
-  if (search.startsWith(':') && typeof EMOJI_DATA !== 'undefined') {
-    const emojiPrefix = search.slice(1).toLowerCase()
-    if (emojiPrefix.length > 0) {
-      for (const entry of EMOJI_DATA) {
-        if (matches.length >= 50) break
-        const emojiMatch = {
-          name: `:${entry.name}:`,
-          url: null,
-          priority: entry.name.startsWith(emojiPrefix) ? 0 : 1,
-          type: 'emoji',
-          emoji: entry.emoji,
-        }
-        if (entry.name.startsWith(emojiPrefix)) {
-          matches.push(emojiMatch)
-        } else if (entry.name.includes(emojiPrefix)) {
-          emojiMatch.priority = 1
-          matches.push(emojiMatch)
-        }
-      }
-    }
-  }
-
-  const _frec = typeof loadEmoteFrecency === 'function' ? loadEmoteFrecency() : new Map()
-  matches.sort((a, b) => compareAcMatches(a, b, searchLower, _frec, search))
-
-  // Recent chatters (prefix, most-recent-first) lead the cycle, above all
-  // emotes — see comment at recentChatters above.
-  return recentChatters.length ? recentChatters.concat(matches) : matches
+/** the message left its box: its picks go with it, and so does the Tab step that was looking at one */
+function endComposerPicks(box) {
+  endDraftPicks(box)
+  acState._pinStep = null
 }
 
 // Insert completion and keep cycling state
@@ -5442,21 +4985,8 @@ function insertCompletionKeepOpen(match) {
   const input = document.getElementById('hs-mc-input')
   if (!input || !match) return
 
+  acPinStep(match, input)
   trackCompletionForAutoAdd(match)
-  if (match.type === 'emote' && match.name && typeof recordRecentEmote === 'function') {
-    // Usage must reflect where the user STOPS, not every candidate they cycle
-    // through — otherwise the #1-ranked emote gets a bump on every Tab press
-    // and entrenches itself (the KKonaLand loop: each "kko"+Tab attempt fed
-    // the wrong emote before the user ever reached KKona). Within a session,
-    // revert the previous candidate's bump before recording the new one; the
-    // one still standing when the session closes keeps the credit.
-    if (acState._frecBumped && acState._frecBumped !== match.name && typeof unbumpEmoteFrecency === 'function') {
-      unbumpEmoteFrecency(acState._frecBumped)
-    }
-    if (acState._frecBumped !== match.name) recordRecentEmote(match.name)
-    acState._frecBumped = match.name
-  }
-
   if (wysiwygEnabled) {
     insertCompletionWysiwyg(match)
     return
@@ -5721,7 +5251,7 @@ function hsFetchUserColorAndApply(lower, span) {
 function completionWantsOverlay(match, resolved) {
   if (match._synthOverlay) return true
   if (match.zeroWidth) return true
-  if (typeof zeroWidthForSameAsset === 'function' && zeroWidthForSameAsset(match.name, match.url)) return true
+  if (zeroWidthForSameAsset(match.name, match.url)) return true
   if (match.zeroWidth !== undefined) return false
   return !!resolved?.isOverlay
 }
@@ -5740,16 +5270,30 @@ function insertCompletionWysiwyg(match) {
     delete img.dataset.hsOrigSrc
     img.classList.remove('hs-state-blocked')
     delete img.dataset.state
+    // the step's own picture, for a right-click on the chip: a reused chip never keeps the last step's
+    hsChipIs(img, match.url, match.hash, match._synthOverlay && match.name.slice(0, -1))
+    img.dataset.source = match.source || 'unknown'
     if (
       match.name &&
-      typeof blockedEmoteNames !== 'undefined' &&
       // synth trailing-0 overlays carry "name0" but the block set holds the
       // base name — check the stripped base too
-      (emoteIsBlocked(match.name, match) || (match._synthOverlay && blockedEmoteNames.has(match.name.slice(0, -1)))) &&
-      typeof markInputEmoteBlocked === 'function'
+      (emoteIsBlocked(match.name, match) || (match._synthOverlay && blockedEmoteNames.has(match.name.slice(0, -1))))
     ) {
       markInputEmoteBlocked(img, true)
     }
+  }
+  // the chip a Tab step draws: the match's own picture, marked as the step being cycled
+  const cyclingImg = () => {
+    const img = document.createElement('img')
+    img.src = match.url
+    img.alt = match.name
+    img.dataset.emoteName = match.name
+    img.className = 'hs-input-emote hs-cycling-emote'
+    img.draggable = false
+    attachInputEmoteErrorRecovery(img)
+    hsAttachInputEmoteSnap(img)
+    _applyInputBlock(img)
+    return img
   }
 
   // Check if we're replacing an existing cycling element (emote img, text span, or user span)
@@ -5762,7 +5306,7 @@ function insertCompletionWysiwyg(match) {
       // overlay and non-overlay alternatives. Without this, the FIRST insert's
       // overlay state sticks — every cycle stays inside the stack span and
       // non-overlay matches appear to stack onto whatever's before them.
-      const resolved = typeof lookupEmoteWithOverlay === 'function' ? lookupEmoteWithOverlay(match.name) : null
+      const resolved = lookupEmoteWithOverlay(match.name)
       const wantsOverlay = completionWantsOverlay(match, resolved)
       const stack = existingEmote.parentElement?.classList?.contains('hs-input-stack')
         ? existingEmote.parentElement
@@ -5826,7 +5370,7 @@ function insertCompletionWysiwyg(match) {
       existingEmote.src = match.url
       existingEmote.alt = match.name
       existingEmote.dataset.emoteName = match.name
-      if (typeof hsAttachInputEmoteSnap === 'function') hsAttachInputEmoteSnap(existingEmote)
+      hsAttachInputEmoteSnap(existingEmote)
       _applyInputBlock(existingEmote)
     } else if (match.type === 'emoji') {
       // Replace emote img with emoji span
@@ -5867,16 +5411,7 @@ function insertCompletionWysiwyg(match) {
   }
   if (existingText) {
     if (match.url) {
-      // Replace text span with emote img
-      const img = document.createElement('img')
-      img.src = match.url
-      img.alt = match.name
-      img.dataset.emoteName = match.name
-      img.className = 'hs-input-emote hs-cycling-emote'
-      img.draggable = false
-      attachInputEmoteErrorRecovery(img)
-      if (typeof hsAttachInputEmoteSnap === 'function') hsAttachInputEmoteSnap(img)
-      _applyInputBlock(img)
+      const img = cyclingImg()
       existingText.replaceWith(img)
       const space = img.nextSibling
       if (space) placeCaretAfter(space, 1)
@@ -5911,16 +5446,7 @@ function insertCompletionWysiwyg(match) {
   }
   if (existingUser) {
     if (match.url) {
-      // Replace user span with emote img
-      const img = document.createElement('img')
-      img.src = match.url
-      img.alt = match.name
-      img.dataset.emoteName = match.name
-      img.className = 'hs-input-emote hs-cycling-emote'
-      img.draggable = false
-      attachInputEmoteErrorRecovery(img)
-      if (typeof hsAttachInputEmoteSnap === 'function') hsAttachInputEmoteSnap(img)
-      _applyInputBlock(img)
+      const img = cyclingImg()
       existingUser.replaceWith(img)
       const space = img.nextSibling
       if (space) placeCaretAfter(space, 1)
@@ -6043,19 +5569,10 @@ function insertCompletionWysiwyg(match) {
   }
 
   if (match.url) {
-    // Create emote image
-    const img = document.createElement('img')
-    img.src = match.url
-    img.alt = match.name
-    img.dataset.emoteName = match.name
-    img.className = 'hs-input-emote hs-cycling-emote'
-    img.draggable = false
-    attachInputEmoteErrorRecovery(img)
-    if (typeof hsAttachInputEmoteSnap === 'function') hsAttachInputEmoteSnap(img)
-    _applyInputBlock(img)
+    const img = cyclingImg()
     // Zero-width / overlay: stack onto preceding emote so the input preview
     // matches how chat will render the same word sequence.
-    const resolved = typeof lookupEmoteWithOverlay === 'function' ? lookupEmoteWithOverlay(match.name) : null
+    const resolved = lookupEmoteWithOverlay(match.name)
     const wantsOverlay = completionWantsOverlay(match, resolved)
     if (wantsOverlay && before.trim() === '') {
       // Base = element chip OR a raw emoji ending a PRECEDING text node
@@ -6080,7 +5597,7 @@ function insertCompletionWysiwyg(match) {
     }
     // Overlay onto a raw unicode emoji typed/pasted as plain text in `before`
     // (parity with the typed live-replace path and chat render).
-    if (wantsOverlay && typeof peelTrailingEmoji === 'function') {
+    if (wantsOverlay) {
       const peeled = peelTrailingEmoji(before.replace(/\s+$/, ''))
       if (peeled) {
         const parent = textNode.parentNode
@@ -6157,10 +5674,15 @@ function placeCaretAfter(node, offset = 0) {
 //   heatsync only — your personal set + catalog-search hits (labelled "catalog ·
 //                   <provider>"): only viewers running heatsync render these;
 //                   everyone else sees plain text
-// Colors form a breadth gradient: green (all) → yellow (needs an ext) → orange
+// Colors form a breadth gradient: green (all) → yellow (needs an ext) → white
 // (heatsync only), so you can feel how deep / how niche the current pick is.
 function emoteCycleMeta(m) {
   if (!m) return { cat: '', vis: null }
+  // another emote of this name shows instead on the platform this line goes to (the law marks it)
+  if (m.shadowed) {
+    const cat = emoteCycleMeta({ ...m, shadowed: false }).cat
+    return { cat, vis: { t: t('mc_cycle_wont_show'), c: 'var(--hs-danger)' } }
+  }
   if (m.type === 'user' || m.type === 'user-bare')
     return { cat: t('mc_input_chatter'), vis: { t: t('mc_input_everyone'), c: 'var(--hs-ok)' } }
   if (m.type === 'emoji') return { cat: t('btn_tab_emoji'), vis: { t: t('mc_input_everyone'), c: 'var(--hs-ok)' } }
@@ -6244,12 +5766,12 @@ function hideAutocomplete() {
   acState.wordStart = 0
   acState.afterText = ''
   acState.search = ''
-  acState._frecBumped = null // session over — whatever was last bumped is the commit
+  acState._pinStep = null // and whatever was last pinned is this message's pick
   acState.remoteDone = false
   acState.remotePending = false
   acState._remotePage = 0
   acState._remoteExhausted = null
-  acState._aiSeq = 0
+  acState._catalog = null
   _acRemoteToken++ // invalidate any in-flight 7TV fetch
   if (_acRemoteAbort) {
     try {
@@ -6390,7 +5912,7 @@ function hideEmojiDropdown() {
 }
 
 // Route the pick through the exact insertion path Tab-cycle uses (chip vs
-// plain text, overlay stacking, frecency bump, blocked-emote outline) — see
+// plain text, overlay stacking, blocked-emote outline) — see
 // insertCompletionKeepOpen/insertCompletionWysiwyg — then hand off to
 // acState so further Tab presses keep cycling this same ranked list. A
 // dropdown pick becomes indistinguishable from typing the word + Tab once.
@@ -6422,9 +5944,8 @@ function checkEmojiAutocomplete() {
     return
   }
 
-  // Same match + rank logic Tab-cycle uses (findEmoteMatches + the shared
-  // compareAcMatches comparator) — own inventory, channel emotes, cached
-  // 7tv/bttv/ffz sets, and unicode emoji. Local-cache reads only, so this is
+  // The same list Tab cycles (findEmoteMatches, the emote law's offer): the room's
+  // emotes, yours, globals, and unicode emoji. Local-cache reads only, so this is
   // safe to run on every debounced keystroke (no network in the hot path).
   const matches = findEmoteMatches(`:${ctx.query}`).slice(0, EMOJI_DROPDOWN_MAX)
   if (matches.length === 0) {
@@ -6705,6 +6226,7 @@ function clearInput(input) {
   hideSlashDropdown()
   if (wysiwygEnabled) input.textContent = ''
   else input.value = ''
+  endComposerPicks(input) // the message is gone, and its picks with it
   pendingMessage = ''
   updateCharCount()
   // programmatic clears fire no input event — queue the auto-hide here.
@@ -6765,10 +6287,7 @@ function matchSlashCommands(q) {
 }
 
 function checkSlashAutocomplete(precomputedText) {
-  const text =
-    typeof precomputedText === 'string'
-      ? precomputedText
-      : (typeof getInputText === 'function' ? getInputText() : '') || ''
+  const text = typeof precomputedText === 'string' ? precomputedText : getInputText() || ''
   const m = text.match(/^\/([a-z?]*)$/i)
   if (!m) {
     hideSlashDropdown()
@@ -6852,14 +6371,9 @@ function insertSlashCommand(c) {
   const inserted = `/${c.cmd}${c.args ? ' ' : ''}`
   if (wysiwygEnabled) {
     input.textContent = inserted
-    const range = document.createRange()
-    range.selectNodeContents(input)
-    range.collapse(false)
-    const sel = window.getSelection()
-    if (sel) {
-      sel.removeAllRanges()
-      sel.addRange(range)
-    }
+    try {
+      cursorToEnd(input)
+    } catch {}
   } else {
     input.value = inserted
     if (typeof input.setSelectionRange === 'function') {
@@ -6868,7 +6382,7 @@ function insertSlashCommand(c) {
   }
   hideSlashDropdown()
   pendingMessage = inserted
-  if (typeof updateCharCount === 'function') updateCharCount()
+  updateCharCount()
   input.focus()
 }
 
@@ -7303,7 +6817,7 @@ async function handleSlashCommand(text, input) {
     // sync local-link fan-out AND the async server-linked-account fan-out, same
     // as right-click mute (_toggleMcMute); null platform → userKey returns bare
     // key, so /mute stays global (correct: no platform context from bare name).
-    const aliasKeys = typeof expandUserAliasKeys === 'function' ? await expandUserAliasKeys(u, null) : [u]
+    const aliasKeys = await expandUserAliasKeys(u, null)
     const already = _muteKeyForms(u, aliasKeys).some((k) => mutedUsers.has(k))
     if (already) {
       showToast(t('mc_input_already_muted', [u]), 'error')
@@ -7326,7 +6840,7 @@ async function handleSlashCommand(text, input) {
     }
     // Same async fan-out as /mute and right-click mute — covers server-linked
     // accounts, not just sync-local links.
-    const aliasKeys = typeof expandUserAliasKeys === 'function' ? await expandUserAliasKeys(u, null) : [u]
+    const aliasKeys = await expandUserAliasKeys(u, null)
     const forms = _muteKeyForms(u, aliasKeys)
     const wasMuted = forms.some((k) => mutedUsers.has(k))
     if (!wasMuted) {
@@ -8654,15 +8168,24 @@ async function openWhisperConversation(platform, username, input) {
 // name you already own with a DIFFERENT emote swaps: the server keeps one emote per
 // name, so the old one is removed first (swapEmoteInInventory). Only a deliberate
 // catalog pick swaps — tabbing onto the channel's own IDK never replaces yours.
-function autoAddInputEmotes(text) {
+function autoAddInputEmotes(text, { relayed = false } = {}) {
   if (!text || !recentRemoteCompletions.size) return null
   const adds = []
   const seen = new Set()
+  const box = relayed ? null : lawBox()
   for (const word of text.split(/\s+/)) {
     if (!word || seen.has(word)) continue
     seen.add(word)
     const rec = recentRemoteCompletions.get(word)
     if (!rec) continue
+    // A pick belongs to the message it was made in. Only a word this box still holds as that very
+    // pick adds: a name picked in an earlier message and typed by hand now is a hand-typed word,
+    // and it must never add (or swap out) an emote nobody chose for this line.
+    if (!relayed) {
+      const held = box ? heldPick(word, box) : null
+      const pick = held && (held[0] || held[1])
+      if (!pick || _acPicKey(pick.url) !== _acPicKey(rec.url)) continue
+    }
     if (
       typeof blockedEmoteNames !== 'undefined' &&
       (typeof emoteIsBlocked === 'function' ? emoteIsBlocked(word, rec) : blockedEmoteNames.has(word))
@@ -8740,7 +8263,7 @@ function autoAddInputEmotes(text) {
 // account — not a channel or global emote that shows for everyone anyway.
 // Inventory is kept out of emoteCache, so emoteCache.has means global.
 function ownOnlyEmotesIn(text) {
-  const pools = typeof activeTabEmotePools === 'function' ? activeTabEmotePools() : []
+  const pools = activeTabEmotePools()
   const out = new Set()
   for (const w of text.split(/\s+/)) {
     if (!w || !inventoryEmotes.has(w) || emoteCache.has(w) || pools.some((p) => p?.has?.(w))) continue
@@ -8859,13 +8382,7 @@ async function sendQuoteThread(words) {
   settleComposerAfterSend(document.getElementById('hs-mc-input'))
   const id = posted === true ? null : posted.base36_id
   const link = id ? buildPostPermalink(id) : null
-  let copied = false
-  if (link) {
-    try {
-      await navigator.clipboard.writeText(link)
-      copied = true
-    } catch {}
-  }
+  const copied = link ? await window.HS.copyText(link) : false
   showToast(copied ? t('mc_msg_quote_posted_copied') : t('mc_msg_quote_posted'), 'success')
 }
 
@@ -9099,6 +8616,19 @@ async function sendMessage(retry) {
   const meMatch = text.match(/^\/me\s+(\S[\s\S]*)$/i)
   const restText = meMatch ? meMatch[1].trim() : text
   const twitchText = meMatch ? `\x01ACTION ${restText}\x01` : text
+  // what this line ships, from the emote law, over the room of each leg and the box's own picks
+  const shipped = lawShip(
+    restText,
+    {
+      twitch: sendToTwitch ? twitchName || targetChannel : '',
+      kick: sendToKick ? kickSlug || targetChannel : '',
+      // a youtube-only line still has a room: the chip was judged against it (lawOpenLegs)
+      youtube: sendToYoutube ? (ytUrl ? lawYtKey(ytUrl) : targetChannel) : '',
+    },
+    input,
+  )
+  // the line is leaving: its emotes are what you used (Tab's second tier, the picker's recents)
+  lawNoteSent(shipped.used)
 
   // Register pending-send tracker — echo confirmation is our ground truth
   // for "did the platform deliver?", separate from sendIrc/Kick's "did we
@@ -9153,9 +8683,9 @@ async function sendMessage(retry) {
               : sendToYoutube
                 ? 'yt'
                 : hostPlatform
-  trackSentMessage(restText, _echoHost, _synthId, _echoCount || 1, !!replyState?.msgId, _sendId)
+  trackSentMessage(restText, _echoHost, _synthId, _echoCount || 1, !!replyState?.msgId, _sendId, shipped)
 
-  hsSentHistoryRecord(text)
+  hsSentHistoryRecord(text, shipped.chosen)
 
   const replyParentId = replyState?.msgId || null
   // A parent id belongs to the platform its row came from: twitch and kick each only
@@ -9215,6 +8745,7 @@ async function sendMessage(retry) {
   // window so rapid-fire chatting never retypes into a dead cursor.
   if (wysiwygEnabled) input.textContent = ''
   else input.value = ''
+  endComposerPicks(input) // shipped above: a name typed by hand in the next message is a hand-typed word
   pendingMessage = ''
   updateCharCount()
   // Settle the composer: auto-hide → instant hide, otherwise open the
@@ -9251,9 +8782,9 @@ async function sendMessage(retry) {
       }
     }
     // Kick-native emotes need their [emote:id:name] wire form — see
-    // kickifyEmoteText. Only the kick leg gets rewritten; twitchText/ytText
+    // the law's kick wire. Only the kick leg gets rewritten; twitchText/ytText
     // below still carry the bare words.
-    const kickPromise = sendKickMessage(slug, kickifyEmoteText(restText), kickReply)
+    const kickPromise = sendKickMessage(slug, shipped.wire.kick ?? restText, kickReply)
     const twitchPromise = sendToTwitch
       ? getTwitchAuthTokenAsync().then(({ token: tok, username: twitchNick }) =>
           sendIrcMessage(twitchName, twitchText, tok, twitchReplyId, twitchNick),
@@ -9287,7 +8818,7 @@ async function sendMessage(retry) {
         // silently (no red border, no retry notif, just a no_echo warning
         // 20s later).
         const twitchSent = twitchResult === true
-        if (twitchSent) hsTagTwitchSend(restText, twitchName, _sendId)
+        if (twitchSent) hsTagTwitchSend(restText, twitchName, _sendId, lawStored(shipped.refs))
         const twitchOk = twitchSent || twitchResult === null
         // 'queued' = IRC was offline, message stuffed in send-queue for next
         // reconnect (could be never). Treat as a visible yellow cue, not silent
@@ -9438,7 +8969,7 @@ async function sendMessage(retry) {
   sendIrcMessage(targetChannel, twitchText, token, twitchReplyId, twitchNick)
     .then((result) => {
       if (result === true) {
-        hsTagTwitchSend(restText, targetChannel, _sendId)
+        hsTagTwitchSend(restText, targetChannel, _sendId, lawStored(shipped.refs))
         keepTempTabAfterSend()
         if (wsState !== 'OPEN') {
           input.style.borderColor = 'var(--hs-warn)'
@@ -9686,7 +9217,7 @@ function insertComposerText(text) {
     }
   } else {
     input.value = `${(input.value || '') + text} `
-    input.dispatchEvent(new Event('input', { bubbles: true }))
+    fireInput(input)
   }
 }
 

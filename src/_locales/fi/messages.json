@@ -849,6 +849,14 @@
   "mc_input_no_channel": {
     "message": "ei kanavaa — valitse välilehti ylhäältä"
   },
+  "mc_input_login_to_chat": {
+    "message": "kirjaudu: $PLATFORM$ tai heatsync",
+    "placeholders": {
+      "platform": {
+        "content": "$1"
+      }
+    }
+  },
   "mc_whisper_follow_to_dm": {
     "message": "seuraa käyttäjää $USER$ lähettääksesi dm — seuraa + lähetä",
     "placeholders": {
@@ -1116,6 +1124,18 @@
   "mc_settings_tab_list_desc": {
     "message": "tab sanan kohdalla näyttää sopivat emotet listassa kirjoituskentän yläpuolella. nuolet valitsevat, tab tai enter lisää, esc sulkee. pois päältä täydentää suoraan tekstiin"
   },
+  "mc_settings_colon_list": {
+    "message": "`:`-lista näyttää"
+  },
+  "mc_settings_colon_list_desc": {
+    "message": "mitä :-merkin avaama lista näyttää ylimpänä. emotet ensin on tabin järjestys; emojit ensin nostaa jokaisen emojin emotejen yläpuolelle. tab ja valitsimen haku pitävät yhden järjestyksen"
+  },
+  "lib_opt_colon_emotes": {
+    "message": "emotet ensin"
+  },
+  "lib_opt_colon_emoji": {
+    "message": "emojit ensin"
+  },
   "mc_settings_show_pronouns": {
     "message": "pronominit"
   },
@@ -1350,8 +1370,8 @@
   "mc_signed_out_action": {
     "message": "kirjaudu"
   },
-  "mc_chatlogs_copy_failed": {
-    "message": "kopiointi epäonnistui"
+  "common_clipboard_blocked": {
+    "message": "leikepöytä estetty"
   },
   "mc_common_unknown": {
     "message": "tuntematon"
@@ -2236,6 +2256,14 @@
   },
   "mc_mod_label_deleted": {
     "message": "poistettu"
+  },
+  "mc_mod_deleted_only": {
+    "message": "poistettu vain: $PLATFORMS$",
+    "placeholders": {
+      "platforms": {
+        "content": "$1"
+      }
+    }
   },
   "mc_mod_label_timed_out": {
     "message": "timeout $SEC$s",
@@ -3369,6 +3397,9 @@
       }
     }
   },
+  "mc_cycle_wont_show": {
+    "message": "ei näy täällä"
+  },
   "mc_twapi_ql_subscribe": {
     "message": "tilaa"
   },
@@ -4114,6 +4145,9 @@
   },
   "mc_social_no_mod_actions": {
     "message": "ei vielä modin toimia"
+  },
+  "mc_modlog_connect": {
+    "message": "näytä kuka modi teki minkäkin — yhdistä twitch"
   },
   "mc_social_platform": {
     "message": "alusta"
@@ -7431,5 +7465,17 @@
   },
   "common_close": {
     "message": "sulje"
+  },
+  "mc_picker_favorites": {
+    "message": "suosikit"
+  },
+  "mc_fav_add": {
+    "message": "lisää suosikkeihin"
+  },
+  "mc_fav_remove": {
+    "message": "poista suosikeista"
+  },
+  "mc_fav_full": {
+    "message": "suosikit täynnä — poista ensin yksi"
   }
 }

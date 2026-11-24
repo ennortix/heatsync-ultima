@@ -849,6 +849,14 @@
   "mc_input_no_channel": {
     "message": "немає каналу — обери вкладку вгорі"
   },
+  "mc_input_login_to_chat": {
+    "message": "увійди в $PLATFORM$ або heatsync",
+    "placeholders": {
+      "platform": {
+        "content": "$1"
+      }
+    }
+  },
   "mc_whisper_follow_to_dm": {
     "message": "підпишись на $USER$, щоб написати dm — підписатися + надіслати",
     "placeholders": {
@@ -1116,6 +1124,18 @@
   "mc_settings_tab_list_desc": {
     "message": "tab на слові показує відповідні емоути у списку над полем вводу. стрілки вибирають, tab або enter вставляє, esc закриває. вимкнено — доповнює просто в тексті"
   },
+  "mc_settings_colon_list": {
+    "message": "список `:` показує"
+  },
+  "mc_settings_colon_list_desc": {
+    "message": "що список, який відкриває введення :, ставить угору. спершу емоути — порядок tab; спершу емодзі ставить кожне емодзі над емоутами. tab і пошук у виборі тримають один порядок"
+  },
+  "lib_opt_colon_emotes": {
+    "message": "спершу емоути"
+  },
+  "lib_opt_colon_emoji": {
+    "message": "спершу емодзі"
+  },
   "mc_settings_show_pronouns": {
     "message": "займенники"
   },
@@ -1350,8 +1370,8 @@
   "mc_signed_out_action": {
     "message": "увійти"
   },
-  "mc_chatlogs_copy_failed": {
-    "message": "не вдалося копіювати"
+  "common_clipboard_blocked": {
+    "message": "буфер обміну заблоковано"
   },
   "mc_common_unknown": {
     "message": "невідомо"
@@ -2236,6 +2256,14 @@
   },
   "mc_mod_label_deleted": {
     "message": "видалено"
+  },
+  "mc_mod_deleted_only": {
+    "message": "видалено лише на $PLATFORMS$",
+    "placeholders": {
+      "platforms": {
+        "content": "$1"
+      }
+    }
   },
   "mc_mod_label_timed_out": {
     "message": "тайм-аут $SEC$с",
@@ -3369,6 +3397,9 @@
       }
     }
   },
+  "mc_cycle_wont_show": {
+    "message": "тут не відобразиться"
+  },
   "mc_twapi_ql_subscribe": {
     "message": "підписатися"
   },
@@ -4114,6 +4145,9 @@
   },
   "mc_social_no_mod_actions": {
     "message": "ще немає дій mod"
+  },
+  "mc_modlog_connect": {
+    "message": "показувати, який модератор що зробив — під’єднати twitch"
   },
   "mc_social_platform": {
     "message": "платформа"
@@ -7431,5 +7465,17 @@
   },
   "common_close": {
     "message": "закрити"
+  },
+  "mc_picker_favorites": {
+    "message": "обране"
+  },
+  "mc_fav_add": {
+    "message": "додати в обране"
+  },
+  "mc_fav_remove": {
+    "message": "прибрати з обраного"
+  },
+  "mc_fav_full": {
+    "message": "обране заповнене — спершу прибери один"
   }
 }
